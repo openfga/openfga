@@ -23,6 +23,9 @@ import (
 )
 
 const (
+	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
+	MaxModulesInRequest = 1
+
 	// API methods.
 	ReadAuthorizationModel  = "ReadAuthorizationModel"
 	ReadAuthorizationModels = "ReadAuthorizationModels"
@@ -68,9 +71,6 @@ const (
 )
 
 var (
-	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
-	MaxModulesInRequest = 1
-
 	ErrUnauthorizedResponse                  = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
 	ErrBadRequestMaxModulesInRequestExceeded = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request", MaxModulesInRequest))
 	ErrUnknownAPIMethod                      = errors.New("unknown API method")
@@ -239,6 +239,7 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
 	}
+
 	// If there are no modules to check, return the top-level authorization error
 	return err
 }

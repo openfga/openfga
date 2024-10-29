@@ -77,42 +77,37 @@ const (
 			define writer: [application] or admin
 			define admin: [application] or creator or admin from system
 		`
-	testStoreModel = `
-			model
-				schema 1.1
-
-			type channel
-			relations
-				define commenter: [user, workspace#member] or writer
-				define parent_workspace: [workspace]
-				define writer: [user, workspace#member]
-
-			type user
-
-			type workspace
-			relations
-				define channels_admin: [user] or legacy_admin
-				define guest: [user]
-				define legacy_admin: [user]
-				define member: [user] or legacy_admin or channels_admin
-		`
-	module1 = "module1"
-	module2 = "module2"
 )
 
 func testStoreModelWithModule() []*openfgav1.TypeDefinition {
 	// Add a module to the test store
-	typeDef := language.MustTransformDSLToProto(testStoreModel).GetTypeDefinitions()
-	for _, td := range typeDef {
-		if td.GetType() == "workspace" {
-			td.Metadata.Module = module1
-		}
-		if td.GetType() == "channel" {
-			td.Metadata.Module = module2
-		}
+	typeDefs := []*openfgav1.TypeDefinition{{
+		Type: "user",
+	}}
+
+	// Add as many modules as necessary (we do this dynamically in case the max modules changes)
+	for moduleIndex := range authz.MaxModulesInRequest + 1 {
+		typeDefs = append(typeDefs, &openfgav1.TypeDefinition{
+			Type: fmt.Sprintf("module%v", moduleIndex),
+			Metadata: &openfgav1.Metadata{
+				Module: fmt.Sprintf("module%v", moduleIndex),
+				Relations: map[string]*openfgav1.RelationMetadata{
+					"member": {
+						DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+							{Type: "user"},
+						},
+					},
+				},
+			},
+			Relations: map[string]*openfgav1.Userset{
+				"member": {
+					Userset: &openfgav1.Userset_This{},
+				},
+			},
+		})
 	}
 
-	return typeDef
+	return typeDefs
 }
 
 func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string) *authzSettings {
@@ -226,8 +221,8 @@ func TestListObjects(t *testing.T) {
 		_, err = openfga.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
-			Type:                 "workspace",
-			Relation:             "guest",
+			Type:                 "module1",
+			Relation:             "member",
 			User:                 "user:ben",
 		})
 		require.NoError(t, err)
@@ -246,7 +241,7 @@ func TestListObjects(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -259,8 +254,8 @@ func TestListObjects(t *testing.T) {
 			_, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			})
 
@@ -274,13 +269,13 @@ func TestListObjects(t *testing.T) {
 			listObjectsResponse, err := openfga.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			})
 			require.NoError(t, err)
 
-			require.Equal(t, []string{"workspace:1"}, listObjectsResponse.GetObjects())
+			require.Equal(t, []string{"module1:1"}, listObjectsResponse.GetObjects())
 		})
 	})
 }
@@ -304,8 +299,8 @@ func TestStreamedListObjects(t *testing.T) {
 		err := openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
-			Type:                 "workspace",
-			Relation:             "guest",
+			Type:                 "module1",
+			Relation:             "member",
 			User:                 "user:ben",
 		}, NewMockStreamServer(context.Background()))
 		require.NoError(t, err)
@@ -323,7 +318,7 @@ func TestStreamedListObjects(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -337,8 +332,8 @@ func TestStreamedListObjects(t *testing.T) {
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			}, server)
 
@@ -353,8 +348,8 @@ func TestStreamedListObjects(t *testing.T) {
 			err = openfga.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Type:                 "workspace",
-				Relation:             "guest",
+				Type:                 "module1",
+				Relation:             "member",
 				User:                 "user:ben",
 			}, server)
 			require.NoError(t, err)
@@ -382,8 +377,8 @@ func TestRead(t *testing.T) {
 			StoreId: settings.testData.id,
 			TupleKey: &openfgav1.ReadRequestTupleKey{
 				User:     "user:anne",
-				Relation: "guest",
-				Object:   "workspace:1",
+				Relation: "member",
+				Object:   "module1:1",
 			},
 		})
 		require.NoError(t, err)
@@ -402,7 +397,7 @@ func TestRead(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -416,8 +411,8 @@ func TestRead(t *testing.T) {
 				StoreId: settings.testData.id,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 
@@ -432,14 +427,14 @@ func TestRead(t *testing.T) {
 				StoreId: settings.testData.id,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 			require.NoError(t, err)
 
 			require.Len(t, readResponse.GetTuples(), 1)
-			require.Equal(t, tuple.NewTupleKey("workspace:1", "guest", "user:ben"), readResponse.GetTuples()[0].GetKey())
+			require.Equal(t, tuple.NewTupleKey("module1:1", "member", "user:ben"), readResponse.GetTuples()[0].GetKey())
 		})
 	})
 }
@@ -465,7 +460,7 @@ func TestWrite(t *testing.T) {
 			AuthorizationModelId: settings.testData.modelID,
 			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+					tuple.NewTupleKey("module1:1", "member", "user:ben"),
 				},
 			},
 		})
@@ -490,7 +485,7 @@ func TestWrite(t *testing.T) {
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
+						tuple.NewTupleKey("module1:1", "member", "user:ben"),
 					},
 				},
 			})
@@ -502,31 +497,26 @@ func TestWrite(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallWrite)
 
-			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("workspace:1", "guest", "user:ben"))
+			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("module1:1", "member", "user:ben"))
 		})
 
 		t.Run("errors_when_not_authorized_for_all_modules", func(t *testing.T) {
-			authz.MaxModulesInRequest = 2
-
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%v:1", index+1), "member", "user:ben"))
+				// Keep one w/o access
+				if index != 0 {
+					settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+				}
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
-					},
-				},
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{
-							User:     "user:ben",
-							Relation: "commenter",
-							Object:   "channel:1",
-						},
-					},
+					TupleKeys: tuples,
 				},
 			})
 
@@ -534,86 +524,118 @@ func TestWrite(t *testing.T) {
 		})
 
 		t.Run("successfully_call_write_for_modules", func(t *testing.T) {
-			authz.MaxModulesInRequest = 2
-
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module2), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%v:1", index+1), "member", "user:ben"))
+				// grant access to all modules
+				settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("channel:1", "commenter", "user:ben"),
-					},
+					TupleKeys: tuples,
 				},
 			})
 			require.NoError(t, err)
 
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
 			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
-					},
-				},
 				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{
-							User:     "user:ben",
-							Relation: "commenter",
-							Object:   "channel:1",
-						},
-					},
+					TupleKeys: tuplesInDelete,
 				},
 			})
 			require.NoError(t, err)
 		})
 
 		t.Run("errors_when_sending_more_than_max_modules", func(t *testing.T) {
-			authz.MaxModulesInRequest = 1
-
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest + 1 {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%d:1", index), "member", "user:ben"))
+				// grant access to all modules
+				settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, fmt.Sprintf("module%d", index+1)), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:1", "guest", "user:ben"),
-					},
-				},
-				Deletes: &openfgav1.WriteRequestDeletes{
-					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{
-							User:     "user:ben",
-							Relation: "commenter",
-							Object:   "channel:1",
-						},
-					},
+					TupleKeys: tuples,
 				},
 			})
 
-			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, 2), err)
+			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuples)), err)
+
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
+			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: tuplesInDelete,
+				},
+			})
+
+			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuplesInDelete)), err)
 		})
 
 		t.Run("success_when_sending_more_than_max_modules_with_store_level_write_permission", func(t *testing.T) {
-			authz.MaxModulesInRequest = 1
-
+			tuples := []*openfgav1.TupleKey{}
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+
+			// grant access to the store
 			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("store:%s", settings.testData.id), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+
+			for index := range authz.MaxModulesInRequest + 1 {
+				tuples = append(tuples, tuple.NewTupleKey(fmt.Sprintf("module%d:1", index), "member", "user:ben"))
+			}
 
 			_, err := openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKey("workspace:2", "guest", "user:ben"),
-						tuple.NewTupleKey("channel:2", "commenter", "user:ben"),
-					},
+					TupleKeys: tuples,
+				},
+			})
+
+			require.NoError(t, err)
+
+			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
+			for _, tuple := range tuples {
+				tuplesInDelete = append(tuplesInDelete, &openfgav1.TupleKeyWithoutCondition{
+					User:     tuple.GetUser(),
+					Relation: tuple.GetRelation(),
+					Object:   tuple.GetObject(),
+				})
+			}
+
+			_, err = openfga.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              settings.testData.id,
+				AuthorizationModelId: settings.testData.modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: tuplesInDelete,
 				},
 			})
 
@@ -902,7 +924,7 @@ func TestCheckWriteAuthz(t *testing.T) {
 				StoreId: settings.testData.id,
 				Deletes: &openfgav1.WriteRequestDeletes{
 					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "workspace:2", Relation: "guest", User: "user:jon"},
+						{Object: "module1:2", Relation: "member", User: "user:jon"},
 					},
 				},
 			}, typesys)
@@ -912,14 +934,14 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 		t.Run("authz_is_valid", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, module1), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
+			settings.writeHelper(ctx, t, settings.rootData.id, settings.rootData.modelID, tuple.NewTupleKey(fmt.Sprintf("module:%s|%s", settings.testData.id, "module1"), authz.CanCallWrite, fmt.Sprintf("application:%s", clientID)))
 
 			err := openfga.checkWriteAuthz(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Deletes: &openfgav1.WriteRequestDeletes{
 					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
-						{Object: "workspace:2", Relation: "guest", User: "user:jon"},
+						{Object: "module1:2", Relation: "member", User: "user:jon"},
 					},
 				},
 			}, typesys)
@@ -988,15 +1010,15 @@ func TestCheck(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, "writer")
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
-			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("workspace:1", "guest", "user:ben"))
+			settings.writeHelper(ctx, t, settings.testData.id, settings.testData.modelID, tuple.NewTupleKey("module1:1", "member", "user:ben"))
 
 			checkResponse, err := openfga.Check(ctx, &openfgav1.CheckRequest{
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					User:     "user:ben",
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 
@@ -1099,8 +1121,8 @@ func TestExpand(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.ExpandRequestTupleKey{
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 
@@ -1115,15 +1137,15 @@ func TestExpand(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				TupleKey: &openfgav1.ExpandRequestTupleKey{
-					Relation: "guest",
-					Object:   "workspace:1",
+					Relation: "member",
+					Object:   "module1:1",
 				},
 			})
 			require.NoError(t, err)
 			require.Equal(t, &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
 					Root: &openfgav1.UsersetTree_Node{
-						Name: "workspace:1#guest",
+						Name: "module1:1#member",
 						Value: &openfgav1.UsersetTree_Node_Leaf{
 							Leaf: &openfgav1.UsersetTree_Leaf{
 								Value: &openfgav1.UsersetTree_Leaf_Users{
@@ -1299,7 +1321,7 @@ func TestWriteAssertions(t *testing.T) {
 
 		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+				TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 				Expectation: false,
 			},
 		}
@@ -1336,7 +1358,7 @@ func TestWriteAssertions(t *testing.T) {
 		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
 			assertions := []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 					Expectation: false,
 				},
 			}
@@ -1353,7 +1375,7 @@ func TestWriteAssertions(t *testing.T) {
 		t.Run("successfully_call_writeAssertions", func(t *testing.T) {
 			assertions := []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewAssertionTupleKey("workspace:1", "guest", "user:ben"),
+					TupleKey:    tuple.NewAssertionTupleKey("module1:1", "member", "user:ben"),
 					Expectation: false,
 				},
 			}
@@ -1791,10 +1813,10 @@ func TestListUsers(t *testing.T) {
 			StoreId:              settings.testData.id,
 			AuthorizationModelId: settings.testData.modelID,
 			Object: &openfgav1.Object{
-				Type: "workspace",
+				Type: "module1",
 				Id:   "1",
 			},
-			Relation: "guest",
+			Relation: "member",
 			UserFilters: []*openfgav1.UserTypeFilter{
 				{Type: "user"},
 			},
@@ -1819,10 +1841,10 @@ func TestListUsers(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Object: &openfgav1.Object{
-					Type: "workspace",
+					Type: "module1",
 					Id:   "1",
 				},
-				Relation: "guest",
+				Relation: "member",
 				UserFilters: []*openfgav1.UserTypeFilter{
 					{Type: "user"},
 				},
@@ -1848,10 +1870,10 @@ func TestListUsers(t *testing.T) {
 				StoreId:              settings.testData.id,
 				AuthorizationModelId: settings.testData.modelID,
 				Object: &openfgav1.Object{
-					Type: "workspace",
+					Type: "module1",
 					Id:   "1",
 				},
-				Relation: "guest",
+				Relation: "member",
 				UserFilters: []*openfgav1.UserTypeFilter{
 					{Type: "user"},
 				},
