@@ -59,8 +59,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 			for _, test := range allTestCases {
 				test := test
 				runTest(t, test, client, false)
-				// TODO: context tuple tests
-				// runTest(t, test, client, true)
+				runTest(t, test, client, true)
 			}
 		})
 	})
@@ -142,8 +141,12 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 						t.Skipf("batch check integration error testing is handled in ____")
 					}
 
+					// monkey patch the contextual tuples since we don't actually define them in yaml
+					if contextTupleTest {
+						assertion.ContextualTuples = append(assertion.ContextualTuples, stage.Tuples...)
+					}
+
 					correlationID := ulid.Make().String()
-					require.NoError(t, err)
 
 					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationID)
 					protoChecks = append(protoChecks, item)
