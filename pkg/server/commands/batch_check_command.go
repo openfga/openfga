@@ -106,9 +106,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	lock := sync.Mutex{}
 
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
+	defer func() {
+		cancel()
+		_ = pool.Wait()
+	}()
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
 			checkParams := &CheckCommandParams{
