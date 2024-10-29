@@ -139,18 +139,23 @@ func TestAuthorizeListStores(t *testing.T) {
 	})
 }
 
-func TestAuthorize(t *testing.T) {
+func setupAuthorizerAndController(t *testing.T, storeID, modelID string) (*gomock.Controller, *mocks.MockServerInterface, *Authorizer) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-
 	mockServer := mocks.NewMockServerInterface(mockController)
+	authorizer := NewAuthorizer(&Config{StoreID: storeID, ModelID: modelID}, mockServer, logger.NewNoopLogger())
+	return mockController, mockServer, authorizer
+}
 
+func TestAuthorize(t *testing.T) {
 	storeID := "test-store"
 	modelID := "test-model"
-	authorizer := NewAuthorizer(&Config{StoreID: storeID, ModelID: modelID}, mockServer, logger.NewNoopLogger())
 
 	t.Run("error_when_given_invalid_api_method", func(t *testing.T) {
+		t.Parallel()
+
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		_, _, authorizer := setupAuthorizerAndController(t, storeID, modelID)
 
 		err := authorizer.Authorize(ctx, "store-id", "invalid-api-method")
 
@@ -159,14 +164,23 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("error_when_modules_errors", func(t *testing.T) {
-		modules := []string{"module1", "module2", "module3"}
-		errorMessage := fmt.Errorf("error")
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		t.Parallel()
 
+		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
+		defer mockController.Finish()
+
+		errorMessage := fmt.Errorf("error")
+		modules := []string{}
+
+		for moduleIndex := range MaxModulesInRequest {
+			modules = append(modules, fmt.Sprintf("module%d", moduleIndex+1))
+		}
+
+		// First error is the store level check, second error is the first module level check
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(2).Return(nil, errorMessage)
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(MaxModulesInRequest-1).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
 
 		require.Error(t, err)
@@ -174,6 +188,11 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("error_when_check_errors", func(t *testing.T) {
+		t.Parallel()
+
+		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
+		defer mockController.Finish()
+
 		errorMessage := fmt.Errorf("error")
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
 
@@ -185,6 +204,11 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("error_when_unauthorized", func(t *testing.T) {
+		t.Parallel()
+
+		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
+		defer mockController.Finish()
+
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 
@@ -195,6 +219,11 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("succeed", func(t *testing.T) {
+		t.Parallel()
+
+		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
+		defer mockController.Finish()
+
 		clientID := "test-client"
 		contextualTuples := openfgav1.ContextualTupleKeys{
 			TupleKeys: []*openfgav1.TupleKey{
@@ -220,11 +249,19 @@ func TestAuthorize(t *testing.T) {
 	})
 
 	t.Run("succeed_with_modules", func(t *testing.T) {
-		modules := []string{"module1", "module2", "module3"}
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
-		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(3).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
-		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
+		t.Parallel()
 
+		mockController, mockServer, authorizer := setupAuthorizerAndController(t, storeID, modelID)
+		defer mockController.Finish()
+
+		modules := []string{}
+		for moduleIndex := range MaxModulesInRequest {
+			modules = append(modules, fmt.Sprintf("module%d", moduleIndex))
+		}
+
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(MaxModulesInRequest).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
+
+		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
 
 		require.NoError(t, err)
