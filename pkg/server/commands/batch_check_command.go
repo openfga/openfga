@@ -144,7 +144,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	return resultMap, nil
 }
 
-func validateNoDuplicateCorrelationIds(checks []*openfgav1.BatchCheckItem) error {
+func validateNoDuplicateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	seen := map[string]bool{}
 
 	for _, check := range checks {
