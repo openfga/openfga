@@ -113,8 +113,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	ctx, cancel := context.WithCancel(ctx)
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	defer func() {
-		cancel()
 		_ = pool.Wait()
+		cancel()
 	}()
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
