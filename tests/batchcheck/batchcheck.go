@@ -31,7 +31,9 @@ type ClientInterface interface {
 	BatchCheck(ctx context.Context, in *openfgav1.BatchCheckRequest, opts ...grpc.CallOption) (*openfgav1.BatchCheckResponse, error)
 }
 
-// RunAllTests will invoke all BatchCheck tests.
+// RunAllTests will invoke BatchCheck on all existing Check assertions which do not throw errors.
+// In the happy path, BatchCheck is essentially a performance wrapper around check and behaves the same.
+// In the case of errors, BatchCheck's behavior diverges and those test cases are handled in _____.
 func RunAllTests(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("BatchCheck", func(t *testing.T) {
