@@ -73,6 +73,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
+		cacheController:     cachecontroller.NewNoopCacheController(),
 		checkResolver:       checkResolver,
 		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
