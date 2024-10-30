@@ -1323,6 +1323,25 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 	}
 }
 
+// helper function to return whether checkDirectUserTuple should run.
+func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	relation := reqTupleKey.GetRelation()
+
+	isDirectlyRelated, _ := typesys.IsDirectlyRelated(
+		typesystem.DirectRelationReference(objectType, relation),                                                           // target
+		typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
+	)
+
+	isPubliclyAssignable, _ := typesys.IsPubliclyAssignable(
+		typesystem.DirectRelationReference(objectType, relation), // target
+		tuple.GetType(reqTupleKey.GetUser()),
+	)
+	return isDirectlyRelated || isPubliclyAssignable
+}
+
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
@@ -1400,12 +1419,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		var checkFuncs []CheckHandlerFunc
 
-		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                                           // target
-			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
-		)
-
-		if shouldCheckDirectTuple {
+		if shouldCheckDirectTuple(ctx, req.GetTupleKey()) {
 			checkFuncs = []CheckHandlerFunc{checkDirectUserTuple}
 		}
 

@@ -4739,3 +4739,98 @@ func TestCheckDirectUserTuple(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldCheckDirectTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name        string
+		model       *openfgav1.AuthorizationModel
+		reqTupleKey *openfgav1.TupleKey
+		expected    bool
+	}{
+		{
+			name: "directly_assigned",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "directly_assigned_public_wildcard",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "directly_assigned_public_wildcard_mixed",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "userset_indirect",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "user:bob"),
+			expected:    false,
+		},
+		{
+			name: "userset_direct",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "group:2#member"),
+			expected:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+			result := shouldCheckDirectTuple(ctx, tt.reqTupleKey)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
