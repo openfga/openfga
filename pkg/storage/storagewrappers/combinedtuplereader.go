@@ -48,7 +48,7 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 	return filtered
 }
 
-// Read see [storage.RelationshipTupleReader.ReadUserTuple].
+// Read see [storage.RelationshipTupleReader.Read].
 func (c *CombinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
@@ -90,7 +90,7 @@ func (c *CombinedTupleReader) ReadUserTuple(
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options)
 }
 
-// ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
+// ReadUsersetTuples see [storage.RelationshipTupleReader.ReadUsersetTuples].
 func (c *CombinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
@@ -115,7 +115,7 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-// ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
+// ReadStartingWithUser see [storage.RelationshipTupleReader.ReadStartingWithUser].
 func (c *CombinedTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
