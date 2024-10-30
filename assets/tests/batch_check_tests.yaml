@@ -26,7 +26,7 @@ tests:
                 user: user:aardvark
               correlationID: aardvark2
             - tupleKey:
-                object: document:2
+                object: document2
                 relation: viewer
                 user: user:aardvark
               correlationID: aardvark3
@@ -34,6 +34,6 @@ tests:
           - correlationID: aardvarkId
             allowed: true
           - correlationID: aardvark2
-            allowed: false
+            error: relation 'document#writer' not found
           - correlationID: aardvark3
-            allowed: false
+            error: invalid 'object' field format

@@ -98,7 +98,7 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 					t.Skipf("cannot send more than 20 contextual tuples in one request")
 				}
 				// arrange: write model
-				writeModelResponse, err := writeModel(ctx, client, storeID, stage.Model)
+				writeModelResponse, err := writeAuthModel(ctx, client, storeID, stage.Model)
 				require.NoError(t, err)
 
 				if !contextTupleTest {
@@ -171,22 +171,64 @@ func RunBatchCheckSpecificFailureScenarios(t *testing.T, client ClientInterface)
 			allTestCases = append(allTestCases, testCases.Tests...)
 
 			for _, testCase := range allTestCases {
-				for _, assertion := range testCase.Assertions {
-					req := assertion.Request.ToProtoRequest()
-					log.Printf("justin request: %+v", req)
-
-					//resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
-					//	StoreId:              storeID,
-					//	AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-					//	Checks:               convertedRequest.GetChecks(),
-					//})
-				}
+				runBatchCheckTest(t, testCase, client, false)
 			}
 		})
 	})
 }
 
-func writeModel(ctx context.Context, client ClientInterface, storeID string, model string) (*openfgav1.WriteAuthorizationModelResponse, error) {
+func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client ClientInterface, contextTupleTest bool) {
+	ctx := context.Background()
+	name := test.Name
+
+	if contextTupleTest {
+		name += "_ctxTuples"
+	}
+	t.Run(name, func(t *testing.T) {
+		resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+		require.NoError(t, err)
+
+		storeID := resp.GetId()
+
+		writeAuthModelResponse, err := writeAuthModel(
+			ctx,
+			client,
+			storeID,
+			test.Model,
+		)
+		require.NoError(t, err)
+
+		if !contextTupleTest {
+			err = writeTuples(ctx, client, storeID, test.Tuples, writeAuthModelResponse)
+			require.NoError(t, err)
+		}
+
+		for _, assertion := range test.Assertions {
+			request := assertion.Request.ToProtoRequest()
+
+			response, _ := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
+				Checks:               request.GetChecks(),
+			})
+
+			result := response.GetResult()
+
+			log.Printf("Justin response: %+v", response)
+			log.Printf("Justin result: %+v", result)
+			for _, expectation := range assertion.Expectation {
+				if expectation.Error != "" {
+					require.Equal(t, expectation.Error, result[expectation.CorrelationID].GetError().GetMessage())
+				} else {
+					require.Equal(t, expectation.Allowed, result[expectation.CorrelationID].GetAllowed())
+				}
+
+			}
+		}
+	})
+}
+
+func writeAuthModel(ctx context.Context, client ClientInterface, storeID string, model string) (*openfgav1.WriteAuthorizationModelResponse, error) {
 	// arrange: write model
 	var typedefs []*openfgav1.TypeDefinition
 	parsedModel, err := parser.TransformDSLToProto(model)

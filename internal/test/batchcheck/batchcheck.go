@@ -26,7 +26,7 @@ type Assertion struct {
 type Expectation struct {
 	CorrelationID string `json:"correlationID"`
 	Allowed       bool
-	//Err
+	Error         string
 }
 
 type IndividualCheck struct {
