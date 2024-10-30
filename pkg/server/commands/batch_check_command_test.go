@@ -159,5 +159,3 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.ErrorContains(t, err, "hardcoded_id")
 	})
 }
-
-// then some where we assert a specific allowed true and allowed false
