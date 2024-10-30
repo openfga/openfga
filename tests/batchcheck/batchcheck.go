@@ -4,7 +4,6 @@ package batchcheck
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"testing"
 
@@ -90,8 +89,6 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 		storeID := resp.GetId()
 
 		for stageNumber, stage := range test.Stages {
-			// don't need to run each assertion individually
-			// TODO: skip ones with error codes, that'll be different and custom
 			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
 				if contextTupleTest && len(stage.Tuples) > 20 {
 					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
@@ -214,8 +211,6 @@ func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client 
 
 			result := response.GetResult()
 
-			log.Printf("Justin response: %+v", response)
-			log.Printf("Justin result: %+v", result)
 			for _, expectation := range assertion.Expectation {
 				switch {
 				case expectation.InputError != 0:
