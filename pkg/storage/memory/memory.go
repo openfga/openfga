@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openfga/openfga/pkg/server/errors"
-
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -238,11 +236,11 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		var concreteToken string
 		concreteToken, typeInToken, err = s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
-			return nil, nil, errors.InvalidContinuationToken
+			return nil, nil, storage.ErrInvalidContinuationToken
 		}
 		parsed, err := ulid.Parse(concreteToken)
 		if err != nil {
-			return nil, nil, errors.InvalidContinuationToken
+			return nil, nil, storage.ErrInvalidContinuationToken
 		}
 		from = &parsed
 	}

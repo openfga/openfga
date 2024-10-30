@@ -224,6 +224,36 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore, tokenSeri
 		}
 	})
 
+	t.Run("read_changes_with_bad_continuation_token", func(t *testing.T) {
+		_, _, err := datastore.ReadChanges(
+			context.Background(),
+			"storeID",
+			storage.ReadChangesFilter{},
+			storage.ReadChangesOptions{
+				Pagination: storage.NewPaginationOptions(1, "bad_token"),
+			})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "invalid continuation token")
+	})
+
+	t.Run("read_changes_with_continuation_token_type_mismatch", func(t *testing.T) {
+		token, err := tokenSerializer.Serialize(ulid.Make().String(), "mismatch")
+		require.NoError(t, err)
+		_, _, err = datastore.ReadChanges(
+			context.Background(),
+			"storeID",
+			storage.ReadChangesFilter{
+				ObjectType: "other",
+			},
+			storage.ReadChangesOptions{
+				Pagination: storage.NewPaginationOptions(1,
+					string(token),
+				),
+			})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "mismatched types in request and continuation token")
+	})
+
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 

@@ -3,6 +3,8 @@ package encoder
 import (
 	"fmt"
 	"strings"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 type ContinuationTokenSerializer interface {
@@ -29,6 +31,9 @@ func (ts *StringContinuationTokenSerializer) Serialize(ulid string, objType stri
 
 // Deserialize deserializes the continuation token from a string, as ulid & type concatenated by a pipe.
 func (ts *StringContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+	if !strings.Contains(continuationToken, "|") {
+		return "", "", storage.ErrInvalidContinuationToken
+	}
 	tokenParts := strings.Split(continuationToken, "|")
 	return tokenParts[0], tokenParts[1], nil
 }
