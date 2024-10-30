@@ -1337,10 +1337,10 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 	return wrapIterator(mapping.kind, filteredIter), nil
 }
 
-func (c *LocalChecker) checkDirectUserTuple(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
+func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
@@ -1386,7 +1386,6 @@ func (c *LocalChecker) checkDirectUserTuple(parentctx context.Context, req *Reso
 		if conditionMet {
 			span.SetAttributes(attribute.Bool("allowed", true))
 			response.Allowed = true
-			return response, nil
 		}
 		return response, nil
 	}
