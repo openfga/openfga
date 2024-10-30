@@ -20,7 +20,7 @@ func TestMetricsOpenFGAStorage(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().Read(gomock.Any(), "", nil, storage.ReadOptions{}).Return(nil, nil).
 		Times(dbReadsCount)
-	dut := NewMetricsOpenFGAStorage(mockDatastore)
+	dut := NewInstrumentedOpenFGAStorage(mockDatastore)
 
 	var wg sync.WaitGroup
 	wg.Add(dbReadsCount)

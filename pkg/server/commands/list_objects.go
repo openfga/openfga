@@ -269,7 +269,7 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		metricsDs := storagewrappers.NewMetricsOpenFGAStorage(q.datastore)
+		metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(q.datastore)
 		ds := storagewrappers.NewCombinedTupleReader(
 			storagewrappers.NewBoundedConcurrencyTupleReader(
 				metricsDs, q.maxConcurrentReads),
@@ -382,7 +382,7 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
-		resolutionMetadata.DatastoreQueryCount.Add(uint32(metricsDs.GetMetrics().DatastoreQueryCount))
+		resolutionMetadata.DatastoreQueryCount.Add(metricsDs.GetMetrics().DatastoreQueryCount)
 	}
 
 	go handler()

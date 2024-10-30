@@ -188,7 +188,7 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
-	metricsDs := storagewrappers.NewMetricsOpenFGAStorage(l.ds)
+	metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(l.ds)
 	l.ds = storagewrappers.NewCombinedTupleReader(
 		storagewrappers.NewBoundedConcurrencyTupleReader(
 			metricsDs, l.maxConcurrentReads),
@@ -291,7 +291,7 @@ func (l *listUsersQuery) ListUsers(
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: uint32(metricsDs.GetMetrics().DatastoreQueryCount),
+			DatastoreQueryCount: metricsDs.GetMetrics().DatastoreQueryCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},
