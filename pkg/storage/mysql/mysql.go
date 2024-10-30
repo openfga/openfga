@@ -3,11 +3,12 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/openfga/openfga/pkg/encoder"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
@@ -41,6 +42,7 @@ type Datastore struct {
 	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
+	tokenSerializer        encoder.ContinuationTokenSerializer
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
@@ -64,6 +66,10 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		}
 
 		uri = dsnCfg.FormatDSN()
+	}
+
+	if cfg.TokenSerializer == nil {
+		cfg.TokenSerializer = sqlcommon.NewSQLContinuationTokenSerializer()
 	}
 
 	db, err := sql.Open("mysql", uri)
@@ -123,6 +129,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		db:                     db,
 		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
+		tokenSerializer:        cfg.TokenSerializer,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
@@ -199,11 +206,11 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
 	if options != nil && options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, err
 		}
-		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
+		sb = sb.Where(sq.GtOrEq{"ulid": token})
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -418,11 +425,11 @@ func (s *Datastore) ReadAuthorizationModels(
 		OrderBy("authorization_model_id desc")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
+		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -454,7 +461,7 @@ func (s *Datastore) ReadAuthorizationModels(
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > options.Pagination.PageSize {
 		numModelIDs = options.Pagination.PageSize
-		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
+		token, err = s.tokenSerializer.Serialize(modelID, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -606,11 +613,11 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, _, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
+		sb = sb.Where(sq.GtOrEq{"id": token})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -645,7 +652,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
+		contToken, err := s.tokenSerializer.Serialize(id, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -760,19 +767,15 @@ func (s *Datastore) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
+		token, objectType, err := s.tokenSerializer.Deserialize(options.Pagination.From)
 		if err != nil {
 			return nil, nil, err
 		}
-		if token.ObjectType != objectTypeFilter {
+		if objectType != objectTypeFilter {
 			return nil, nil, storage.ErrMismatchObjectType
 		}
 
-		if options.SortDesc {
-			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
-		} else {
-			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
-		}
+		sb = sqlcommon.AddFromUlid(sb, token, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -836,7 +839,7 @@ func (s *Datastore) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
+	contToken, err := s.tokenSerializer.Serialize(ulid, objectTypeFilter)
 	if err != nil {
 		return nil, nil, err
 	}
