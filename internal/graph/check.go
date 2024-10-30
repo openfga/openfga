@@ -1337,6 +1337,60 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 	return wrapIterator(mapping.kind, filteredIter), nil
 }
 
+func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
+			trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(reqTupleKey))))
+		defer span.End()
+
+		response := &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{
+				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
+			},
+		}
+
+		opts := storage.ReadUserTupleOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+
+		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return response, nil
+			}
+
+			return nil, err
+		}
+
+		// filter out invalid tuples yielded by the database query
+		tupleKey := t.GetKey()
+		err = validation.ValidateTupleForRead(typesys, tupleKey)
+		if err != nil {
+			return response, nil
+		}
+		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
+		conditionMet, err := tupleKeyConditionFilter(tupleKey)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if conditionMet {
+			span.SetAttributes(attribute.Bool("allowed", true))
+			response.Allowed = true
+		}
+		return response, nil
+	}
+}
+
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
@@ -1362,52 +1416,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
-		// TODO(jpadilla): can we lift this function up?
-		checkDirectUserTuple := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
-				trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(reqTupleKey))))
-			defer span.End()
-
-			response := &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-				},
-			}
-
-			opts := storage.ReadUserTupleOptions{
-				Consistency: storage.ConsistencyOptions{
-					Preference: req.GetConsistency(),
-				},
-			}
-			t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					return response, nil
-				}
-
-				return nil, err
-			}
-
-			// filter out invalid tuples yielded by the database query
-			tupleKey := t.GetKey()
-			err = validation.ValidateTupleForRead(typesys, tupleKey)
-			if err != nil {
-				return response, nil
-			}
-			tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
-			conditionMet, err := tupleKeyConditionFilter(tupleKey)
-			if err != nil {
-				telemetry.TraceError(span, err)
-				return nil, err
-			}
-			if conditionMet {
-				span.SetAttributes(attribute.Bool("allowed", true))
-				response.Allowed = true
-				return response, nil
-			}
-			return response, nil
-		}
+		checkDirectUserTuple := c.checkDirectUserTuple(parentctx, req)
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
