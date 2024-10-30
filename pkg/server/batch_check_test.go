@@ -121,3 +121,26 @@ func TestTransformCheckResultToProto(t *testing.T) {
 		require.Equal(t, expectedResult, result)
 	})
 }
+
+func BenchmarkTransformCheckResultToProto(b *testing.B) {
+	duration := time.Millisecond * 5
+
+	outcomes := map[string]*commands.BatchCheckOutcome{
+		"abc123": {
+			CheckResponse: &graph.ResolveCheckResponse{
+				Allowed: true,
+			},
+			Duration: duration,
+		},
+		"def456": {
+			Err:      graph.ErrResolutionDepthExceeded,
+			Duration: duration,
+		},
+	}
+
+	b.Run("benchmark_transform_check_result_to_proto", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			transformCheckResultToProto(outcomes)
+		}
+	})
+}
