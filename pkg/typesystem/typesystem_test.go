@@ -3251,6 +3251,20 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     false,
 		},
 		{
+			name: "is_publicly_assignable_mix_public_non_public",
+			model: `
+				model
+					schema 1.1
+				type user
+
+				type document
+					relations
+						define viewer: [user, user:*]`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     true,
+		},
+		{
 			name: "is_not_publicly_assignable_mismatch_type",
 			model: `
 				model
