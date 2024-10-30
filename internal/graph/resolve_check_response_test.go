@@ -11,8 +11,7 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		resp1 := &ResolveCheckResponse{
 			Allowed: true,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-				CycleDetected:       false,
+				CycleDetected: false,
 			},
 		}
 		clonedResp1 := resp1.clone()
@@ -23,10 +22,8 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		// mutate the clone and ensure the original reference is
 		// unchanged
 		clonedResp1.Allowed = false
-		clonedResp1.ResolutionMetadata.DatastoreQueryCount = 2
 		clonedResp1.ResolutionMetadata.CycleDetected = true
 		require.True(t, resp1.GetAllowed())
-		require.Equal(t, uint32(1), resp1.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, resp1.GetResolutionMetadata().CycleDetected)
 	})
 
@@ -39,7 +36,6 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		require.NotSame(t, resp2, clonedResp2)
 		require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
 		require.NotNil(t, clonedResp2.ResolutionMetadata)
-		require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 	})
 
@@ -50,7 +46,6 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		require.NotSame(t, resp2, clonedResp2)
 		require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
 		require.NotNil(t, clonedResp2.ResolutionMetadata)
-		require.Equal(t, uint32(0), clonedResp2.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
 	})
 }

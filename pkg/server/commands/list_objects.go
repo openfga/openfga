@@ -66,7 +66,7 @@ type ListObjectsQuery struct {
 
 type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
-	DatastoreQueryCount *uint32
+	DatastoreQueryCount *atomic.Uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter *atomic.Uint32
@@ -77,7 +77,7 @@ type ListObjectsResolutionMetadata struct {
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
-		DatastoreQueryCount: new(uint32),
+		DatastoreQueryCount: new(atomic.Uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
 	}
@@ -168,8 +168,6 @@ func NewListObjectsQuery(
 	for _, opt := range opts {
 		opt(query)
 	}
-
-	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
 
 	return query, nil
 }
@@ -271,11 +269,12 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
+		metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(q.datastore)
 		ds := storagewrappers.NewCombinedTupleReader(
-			q.datastore,
+			storagewrappers.NewBoundedConcurrencyTupleReader(
+				metricsDs, q.maxConcurrentReads),
 			req.GetContextualTuples().GetTupleKeys(),
 		)
-
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -305,7 +304,6 @@ func (q *ListObjectsQuery) evaluate(
 				reverseExpandDoneWithError <- struct{}{}
 				return err
 			}
-			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
@@ -346,28 +344,28 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
-
 					ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 					ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-						StoreID:              req.GetStoreId(),
-						AuthorizationModelID: req.GetAuthorizationModelId(),
-						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-						Context:              req.GetContext(),
-						RequestMetadata:      checkRequestMetadata,
-						Consistency:          req.GetConsistency(),
-					})
+					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
+						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
+						WithCheckCommandLogger(q.logger),
+						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
+					).
+						Execute(ctx, &CheckCommandParams{
+							StoreID:          req.GetStoreId(),
+							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+							ContextualTuples: req.GetContextualTuples(),
+							Context:          req.GetContext(),
+							Consistency:      req.GetConsistency(),
+						})
 					if err != nil {
 						return err
 					}
-					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
+					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
 					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
 						resolutionMetadata.WasThrottled.Store(true)
 					}
-
 					if resp.Allowed {
 						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}
@@ -384,6 +382,7 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
+		resolutionMetadata.DatastoreQueryCount.Add(metricsDs.GetMetrics().DatastoreQueryCount)
 	}
 
 	go handler()

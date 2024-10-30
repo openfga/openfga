@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -202,7 +201,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		close(resultChan)
 	}()
 
-	var dbReads uint32
 	var err error
 	var cycleDetected bool
 	for i := 0; i < len(handlers); i++ {
@@ -217,10 +215,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				cycleDetected = true
 			}
 
-			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -235,8 +230,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-			CycleDetected:       cycleDetected,
+			CycleDetected: cycleDetected,
 		},
 	}, nil
 }
@@ -264,7 +258,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		close(resultChan)
 	}()
 
-	var dbReads uint32
 	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
@@ -275,10 +268,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				continue
 			}
 
-			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -292,10 +282,8 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}
 
 	return &ResolveCheckResponse{
-		Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
+		Allowed:            true,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}, nil
 }
 
@@ -346,16 +334,13 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}()
 
 	response := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 0,
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}
 
 	var baseErr error
 	var subErr error
 
-	var dbReads uint32
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case baseResult := <-baseChan:
@@ -365,20 +350,16 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				continue
 			}
 
-			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if baseResult.resp.GetCycleDetected() {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: dbReads,
-						CycleDetected:       true,
+						CycleDetected: true,
 					},
 				}, nil
 			}
 
 			if !baseResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return response, nil
 			}
 
@@ -389,20 +370,16 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				continue
 			}
 
-			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if subResult.resp.GetCycleDetected() {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: dbReads,
-						CycleDetected:       true,
+						CycleDetected: true,
 					},
 				}, nil
 			}
 
 			if subResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -420,10 +397,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}
 
 	return &ResolveCheckResponse{
-		Allowed: true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dbReads,
-		},
+		Allowed:            true,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}, nil
 }
 
@@ -487,10 +462,8 @@ func (c *LocalChecker) ResolveCheck(
 
 	if tuple.IsSelfDefining(req.GetTupleKey()) {
 		return &ResolveCheckResponse{
-			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-			},
+			Allowed:            true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -565,10 +538,8 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	}
 
 	return &ResolveCheckResponse{
-		Allowed: allowed,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: 1,
-		},
+		Allowed:            allowed,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}, nil
 }
 
@@ -644,10 +615,8 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 				}
 				if msg.shortCircuit {
 					resp := &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 0,
-						},
+						Allowed:            true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
 					return
@@ -667,16 +636,14 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 	return outcomes
 }
 
-func (c *LocalChecker) consumeDispatches(ctx context.Context, req *ResolveCheckRequest, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}
 
 ConsumerLoop:
@@ -697,13 +664,9 @@ ConsumerLoop:
 				finalResult.ResolutionMetadata.CycleDetected = true
 			}
 
-			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if outcome.resp.Allowed {
 				finalErr = nil
-				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
 				finalResult = outcome.resp
-				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
 				break ConsumerLoop
 			}
 		}
@@ -740,14 +703,11 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
+	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-
-	// for the read in checkDirectUsersetTuples
-	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }
@@ -832,9 +792,6 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		return nil, err
 	}
 
-	// read from either checkTTU or checkDirectUsersetTuples
-	resp.ResolutionMetadata.DatastoreQueryCount++
-
 	return resp, err
 }
 
@@ -884,10 +841,8 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}
 
 ConsumerLoop:
@@ -908,13 +863,9 @@ ConsumerLoop:
 				finalResult.ResolutionMetadata.CycleDetected = true
 			}
 
-			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if outcome.resp.Allowed {
 				finalErr = nil
-				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
 				finalResult = outcome.resp
-				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
 				break ConsumerLoop
 			}
 		}
@@ -1013,7 +964,6 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 	pool := concurrency.NewPool(ctx, int(c.concurrencyLimit))
 
 	mu := &sync.Mutex{}
-	dsCount := &atomic.Uint32{}
 	nextUsersetLevel := hashset.New()
 
 	relation := req.GetTupleKey().GetRelation()
@@ -1038,7 +988,6 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 		defer mapper.Stop()
 		pool.Go(func(ctx context.Context) error {
 			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
-			dsCount.Add(1)
 			for usersetMsg := range objectToUsersetMessageChan {
 				if usersetMsg.err != nil {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
@@ -1047,10 +996,8 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 				userset := usersetMsg.userset
 				if usersetFromUser.Contains(userset) {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: dsCount.Load(),
-						},
+						Allowed:            true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					}}, checkOutcomeChan)
 					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
@@ -1068,12 +1015,9 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 		return
 	}
 
-	// keep track of dbCount in consumer
 	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: dsCount.Load(),
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}}, checkOutcomeChan)
 	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
@@ -1100,10 +1044,8 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount,
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}
 
 ConsumerLoop:
@@ -1120,13 +1062,9 @@ ConsumerLoop:
 				break // continue
 			}
 
-			finalResult.ResolutionMetadata.DatastoreQueryCount += outcome.resp.GetResolutionMetadata().DatastoreQueryCount
-
 			if outcome.resp.Allowed {
 				finalErr = nil
-				dbReads := finalResult.GetResolutionMetadata().DatastoreQueryCount
 				finalResult = outcome.resp
-				finalResult.ResolutionMetadata.DatastoreQueryCount = dbReads
 				break ConsumerLoop
 			}
 		}
@@ -1207,10 +1145,8 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
 	res := &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
-			DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-		},
+		Allowed:            false,
+		ResolutionMetadata: &ResolveCheckResponseMetadata{},
 	}
 
 	// check to see if there are any nested userset assigned. If not,
@@ -1230,7 +1166,6 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	if err != nil {
 		return nil, err
 	}
-	res.GetResolutionMetadata().DatastoreQueryCount++
 	usersetFromUserIter := wrapIterator(ObjectIDKind, userIter)
 	defer usersetFromUserIter.Stop()
 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
@@ -1276,7 +1211,6 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	}
 
 	newReq := req.clone()
-	newReq.GetRequestMetadata().DatastoreQueryCount = res.GetResolutionMetadata().DatastoreQueryCount
 	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
 }
 
@@ -1350,10 +1284,8 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 		defer span.End()
 
 		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: req.GetRequestMetadata().DatastoreQueryCount + 1,
-			},
+			Allowed:            false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}
 
 		opts := storage.ReadUserTupleOptions{
@@ -1565,14 +1497,11 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, req, c.concurrencyLimit, dispatchChan)
+	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
-
-	// read from checkTTU
-	resp.GetResolutionMetadata().DatastoreQueryCount++
 
 	return resp, nil
 }

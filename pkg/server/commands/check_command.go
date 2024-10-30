@@ -6,19 +6,17 @@ import (
 	"math"
 	"time"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-
-	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -30,7 +28,7 @@ type CheckQuery struct {
 	logger          logger.Logger
 	checkResolver   graph.CheckResolver
 	typesys         *typesystem.TypeSystem
-	datastore       storage.RelationshipTupleReader
+	datastore       *storagewrappers.InstrumentedOpenFGAStorage
 	cacheController cachecontroller.CacheController
 
 	resolveNodeLimit   uint32
@@ -74,7 +72,7 @@ func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption 
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
-		datastore:          datastore,
+		datastore:          storagewrappers.NewInstrumentedOpenFGAStorage(datastore),
 		checkResolver:      checkResolver,
 		typesys:            typesys,
 		cacheController:    cachecontroller.NewNoopCacheController(),
@@ -122,6 +120,9 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		}
 
 		return nil, nil, err
+	}
+	if resp != nil {
+		resp.GetResolutionMetadata().DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
