@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/condition"
+
 	"github.com/emirpasic/gods/sets/hashset"
 
 	"github.com/openfga/openfga/internal/checkutil"
@@ -5050,4 +5052,144 @@ func TestCheckTTU(t *testing.T) {
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed()) // user:maria is not part of any group, and no parents for group:1
 	})
+}
+
+func TestCheckDirectUserTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	directlyAssignedModelWithCondition := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+
+	type user
+	type group
+		relations
+			define member: [user with condX]
+	condition condX(x: int) {
+		x < 100
+	}
+	`)
+
+	tests := []struct {
+		name               string
+		model              *openfgav1.AuthorizationModel
+		readUserTuple      *openfgav1.Tuple
+		readUserTupleError error
+		reqTupleKey        *openfgav1.TupleKey
+		context            map[string]interface{}
+		expected           *ResolveCheckResponse
+		expectedError      error
+	}{
+		{
+			name:  "directly_assigned",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "2"},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:  "directly_assigned_cond_not_match",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:  "missing_condition",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{},
+			expected:           nil,
+			expectedError: condition.NewEvaluationError(
+				"condX",
+				fmt.Errorf("tuple 'group:1#member@user:bob' is missing context parameters '[x]'"),
+			),
+		},
+		{
+			name:               "no_tuple_found",
+			model:              directlyAssignedModelWithCondition,
+			readUserTuple:      nil,
+			readUserTupleError: storage.ErrNotFound,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					DatastoreQueryCount: 1,
+					CycleDetected:       false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "other_datastore_error",
+			model:              directlyAssignedModelWithCondition,
+			readUserTuple:      nil,
+			readUserTupleError: fmt.Errorf("mock_erorr"),
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected:           nil,
+			expectedError:      fmt.Errorf("mock_erorr"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			storeID := ulid.Make().String()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ctx := context.Background()
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			ds.EXPECT().ReadUserTuple(gomock.Any(), storeID, tt.reqTupleKey, gomock.Any()).Times(1).Return(tt.readUserTuple, tt.readUserTupleError)
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			checker := NewLocalChecker()
+			function := checker.checkDirectUserTuple(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tt.reqTupleKey,
+				Context:              contextStruct,
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			resp, err := function(ctx)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
 }
