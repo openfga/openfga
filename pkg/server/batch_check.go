@@ -76,12 +76,12 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
-	return &openfgav1.BatchCheckResponse{Result: TransformCheckResultToRPC(result)}, nil
+	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToProto(result)}, nil
 }
 
-// TransformCheckResultToRPC transform the internal BatchCheckOutcome into the external-facing
+// transformCheckResultToProto transform the internal BatchCheckOutcome into the external-facing
 // BatchCheckSingleResult struct for transmission back via the api.
-func TransformCheckResultToRPC(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
+func transformCheckResultToRPC(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for k, v := range checkResults {
 		singleResult := &openfgav1.BatchCheckSingleResult{}
