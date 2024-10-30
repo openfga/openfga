@@ -26,12 +26,12 @@ jobs:
         shell: bash
 
       - name: Checkout
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -52,7 +52,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
 
-      - uses: anchore/sbom-action/download-syft@8d0a6505bf28ced3e85154d13dc6af83299e13f1 # v0.17.4
+      - uses: anchore/sbom-action/download-syft@1ca97d9028b51809cf6d3c934c3e160716e1b605 # v0.17.5
 
       - name: Run GoReleaser
         id: goreleaser
@@ -105,7 +105,7 @@ jobs:
       security-events: write # needed for uploading results to GitHub Code Scanning
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
@@ -124,7 +124,7 @@ jobs:
           sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@f779452ac5af1c261dce0346a8f964149f49322b # pin@v2
+        uses: github/codeql-action/upload-sarif@662472033e021d55d94146f66f6058822b0b39fd # pin@v2
         with:
           sarif_file: snyk.sarif
 

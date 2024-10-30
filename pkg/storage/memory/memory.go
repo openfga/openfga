@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -128,7 +129,7 @@ type MemoryBackend struct {
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*openfgav1.TupleChange // GUARDED_BY(mutexTuples).
+	changes map[string][]*tupleChangeRec // GUARDED_BY(mutexTuples).
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
@@ -142,6 +143,9 @@ type MemoryBackend struct {
 	// map: store id | authz model id => assertions
 	assertions      map[string][]*openfgav1.Assertion // GUARDED_BY(mutexAssertions).
 	mutexAssertions sync.RWMutex
+
+	// ContinuationTokenSerializer required to serialize the token
+	tokenSerializer encoder.ContinuationTokenSerializer
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -160,10 +164,11 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		maxTuplesPerWrite:             defaultMaxTuplesPerWrite,
 		maxTypesPerAuthorizationModel: defaultMaxTypesPerAuthorizationModel,
 		tuples:                        make(map[string][]*storage.TupleRecord, 0),
-		changes:                       make(map[string][]*openfgav1.TupleChange, 0),
+		changes:                       make(map[string][]*tupleChangeRec, 0),
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
+		tokenSerializer:               encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -185,6 +190,11 @@ func WithMaxTuplesPerWrite(n int) StorageOption {
 // ensuring that models remain manageable and within predefined resource constraints.
 func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
+}
+
+// WithContinuationTokenSerializer returns a [StorageOption] that sets the token serializer for the [MemoryBackend].
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) StorageOption {
+	return func(ds *MemoryBackend) { ds.tokenSerializer = tokenSerializer }
 }
 
 // Close does not do anything for [MemoryBackend].
@@ -219,20 +229,20 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	s.mutexTuples.RLock()
 	defer s.mutexTuples.RUnlock()
 
-	var err error
-	var from int64
+	var from *ulid.ULID
 	var typeInToken string
-	var continuationToken string
+	var err error
 	if options.Pagination.From != "" {
-		tokens := strings.Split(options.Pagination.From, "|")
-		if len(tokens) == 2 {
-			concreteToken := tokens[0]
-			typeInToken = tokens[1]
-			from, err = strconv.ParseInt(concreteToken, 10, 32)
-			if err != nil {
-				return nil, nil, err
-			}
+		var concreteToken string
+		concreteToken, typeInToken, err = s.tokenSerializer.Deserialize(options.Pagination.From)
+		if err != nil {
+			return nil, nil, storage.ErrInvalidContinuationToken
 		}
+		parsed, err := ulid.Parse(concreteToken)
+		if err != nil {
+			return nil, nil, storage.ErrInvalidContinuationToken
+		}
+		from = &parsed
 	}
 
 	objectType := filter.ObjectType
@@ -242,14 +252,21 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		return nil, nil, storage.ErrMismatchObjectType
 	}
 
-	var allChanges []*openfgav1.TupleChange
+	var allChanges []*tupleChangeRec
 	now := time.Now().UTC()
-	for _, change := range s.changes[store] {
-		if objectType == "" || (strings.HasPrefix(change.GetTupleKey().GetObject(), objectType+":")) {
-			if change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
+	for _, changeRec := range s.changes[store] {
+		if objectType == "" || (strings.HasPrefix(changeRec.Change.GetTupleKey().GetObject(), objectType+":")) {
+			if changeRec.Change.GetTimestamp().AsTime().After(now.Add(-horizonOffset)) {
 				break
 			}
-			allChanges = append(allChanges, change)
+			if from != nil {
+				if !options.SortDesc && changeRec.Ulid.Compare(*from) <= 0 {
+					continue
+				} else if options.SortDesc && changeRec.Ulid.Compare(*from) >= 0 {
+					continue
+				}
+			}
+			allChanges = append(allChanges, changeRec)
 		}
 	}
 	if len(allChanges) == 0 {
@@ -263,22 +280,26 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	if options.SortDesc {
 		slices.Reverse(allChanges)
 	}
-	to := int(from) + pageSize
+
+	to := pageSize
 	if len(allChanges) < to {
 		to = len(allChanges)
 	}
-	res := allChanges[from:to]
-	if len(res) == 0 {
+	if to == 0 {
 		return nil, nil, storage.ErrNotFound
 	}
 
-	continuationToken = strconv.Itoa(len(allChanges))
-	if to != len(allChanges) {
-		continuationToken = strconv.Itoa(to)
-	}
-	continuationToken += fmt.Sprintf("|%s", objectType)
+	res := make([]*openfgav1.TupleChange, 0, to)
 
-	return res, []byte(continuationToken), nil
+	var last ulid.ULID
+	for _, change := range allChanges[:to] {
+		res = append(res, change.Change)
+		last = change.Ulid
+	}
+
+	continuationToken, _ := s.tokenSerializer.Serialize(last.String(), objectType)
+
+	return res, continuationToken, nil
 }
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
@@ -327,6 +348,11 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 	return &staticIterator{records: matches}, nil
 }
 
+type tupleChangeRec struct {
+	Change *openfgav1.TupleChange
+	Ulid   ulid.ULID
+}
+
 // Write see [storage.RelationshipTupleWriter].Write.
 func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	_, span := tracer.Start(ctx, "memory.Write")
@@ -342,6 +368,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	}
 
 	var records []*storage.TupleRecord
+	entropy := ulid.DefaultEntropy()
 Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
@@ -350,10 +377,13 @@ Delete:
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
 				s.changes[store] = append(
 					s.changes[store],
-					&openfgav1.TupleChange{
-						TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
-						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-						Timestamp: now,
+					&tupleChangeRec{
+						Change: &openfgav1.TupleChange{
+							TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // Redact the condition info.
+							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+							Timestamp: now,
+						},
+						Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 					},
 				)
 				continue Delete
@@ -399,10 +429,13 @@ Write:
 			conditionContext,
 		)
 
-		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{
-			TupleKey:  tk,
-			Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-			Timestamp: now,
+		s.changes[store] = append(s.changes[store], &tupleChangeRec{
+			Change: &openfgav1.TupleChange{
+				TupleKey:  tk,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp: now,
+			},
+			Ulid: ulid.MustNew(ulid.Timestamp(now.AsTime()), entropy),
 		})
 	}
 	s.tuples[store] = records

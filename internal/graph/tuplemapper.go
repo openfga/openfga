@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -17,6 +18,8 @@ const (
 	NestedUsersetKind TupleMapperKind = iota
 	// NestedTTUKind is a mapper that returns the user field of the tuple.
 	NestedTTUKind
+	// ObjectIDKind is mapper that returns the object field of the tuple.
+	ObjectIDKind
 )
 
 // TupleMapper is an iterator that, on calls to Next and Head, returns a mapping of the tuple.
@@ -25,13 +28,14 @@ type TupleMapper interface {
 }
 
 type NestedUsersetMapper struct {
-	Iter storage.TupleKeyIterator
+	iter storage.TupleKeyIterator
+	once *sync.Once
 }
 
 var _ TupleMapper = (*NestedUsersetMapper)(nil)
 
 func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Next(ctx)
+	tupleRes, err := n.iter.Next(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -39,11 +43,13 @@ func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n NestedUsersetMapper) Stop() {
-	n.Iter.Stop()
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
 }
 
 func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Head(ctx)
+	tupleRes, err := n.iter.Head(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -60,13 +66,14 @@ func (n NestedUsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 }
 
 type NestedTTUMapper struct {
-	Iter storage.TupleKeyIterator
+	iter storage.TupleKeyIterator
+	once *sync.Once
 }
 
 var _ TupleMapper = (*NestedTTUMapper)(nil)
 
 func (n NestedTTUMapper) Next(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Next(ctx)
+	tupleRes, err := n.iter.Next(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -74,11 +81,13 @@ func (n NestedTTUMapper) Next(ctx context.Context) (string, error) {
 }
 
 func (n NestedTTUMapper) Stop() {
-	n.Iter.Stop()
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
 }
 
 func (n NestedTTUMapper) Head(ctx context.Context) (string, error) {
-	tupleRes, err := n.Iter.Head(ctx)
+	tupleRes, err := n.iter.Head(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -87,4 +96,49 @@ func (n NestedTTUMapper) Head(ctx context.Context) (string, error) {
 
 func (n NestedTTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	return t.GetUser(), nil
+}
+
+type ObjectIDMapper struct {
+	iter storage.TupleKeyIterator
+	once *sync.Once
+}
+
+var _ TupleMapper = (*ObjectIDMapper)(nil)
+
+func (n ObjectIDMapper) Next(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Next(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n ObjectIDMapper) Stop() {
+	n.once.Do(func() {
+		n.iter.Stop()
+	})
+}
+
+func (n ObjectIDMapper) Head(ctx context.Context) (string, error) {
+	tupleRes, err := n.iter.Head(ctx)
+	if err != nil {
+		return "", err
+	}
+	return n.doMap(tupleRes)
+}
+
+func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+	return t.GetObject(), nil
+}
+
+func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
+	switch kind {
+	case NestedUsersetKind:
+		return &NestedUsersetMapper{iter: iter, once: &sync.Once{}}
+	case NestedTTUKind:
+		return &NestedTTUMapper{iter: iter, once: &sync.Once{}}
+	case ObjectIDKind:
+		return &ObjectIDMapper{iter: iter, once: &sync.Once{}}
+	}
+	return nil
 }

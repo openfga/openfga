@@ -60,7 +60,7 @@ func (server *mockOidcServer) NewAliasMockServer(aliasURL string) *mockOidcServe
 }
 
 func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
-	port := strings.Split(issuerURL, ":")[2]
+	addr := strings.Split(issuerURL, "http://")[1]
 
 	mockHandler := http.NewServeMux()
 
@@ -90,7 +90,7 @@ func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
 		}
 	})
 
-	return &http.Server{Addr: ":" + port, Handler: mockHandler}
+	return &http.Server{Addr: addr, Handler: mockHandler}
 }
 
 func (server *mockOidcServer) start() {

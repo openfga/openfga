@@ -6,12 +6,10 @@ package graph
 // an empty value struct for the resolution metadata instead of nil.
 func (r *ResolveCheckResponse) clone() *ResolveCheckResponse {
 	resolutionMetadata := &ResolveCheckResponseMetadata{
-		DatastoreQueryCount: 0,
-		CycleDetected:       false,
+		CycleDetected: false,
 	}
 
 	if r.GetResolutionMetadata() != nil {
-		resolutionMetadata.DatastoreQueryCount = r.GetResolutionMetadata().DatastoreQueryCount
 		resolutionMetadata.CycleDetected = r.GetResolutionMetadata().CycleDetected
 	}
 

@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/openfga/openfga/internal/concurrency"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 
@@ -65,7 +66,7 @@ type ListObjectsQuery struct {
 
 type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
-	DatastoreQueryCount *uint32
+	DatastoreQueryCount *atomic.Uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter *atomic.Uint32
@@ -76,7 +77,7 @@ type ListObjectsResolutionMetadata struct {
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 	return &ListObjectsResolutionMetadata{
-		DatastoreQueryCount: new(uint32),
+		DatastoreQueryCount: new(atomic.Uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
 	}
@@ -167,8 +168,6 @@ func NewListObjectsQuery(
 	for _, opt := range opts {
 		opt(query)
 	}
-
-	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
 
 	return query, nil
 }
@@ -270,11 +269,12 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
+		metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(q.datastore)
 		ds := storagewrappers.NewCombinedTupleReader(
-			q.datastore,
+			storagewrappers.NewBoundedConcurrencyTupleReader(
+				metricsDs, q.maxConcurrentReads),
 			req.GetContextualTuples().GetTupleKeys(),
 		)
-
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -284,19 +284,14 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithLogger(q.logger),
 		)
 
+		reverseExpandDoneWithError := make(chan struct{}, 1)
 		cancelCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		pool := concurrency.NewPool(cancelCtx, int(1+q.resolveNodeBreadthLimit))
 
-		wg := sync.WaitGroup{}
-
-		errChan := make(chan error, 1)
-
-		reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
+		pool.Go(func(ctx context.Context) error {
+			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
+			err := reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
@@ -306,90 +301,88 @@ func (q *ListObjectsQuery) evaluate(
 				Consistency:      req.GetConsistency(),
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
-				errChan <- err
+				reverseExpandDoneWithError <- struct{}{}
+				return err
 			}
-			atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, *reverseExpandResolutionMetadata.DatastoreQueryCount)
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-			resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
-		}()
-
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		ctx := storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
+			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
+				resolutionMetadata.WasThrottled.Store(true)
+			}
+			return nil
+		})
 
 	ConsumerReadLoop:
 		for {
 			select {
+			case <-reverseExpandDoneWithError:
+				cancel() // cancel any inflight work if e.g. model too complex
+				break ConsumerReadLoop
 			case <-ctx.Done():
+				cancel() // cancel any inflight work if e.g. deadline exceeded
 				break ConsumerReadLoop
 			case res, channelOpen := <-reverseExpandResultsChan:
 				if !channelOpen {
+					// don't cancel here. Reverse Expand has finished finding candidate object IDs
+					// but since we haven't collected "maxResults",
+					// we need to wait until all the inflight Checks finish in the hopes that
+					// we collect a few more object IDs.
+					// if we send a cancellation now, we might miss those.
 					break ConsumerReadLoop
 				}
 
 				if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+					cancel() // cancel any inflight work if we already found enough results
 					break ConsumerReadLoop
 				}
 
 				if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 					noFurtherEvalRequiredCounter.Inc()
-					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+					trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					continue
 				}
 
 				furtherEvalRequiredCounter.Inc()
 
-				wg.Add(1)
-				go func(res *reverseexpand.ReverseExpandResult) {
-					defer func() {
-						<-concurrencyLimiterCh
-						wg.Done()
-					}()
-
-					concurrencyLimiterCh <- struct{}{}
-					checkRequestMetadata := graph.NewCheckRequestMetadata(q.resolveNodeLimit)
-
-					resp, err := q.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-						StoreID:              req.GetStoreId(),
-						AuthorizationModelID: req.GetAuthorizationModelId(),
-						TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-						ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-						Context:              req.GetContext(),
-						RequestMetadata:      checkRequestMetadata,
-						Consistency:          req.GetConsistency(),
-					})
+				pool.Go(func(ctx context.Context) error {
+					ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+					ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
+						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
+						WithCheckCommandLogger(q.logger),
+						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
+					).
+						Execute(ctx, &CheckCommandParams{
+							StoreID:          req.GetStoreId(),
+							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+							ContextualTuples: req.GetContextualTuples(),
+							Context:          req.GetContext(),
+							Consistency:      req.GetConsistency(),
+						})
 					if err != nil {
-						if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-							resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
-							return
-						}
-
-						resultsChan <- ListObjectsResult{Err: err}
-						return
+						return err
 					}
-					atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
-					resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
-					resolutionMetadata.WasThrottled.Store(reverseExpandResolutionMetadata.WasThrottled.Load())
-
+					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
+					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
+					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
+						resolutionMetadata.WasThrottled.Store(true)
+					}
 					if resp.Allowed {
-						trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
+						trySendObject(ctx, res.Object, &objectsFound, maxResults, resultsChan)
 					}
-				}(res)
-
-			case err := <-errChan:
-				if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-					err = serverErrors.AuthorizationModelResolutionTooComplex
-				}
-
-				resultsChan <- ListObjectsResult{Err: err}
-				break ConsumerReadLoop
+					return nil
+				})
 			}
 		}
 
-		cancel()
-		wg.Wait()
+		err := pool.Wait()
+		if err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+				resultsChan <- ListObjectsResult{Err: err}
+			}
+			// TODO set header to indicate "deadline exceeded"
+		}
 		close(resultsChan)
+		resolutionMetadata.DatastoreQueryCount.Add(metricsDs.GetMetrics().DatastoreQueryCount)
 	}
 
 	go handler()
@@ -397,13 +390,13 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+func trySendObject(ctx context.Context, object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
 	if !(maxResults == 0) {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}
 	}
-	resultsChan <- ListObjectsResult{ObjectID: object}
+	concurrency.TrySendThroughChannel(ctx, ListObjectsResult{ObjectID: object}, resultsChan)
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
@@ -438,16 +431,12 @@ func (q *ListObjectsQuery) Execute(
 
 	for result := range resultsChan {
 		if result.Err != nil {
-			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-				return nil, result.Err
+			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
+				return nil, serverErrors.AuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
 				errs = errors.Join(errs, result.Err)
-				continue
-			}
-
-			if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
 				continue
 			}
 
@@ -491,8 +480,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	for result := range resultsChan {
 		if result.Err != nil {
-			if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-				return nil, result.Err
+			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
+				return nil, serverErrors.AuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {

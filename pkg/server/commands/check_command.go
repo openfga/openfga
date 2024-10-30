@@ -6,23 +6,17 @@ import (
 	"math"
 	"time"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/middleware/validator"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-
-	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -34,11 +28,19 @@ type CheckQuery struct {
 	logger          logger.Logger
 	checkResolver   graph.CheckResolver
 	typesys         *typesystem.TypeSystem
-	datastore       storage.RelationshipTupleReader
+	datastore       *storagewrappers.InstrumentedOpenFGAStorage
 	cacheController cachecontroller.CacheController
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
+}
+
+type CheckCommandParams struct {
+	StoreID          string
+	TupleKey         *openfgav1.CheckRequestTupleKey
+	ContextualTuples *openfgav1.ContextualTupleKeys
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
 }
 
 type CheckQueryOption func(*CheckQuery)
@@ -70,7 +72,7 @@ func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption 
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
-		datastore:          datastore,
+		datastore:          storagewrappers.NewInstrumentedOpenFGAStorage(datastore),
 		checkResolver:      checkResolver,
 		typesys:            typesys,
 		cacheController:    cachecontroller.NewNoopCacheController(),
@@ -84,27 +86,27 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(ctx, req, c.typesys)
+func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	cacheInvalidationTime := time.Time{}
 
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, req.GetStoreId())
+	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
+		StoreID:              params.StoreID,
 		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		Context:              req.GetContext(),
+		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
-		Consistency:          req.GetConsistency(),
+		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
@@ -113,27 +115,28 @@ func (c *CheckQuery) Execute(ctx context.Context, req *openfgav1.CheckRequest) (
 
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
-		return nil, nil, translateError(resolveCheckRequest.GetRequestMetadata(), err)
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+			return nil, nil, &ThrottledError{Cause: err}
+		}
+
+		return nil, nil, err
+	}
+	if resp != nil {
+		resp.GetResolutionMetadata().DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
-func validateCheckRequest(ctx context.Context, req *openfgav1.CheckRequest, typesys *typesystem.TypeSystem) error {
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
+func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	// The input tuple Key should be validated loosely.
-	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey())); err != nil {
-		return serverErrors.ValidationError(err)
+	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
+		return &InvalidRelationError{Cause: err}
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
+			return &InvalidTupleError{Cause: err}
 		}
 	}
 	return nil
@@ -153,20 +156,4 @@ func buildCheckContext(ctx context.Context, typesys *typesystem.TypeSystem, data
 		),
 	)
 	return ctx
-}
-
-func translateError(reqMetadata *graph.ResolveCheckRequestMetadata, err error) error {
-	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		return serverErrors.AuthorizationModelResolutionTooComplex
-	}
-
-	if errors.Is(err, condition.ErrEvaluationFailed) {
-		return serverErrors.ValidationError(err)
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) && reqMetadata.WasThrottled.Load() {
-		return serverErrors.ThrottledTimeout
-	}
-
-	return serverErrors.HandleError("", err)
 }

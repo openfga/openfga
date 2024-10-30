@@ -2,7 +2,16 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
+
+	"github.com/openfga/openfga/pkg/storage"
+
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
@@ -515,7 +524,196 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	storeResponse, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "GRPCReadChangesTest",
+	})
+	require.NoError(t, err)
 
+	modelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeResponse.GetId(),
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+								typesystem.WildcardRelationReference("user"),
+							},
+						},
+					},
+				},
+			},
+		},
+		SchemaVersion: "1.1",
+	})
+	require.NoError(t, err)
+
+	const pageSize = storage.DefaultPageSize
+
+	// one page of tuples with user:before - before start_time is captured
+	tupleKeysBefore := make([]*openfgav1.TupleKey, pageSize)
+	for i := 0; i < pageSize; i++ {
+		tupleKeysBefore[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:before")
+	}
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeResponse.GetId(),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeysBefore,
+		},
+		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
+	})
+	require.NoError(t, err)
+
+	// wait for the tuples to be written
+	time.Sleep(1 * time.Millisecond)
+
+	startTime := time.Now()
+
+	time.Sleep(1 * time.Millisecond)
+
+	// one page of tuples with user:after - after start_time is captured
+	tupleKeysAfter := make([]*openfgav1.TupleKey, pageSize)
+	for i := 0; i < pageSize; i++ {
+		tupleKeysAfter[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:after")
+	}
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeResponse.GetId(),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeysAfter,
+		},
+		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
+	})
+	require.NoError(t, err)
+
+	// one page of tuples with user:3rd - one page after the start_time is captured
+	tupleKeys3rd := make([]*openfgav1.TupleKey, pageSize)
+	for i := 0; i < pageSize; i++ {
+		tupleKeys3rd[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:3rd")
+	}
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeResponse.GetId(),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeys3rd,
+		},
+		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
+	})
+	require.NoError(t, err)
+
+	// find the continuation token for the 3rd page from the start
+	pages100, err := runtime.Int32Value("100")
+	require.NoError(t, err)
+	changes100, err := client.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
+		StoreId:  storeResponse.GetId(),
+		PageSize: pages100,
+	})
+	require.NoError(t, err)
+
+	continuationToken := changes100.GetContinuationToken()
+
+	tests := []struct {
+		name     string
+		input    *openfgav1.ReadChangesRequest
+		validate func(*testing.T, *openfgav1.ReadChangesResponse)
+		err      error
+	}{
+		{
+			"empty_request",
+			&openfgav1.ReadChangesRequest{
+				StoreId: storeResponse.GetId(),
+			},
+			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
+				require.Len(t, response.GetChanges(), pageSize)
+				require.NotEmpty(t, response.GetContinuationToken())
+				for _, change := range response.GetChanges() {
+					require.NotNil(t, change.GetTupleKey())
+					require.Equal(t, "user:before", change.GetTupleKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_continuation_token",
+			&openfgav1.ReadChangesRequest{
+				StoreId:           storeResponse.GetId(),
+				ContinuationToken: continuationToken,
+			},
+			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
+				require.Len(t, response.GetChanges(), pageSize)
+				require.NotEmpty(t, response.GetContinuationToken())
+				for _, change := range response.GetChanges() {
+					require.NotNil(t, change.GetTupleKey())
+					require.Equal(t, "user:3rd", change.GetTupleKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_start_time",
+			&openfgav1.ReadChangesRequest{
+				StoreId:   storeResponse.GetId(),
+				StartTime: timestamppb.New(startTime),
+			},
+			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
+				require.Len(t, response.GetChanges(), pageSize)
+				require.NotEmpty(t, response.GetContinuationToken())
+				for _, change := range response.GetChanges() {
+					require.NotNil(t, change.GetTupleKey())
+					require.Equal(t, "user:after", change.GetTupleKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_start_time_and_token",
+			&openfgav1.ReadChangesRequest{
+				StoreId:           storeResponse.GetId(),
+				StartTime:         timestamppb.New(startTime),
+				ContinuationToken: continuationToken,
+			},
+			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
+				require.Len(t, response.GetChanges(), pageSize)
+				require.NotEmpty(t, response.GetContinuationToken())
+				for _, change := range response.GetChanges() {
+					require.NotNil(t, change.GetTupleKey())
+					require.Equal(t, "user:3rd", change.GetTupleKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_invalid_start_time",
+			&openfgav1.ReadChangesRequest{
+				StoreId: storeResponse.GetId(),
+				StartTime: timestamppb.New(startTime.
+					Add(-1 * startTime.Sub(startTime)). // until the beginning of time
+					Add(-1_000_000 * time.Hour),        // and then minus a million hours
+				),
+			},
+			nil,
+			status.Error(codes.Code(openfgav1.ErrorCode_invalid_start_time), "Invalid start time"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := client.ReadChanges(context.Background(), test.input)
+			if test.err != nil {
+				require.Error(t, err)
+				assert.Equal(t, test.err, err)
+			} else {
+				require.NoError(t, err)
+				test.validate(t, response)
+			}
+		})
+	}
 }
 
 func GRPCCreateStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
@@ -997,6 +1195,13 @@ func GRPCListObjectsTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 }
 
 func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	_101tuples := make([]*openfgav1.TupleKey, 101)
+	for i := 0; i < 101; i++ {
+		_101tuples[i] = tuple.NewTupleKey(
+			fmt.Sprintf("document:%d", i), "user", fmt.Sprintf("user:%d", i),
+		)
+	}
+
 	tests := []struct {
 		name              string
 		input             *openfgav1.ListUsersRequest
@@ -1189,30 +1394,8 @@ func GRPCListUsersValidationTest(t *testing.T, client openfgav1.OpenFGAServiceCl
 					Type: "document",
 					Id:   "1",
 				},
-				UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-				ContextualTuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "user", "user:1"),
-					tuple.NewTupleKey("document:1", "user", "user:2"),
-					tuple.NewTupleKey("document:1", "user", "user:3"),
-					tuple.NewTupleKey("document:1", "user", "user:4"),
-					tuple.NewTupleKey("document:1", "user", "user:5"),
-					tuple.NewTupleKey("document:1", "user", "user:6"),
-					tuple.NewTupleKey("document:1", "user", "user:7"),
-					tuple.NewTupleKey("document:1", "user", "user:8"),
-					tuple.NewTupleKey("document:1", "user", "user:9"),
-					tuple.NewTupleKey("document:1", "user", "user:10"),
-					tuple.NewTupleKey("document:1", "user", "user:11"),
-					tuple.NewTupleKey("document:1", "user", "user:12"),
-					tuple.NewTupleKey("document:1", "user", "user:13"),
-					tuple.NewTupleKey("document:1", "user", "user:14"),
-					tuple.NewTupleKey("document:1", "user", "user:15"),
-					tuple.NewTupleKey("document:1", "user", "user:16"),
-					tuple.NewTupleKey("document:1", "user", "user:17"),
-					tuple.NewTupleKey("document:1", "user", "user:18"),
-					tuple.NewTupleKey("document:1", "user", "user:19"),
-					tuple.NewTupleKey("document:1", "user", "user:20"),
-					tuple.NewTupleKey("document:1", "user", "user:21"),
-				},
+				UserFilters:      []*openfgav1.UserTypeFilter{{Type: "user"}},
+				ContextualTuples: _101tuples,
 			},
 			expectedErrorCode: codes.InvalidArgument,
 		},

@@ -19,6 +19,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+// to prevent overwhelming server on expensive queries.
+const maxConcurrentReads = 50
+
 // Some of the benchmark tests require context blocks to be built
 // but many do not. This noop method is a placeholder for the non-context test cases.
 func noopContextGenerator() *structpb.Struct {
@@ -382,22 +385,22 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 
 		checkQuery := commands.NewCheckCommand(
 			ds,
-			graph.NewLocalChecker(),
+			graph.NewLocalChecker(graph.WithOptimizations(true)),
 			typeSystem,
-			commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
+			commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 			commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 		)
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				response, _, err := checkQuery.Execute(ctx, &openfgav1.CheckRequest{
-					StoreId:  storeID,
+				response, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+					StoreID:  storeID,
 					TupleKey: bm.tupleKeyToCheck,
 					Context:  bm.contextGenerator(),
 				})
 
-				require.Equal(b, bm.expected, response.GetAllowed())
 				require.NoError(b, err)
+				require.Equal(b, bm.expected, response.GetAllowed())
 			}
 		})
 	}
@@ -475,21 +478,21 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 
 	checkQuery := commands.NewCheckCommand(
 		ds,
-		graph.NewLocalChecker(),
+		graph.NewLocalChecker(graph.WithOptimizations(true)),
 		typeSystemTwo,
-		commands.WithCheckCommandMaxConcurrentReads(config.DefaultMaxConcurrentReadsForCheck),
+		commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 		commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 	)
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			response, _, err := checkQuery.Execute(context.Background(), &openfgav1.CheckRequest{
-				StoreId:  storeID,
+			response, _, err := checkQuery.Execute(context.Background(), &commands.CheckCommandParams{
+				StoreID:  storeID,
 				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 			})
 
-			require.False(b, response.GetAllowed())
 			require.NoError(b, err)
+			require.False(b, response.GetAllowed())
 		}
 	})
 }

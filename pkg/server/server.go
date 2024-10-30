@@ -124,6 +124,7 @@ type Server struct {
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
 	checkDatastore                   storage.OpenFGADatastore
+	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -197,6 +198,12 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+func WithContinuationTokenSerializer(ds encoder.ContinuationTokenSerializer) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.tokenSerializer = ds
 	}
 }
 
@@ -843,7 +850,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
+	datastoreQueryCount := float64(result.ResolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -864,7 +871,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(result.ResolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -948,7 +955,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	datastoreQueryCount := float64(*resolutionMetadata.DatastoreQueryCount)
+	datastoreQueryCount := float64(resolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -969,7 +976,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -1091,6 +1098,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -1098,8 +1111,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	const methodName = "check"
-	resp, checkRequestMetadata, err := commands.NewCheckCommand(
+	checkQuery := commands.NewCheckCommand(
 		s.checkDatastore,
 		s.checkResolver,
 		typesys,
@@ -1107,15 +1119,26 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithCacheController(s.cacheController),
-	).Execute(ctx, req)
+	)
+
+	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+		StoreID:          storeID,
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples(),
+		Context:          req.GetContext(),
+		Consistency:      req.GetConsistency(),
+	})
+
+	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, serverErrors.ThrottledTimeout) {
+		finalErr := commands.CheckCommandErrorToServerError(err)
+		if errors.Is(finalErr, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?
-		return nil, err
+		return nil, finalErr
 	}
 
 	span.SetAttributes(
@@ -1150,7 +1173,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -1398,6 +1421,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
 		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithContinuationTokenSerializer(s.tokenSerializer),
 		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
 	)
 	return q.Execute(ctx, req)
@@ -1597,17 +1621,24 @@ func (s *Server) validateAccessControlEnabled() error {
 
 // checkAuthz checks the authorization for calling an API method.
 func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	if !authclaims.SkipAuthzCheckFromContext(ctx) {
-		err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
-		if err != nil {
-			return err
-		}
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
 	}
+
+	err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
 func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
+	}
+
 	err := s.authorizer.AuthorizeCreateStore(ctx)
 	if err != nil {
 		return err
@@ -1618,24 +1649,29 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
 // returns the list of stores that the user has access to.
 func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
-	if s.authorizer != nil {
-		err := s.authorizer.AuthorizeListStores(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		list, err := s.authorizer.ListAuthorizedStores(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		return list, nil
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil, nil
 	}
-	return nil, nil
+
+	err := s.authorizer.AuthorizeListStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.authorizer.ListAuthorizedStores(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, nil
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
 func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) error {
+	if authclaims.SkipAuthzCheckFromContext(ctx) {
+		return nil
+	}
+
 	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
 	if err != nil {
 		return err
