@@ -55,10 +55,11 @@ func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSe
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`.
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
 	rq := &ReadChangesQuery{
-		backend:       backend,
-		logger:        logger.NewNoopLogger(),
-		encoder:       encoder.NewBase64Encoder(),
-		horizonOffset: time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		backend:         backend,
+		logger:          logger.NewNoopLogger(),
+		encoder:         encoder.NewBase64Encoder(),
+		horizonOffset:   time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
