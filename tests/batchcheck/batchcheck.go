@@ -217,12 +217,16 @@ func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client 
 			log.Printf("Justin response: %+v", response)
 			log.Printf("Justin result: %+v", result)
 			for _, expectation := range assertion.Expectation {
-				if expectation.Error != "" {
-					require.Equal(t, expectation.Error, result[expectation.CorrelationID].GetError().GetMessage())
-				} else {
+				switch {
+				case expectation.InputError != 0:
+					code := result[expectation.CorrelationID].GetError().GetInputError()
+					require.Equal(t, expectation.InputError, int(code))
+				case expectation.InternalError != 0:
+					code := result[expectation.CorrelationID].GetError().GetInternalError()
+					require.Equal(t, expectation.InternalError, int(code))
+				default:
 					require.Equal(t, expectation.Allowed, result[expectation.CorrelationID].GetAllowed())
 				}
-
 			}
 		}
 	})

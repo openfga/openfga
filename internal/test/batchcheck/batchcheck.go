@@ -26,7 +26,8 @@ type Assertion struct {
 type Expectation struct {
 	CorrelationID string `json:"correlationID"`
 	Allowed       bool
-	Error         string
+	InputError    int `json:"inputError"`
+	InternalError int `json:"internalError"`
 }
 
 type IndividualCheck struct {
@@ -63,9 +64,9 @@ func (t *TestBatchCheckRequest) ToProtoRequest() *openfgav1.BatchCheckRequest {
 	for _, check := range t.Checks {
 		item := &openfgav1.BatchCheckItem{
 			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     check.TupleKey.User,
-				Relation: check.TupleKey.Relation,
-				Object:   check.TupleKey.Object,
+				User:     check.TupleKey.GetUser(),
+				Relation: check.TupleKey.GetRelation(),
+				Object:   check.TupleKey.GetObject(),
 			},
 			CorrelationId: check.CorrelationID,
 			Context:       check.Context,

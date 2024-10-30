@@ -80,7 +80,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		var ids []string
 		for i := 0; i < numChecks; i++ {
 			correlationID := fmt.Sprintf("fakeid%d", i)
-			ids = append(ids, correlationID) // todo here
+			ids = append(ids, correlationID)
 			checks[i] = &openfgav1.BatchCheckItem{
 				TupleKey: &openfgav1.CheckRequestTupleKey{
 					Object:   "doc:doc1",
@@ -103,7 +103,12 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		result, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
-		require.Equal(t, len(result), numChecks)
+
+		// Make sure all correlation ids are present in the response
+		for _, id := range ids {
+			_, ok := result[id]
+			require.True(t, ok)
+		}
 	})
 
 	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
@@ -156,4 +161,3 @@ func TestBatchCheckCommand(t *testing.T) {
 }
 
 // then some where we assert a specific allowed true and allowed false
-// then some where we hit a known error for individual check (like bad relation?)
