@@ -3,15 +3,14 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 	"testing"
-	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/pkg/server/commands"
 )
 
 func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
@@ -81,33 +80,24 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 
 func TestTransformCheckResultToProto(t *testing.T) {
 	var expectedResult = map[string]*openfgav1.BatchCheckSingleResult{}
-	outcomes := map[string]*commands.BatchCheckOutcome{}
-	duration := time.Millisecond * 5
+	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{}
 
 	// Create two fake outcomes, one happy path and one error
 	// These two make 100% coverage
-	id1 := "abc123"
+	id1 := commands.CorrelationID("abc123")
 	outcomes[id1] = &commands.BatchCheckOutcome{
-		CheckResponse: &graph.ResolveCheckResponse{
-			Allowed: true,
-		},
-		Duration: duration,
+		CheckResponse: &graph.ResolveCheckResponse{Allowed: true},
 	}
 
-	id2 := "def456"
-	outcomes[id2] = &commands.BatchCheckOutcome{
-		Duration: duration,
-		Err:      graph.ErrResolutionDepthExceeded,
-	}
+	id2 := commands.CorrelationID("def456")
+	outcomes[id2] = &commands.BatchCheckOutcome{Err: graph.ErrResolutionDepthExceeded}
 
 	// format the expected final output of the transform function
-	expectedResult[id1] = &openfgav1.BatchCheckSingleResult{
-		QueryDurationMs: wrapperspb.Int32(int32(duration.Milliseconds())),
-		CheckResult:     &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
+	expectedResult[string(id1)] = &openfgav1.BatchCheckSingleResult{
+		CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
 	}
 
-	expectedResult[id2] = &openfgav1.BatchCheckSingleResult{
-		QueryDurationMs: wrapperspb.Int32(int32(duration.Milliseconds())),
+	expectedResult[string(id2)] = &openfgav1.BatchCheckSingleResult{
 		CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 			Error: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex},
@@ -119,5 +109,24 @@ func TestTransformCheckResultToProto(t *testing.T) {
 	t.Run("test_transform_check_result_to_proto", func(t *testing.T) {
 		result := transformCheckResultToProto(outcomes)
 		require.Equal(t, expectedResult, result)
+	})
+}
+
+func BenchmarkTransformCheckResultToProto(b *testing.B) {
+	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+		"abc123": {
+			CheckResponse: &graph.ResolveCheckResponse{
+				Allowed: true,
+			},
+		},
+		"def456": {
+			Err: graph.ErrResolutionDepthExceeded,
+		},
+	}
+
+	b.Run("benchmark_transform_check_result_to_proto", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			transformCheckResultToProto(outcomes)
+		}
 	})
 }
