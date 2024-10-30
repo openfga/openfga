@@ -122,7 +122,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		return nil, nil, err
 	}
 	if resp != nil {
-		resp.GetResolutionMetadata().DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
+		resp.ResolutionMetadata.DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
 	}
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }

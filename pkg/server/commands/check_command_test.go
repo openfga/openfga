@@ -131,9 +131,7 @@ type doc
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 				_, _ = cmd.datastore.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
-				return &graph.ResolveCheckResponse{
-					ResolutionMetadata: &graph.ResolveCheckResponseMetadata{},
-				}, nil
+				return &graph.ResolveCheckResponse{}, nil
 			})
 		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
