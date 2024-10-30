@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -30,6 +32,8 @@ type Config struct {
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
+	// for serializing the read changes token
+	TokenSerializer encoder.ContinuationTokenSerializer
 
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -61,6 +65,13 @@ func WithPassword(password string) DatastoreOption {
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.Logger = l
+	}
+}
+
+// WithContinuationTokenSerializer returns a DatastoreOption that sets the TokenSerializer in the Config.
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.TokenSerializer = tokenSerializer
 	}
 }
 
@@ -133,6 +144,10 @@ func NewConfig(opts ...DatastoreOption) *Config {
 		cfg.Logger = logger.NewNoopLogger()
 	}
 
+	if cfg.TokenSerializer == nil {
+		cfg.TokenSerializer = NewSQLContinuationTokenSerializer()
+	}
+
 	if cfg.MaxTuplesPerWriteField == 0 {
 		cfg.MaxTuplesPerWriteField = storage.DefaultMaxTuplesPerWrite
 	}
@@ -159,6 +174,11 @@ func NewContToken(ulid, objectType string) *ContToken {
 	}
 }
 
+// MarshallContToken takes a ContToken struct and attempts to marshal it into a string.
+func MarshallContToken(from *ContToken) ([]byte, error) {
+	return json.Marshal(from)
+}
+
 // UnmarshallContToken takes a string representation of a continuation
 // token and attempts to unmarshal it into a ContToken struct.
 func UnmarshallContToken(from string) (*ContToken, error) {
@@ -167,6 +187,24 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 		return nil, storage.ErrInvalidContinuationToken
 	}
 	return &token, nil
+}
+
+func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
+	return &SQLContinuationTokenSerializer{}
+}
+
+type SQLContinuationTokenSerializer struct{}
+
+func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
+	return MarshallContToken(NewContToken(ulid, objType))
+}
+
+func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+	token, err := UnmarshallContToken(continuationToken)
+	if err != nil {
+		return "", "", err
+	}
+	return token.Ulid, token.ObjectType, nil
 }
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
@@ -703,4 +741,11 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{
 		IsReady: true,
 	}, nil
+}
+
+func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.SelectBuilder {
+	if sortDescending {
+		return sb.Where(sq.Lt{"ulid": fromUlid})
+	}
+	return sb.Where(sq.Gt{"ulid": fromUlid})
 }

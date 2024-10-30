@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/encoder"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -35,7 +37,7 @@ var (
 	}
 )
 
-func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore, tokenSerializer encoder.ContinuationTokenSerializer) {
 	ctx := context.Background()
 
 	const numOfWrites = 300
@@ -66,6 +68,62 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		t.Run("page_size_infinite", func(t *testing.T) {
 			changes := readChangesWithPageSize(t, datastore, storeID, numOfWrites, "")
 			assert.Len(t, changes, len(writtenTuples))
+		})
+	})
+
+	t.Run("read_changes_with_start_time", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var writtenTuplesBefore, writtenTuplesAfter []*openfgav1.TupleKey
+		for i := 0; i < numOfWrites/2; i++ {
+			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:before")
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
+			require.NoError(t, err)
+			writtenTuplesBefore = append(writtenTuplesBefore, newTuple)
+		}
+
+		time.Sleep(1 * time.Millisecond)
+
+		startTime := time.Now()
+
+		time.Sleep(1 * time.Millisecond)
+
+		for i := numOfWrites / 2; i < numOfWrites; i++ {
+			newTuple := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:after")
+			err := datastore.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{newTuple})
+			require.NoError(t, err)
+			writtenTuplesAfter = append(writtenTuplesAfter, newTuple)
+		}
+
+		// No assertions on the contents of the response, just on the length.
+
+		t.Run("start_time_page_size_1", func(t *testing.T) {
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, 1, startTime, false)
+			assert.Len(t, changes, len(writtenTuplesAfter))
+			for _, change := range changes {
+				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
+			}
+		})
+
+		t.Run("start_time_page_size_default", func(t *testing.T) {
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, storage.DefaultPageSize, startTime, false)
+			assert.Len(t, changes, len(writtenTuplesAfter))
+			for _, change := range changes {
+				assert.Equal(t, "user:after", change.GetTupleKey().GetUser())
+			}
+		})
+
+		t.Run("start_time_zero", func(t *testing.T) {
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, numOfWrites, time.Time{}, false)
+			assert.Len(t, changes, len(writtenTuplesBefore)+len(writtenTuplesAfter))
+		})
+
+		t.Run("start_time_desc", func(t *testing.T) {
+			changes := readChangesWithStartTime(t, tokenSerializer, datastore, storeID, 1, startTime, true)
+			assert.Len(t, changes, len(writtenTuplesBefore))
+			for _, change := range changes {
+				assert.Equal(t, "user:before", change.GetTupleKey().GetUser())
+			}
 		})
 	})
 
@@ -164,6 +222,36 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+	})
+
+	t.Run("read_changes_with_bad_continuation_token", func(t *testing.T) {
+		_, _, err := datastore.ReadChanges(
+			context.Background(),
+			"storeID",
+			storage.ReadChangesFilter{},
+			storage.ReadChangesOptions{
+				Pagination: storage.NewPaginationOptions(1, "bad_token"),
+			})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "invalid continuation token")
+	})
+
+	t.Run("read_changes_with_continuation_token_type_mismatch", func(t *testing.T) {
+		token, err := tokenSerializer.Serialize(ulid.Make().String(), "mismatch")
+		require.NoError(t, err)
+		_, _, err = datastore.ReadChanges(
+			context.Background(),
+			"storeID",
+			storage.ReadChangesFilter{
+				ObjectType: "other",
+			},
+			storage.ReadChangesOptions{
+				Pagination: storage.NewPaginationOptions(1,
+					string(token),
+				),
+			})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "mismatched types in request and continuation token")
 	})
 
 	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
@@ -1658,7 +1746,48 @@ func readChangesWithPageSize(t *testing.T, ds storage.OpenFGADatastore, storeID 
 			break
 		}
 		// Not strict equal because there may be less changes than the page size
-		require.LessOrEqual(t, len(tupleChanges), pageSize)
+		require.LessOrEqual(t, len(tupleChanges), pageSize, "len(tupleChanges)=%d, pageSize=%d, tuples=%v", len(tupleChanges), pageSize, tupleChanges)
+		seenChanges = append(seenChanges, tupleChanges...)
+		if len(tupleChanges) == 0 {
+			require.Empty(t, continuationToken)
+		} else {
+			require.NotEmpty(t, continuationToken)
+		}
+	}
+
+	return seenChanges
+}
+
+// readChanges calls ReadChanges. It reads everything from the store, pageSize changes at a time.
+// Along the way, it makes assertions on the changes seen. It returns all changes seen.
+// It reads changes starting from a specific time, by converting the timestamp into a continuation token.
+func readChangesWithStartTime(t *testing.T, tokenSerializer encoder.ContinuationTokenSerializer, ds storage.OpenFGADatastore, storeID string, pageSize int, startTime time.Time, desc bool) []*openfgav1.TupleChange {
+	t.Helper()
+	var (
+		tupleChanges      []*openfgav1.TupleChange
+		seenChanges       []*openfgav1.TupleChange
+		continuationToken []byte
+		err               error
+	)
+	if !startTime.IsZero() {
+		ulidST := ulid.MustNew(ulid.Timestamp(startTime), ulid.DefaultEntropy())
+		continuationToken, _ = tokenSerializer.Serialize(ulidST.String(), "")
+	}
+	for {
+		opts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(
+				int32(pageSize),
+				string(continuationToken),
+			),
+			SortDesc: desc,
+		}
+		tupleChanges, continuationToken, err = ds.ReadChanges(context.Background(), storeID, storage.ReadChangesFilter{}, opts)
+		if err != nil {
+			require.ErrorIs(t, err, storage.ErrNotFound)
+			break
+		}
+		// Not strict equal because there may be less changes than the page size
+		require.LessOrEqual(t, len(tupleChanges), pageSize, "len(tupleChanges)=%d, pageSize=%d, tuples=%v", len(tupleChanges), pageSize, tupleChanges)
 		seenChanges = append(seenChanges, tupleChanges...)
 		if len(tupleChanges) == 0 {
 			require.Empty(t, continuationToken)

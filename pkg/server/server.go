@@ -124,6 +124,7 @@ type Server struct {
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
 	checkDatastore                   storage.OpenFGADatastore
+	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -197,6 +198,12 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+func WithContinuationTokenSerializer(ds encoder.ContinuationTokenSerializer) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.tokenSerializer = ds
 	}
 }
 
@@ -1414,6 +1421,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
 		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithContinuationTokenSerializer(s.tokenSerializer),
 		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
 	)
 	return q.Execute(ctx, req)

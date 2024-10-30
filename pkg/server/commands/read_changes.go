@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -15,10 +17,11 @@ import (
 )
 
 type ReadChangesQuery struct {
-	backend       storage.ChangelogBackend
-	logger        logger.Logger
-	encoder       encoder.Encoder
-	horizonOffset time.Duration
+	backend         storage.ChangelogBackend
+	logger          logger.Logger
+	encoder         encoder.Encoder
+	tokenSerializer encoder.ContinuationTokenSerializer
+	horizonOffset   time.Duration
 }
 
 type ReadChangesQueryOption func(*ReadChangesQuery)
@@ -42,13 +45,21 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 	}
 }
 
+// WithContinuationTokenSerializer specifies the token serializer to be used.
+func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) ReadChangesQueryOption {
+	return func(rq *ReadChangesQuery) {
+		rq.tokenSerializer = tokenSerializer
+	}
+}
+
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`.
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
 	rq := &ReadChangesQuery{
-		backend:       backend,
-		logger:        logger.NewNoopLogger(),
-		encoder:       encoder.NewBase64Encoder(),
-		horizonOffset: time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		backend:         backend,
+		logger:          logger.NewNoopLogger(),
+		encoder:         encoder.NewBase64Encoder(),
+		horizonOffset:   time.Duration(serverconfig.DefaultChangelogHorizonOffset) * time.Minute,
+		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -63,8 +74,29 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+	token := string(decodedContToken)
+
+	var startTime time.Time
+	if req.GetStartTime() != nil {
+		startTime = req.GetStartTime().AsTime()
+	}
+	if token == "" && !startTime.IsZero() {
+		tokenUlid, ulidErr := ulid.New(ulid.Timestamp(startTime), nil)
+		if ulidErr != nil {
+			return nil, serverErrors.HandleError(ulidErr.Error(), storage.ErrInvalidStartTime)
+		}
+		if ulidBytes, err := q.tokenSerializer.Serialize(tokenUlid.String(), req.GetType()); err == nil {
+			token = string(ulidBytes)
+		} else {
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	opts := storage.ReadChangesOptions{
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination: storage.NewPaginationOptions(
+			req.GetPageSize().GetValue(),
+			token,
+		),
 	}
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetType(),
