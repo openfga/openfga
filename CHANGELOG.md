@@ -15,7 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
 * Add an experimental access control feature [#1913](https://github.com/openfga/openfga/pull/1913)
   Learn more about this feature and how to enable it [here](https://openfga.dev/docs/getting-started/setup-openfga/access-control)
-  If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions/378)
+  If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions)
 
 ### Changed
 * Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
