@@ -67,6 +67,7 @@ func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
 }
 
 type ResolveCheckResponseMetadata struct {
+	// Number of Read operations accumulated after this request completes.
 	DatastoreQueryCount uint32
 	// Indicates if the ResolveCheck subproblem that was evaluated involved
 	// a cycle in the evaluation.

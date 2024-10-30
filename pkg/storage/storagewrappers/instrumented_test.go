@@ -34,5 +34,5 @@ func TestMetricsOpenFGAStorage(t *testing.T) {
 
 	wg.Wait()
 
-	require.Equal(t, dbReadsCount, dut.GetMetrics().DatastoreQueryCount)
+	require.Equal(t, dbReadsCount, int(dut.GetMetrics().DatastoreQueryCount))
 }
