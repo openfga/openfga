@@ -4,6 +4,7 @@ package batchcheck
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"testing"
 
@@ -97,35 +98,12 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 					t.Skipf("cannot send more than 20 contextual tuples in one request")
 				}
 				// arrange: write model
-				var typedefs []*openfgav1.TypeDefinition
-				model, err := parser.TransformDSLToProto(stage.Model)
-				require.NoError(t, err)
-				typedefs = model.GetTypeDefinitions()
-
-				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: typedefs,
-					Conditions:      model.GetConditions(),
-				})
+				writeModelResponse, err := writeModel(ctx, client, storeID, stage.Model)
 				require.NoError(t, err)
 
-				tuples := stage.Tuples
-				tuplesLength := len(tuples)
-				// arrange: write tuples
-				if tuplesLength > 0 && !contextTupleTest {
-					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-						writeChunk := (tuples)[i:end]
-						_, err = client.Write(ctx, &openfgav1.WriteRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-							Writes: &openfgav1.WriteRequestWrites{
-								TupleKeys: writeChunk,
-							},
-						})
-						require.NoError(t, err)
-					}
+				if !contextTupleTest {
+					err = writeTuples(ctx, client, storeID, stage.Tuples, writeModelResponse)
+					require.NoError(t, err)
 				}
 
 				if len(stage.CheckAssertions) == 0 {
@@ -150,7 +128,7 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 
 					correlationID := ulid.Make().String()
 
-					item := batchchecktest.BatchCheckItemFromAssertion(assertion, correlationID)
+					item := batchchecktest.BatchCheckItemFromCheckAssertion(assertion, correlationID)
 					protoChecks = append(protoChecks, item)
 					expectedResults[correlationID] = assertion.Expectation
 				}
@@ -171,4 +149,85 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 			})
 		}
 	})
+}
+
+// RunBatchCheckSpecificFailureScenarios are not shared with Check.
+func RunBatchCheckSpecificFailureScenarios(t *testing.T, client ClientInterface) {
+	t.Run("RunAll", func(t *testing.T) {
+		t.Run("BatchCheckFailureScenarios", func(t *testing.T) {
+			t.Parallel()
+			file := "tests/batch_check_tests.yaml"
+
+			var b []byte
+			var err error
+			b, err = assets.EmbedTests.ReadFile(file)
+			require.NoError(t, err)
+
+			var testCases batchchecktest.BatchCheckTests
+			err = yaml.Unmarshal(b, &testCases)
+			require.NoError(t, err)
+
+			var allTestCases []batchchecktest.IndividualTest
+			allTestCases = append(allTestCases, testCases.Tests...)
+
+			for _, testCase := range allTestCases {
+				for _, assertion := range testCase.Assertions {
+					req := assertion.Request.ToProtoRequest()
+					log.Printf("justin request: %+v", req)
+
+					//resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+					//	StoreId:              storeID,
+					//	AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+					//	Checks:               convertedRequest.GetChecks(),
+					//})
+				}
+			}
+		})
+	})
+}
+
+func writeModel(ctx context.Context, client ClientInterface, storeID string, model string) (*openfgav1.WriteAuthorizationModelResponse, error) {
+	// arrange: write model
+	var typedefs []*openfgav1.TypeDefinition
+	parsedModel, err := parser.TransformDSLToProto(model)
+	if err != nil {
+		return nil, err
+	}
+	typedefs = parsedModel.GetTypeDefinitions()
+
+	writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
+		Conditions:      parsedModel.GetConditions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return writeModelResponse, nil
+}
+
+func writeTuples(ctx context.Context, client ClientInterface, storeID string, tuples []*openfgav1.TupleKey, writeModelResponse *openfgav1.WriteAuthorizationModelResponse) error {
+	tuplesLength := len(tuples)
+	// arrange: write tuples
+	if tuplesLength > 0 {
+		for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+			end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+			writeChunk := (tuples)[i:end]
+			_, err := client.Write(ctx, &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: writeChunk,
+				},
+			})
+
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
