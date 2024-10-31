@@ -15,6 +15,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Refactored the code in OIDC authenticator by removing unwanted error messages when validating a token. Token validation will now throw codes 1004 and 1005
 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
 
+### Removed
+* Removed `errInvalidToken` error type. [#1999](https://github.com/openfga/openfga/pull/1999)
+
 ### Breaking changes
 * The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
   As a part of the implementation a new component called ContinuationTokenSerializer was introduced.
