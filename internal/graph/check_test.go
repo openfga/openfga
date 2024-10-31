@@ -4867,9 +4867,6 @@ func TestCheckPublicAssignable(t *testing.T) {
 			readUsersetTuplesError: nil,
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -4881,9 +4878,6 @@ func TestCheckPublicAssignable(t *testing.T) {
 			readUsersetTuplesError: nil,
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},

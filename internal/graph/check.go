@@ -1271,8 +1271,7 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 	wildcardRelationReference := typesystem.WildcardRelationReference(userType)
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		response := &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: false,
 		}
 
 		opts := storage.ReadUsersetTuplesOptions{
