@@ -81,6 +81,14 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		return nil, serverErrors.InvalidContinuationToken
 	}
 
+	if len(decodedContToken) > 0 {
+		from, _, err := q.tokenSerializer.Deserialize(string(decodedContToken))
+		if err != nil {
+			return nil, serverErrors.InvalidContinuationToken
+		}
+		decodedContToken = []byte(from)
+	}
+
 	opts := storage.ReadPageOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
