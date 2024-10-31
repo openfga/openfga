@@ -63,7 +63,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
 	)
 
-	result, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
+	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),

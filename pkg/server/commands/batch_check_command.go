@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openfga/openfga/internal/concurrency"
@@ -41,6 +42,10 @@ type BatchCheckOutcome struct {
 	CheckResponse *graph.ResolveCheckResponse
 	Duration      time.Duration
 	Err           error
+}
+
+type BatchCheckMetadata struct {
+	TotalQueries uint32
 }
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
@@ -86,38 +91,39 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	return cmd
 }
 
-func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[string]*BatchCheckOutcome, error) {
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[string]*BatchCheckOutcome, *BatchCheckMetadata, error) {
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
-		return nil, errors.ValidationError(
+		return nil, nil, errors.ValidationError(
 			fmt.Errorf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
 		)
 	}
 
 	if err := validateNoDuplicateCorrelationIDs(params.Checks); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	// This check query will be run against every check in the batch
-	checkQuery := NewCheckCommand(
-		bq.datastore,
-		bq.checkResolver,
-		bq.typesys,
-		WithCheckCommandLogger(bq.logger),
-		WithCacheController(bq.cacheController),
-	)
 
 	// the keys to this map are the correlation_id associated with each check
 	var resultMap = map[string]*BatchCheckOutcome{}
 	lock := sync.Mutex{}
 
+	totalQueryCount := atomic.Uint32{}
+
 	ctx, cancel := context.WithCancel(ctx)
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	defer func() {
-		_ = pool.Wait()
 		cancel()
 	}()
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
+			// This might have to be built on a per-check basis to get the metadata right
+			checkQuery := NewCheckCommand(
+				bq.datastore,
+				bq.checkResolver,
+				bq.typesys,
+				WithCheckCommandLogger(bq.logger),
+				WithCacheController(bq.cacheController),
+			)
+
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
@@ -138,11 +144,15 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			}
 			lock.Unlock()
 
+			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
+
 			return nil
 		})
 	}
 
-	return resultMap, nil
+	_ = pool.Wait()
+
+	return resultMap, &BatchCheckMetadata{TotalQueries: totalQueryCount.Load()}, nil
 }
 
 func validateNoDuplicateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
