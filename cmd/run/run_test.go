@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +22,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -1475,6 +1482,97 @@ func TestHTTPHeaders(t *testing.T) {
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
 
 			httpResponse.Body.Close()
+		})
+	}
+}
+
+func TestServerContext_datastoreConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         *serverconfig.Config
+		wantDSType     interface{}
+		wantSerializer encoder.ContinuationTokenSerializer
+		wantErr        error
+	}{
+		{
+			name: "sqlite",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "sqlite",
+				},
+			},
+			wantDSType:     &sqlite.Datastore{},
+			wantSerializer: &sqlcommon.SQLContinuationTokenSerializer{},
+			wantErr:        nil,
+		},
+		{
+			name: "sqlite_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "sqlite",
+					URI:    "uri?is;bad=true",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("invalid semicolon separator in query"),
+		},
+		{
+			name: "mysql_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine:   "mysql",
+					Username: "root",
+					Password: "password",
+					URI:      "uri?is;bad=true",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("missing the slash separating the database name"),
+		},
+		{
+			name: "postgres_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine:   "postgres",
+					Username: "root",
+					Password: "password",
+					URI:      "~!@#$%^&*()_+}{:<>?",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("parse postgres connection uri"),
+		},
+		{
+			name: "unsupported_engine",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "unsupported",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("storage engine 'unsupported' is unsupported"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &ServerContext{
+				Logger: logger.NewNoopLogger(),
+			}
+			datastore, serializer, err := s.datastoreConfig(tt.config)
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				assert.Nil(t, datastore)
+				assert.Nil(t, serializer)
+				assert.ErrorContains(t, err, tt.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+				assert.IsType(t, tt.wantDSType, datastore)
+				assert.Equal(t, tt.wantSerializer, serializer)
+			}
 		})
 	}
 }

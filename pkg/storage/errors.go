@@ -16,6 +16,8 @@ var (
 	// ErrInvalidContinuationToken is returned when the continuation token is invalid.
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
 
+	ErrInvalidStartTime = errors.New("invalid start time")
+
 	// ErrMismatchObjectType is returned when there is a type discrepancy between the requested
 	// object in the ReadChanges API and the type indicated by the continuation token.
 	ErrMismatchObjectType = errors.New("mismatched types in request and continuation token")

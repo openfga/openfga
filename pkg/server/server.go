@@ -124,6 +124,7 @@ type Server struct {
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
 	checkDatastore                   storage.OpenFGADatastore
+	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
@@ -198,6 +199,12 @@ type OpenFGAServiceV1Option func(s *Server)
 func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
+	}
+}
+
+func WithContinuationTokenSerializer(ds encoder.ContinuationTokenSerializer) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.tokenSerializer = ds
 	}
 }
 
@@ -860,7 +867,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 		return nil, err
 	}
-	datastoreQueryCount := float64(*result.ResolutionMetadata.DatastoreQueryCount)
+	datastoreQueryCount := float64(result.ResolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -881,7 +888,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*result.ResolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(result.ResolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -965,7 +972,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		telemetry.TraceError(span, err)
 		return err
 	}
-	datastoreQueryCount := float64(*resolutionMetadata.DatastoreQueryCount)
+	datastoreQueryCount := float64(resolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -986,7 +993,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(*resolutionMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -1142,12 +1149,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	const methodName = "check"
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, serverErrors.ThrottledTimeout) {
+		finalErr := commands.CheckCommandErrorToServerError(err)
+		if errors.Is(finalErr, serverErrors.ThrottledTimeout) {
 			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 		}
 		// should we define all metrics in one place that is accessible from everywhere (including LocalChecker!)
 		// and add a wrapper helper that automatically injects the service name tag?
-		return nil, err
+		return nil, finalErr
 	}
 
 	span.SetAttributes(
@@ -1182,7 +1190,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
 		methodName,
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
@@ -1430,6 +1438,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	q := commands.NewReadChangesQuery(s.datastore,
 		commands.WithReadChangesQueryLogger(s.logger),
 		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithContinuationTokenSerializer(s.tokenSerializer),
 		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
 	)
 	return q.Execute(ctx, req)

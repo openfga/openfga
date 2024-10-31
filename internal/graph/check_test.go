@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/internal/condition"
+
 	"github.com/emirpasic/gods/sets/hashset"
 
 	"github.com/openfga/openfga/internal/checkutil"
@@ -30,7 +32,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -39,19 +40,15 @@ import (
 var (
 	falseHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-			},
+			Allowed:            false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
 	trueHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-			},
+			Allowed:            true,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}, nil
 	}
 
@@ -63,8 +60,7 @@ var (
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-				CycleDetected:       true,
+				CycleDetected: true,
 			},
 		}, nil
 	}
@@ -162,7 +158,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -171,7 +166,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.True(t, resp.GetAllowed())
-		require.Equal(t, uint32(1+1), resp.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -180,7 +174,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -189,7 +182,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -329,13 +321,6 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		resp, err := exclusion(ctx, concurrencyLimit, depthExceededHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
-	})
-
-	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
-		resp, err := exclusion(ctx, concurrencyLimit, falseHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
 	})
 
 	t.Run("return_allowed:false_if_base_handler_evaluated_before_context_deadline", func(t *testing.T) {
@@ -505,7 +490,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -513,7 +497,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
-		require.Equal(t, uint32(2), resp.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -521,7 +504,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, trueHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2))
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -529,7 +511,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(2))
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -537,7 +518,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit, falseHandler, falseHandler)
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 		require.False(t, resp.GetCycleDetected())
 	})
 
@@ -685,20 +665,6 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.NotNil(t, resp)
 		require.False(t, resp.GetAllowed())
 		require.True(t, resp.GetCycleDetected())
-	})
-
-	t.Run("aggregate_truthy_and_falsy_handlers_datastore_query_count", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, falseHandler, trueHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
-	})
-
-	t.Run("cycle_and_false_reports_correct_datastore_query_count", func(t *testing.T) {
-		resp, err := intersection(ctx, concurrencyLimit, cyclicErrorHandler, falseHandler)
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.LessOrEqual(t, resp.GetResolutionMetadata().DatastoreQueryCount, uint32(1+1))
 	})
 
 	t.Run("return_allowed:false_if_falsy_handler_evaluated_before_context_deadline", func(t *testing.T) {
@@ -1110,281 +1076,6 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
-}
-
-func TestCheckDatastoreQueryCount(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	ds := memory.New()
-	defer ds.Close()
-
-	storeID := ulid.Make().String()
-
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:x", "a", "user:jon"),
-		tuple.NewTupleKey("document:x", "a", "user:maria"),
-		tuple.NewTupleKey("document:x", "b", "user:maria"),
-		tuple.NewTupleKey("document:x", "parent", "org:fga"),
-		tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		tuple.NewTupleKey("company:fga", "member", "user:maria"),
-		tuple.NewTupleKey("document:x", "userset", "org:fga#member"),
-		tuple.NewTupleKey("document:x", "multiple_userset", "org:fga#member"),
-		tuple.NewTupleKey("document:x", "multiple_userset", "company:fga#member"),
-		tuple.NewTupleKey("document:public", "wildcard", "user:*"),
-	})
-	require.NoError(t, err)
-
-	model := parser.MustTransformDSLToProto(`
-		model
-			schema 1.1
-
-		type user
-
-		type company
-			relations
-				define member: [user]
-
-		type org
-			relations
-				define member: [user]
-
-		type document
-			relations
-				define wildcard: [user:*]
-				define userset: [org#member]
-				define multiple_userset: [org#member, company#member]
-				define a: [user]
-				define b: [user]
-				define union: a or b
-				define union_rewrite: union
-				define intersection: a and b
-				define difference: a but not b
-				define ttu: member from parent
-				define union_and_ttu: union and ttu
-				define union_or_ttu: union or ttu or union_rewrite
-				define intersection_of_ttus: union_or_ttu and union_and_ttu
-				define parent: [org]
-		`)
-
-	ts, err := typesystem.New(model)
-	require.NoError(t, err)
-
-	ctx := typesystem.ContextWithTypesystem(
-		context.Background(),
-		ts,
-	)
-
-	tests := []struct {
-		name             string
-		check            *openfgav1.TupleKey
-		contextualTuples []*openfgav1.TupleKey
-		allowed          bool
-		minDBReads       uint32 // expected lowest value for number returned in the metadata
-		maxDBReads       uint32 // expected highest value for number returned in the metadata. Actual db reads may be higher
-	}{
-		{
-			name:       "no_direct_access",
-			check:      tuple.NewTupleKey("document:x", "a", "user:unknown"),
-			allowed:    false,
-			minDBReads: 1, // both checkDirectUserTuple
-			maxDBReads: 1,
-		},
-		{
-			name:       "direct_access",
-			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
-			allowed:    true,
-			minDBReads: 1, // checkDirectUserTuple needs to run
-			maxDBReads: 1,
-		},
-		{
-			name:             "direct_access_thanks_to_contextual_tuple", // NOTE: this is counting the read from memory as a database read!
-			check:            tuple.NewTupleKey("document:x", "a", "user:unknown"),
-			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
-			allowed:          true,
-			minDBReads:       1, // checkDirectUserTuple needs to run
-			maxDBReads:       1,
-		},
-		{
-			name:       "union",
-			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
-			allowed:    true,
-			minDBReads: 1, // checkDirectUserTuple needs to run
-			maxDBReads: 1,
-		},
-		{
-			name:       "union_no_access",
-			check:      tuple.NewTupleKey("document:x", "union", "user:unknown"),
-			allowed:    false,
-			minDBReads: 2, // need to check all the conditions in the union
-			maxDBReads: 2,
-		},
-		{
-			name:       "intersection",
-			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
-			allowed:    true,
-			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 2, // at most two tuple checks
-		},
-		{
-			name:       "intersection_no_access",
-			check:      tuple.NewTupleKey("document:x", "intersection", "user:unknown"),
-			allowed:    false,
-			minDBReads: 1, // need at minimum one direct tuple checks (short circuit the ohter path)
-			maxDBReads: 1,
-		},
-		{
-			name:       "difference",
-			check:      tuple.NewTupleKey("document:x", "difference", "user:jon"),
-			allowed:    true,
-			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 2,
-		},
-		{
-			name:       "difference_no_access",
-			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
-			allowed:    false,
-			minDBReads: 1, // if the "but not" condition returns quickly with "false", no need to evaluate the first branch
-			maxDBReads: 2, // at most two tuple checks
-		},
-		{
-			name:       "ttu",
-			check:      tuple.NewTupleKey("document:x", "ttu", "user:maria"),
-			allowed:    true,
-			minDBReads: 2, // one read to find org:fga + one direct check if user:maria is a member of org:fga
-			maxDBReads: 3, // one read to find org:fga + (one direct check + userset check) if user:maria is a member of org:fga
-		},
-		{
-			name:       "ttu_no_access",
-			check:      tuple.NewTupleKey("document:x", "ttu", "user:jon"),
-			allowed:    false,
-			minDBReads: 2, // one read to find org:fga + (one direct check) to see if user:jon is a member of org:fga
-			maxDBReads: 2,
-		},
-		{
-			name:       "userset_no_access_1",
-			check:      tuple.NewTupleKey("document:no_access", "userset", "user:maria"),
-			allowed:    false,
-			minDBReads: 1, // 1 userset read (none found)
-			maxDBReads: 1,
-		},
-		{
-			name:       "userset_no_access_2",
-			check:      tuple.NewTupleKey("document:x", "userset", "user:no_access"),
-			allowed:    false,
-			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (not found)
-			maxDBReads: 2,
-		},
-		{
-			name:       "userset_access",
-			check:      tuple.NewTupleKey("document:x", "userset", "user:maria"),
-			allowed:    true,
-			minDBReads: 2, // 1 userset read (1 found) follow by 1 direct tuple check (found)
-			maxDBReads: 2,
-		},
-		{
-			name:       "multiple_userset_no_access",
-			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:no_access"),
-			allowed:    false,
-			minDBReads: 3, // 1 userset read (2 found) follow by 2 direct tuple check (not found)
-			maxDBReads: 4,
-		},
-		{
-			name:       "multiple_userset_access",
-			check:      tuple.NewTupleKey("document:x", "multiple_userset", "user:maria"),
-			allowed:    true,
-			minDBReads: 2, // 2 userset read (2 found) follow by 2 direct tuple check (found, returns immediately)
-			maxDBReads: 4,
-		},
-		{
-			name:       "wildcard_no_access",
-			check:      tuple.NewTupleKey("document:x", "wildcard", "user:maria"),
-			allowed:    false,
-			minDBReads: 1, // 1 direct tuple read (not found)
-			maxDBReads: 1,
-		},
-		{
-			name:       "wildcard_access",
-			check:      tuple.NewTupleKey("document:public", "wildcard", "user:maria"),
-			allowed:    true,
-			minDBReads: 1, // 1 direct tuple read (found)
-			maxDBReads: 1,
-		},
-		// more complex scenarios
-		{
-			name:       "union_and_ttu",
-			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:maria"),
-			allowed:    true,
-			minDBReads: 3, // union (1 read) + ttu (2 reads)
-			maxDBReads: 5, // union (2 reads) + ttu (3 reads)
-		},
-		{
-			name:       "union_and_ttu_no_access",
-			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
-			allowed:    false,
-			minDBReads: 2, // min(union (2 reads), ttu (2 read))
-			maxDBReads: 4, // max(union (2 reads), ttu (2 read))
-		},
-		{
-			name:       "union_or_ttu",
-			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:maria"),
-			allowed:    true,
-			minDBReads: 1, // min(union (1 read), ttu (2 reads))
-			maxDBReads: 3, // max(union (2 reads), ttu (3 reads))
-		},
-		{
-			name:       "union_or_ttu_no_access",
-			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:unknown"),
-			allowed:    false,
-			minDBReads: 6, // union (2 reads) + ttu (2 reads) + union rewrite (2 reads)
-			maxDBReads: 6,
-		},
-		{
-			name:       "intersection_of_ttus", // union_or_ttu and union_and_ttu
-			check:      tuple.NewTupleKey("document:x", "intersection_of_ttus", "user:maria"),
-			allowed:    true,
-			minDBReads: 4, // union_or_ttu (1 read) + union_and_ttu (3 reads)
-			maxDBReads: 8, // union_or_ttu (3 reads) + union_and_ttu (5 reads)
-		},
-	}
-
-	checker, checkResolverCloser := NewOrderedCheckResolvers(
-		WithLocalCheckerOpts(WithMaxConcurrentReads(1)),
-	).Build()
-	t.Cleanup(checkResolverCloser)
-
-	// run the test many times to exercise all the possible DBReads
-	for i := 1; i < 1000; i++ {
-		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
-			t.Parallel()
-			for _, test := range tests {
-				test := test
-				t.Run(test.name, func(t *testing.T) {
-					t.Parallel()
-
-					ctx := storage.ContextWithRelationshipTupleReader(
-						ctx,
-						storagewrappers.NewCombinedTupleReader(
-							ds,
-							test.contextualTuples,
-						),
-					)
-
-					res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-						StoreID:          storeID,
-						TupleKey:         test.check,
-						ContextualTuples: test.contextualTuples,
-						RequestMetadata:  NewCheckRequestMetadata(25),
-					})
-					require.NoError(t, err)
-					require.Equal(t, res.Allowed, test.allowed)
-					// minDBReads <= dbReads <= maxDBReads
-					require.GreaterOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.minDBReads)
-					require.LessOrEqual(t, res.ResolutionMetadata.DatastoreQueryCount, test.maxDBReads)
-				})
-			}
-		})
-	}
 }
 
 func TestCheckConditions(t *testing.T) {
@@ -1876,56 +1567,6 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		resp, err := union(ctx, concurrencyLimit, falseHandler, depthExceededHandler, depthExceededHandler)
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
-	})
-
-	t.Run("should_aggregate_DatastoreQueryCount_of_non_error_handlers", func(t *testing.T) {
-		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(5 * time.Millisecond) // forces `trueHandler` to be resolved after `falseHandler`
-			return &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: uint32(1),
-				},
-			}, nil
-		}
-
-		falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: uint32(5),
-				},
-			}, nil
-		}
-
-		errorHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			return &ResolveCheckResponse{
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: uint32(9999999),
-				},
-			}, ErrResolutionDepthExceeded
-		}
-
-		resp, err := union(ctx, concurrencyLimit, falseHandler, trueHandler, errorHandler)
-		require.NoError(t, err)
-		require.True(t, resp.GetAllowed())
-		require.Equal(t, uint32(5+1), resp.GetResolutionMetadata().DatastoreQueryCount)
-	})
-
-	t.Run("should_aggregate_DatastoreQueryCount_of_all_falsey_handlers", func(t *testing.T) {
-		handler := func(context.Context) (*ResolveCheckResponse, error) {
-			return &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: uint32(3),
-				},
-			}, nil
-		}
-
-		resp, err := union(ctx, concurrencyLimit, handler, handler, handler) // three handlers
-		require.NoError(t, err)
-		require.False(t, resp.GetAllowed())
-		require.Equal(t, uint32(3*3), resp.GetResolutionMetadata().DatastoreQueryCount)
 	})
 
 	t.Run("should_return_allowed_true_if_truthy_handler_evaluated_before_handler_cancels_via_context", func(t *testing.T) {
@@ -2504,10 +2145,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2533,10 +2172,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			objectIDs: []string{},
 			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2582,10 +2219,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2612,10 +2247,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2639,10 +2272,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			objectIDs: []string{"8"},
 			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2673,10 +2304,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				"x": 200,
 			},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2707,10 +2336,8 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				"x": 10,
 			},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: false,
 		},
@@ -2803,10 +2430,8 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			errorExpected: nil,
 		},
@@ -2852,10 +2477,8 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1, // since order is not guaranteed the allowed might come from the first answer
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			errorExpected: nil,
 		},
@@ -2876,10 +2499,8 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			errorExpected: nil,
 		},
@@ -2918,10 +2539,8 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			errorExpected: nil,
 		},
@@ -3008,10 +2627,8 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			errorExpected: nil,
 		},
@@ -3112,7 +2729,6 @@ func TestConsumeUsersets(t *testing.T) {
 			if tt.errorExpected == nil {
 				require.Equal(t, tt.expectedResolveCheckResponse.Allowed, result.Allowed)
 				require.Equal(t, tt.expectedResolveCheckResponse.GetCycleDetected(), result.GetCycleDetected())
-				require.LessOrEqual(t, tt.expectedResolveCheckResponse.GetResolutionMetadata().DatastoreQueryCount, result.GetResolutionMetadata().DatastoreQueryCount)
 			}
 		})
 	}
@@ -3479,7 +3095,6 @@ func TestProcessDispatch(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	const datastoreQueryCount = 30
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
 		RequestMetadata: NewCheckRequestMetadata(20),
@@ -3533,10 +3148,8 @@ func TestProcessDispatch(t *testing.T) {
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 0,
-						},
+						Allowed:            true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					},
 				},
 			},
@@ -3556,10 +3169,8 @@ func TestProcessDispatch(t *testing.T) {
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: 0,
-						},
+						Allowed:            true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					},
 				},
 			},
@@ -3584,33 +3195,25 @@ func TestProcessDispatch(t *testing.T) {
 			},
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: datastoreQueryCount,
-					},
+					Allowed:            true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				},
 				{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: datastoreQueryCount,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				},
 			},
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed: true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: datastoreQueryCount,
-						},
+						Allowed:            true,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					},
 				},
 				{
 					resp: &ResolveCheckResponse{
-						Allowed: false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{
-							DatastoreQueryCount: datastoreQueryCount,
-						},
+						Allowed:            false,
+						ResolutionMetadata: &ResolveCheckResponseMetadata{},
 					},
 				},
 			},
@@ -3660,12 +3263,10 @@ func TestConsumeDispatch(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	const datastoreQueryCount = 30
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
 		RequestMetadata: NewCheckRequestMetadata(20),
 	}
-	req.RequestMetadata.DatastoreQueryCount = datastoreQueryCount
 	tests := []struct {
 		name                   string
 		limit                  uint32
@@ -3711,16 +3312,14 @@ func TestConsumeDispatch(t *testing.T) {
 				{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       true,
+						CycleDetected: true,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: datastoreQueryCount + 2,
-					CycleDetected:       true,
+					CycleDetected: true,
 				},
 			},
 			expectedError: nil,
@@ -3747,23 +3346,20 @@ func TestConsumeDispatch(t *testing.T) {
 				{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 				{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 			expectedError: nil,
@@ -3790,23 +3386,20 @@ func TestConsumeDispatch(t *testing.T) {
 				{
 					Allowed: false,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 				{
 					Allowed: true,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: datastoreQueryCount + 2 + 3,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 			expectedError: nil,
@@ -3827,16 +3420,14 @@ func TestConsumeDispatch(t *testing.T) {
 				{
 					Allowed: true,
 					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 2,
-						CycleDetected:       false,
+						CycleDetected: false,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: datastoreQueryCount + 2,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 			expectedError: nil,
@@ -3870,7 +3461,7 @@ func TestConsumeDispatch(t *testing.T) {
 			}
 			close(dispatchMsgChan)
 
-			resp, err := checker.consumeDispatches(ctx, req, tt.limit, dispatchMsgChan)
+			resp, err := checker.consumeDispatches(ctx, tt.limit, dispatchMsgChan)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -3908,7 +3499,6 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 
-	const initialDSCount = 20
 	tests := []struct {
 		name          string
 		tuples        []*openfgav1.TupleKey
@@ -3922,10 +3512,8 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
 			},
 			expected: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: initialDSCount + 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: nil,
 		},
@@ -3941,10 +3529,8 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 			name:   "notFound",
 			tuples: []*openfgav1.TupleKey{},
 			expected: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: initialDSCount + 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: nil,
 		},
@@ -3962,7 +3548,6 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(20),
 			}
-			req.RequestMetadata.DatastoreQueryCount = initialDSCount
 			resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
@@ -4006,7 +3591,6 @@ func TestCheckTTUSlowPath(t *testing.T) {
 	ts, err := typesystem.New(model)
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
-	const initialDSCount = 20
 
 	tests := []struct {
 		name             string
@@ -4021,10 +3605,8 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			rewrite: typesystem.TupleToUserset("owner", "member"),
 			tuples:  []*openfgav1.TupleKey{},
 			expected: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: initialDSCount + 1, // 1 for getting the parent
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: nil,
 		},
@@ -4044,16 +3626,12 @@ func TestCheckTTUSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
 			dispatchResponse: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expected: &ResolveCheckResponse{
-				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
-				},
+				Allowed:            true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: nil,
 		},
@@ -4064,16 +3642,12 @@ func TestCheckTTUSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
 			dispatchResponse: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 1,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expected: &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: initialDSCount + 1 + 1, // 1 for getting the parent and 1 for the dispatch
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{},
 			},
 			expectedError: nil,
 		},
@@ -4099,7 +3673,6 @@ func TestCheckTTUSlowPath(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(20),
 			}
-			req.RequestMetadata.DatastoreQueryCount = initialDSCount
 			resp, err := checker.checkTTUSlowPath(ctx, req, tt.rewrite, iter)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
@@ -4136,10 +3709,8 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 			},
 		},
@@ -4154,16 +3725,12 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 0,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 			},
 		},
@@ -4178,10 +3745,8 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 			},
 		},
@@ -4196,10 +3761,8 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            true,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 			},
 		},
@@ -4220,22 +3783,16 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						DatastoreQueryCount: 3,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolveCheckResponseMetadata{},
 				}},
 			},
 		},
@@ -4278,7 +3835,6 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker := NewLocalChecker()
-			checker.concurrencyLimit = 1 // make things serial to prevent race conditions on dbCounts
 			mapping := &nestedMapping{
 				kind:             NestedTTUKind,
 				tuplesetRelation: "parent",
@@ -4573,8 +4129,7 @@ func TestNestedTTUFastPath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 		},
@@ -4648,8 +4203,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 		},
@@ -4673,8 +4227,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 2,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 		},
@@ -4703,8 +4256,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 		},
@@ -4729,8 +4281,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					DatastoreQueryCount: 3,
-					CycleDetected:       false,
+					CycleDetected: false,
 				},
 			},
 		},
@@ -5050,4 +4601,141 @@ func TestCheckTTU(t *testing.T) {
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed()) // user:maria is not part of any group, and no parents for group:1
 	})
+}
+
+func TestCheckDirectUserTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	directlyAssignedModelWithCondition := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+
+	type user
+	type group
+		relations
+			define member: [user with condX]
+	condition condX(x: int) {
+		x < 100
+	}
+	`)
+
+	tests := []struct {
+		name               string
+		model              *openfgav1.AuthorizationModel
+		readUserTuple      *openfgav1.Tuple
+		readUserTupleError error
+		reqTupleKey        *openfgav1.TupleKey
+		context            map[string]interface{}
+		expected           *ResolveCheckResponse
+		expectedError      error
+	}{
+		{
+			name:  "directly_assigned",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "2"},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					CycleDetected: false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:  "directly_assigned_cond_not_match",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					CycleDetected: false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:  "missing_condition",
+			model: directlyAssignedModelWithCondition,
+			readUserTuple: &openfgav1.Tuple{
+				Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:bob", "condX", nil),
+			},
+			readUserTupleError: nil,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{},
+			expected:           nil,
+			expectedError: condition.NewEvaluationError(
+				"condX",
+				fmt.Errorf("tuple 'group:1#member@user:bob' is missing context parameters '[x]'"),
+			),
+		},
+		{
+			name:               "no_tuple_found",
+			model:              directlyAssignedModelWithCondition,
+			readUserTuple:      nil,
+			readUserTupleError: storage.ErrNotFound,
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+				ResolutionMetadata: &ResolveCheckResponseMetadata{
+					CycleDetected: false,
+				},
+			},
+			expectedError: nil,
+		},
+		{
+			name:               "other_datastore_error",
+			model:              directlyAssignedModelWithCondition,
+			readUserTuple:      nil,
+			readUserTupleError: fmt.Errorf("mock_erorr"),
+			reqTupleKey:        tuple.NewTupleKey("group:1", "member", "user:bob"),
+			context:            map[string]interface{}{"x": "200"},
+			expected:           nil,
+			expectedError:      fmt.Errorf("mock_erorr"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			storeID := ulid.Make().String()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ctx := context.Background()
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			ds.EXPECT().ReadUserTuple(gomock.Any(), storeID, tt.reqTupleKey, gomock.Any()).Times(1).Return(tt.readUserTuple, tt.readUserTupleError)
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			checker := NewLocalChecker()
+			function := checker.checkDirectUserTuple(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tt.reqTupleKey,
+				Context:              contextStruct,
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			resp, err := function(ctx)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, resp)
+		})
+	}
 }

@@ -3251,6 +3251,20 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     false,
 		},
 		{
+			name: "is_publicly_assignable_mix_public_non_public",
+			model: `
+				model
+					schema 1.1
+				type user
+
+				type document
+					relations
+						define viewer: [user, user:*]`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     true,
+		},
+		{
 			name: "is_not_publicly_assignable_mismatch_type",
 			model: `
 				model
@@ -4607,7 +4621,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_wildcard_condition",
@@ -4624,7 +4638,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard",
@@ -4638,7 +4652,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
@@ -4655,7 +4669,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
@@ -4672,7 +4686,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           true,
+			expected:           false,
 		},
 		{
 			name: "complex_recursive_due_to_type_not_found",
