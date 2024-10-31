@@ -1,5 +1,13 @@
 package graph
 
+type ResolveCheckResponseMetadata struct {
+	// Number of Read operations accumulated after this request completes.
+	DatastoreQueryCount uint32
+	// Indicates if the ResolveCheck subproblem that was evaluated involved
+	// a cycle in the evaluation.
+	CycleDetected bool
+}
+
 // clone clones the provided ResolveCheckResponse.
 func (r *ResolveCheckResponse) clone() *ResolveCheckResponse {
 	return &ResolveCheckResponse{
