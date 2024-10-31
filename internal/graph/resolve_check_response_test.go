@@ -10,9 +10,7 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 	t.Run("clone_and_modify_orig", func(t *testing.T) {
 		resp1 := &ResolveCheckResponse{
 			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				CycleDetected: false,
-			},
+			// default values for ResolveCheckResponseMetadata
 		}
 		clonedResp1 := resp1.clone()
 
@@ -23,36 +21,18 @@ func TestCloneResolveCheckResponse(t *testing.T) {
 		// unchanged
 		clonedResp1.Allowed = false
 		clonedResp1.ResolutionMetadata.CycleDetected = true
+		clonedResp1.ResolutionMetadata.DatastoreQueryCount = 1
 		require.True(t, resp1.GetAllowed())
 		require.False(t, resp1.GetResolutionMetadata().CycleDetected)
-	})
-
-	t.Run("clone_empty_ResolutionMetadata", func(t *testing.T) {
-		resp2 := &ResolveCheckResponse{
-			Allowed: true,
-		}
-		clonedResp2 := resp2.clone()
-
-		require.NotSame(t, resp2, clonedResp2)
-		require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
-		require.NotNil(t, clonedResp2.ResolutionMetadata)
-		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
-	})
-
-	t.Run("clone_nil_ResolutionMetadata", func(t *testing.T) {
-		var resp2 *ResolveCheckResponse
-		clonedResp2 := resp2.clone()
-
-		require.NotSame(t, resp2, clonedResp2)
-		require.Equal(t, resp2.GetAllowed(), clonedResp2.GetAllowed())
-		require.NotNil(t, clonedResp2.ResolutionMetadata)
-		require.False(t, clonedResp2.GetResolutionMetadata().CycleDetected)
+		require.Zero(t, resp1.GetResolutionMetadata().DatastoreQueryCount)
 	})
 }
 
 func TestResolveCheckResponseDefaultValue(t *testing.T) {
-	var r *ResolveCheckResponse
+	var r ResolveCheckResponse
 	require.False(t, r.GetCycleDetected())
 	require.False(t, r.GetAllowed())
-	require.Nil(t, r.GetResolutionMetadata())
+	require.NotNil(t, r.GetResolutionMetadata())
+	require.Zero(t, r.GetResolutionMetadata().DatastoreQueryCount)
+	require.False(t, r.GetResolutionMetadata().CycleDetected)
 }
