@@ -1259,17 +1259,16 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 }
 
 func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	ctx, span := tracer.Start(ctx, "checkPublicAssignable")
-	defer span.End()
-
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 	userType := tuple.GetType(reqTupleKey.GetUser())
 	wildcardRelationReference := typesystem.WildcardRelationReference(userType)
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkPublicAssignable")
+		defer span.End()
+
 		response := &ResolveCheckResponse{
 			Allowed: false,
 		}
