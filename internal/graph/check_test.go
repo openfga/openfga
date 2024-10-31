@@ -40,15 +40,13 @@ import (
 var (
 	falseHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: false,
 		}, nil
 	}
 
 	trueHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed:            true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: true,
 		}, nil
 	}
 
@@ -59,7 +57,7 @@ var (
 	cyclicErrorHandler = func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
+			ResolutionMetadata: ResolveCheckResponseMetadata{
 				CycleDetected: true,
 			},
 		}, nil
@@ -1387,15 +1385,13 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: false,
 		}, nil
 	}
 
 	trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
-			Allowed:            true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: true,
 		}, nil
 	}
 
@@ -2145,8 +2141,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: false,
 		},
@@ -2172,8 +2167,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			objectIDs: []string{},
 			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: false,
 		},
@@ -2219,8 +2213,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expectedError: false,
 		},
@@ -2247,8 +2240,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expectedError: false,
 		},
@@ -2272,8 +2264,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			objectIDs: []string{"8"},
 			context:   map[string]interface{}{},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: false,
 		},
@@ -2304,8 +2295,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				"x": 200,
 			},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: false,
 		},
@@ -2336,8 +2326,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				"x": 10,
 			},
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expectedError: false,
 		},
@@ -2430,8 +2419,7 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			errorExpected: nil,
 		},
@@ -2477,8 +2465,7 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			errorExpected: nil,
 		},
@@ -2499,8 +2486,7 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			errorExpected: nil,
 		},
@@ -2539,8 +2525,7 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			errorExpected: nil,
 		},
@@ -2627,8 +2612,7 @@ func TestConsumeUsersets(t *testing.T) {
 			},
 			ctxCancelled: false,
 			expectedResolveCheckResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			errorExpected: nil,
 		},
@@ -3148,8 +3132,7 @@ func TestProcessDispatch(t *testing.T) {
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed:            true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: true,
 					},
 				},
 			},
@@ -3169,8 +3152,7 @@ func TestProcessDispatch(t *testing.T) {
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed:            true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: true,
 					},
 				},
 			},
@@ -3195,25 +3177,21 @@ func TestProcessDispatch(t *testing.T) {
 			},
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
-					Allowed:            true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: true,
 				},
 				{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				},
 			},
 			expectedOutcomes: []checkOutcome{
 				{
 					resp: &ResolveCheckResponse{
-						Allowed:            true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: true,
 					},
 				},
 				{
 					resp: &ResolveCheckResponse{
-						Allowed:            false,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: false,
 					},
 				},
 			},
@@ -3311,14 +3289,14 @@ func TestConsumeDispatch(t *testing.T) {
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
+					ResolutionMetadata: ResolveCheckResponseMetadata{
 						CycleDetected: true,
 					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
+				ResolutionMetadata: ResolveCheckResponseMetadata{
 					CycleDetected: true,
 				},
 			},
@@ -3345,22 +3323,13 @@ func TestConsumeDispatch(t *testing.T) {
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: false,
-					},
 				},
 				{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: false,
-					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -3385,22 +3354,13 @@ func TestConsumeDispatch(t *testing.T) {
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: false,
-					},
 				},
 				{
 					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: false,
-					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -3419,16 +3379,10 @@ func TestConsumeDispatch(t *testing.T) {
 			mockedDispatchResponse: []*ResolveCheckResponse{
 				{
 					Allowed: true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
-						CycleDetected: false,
-					},
 				},
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -3512,8 +3466,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("group:1", "member", "group:2#member", "condition1", nil),
 			},
 			expected: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expectedError: nil,
 		},
@@ -3529,8 +3482,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 			name:   "notFound",
 			tuples: []*openfgav1.TupleKey{},
 			expected: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: nil,
 		},
@@ -3605,8 +3557,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			rewrite: typesystem.TupleToUserset("owner", "member"),
 			tuples:  []*openfgav1.TupleKey{},
 			expected: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: nil,
 		},
@@ -3626,12 +3577,10 @@ func TestCheckTTUSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
 			dispatchResponse: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expected: &ResolveCheckResponse{
-				Allowed:            true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: true,
 			},
 			expectedError: nil,
 		},
@@ -3642,12 +3591,10 @@ func TestCheckTTUSlowPath(t *testing.T) {
 				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
 			},
 			dispatchResponse: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expected: &ResolveCheckResponse{
-				Allowed:            false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{},
+				Allowed: false,
 			},
 			expectedError: nil,
 		},
@@ -3709,8 +3656,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 			},
 		},
@@ -3725,12 +3671,10 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 			},
 		},
@@ -3745,8 +3689,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed:            true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: true,
 				}},
 			},
 		},
@@ -3761,8 +3704,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed:            true,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: true,
 				}},
 			},
 		},
@@ -3783,16 +3725,13 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 			},
 			expectedOutcomes: []checkOutcome{
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 				{resp: &ResolveCheckResponse{
-					Allowed:            false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{},
+					Allowed: false,
 				}},
 			},
 		},
@@ -4128,9 +4067,6 @@ func TestNestedTTUFastPath(t *testing.T) {
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 		},
 	}
@@ -4202,9 +4138,6 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 		},
 		{
@@ -4226,9 +4159,6 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 		},
 		{
@@ -4255,9 +4185,6 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 		},
 		{
@@ -4280,9 +4207,6 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 		},
 		{
@@ -4641,9 +4565,6 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			context:            map[string]interface{}{"x": "2"},
 			expected: &ResolveCheckResponse{
 				Allowed: true,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -4658,9 +4579,6 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			context:            map[string]interface{}{"x": "200"},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
@@ -4688,9 +4606,6 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			context:            map[string]interface{}{"x": "200"},
 			expected: &ResolveCheckResponse{
 				Allowed: false,
-				ResolutionMetadata: &ResolveCheckResponseMetadata{
-					CycleDetected: false,
-				},
 			},
 			expectedError: nil,
 		},
