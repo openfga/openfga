@@ -683,7 +683,7 @@ ConsumerLoop:
 	return finalResult, nil
 }
 
-// checkUsersetSlowPath will check userset or public wildcard path.
+// checkUsersetSlowPath will check userset path.
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
@@ -1271,7 +1271,7 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 	return wrapIterator(mapping.kind, filteredIter), nil
 }
 
-func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest, wildcardRelationReference *openfgav1.RelationReference) (bool, error) {
+func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	ctx, span := tracer.Start(ctx, "checkPublicAssignable")
 	defer span.End()
 
@@ -1280,91 +1280,56 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
-
-	opts := storage.ReadUsersetTuplesOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
-	iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-		Object:                      reqTupleKey.GetObject(),
-		Relation:                    reqTupleKey.GetRelation(),
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{wildcardRelationReference},
-	}, opts)
-	if err != nil {
-		return false, err
-	}
-
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	)
-	defer filteredIter.Stop()
-
-	_, err = filteredIter.Next(ctx)
-	if err != nil {
-		if errors.Is(err, storage.ErrIteratorDone) {
-			return false, nil
-		}
-		return false, err
-	}
-	// when we get to here, it means there is public wild card assigned
-	span.SetAttributes(attribute.Bool("allowed", true))
-	return true, nil
-}
-
-func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) (bool, error) {
-	ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
-		trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey()))))
-	defer span.End()
-
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	storeID := req.GetStoreID()
-	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	opts := storage.ReadUserTupleOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-	t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return false, nil
+	userType := tuple.GetType(reqTupleKey.GetUser())
+	wildcardRelationReference := typesystem.WildcardRelationReference(userType)
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		response := &ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}
 
-		return false, err
-	}
+		opts := storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
 
-	// filter out invalid tuples yielded by the database query
-	tupleKey := t.GetKey()
-	err = validation.ValidateTupleForRead(typesys, tupleKey)
-	if err != nil {
-		return false, nil
-	}
-	tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
-	conditionMet, err := tupleKeyConditionFilter(tupleKey)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return false, err
-	}
-	if conditionMet {
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:                      reqTupleKey.GetObject(),
+			Relation:                    reqTupleKey.GetRelation(),
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{wildcardRelationReference},
+		}, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(iter),
+				validation.FilterInvalidTuples(typesys),
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+		)
+		defer filteredIter.Stop()
+
+		_, err = filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return response, nil
+			}
+			return nil, err
+		}
+		// when we get to here, it means there is public wild card assigned
 		span.SetAttributes(attribute.Bool("allowed", true))
+		response.Allowed = true
+		return response, nil
 	}
-	return conditionMet, nil
 }
 
-func (c *LocalChecker) checkDirectUserTupleWrapper(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	reqTupleKey := req.GetTupleKey()
-	objectType := tuple.GetType(reqTupleKey.GetObject())
-	relation := reqTupleKey.GetRelation()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkDirectUserTupleWrapper",
@@ -1376,42 +1341,44 @@ func (c *LocalChecker) checkDirectUserTupleWrapper(ctx context.Context, req *Res
 			ResolutionMetadata: &ResolveCheckResponseMetadata{},
 		}
 
-		isDirectlyRelated, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                                           // target
-			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
-		)
+		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+		storeID := req.GetStoreID()
 
-		if isDirectlyRelated {
-			allowed, err := c.checkDirectUserTuple(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			if allowed {
-				response.Allowed = true
+		opts := storage.ReadUserTupleOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
 				return response, nil
 			}
+
+			return nil, err
 		}
 
-		wildcardRelationReference, _ := typesys.PubliclyAssignableReferences(
-			typesystem.DirectRelationReference(objectType, relation), // target
-			tuple.GetType(reqTupleKey.GetUser()),
-		)
-		if wildcardRelationReference != nil {
-			wildcardAllowed, err := c.checkPublicAssignable(ctx, req, wildcardRelationReference)
-			if err != nil {
-				return nil, err
-			}
-			if wildcardAllowed {
-				response.Allowed = true
-				return response, nil
-			}
+		// filter out invalid tuples yielded by the database query
+		tupleKey := t.GetKey()
+		err = validation.ValidateTupleForRead(typesys, tupleKey)
+		if err != nil {
+			return response, nil
 		}
-
+		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
+		conditionMet, err := tupleKeyConditionFilter(tupleKey)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if conditionMet {
+			span.SetAttributes(attribute.Bool("allowed", true))
+			response.Allowed = true
+		}
 		return response, nil
 	}
 }
 
-// helper function to return whether checkDirectUserTupleWrapper should run.
+// helper function to return whether checkDirectUserTuple should run.
 func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
@@ -1423,11 +1390,21 @@ func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey
 		typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
 	)
 
+	return isDirectlyRelated
+}
+
+// helper function to return whether checkPublicAssignable should run.
+func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	relation := reqTupleKey.GetRelation()
+
 	isPubliclyAssignable, _ := typesys.IsPubliclyAssignable(
 		typesystem.DirectRelationReference(objectType, relation), // target
 		tuple.GetType(reqTupleKey.GetUser()),
 	)
-	return isDirectlyRelated || isPubliclyAssignable
+	return isPubliclyAssignable
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
@@ -1454,8 +1431,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-
-		checkDirectUserTuple := c.checkDirectUserTupleWrapper(parentctx, req)
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1508,7 +1483,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		var checkFuncs []CheckHandlerFunc
 
 		if shouldCheckDirectTuple(ctx, req.GetTupleKey()) {
-			checkFuncs = []CheckHandlerFunc{checkDirectUserTuple}
+			checkFuncs = []CheckHandlerFunc{c.checkDirectUserTuple(parentctx, req)}
+		}
+
+		if shouldCheckPublicAssignable(ctx, reqTupleKey) {
+			checkFuncs = append(checkFuncs, c.checkPublicAssignable(parentctx, req))
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
