@@ -385,7 +385,6 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-		sqlcommon.WithContinuationTokenSerializer(tokenSerializer),
 	}
 
 	if config.Datastore.Metrics.Enabled {
@@ -403,7 +402,6 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			memory.WithContinuationTokenSerializer(tokenSerializer),
 		}
 		datastore = memory.New(opts...)
 	case "mysql":

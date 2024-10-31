@@ -59,7 +59,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStores
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := q.encoder.Encode(continuationToken)
+	encodedToken, err := q.encoder.Encode([]byte(continuationToken))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

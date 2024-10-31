@@ -144,7 +144,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					validationResults = append(validationResults, validationResult)
 				}
 
-				continuationTokenModels = string(tokenModels)
+				continuationTokenModels = tokenModels
 
 				if continuationTokenModels == "" {
 					break
@@ -153,7 +153,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 		}
 
 		// next page of stores
-		continuationTokenStores = string(tokenStores)
+		continuationTokenStores = tokenStores
 
 		if continuationTokenStores == "" {
 			break
