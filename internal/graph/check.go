@@ -229,7 +229,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	return &ResolveCheckResponse{
 		Allowed: false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{
+		ResolutionMetadata: ResolveCheckResponseMetadata{
 			CycleDetected: cycleDetected,
 		},
 	}, nil
@@ -240,8 +240,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: false,
 		}, nil
 	}
 
@@ -282,8 +281,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}
 
 	return &ResolveCheckResponse{
-		Allowed:            true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: true,
 	}, nil
 }
 
@@ -334,8 +332,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}()
 
 	response := &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}
 
 	var baseErr error
@@ -353,7 +350,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			if baseResult.resp.GetCycleDetected() {
 				return &ResolveCheckResponse{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
+					ResolutionMetadata: ResolveCheckResponseMetadata{
 						CycleDetected: true,
 					},
 				}, nil
@@ -373,7 +370,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			if subResult.resp.GetCycleDetected() {
 				return &ResolveCheckResponse{
 					Allowed: false,
-					ResolutionMetadata: &ResolveCheckResponseMetadata{
+					ResolutionMetadata: ResolveCheckResponseMetadata{
 						CycleDetected: true,
 					},
 				}, nil
@@ -397,8 +394,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}
 
 	return &ResolveCheckResponse{
-		Allowed:            true,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: true,
 	}, nil
 }
 
@@ -450,7 +446,7 @@ func (c *LocalChecker) ResolveCheck(
 		span.SetAttributes(attribute.Bool("cycle_detected", true))
 		return &ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
+			ResolutionMetadata: ResolveCheckResponseMetadata{
 				CycleDetected: true,
 			},
 		}, nil
@@ -462,8 +458,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	if tuple.IsSelfDefining(req.GetTupleKey()) {
 		return &ResolveCheckResponse{
-			Allowed:            true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: true,
 		}, nil
 	}
 
@@ -538,8 +533,7 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	}
 
 	return &ResolveCheckResponse{
-		Allowed:            allowed,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: allowed,
 	}, nil
 }
 
@@ -615,8 +609,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 				}
 				if msg.shortCircuit {
 					resp := &ResolveCheckResponse{
-						Allowed:            true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: true,
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
 					return
@@ -642,8 +635,7 @@ func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, disp
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}
 
 ConsumerLoop:
@@ -841,8 +833,7 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}
 
 ConsumerLoop:
@@ -996,8 +987,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 				userset := usersetMsg.userset
 				if usersetFromUser.Contains(userset) {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-						Allowed:            true,
-						ResolutionMetadata: &ResolveCheckResponseMetadata{},
+						Allowed: true,
 					}}, checkOutcomeChan)
 					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
@@ -1016,8 +1006,7 @@ func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *Resolve
 	}
 
 	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}}, checkOutcomeChan)
 	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
@@ -1044,8 +1033,7 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}
 
 ConsumerLoop:
@@ -1145,8 +1133,7 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
 	res := &ResolveCheckResponse{
-		Allowed:            false,
-		ResolutionMetadata: &ResolveCheckResponseMetadata{},
+		Allowed: false,
 	}
 
 	// check to see if there are any nested userset assigned. If not,
@@ -1284,8 +1271,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 		defer span.End()
 
 		response := &ResolveCheckResponse{
-			Allowed:            false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{},
+			Allowed: false,
 		}
 
 		opts := storage.ReadUserTupleOptions{
