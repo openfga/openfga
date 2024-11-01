@@ -12,11 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
 
 ### Changed
-* Refactored the code in OIDC authenticator by removing unwanted error messages when validating a token. Token validation will now throw codes 1004 and 1005
-for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
-
-### Removed
-* Removed `errInvalidToken` error type. [#1999](https://github.com/openfga/openfga/pull/1999)
+* OIDC token validation will now exclusively throw error code 1004 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
 
 ### Breaking changes
 * The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
