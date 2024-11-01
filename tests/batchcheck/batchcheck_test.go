@@ -45,5 +45,5 @@ func testRunAll(t *testing.T, engine string) {
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	RunBatchCheckTestsOnCheckAssertions(t, openfgav1.NewOpenFGAServiceClient(conn))
-	//RunBatchCheckSpecificFailureScenarios(t, openfgav1.NewOpenFGAServiceClient(conn))
+	RunBatchCheckSpecificFailureScenarios(t, openfgav1.NewOpenFGAServiceClient(conn))
 }
