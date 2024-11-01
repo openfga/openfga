@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+* Add `BatchCheck` api endpoint [#2039](https://github.com/openfga/openfga/pull/2039)
 
 ### Added
 * Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
@@ -23,7 +24,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   Learn more about this feature and how to enable it [here](https://openfga.dev/docs/getting-started/setup-openfga/access-control)
   If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions)
 * Document OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
-* Add `BatchCheck` api endpoint [#2039](https://github.com/openfga/openfga/pull/2039)
 
 ### Changed
 * Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
