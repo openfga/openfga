@@ -14,13 +14,11 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/types/known/wrapperspb"
-
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -86,7 +84,6 @@ func transformCheckResultToRPC(checkResults map[commands.CorrelationID]*commands
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for k, v := range checkResults {
 		singleResult := &openfgav1.BatchCheckSingleResult{}
-		singleResult.QueryDurationMs = wrapperspb.Int32(int32(v.Duration.Milliseconds()))
 
 		if v.Err != nil {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
