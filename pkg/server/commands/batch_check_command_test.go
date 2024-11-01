@@ -158,6 +158,41 @@ func TestBatchCheckCommand(t *testing.T) {
 		_, _, err := cmd.Execute(context.Background(), params)
 		require.ErrorContains(t, err, "hardcoded_id")
 	})
+
+	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
+		numChecks := 3
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
+		}
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		// create context and cancel immediately
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		response, _, err := cmd.Execute(ctx, params)
+		require.NoError(t, err) // request itself should not error
+
+		// But all checks should return a context cancelled error
+		for _, v := range response {
+			require.Nil(t, v.CheckResponse)
+			require.Equal(t, v.Err, context.Canceled)
+		}
+	})
 }
 
 // TODO assertion involving typesystem id
