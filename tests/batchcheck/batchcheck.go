@@ -31,9 +31,12 @@ type ClientInterface interface {
 	BatchCheck(ctx context.Context, in *openfgav1.BatchCheckRequest, opts ...grpc.CallOption) (*openfgav1.BatchCheckResponse, error)
 }
 
-// RunBatchCheckTestsOnCheckAssertions will invoke BatchCheck on all existing Check assertions which do not throw errors.
-// In the happy path, BatchCheck is essentially a performance wrapper around check and behaves the same.
-// In case of errors, BatchCheck's behavior diverges and those test cases are below in RunBatchCheckSpecificFailureScenarios.
+type batchTestResult struct {
+	Allowed   bool
+	ErrorCode int
+}
+
+// RunBatchCheckTestsOnCheckAssertions invokes BatchCheck on all existing Check assertions.
 func RunBatchCheckTestsOnCheckAssertions(t *testing.T, client ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("BatchCheck", func(t *testing.T) {
@@ -108,16 +111,12 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 				}
 
 				// map of correlation_id to result
-				expectedResults := map[string]bool{}
+				expectedResults := map[string]*batchTestResult{}
 
 				// checks to be passed into batch check request
 				protoChecks := make([]*openfgav1.BatchCheckItem, 0, len(stage.CheckAssertions))
 
 				for _, assertion := range stage.CheckAssertions {
-					if assertion.ErrorCode != 0 {
-						t.Skipf("batch check integration error testing is handled in ____")
-					}
-
 					// monkey patch the contextual tuples since we don't actually define them in yaml
 					if contextTupleTest {
 						assertion.ContextualTuples = append(assertion.ContextualTuples, stage.Tuples...)
@@ -127,7 +126,10 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 
 					item := batchchecktest.BatchCheckItemFromCheckAssertion(assertion, correlationID)
 					protoChecks = append(protoChecks, item)
-					expectedResults[correlationID] = assertion.Expectation
+					expectedResults[correlationID] = &batchTestResult{
+						Allowed:   assertion.Expectation,
+						ErrorCode: assertion.ErrorCode,
+					}
 				}
 
 				resp, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
@@ -140,8 +142,20 @@ func runTest(t *testing.T, test check.IndividualTest, client ClientInterface, co
 				result := resp.GetResult()
 
 				for correlationID, expected := range expectedResults {
-					allowed := result[correlationID].GetAllowed()
-					require.Equal(t, expected, allowed)
+					thisResult := result[correlationID]
+					if expected.ErrorCode == 0 {
+						require.Equal(t, expected.Allowed, thisResult.GetAllowed())
+						require.Nil(t, thisResult.GetError())
+						continue
+					}
+
+					testErr := thisResult.GetError()
+					inputErrorCode := testErr.GetInputError().Number()
+					if inputErrorCode != 0 {
+						require.Equal(t, expected.ErrorCode, int(inputErrorCode))
+					} else {
+						require.Equal(t, expected.ErrorCode, int(testErr.GetInternalError().Number()))
+					}
 				}
 			})
 		}
