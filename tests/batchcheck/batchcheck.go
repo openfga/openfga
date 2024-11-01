@@ -206,7 +206,7 @@ func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client 
 
 			// monkey patch the contextual tuples since we don't actually define them in yaml
 			if contextTupleTest {
-				for _, checkItem := range request.Checks {
+				for _, checkItem := range request.GetChecks() {
 					checkItem.ContextualTuples = &openfgav1.ContextualTupleKeys{TupleKeys: test.Tuples}
 				}
 			}
