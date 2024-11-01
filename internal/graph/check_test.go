@@ -4850,10 +4850,33 @@ func TestCheckPublicAssignable(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
+	modelWithNoCond := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+				`)
+
+	modelWithCond := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user with condX, user:* with condX]
+	condition condX(x: int) {
+		x < 100
+	}
+				`)
+
 	tests := []struct {
 		name                   string
 		readUsersetTuples      []*openfgav1.Tuple
 		readUsersetTuplesError error
+		context                map[string]interface{}
+		model                  *openfgav1.AuthorizationModel
 		expected               *ResolveCheckResponse
 		expectedError          error
 	}{
@@ -4865,6 +4888,8 @@ func TestCheckPublicAssignable(t *testing.T) {
 				},
 			},
 			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
 			expected: &ResolveCheckResponse{
 				Allowed: true,
 			},
@@ -4876,6 +4901,8 @@ func TestCheckPublicAssignable(t *testing.T) {
 				{},
 			},
 			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
 			expected: &ResolveCheckResponse{
 				Allowed: false,
 			},
@@ -4887,8 +4914,40 @@ func TestCheckPublicAssignable(t *testing.T) {
 				{},
 			},
 			readUsersetTuplesError: fmt.Errorf("mock_error"),
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
 			expected:               nil,
 			expectedError:          fmt.Errorf("mock_error"),
+		},
+		{
+			name: "wildcard_cond_match",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condX", nil),
+				},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{"x": "5"},
+			model:                  modelWithCond,
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+			},
+			expectedError: nil,
+		},
+		{
+			name: "wildcard_cond_not_match",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condX", nil),
+				},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{"x": "200"},
+			model:                  modelWithCond,
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+			},
+			expectedError: nil,
 		},
 	}
 	for _, tt := range tests {
@@ -4896,14 +4955,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			model := parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user, user:*]
-				`)
+
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			ctx := context.Background()
@@ -4911,15 +4963,19 @@ func TestCheckPublicAssignable(t *testing.T) {
 
 			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
 
-			ts, err := typesystem.New(model)
+			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			checker := NewLocalChecker()
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
 
 			function := checker.checkPublicAssignable(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:bob"),
+				Context:              contextStruct,
 				RequestMetadata:      NewCheckRequestMetadata(20),
 			})
 			result, err := function(ctx)

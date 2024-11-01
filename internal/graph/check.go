@@ -1279,6 +1279,10 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 			},
 		}
 
+		// We want to query via ReadUsersetTuples instead of ReadUserTuple tuples to take
+		// advantage of the storage wrapper cache
+		// (https://github.com/openfga/openfga/blob/af054d9693bd7ebd0420456b144c2fb6888aaf87/internal/graph/storagewrapper.go#L139).
+		// In the future, if storage wrapper cache is available for ReadUserTuple, we can switch it to ReadUserTuple.
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:                      reqTupleKey.GetObject(),
 			Relation:                    reqTupleKey.GetRelation(),
@@ -1317,7 +1321,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkDirectUserTupleWrapper",
+		ctx, span := tracer.Start(ctx, "checkDirectUserTuple",
 			trace.WithAttributes(attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(reqTupleKey))))
 		defer span.End()
 
@@ -1391,9 +1395,10 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-// checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
+// checkDirect composes three CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
-// while the second handler looks up relationships between the target 'object#relation' and any usersets
+// the second handler looks up wildcard matches on the provided 'object#relation@user:*',
+// while the third handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1413,7 +1418,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
 
-		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
+		// directlyRelatedUsersetTypes could be "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
 		// TODO(jpadilla): can we lift this function up?
