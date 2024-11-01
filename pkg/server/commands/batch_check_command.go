@@ -98,7 +98,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		)
 	}
 
-	if err := validateNoDuplicateCorrelationIDs(params.Checks); err != nil {
+	if err := validateCorrelationIDs(params.Checks); err != nil {
 		return nil, nil, err
 	}
 
@@ -159,10 +159,16 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	return results, &BatchCheckMetadata{TotalQueries: totalQueryCount.Load()}, nil
 }
 
-func validateNoDuplicateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
+func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	seen := map[string]bool{}
 
 	for _, check := range checks {
+		if check.GetCorrelationId() == "" {
+			return errors.ValidationError(
+				fmt.Errorf("received empty correlation id: %s", check.GetCorrelationId()),
+			)
+		}
+
 		if seen[check.GetCorrelationId()] {
 			return errors.ValidationError(
 				fmt.Errorf("received duplicate correlation id: %s", check.GetCorrelationId()),
