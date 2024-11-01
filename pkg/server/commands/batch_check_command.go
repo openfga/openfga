@@ -48,6 +48,8 @@ type BatchCheckMetadata struct {
 	TotalQueries uint32
 }
 
+type CorrelationID string
+
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
 func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
@@ -91,7 +93,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	return cmd
 }
 
-func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[string]*BatchCheckOutcome, *BatchCheckMetadata, error) {
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
 		return nil, nil, errors.ValidationError(
 			fmt.Errorf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
@@ -102,20 +104,21 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		return nil, nil, err
 	}
 
-	// the keys to this map are the correlation_id associated with each check
-	var resultMap = map[string]*BatchCheckOutcome{}
-	lock := sync.Mutex{}
-
+	var resultMap = new(sync.Map)
 	totalQueryCount := atomic.Uint32{}
 
-	ctx, cancel := context.WithCancel(ctx)
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
-	defer func() {
-		cancel()
-	}()
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
-			// This might have to be built on a per-check basis to get the metadata right
+			select {
+			case <-ctx.Done():
+				resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
+					Err: context.Canceled,
+				})
+				return nil
+			default:
+			}
+
 			checkQuery := NewCheckCommand(
 				bq.datastore,
 				bq.checkResolver,
@@ -136,13 +139,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			lock.Lock()
-			resultMap[check.GetCorrelationId()] = &BatchCheckOutcome{
+			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
 				CheckResponse: response,
 				Duration:      time.Since(start),
 				Err:           err,
-			}
-			lock.Unlock()
+			})
 
 			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
 
@@ -152,7 +153,15 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	_ = pool.Wait()
 
-	return resultMap, &BatchCheckMetadata{TotalQueries: totalQueryCount.Load()}, nil
+	results := map[CorrelationID]*BatchCheckOutcome{}
+
+	// Convert types since sync.Map is `any`
+	resultMap.Range(func(k, v interface{}) bool {
+		results[CorrelationID(k.(string))] = v.(*BatchCheckOutcome)
+		return true
+	})
+
+	return results, &BatchCheckMetadata{TotalQueries: totalQueryCount.Load()}, nil
 }
 
 func validateNoDuplicateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
