@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -73,6 +74,8 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if err != nil {
 		return nil, err
 	}
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.TotalQueries)
 
 	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToRPC(result)}, nil
 }
