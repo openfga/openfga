@@ -159,6 +159,30 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.ErrorContains(t, err, "hardcoded_id")
 	})
 
+	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
+		numChecks := int(maxChecks) + 1
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   "doc:doc1",
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
+		}
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		_, _, err := cmd.Execute(context.Background(), params)
+		require.Error(t, err)
+	})
+
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -194,6 +218,3 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 	})
 }
-
-// TODO assertion involving typesystem id
-// Assertions with context timeout?

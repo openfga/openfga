@@ -169,6 +169,7 @@ func RunBatchCheckSpecificFailureScenarios(t *testing.T, client ClientInterface)
 
 			for _, testCase := range allTestCases {
 				runBatchCheckTest(t, testCase, client, false)
+				runBatchCheckTest(t, testCase, client, true)
 			}
 		})
 	})
@@ -203,14 +204,15 @@ func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client 
 		for _, assertion := range test.Assertions {
 			request := assertion.Request.ToProtoRequest()
 
-			response, _ := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+			response, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
 				Checks:               request.GetChecks(),
 			})
 
-			result := response.GetResult()
+			require.NoError(t, err)
 
+			result := response.GetResult()
 			for _, expectation := range assertion.Expectation {
 				switch {
 				case expectation.InputError != 0:
