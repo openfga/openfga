@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/server/config"
@@ -40,7 +39,6 @@ type BatchCheckCommandParams struct {
 
 type BatchCheckOutcome struct {
 	CheckResponse *graph.ResolveCheckResponse
-	Duration      time.Duration
 	Err           error
 }
 
@@ -135,13 +133,10 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			start := time.Now()
-
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
 			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
 				CheckResponse: response,
-				Duration:      time.Since(start),
 				Err:           err,
 			})
 
