@@ -8,8 +8,6 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/server/config"
 
-	"github.com/openfga/openfga/pkg/server/errors"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -43,6 +41,14 @@ type BatchCheckOutcome struct {
 
 type BatchCheckMetadata struct {
 	TotalQueries uint32
+}
+
+type BatchCheckValidationError struct {
+	Message string
+}
+
+func (e BatchCheckValidationError) Error() string {
+	return e.Message
 }
 
 type CorrelationID string
@@ -92,9 +98,9 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 
 func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
-		return nil, nil, errors.ValidationError(
-			fmt.Errorf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
-		)
+		return nil, nil, &BatchCheckValidationError{
+			Message: fmt.Sprintf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
+		}
 	}
 
 	if err := validateCorrelationIDs(params.Checks); err != nil {
@@ -164,15 +170,15 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 
 	for _, check := range checks {
 		if check.GetCorrelationId() == "" {
-			return errors.ValidationError(
-				fmt.Errorf("received empty correlation id: %s", check.GetCorrelationId()),
-			)
+			return &BatchCheckValidationError{
+				Message: fmt.Sprintf("received empty correlation id: %s", check.GetCorrelationId()),
+			}
 		}
 
 		if seen[check.GetCorrelationId()] {
-			return errors.ValidationError(
-				fmt.Errorf("received duplicate correlation id: %s", check.GetCorrelationId()),
-			)
+			return &BatchCheckValidationError{
+				Message: fmt.Sprintf("received duplicate correlation id: %s", check.GetCorrelationId()),
+			}
 		}
 
 		seen[check.GetCorrelationId()] = true

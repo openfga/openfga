@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -72,6 +74,11 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	})
 
 	if err != nil {
+		var batchValidationError *commands.BatchCheckValidationError
+		if errors.As(err, &batchValidationError) {
+			return nil, serverErrors.ValidationError(err)
+		}
+
 		return nil, err
 	}
 

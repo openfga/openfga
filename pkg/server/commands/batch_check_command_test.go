@@ -104,7 +104,10 @@ func TestBatchCheckCommand(t *testing.T) {
 		result, _, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
 
-		// Make sure all correlation ids are present in the response
+		// Quantity of correlation IDs should be equal
+		require.Equal(t, len(result), len(ids))
+
+		// And each ID should appear in the response
 		for _, id := range ids {
 			_, ok := result[CorrelationID(id)]
 			require.True(t, ok)
@@ -132,7 +135,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
-		require.Error(t, err)
+
+		var expectedErr *BatchCheckValidationError
+		require.ErrorAs(t, err, &expectedErr)
 	})
 
 	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
@@ -157,6 +162,9 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		_, _, err := cmd.Execute(context.Background(), params)
 		require.ErrorContains(t, err, "hardcoded_id")
+
+		var expectedErr *BatchCheckValidationError
+		require.ErrorAs(t, err, &expectedErr)
 	})
 
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
@@ -180,7 +188,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
-		require.Error(t, err)
+
+		var expectedErr *BatchCheckValidationError
+		require.ErrorAs(t, err, &expectedErr)
 	})
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
