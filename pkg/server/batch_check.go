@@ -81,7 +81,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 // transformCheckResultToProto transform the internal BatchCheckOutcome into the external-facing
 // BatchCheckSingleResult struct for transmission back via the api.
-func transformCheckResultToRPC(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
+func transformCheckResultToProto(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for k, v := range checkResults {
 		singleResult := &openfgav1.BatchCheckSingleResult{}
