@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/server/config"
@@ -103,7 +102,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	}
 
 	var resultMap = new(sync.Map)
-	totalQueryCount := atomic.Uint32{}
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
@@ -140,8 +138,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Err:           err,
 			})
 
-			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
-
 			return nil
 		})
 	}
@@ -149,14 +145,18 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	_ = pool.Wait()
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
+	var totalQueryCount uint32
 
-	// Convert types since sync.Map is `any`
 	resultMap.Range(func(k, v interface{}) bool {
-		results[CorrelationID(k.(string))] = v.(*BatchCheckOutcome)
+		// Convert types since sync.Map is `any`
+		outcome := v.(*BatchCheckOutcome)
+		results[CorrelationID(k.(string))] = outcome
+
+		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
 		return true
 	})
 
-	return results, &BatchCheckMetadata{TotalQueries: totalQueryCount.Load()}, nil
+	return results, &BatchCheckMetadata{TotalQueries: totalQueryCount}, nil
 }
 
 func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
