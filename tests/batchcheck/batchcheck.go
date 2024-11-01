@@ -204,6 +204,13 @@ func runBatchCheckTest(t *testing.T, test batchchecktest.IndividualTest, client 
 		for _, assertion := range test.Assertions {
 			request := assertion.Request.ToProtoRequest()
 
+			// monkey patch the contextual tuples since we don't actually define them in yaml
+			if contextTupleTest {
+				for _, checkItem := range request.Checks {
+					checkItem.ContextualTuples = &openfgav1.ContextualTupleKeys{TupleKeys: test.Tuples}
+				}
+			}
+
 			response, err := client.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: writeAuthModelResponse.GetAuthorizationModelId(),
