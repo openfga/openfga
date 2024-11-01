@@ -48,7 +48,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: nil,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_no_expiration_set,_return_'invalid_bearer_token'",
@@ -69,7 +69,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: nil,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_the_JWT_contains_a_future_'iat',_return_'invalid_bearer_token'",
@@ -92,7 +92,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: nil,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_JWT_and_JWK_kid_don't_match,_returns_'invalid_bearer_token'",
@@ -111,7 +111,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: nil,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_token_is_signed_using_different_public/private_key_pairs,_returns__'invalid_bearer_token'",
@@ -131,7 +131,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: privateKey,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_token's_issuer_does_not_match_the_one_provided_in_the_server_configuration,_MUST_return_'invalid_issuer'_error",
@@ -172,7 +172,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 					privateKeyOverride: nil,
 				})
 			},
-			expectedError: "invalid bearer token",
+			expectedError: "invalid claims",
 		},
 		{
 			testDescription: "when_the_subject_of_the_token_is_not_a_string,_MUST_return_'invalid_subject'_error",
