@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+
 	"github.com/openfga/openfga/pkg/server/commands"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"

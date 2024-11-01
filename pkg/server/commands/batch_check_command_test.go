@@ -69,7 +69,7 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, err := cmd.Execute(context.Background(), params)
+		result, _, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
 		require.Equal(t, len(result), numChecks)
 	})
@@ -101,12 +101,12 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, err := cmd.Execute(context.Background(), params)
+		result, _, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
 
 		// Make sure all correlation ids are present in the response
 		for _, id := range ids {
-			_, ok := result[id]
+			_, ok := result[CorrelationID(id)]
 			require.True(t, ok)
 		}
 	})
@@ -131,7 +131,7 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		_, err := cmd.Execute(context.Background(), params)
+		_, _, err := cmd.Execute(context.Background(), params)
 		require.Error(t, err)
 	})
 
@@ -155,7 +155,10 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		_, err := cmd.Execute(context.Background(), params)
+		_, _, err := cmd.Execute(context.Background(), params)
 		require.ErrorContains(t, err, "hardcoded_id")
 	})
 }
+
+// TODO assertion involving typesystem id
+// Assertions with context timeout?
