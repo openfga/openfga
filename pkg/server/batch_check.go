@@ -63,7 +63,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
-		AuthorizationModelID: req.GetAuthorizationModelId(),
+		AuthorizationModelID: typesys.GetAuthorizationModelID(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,
