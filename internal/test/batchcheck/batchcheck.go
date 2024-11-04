@@ -57,28 +57,3 @@ func BatchCheckItemFromCheckAssertion(assertion *checktest.Assertion, correlatio
 
 	return item
 }
-
-func (t *TestBatchCheckRequest) ToProtoRequest() *openfgav1.BatchCheckRequest {
-	protoChecks := make([]*openfgav1.BatchCheckItem, 0, len(t.Checks))
-
-	for _, check := range t.Checks {
-		item := &openfgav1.BatchCheckItem{
-			TupleKey: &openfgav1.CheckRequestTupleKey{
-				User:     check.TupleKey.GetUser(),
-				Relation: check.TupleKey.GetRelation(),
-				Object:   check.TupleKey.GetObject(),
-			},
-			CorrelationId: check.CorrelationID,
-			Context:       check.Context,
-			ContextualTuples: &openfgav1.ContextualTupleKeys{
-				TupleKeys: check.ContextualTuples,
-			},
-		}
-
-		protoChecks = append(protoChecks, item)
-	}
-
-	return &openfgav1.BatchCheckRequest{
-		Checks: protoChecks,
-	}
-}
