@@ -74,7 +74,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.TotalQueries)
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
 	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToRPC(result)}, nil
 }

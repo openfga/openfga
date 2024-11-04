@@ -42,7 +42,7 @@ type BatchCheckOutcome struct {
 }
 
 type BatchCheckMetadata struct {
-	TotalQueries uint32
+	DatastoreQueryCount uint32
 }
 
 type CorrelationID string
@@ -109,7 +109,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			select {
 			case <-ctx.Done():
 				resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
-					Err: context.Canceled,
+					Err: ctx.Err(),
 				})
 				return nil
 			default:
@@ -156,11 +156,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		return true
 	})
 
-	return results, &BatchCheckMetadata{TotalQueries: totalQueryCount}, nil
+	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount}, nil
 }
 
 func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
-	seen := map[string]bool{}
+	seen := map[string]struct{}{}
 
 	for _, check := range checks {
 		if check.GetCorrelationId() == "" {
@@ -169,13 +169,14 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 			)
 		}
 
-		if seen[check.GetCorrelationId()] {
+		_, ok := seen[check.GetCorrelationId()]
+		if ok {
 			return errors.ValidationError(
 				fmt.Errorf("received duplicate correlation id: %s", check.GetCorrelationId()),
 			)
 		}
 
-		seen[check.GetCorrelationId()] = true
+		seen[check.GetCorrelationId()] = struct{}{}
 	}
 
 	return nil
