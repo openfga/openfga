@@ -124,6 +124,23 @@ type doc
 		require.NoError(t, err)
 	})
 
+	t.Run("returns_db_metrics", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				_, _ = cmd.datastore.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				return &graph.ResolveCheckResponse{}, nil
+			})
+		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)

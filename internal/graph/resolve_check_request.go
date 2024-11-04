@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"sync/atomic"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -21,15 +22,38 @@ type ResolveCheckRequest struct {
 	LastCacheInvalidationTime time.Time
 }
 
+type ResolveCheckRequestMetadata struct {
+	// Thinking of a Check as a tree of evaluations,
+	// Depth is the current level in the tree in the current path that we are exploring.
+	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
+	Depth uint32
+
+	// DispatchCounter is the address to a shared counter that keeps track of how many calls to ResolveCheck we had to do
+	// to solve the root/parent problem.
+	// The contents of this counter will be written by concurrent goroutines.
+	// After the root problem has been solved, this value can be read.
+	DispatchCounter *atomic.Uint32
+
+	// WasThrottled indicates whether the request was throttled
+	WasThrottled *atomic.Bool
+}
+
+func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
+	return &ResolveCheckRequestMetadata{
+		Depth:           maxDepth,
+		DispatchCounter: new(atomic.Uint32),
+		WasThrottled:    new(atomic.Bool),
+	}
+}
+
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	var requestMetadata *ResolveCheckRequestMetadata
 	origRequestMetadata := r.GetRequestMetadata()
 	if origRequestMetadata != nil {
 		requestMetadata = &ResolveCheckRequestMetadata{
-			DispatchCounter:     origRequestMetadata.DispatchCounter,
-			Depth:               origRequestMetadata.Depth,
-			DatastoreQueryCount: origRequestMetadata.DatastoreQueryCount,
-			WasThrottled:        origRequestMetadata.WasThrottled,
+			DispatchCounter: origRequestMetadata.DispatchCounter,
+			Depth:           origRequestMetadata.Depth,
+			WasThrottled:    origRequestMetadata.WasThrottled,
 		}
 	}
 
