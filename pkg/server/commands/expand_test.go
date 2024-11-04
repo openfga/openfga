@@ -172,7 +172,7 @@ func TestExpandWithContextualTuples(t *testing.T) {
 
 			require.NoError(t, err)
 			require.NotNil(t, resp)
-			require.Equal(t, tc.expected, resp.Tree.Root)
+			require.Equal(t, tc.expected, resp.GetTree().GetRoot())
 		})
 	}
 }
