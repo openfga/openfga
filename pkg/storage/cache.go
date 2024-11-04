@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/karlseguin/ccache/v3"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -122,8 +122,17 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 	return res
 }
 
+type CachedTuple struct {
+	ObjectID   string
+	ObjectType string
+	Relation   string
+	User       string
+	Condition  *openfgav1.RelationshipCondition
+	Timestamp  *timestamppb.Timestamp
+}
+
 type TupleIteratorCacheEntry struct {
-	Tuples       []*openfgav1.Tuple
+	Tuples       []CachedTuple
 	LastModified time.Time
 }
 

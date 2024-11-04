@@ -132,7 +132,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
 	}
 
-	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByUserObjectTypeCacheKeys(store, subjects, filter.ObjectType))
+	return c.newCachedIteratorByUserObjectType(ctx, store, iter, b.String(), subjects, filter.ObjectType)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
@@ -183,7 +183,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 		b.WriteString(rb.String())
 	}
 
-	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectRelationCacheKeys(store, filter.Object, filter.Relation))
+	return c.newCachedIteratorByObjectRelation(ctx, store, iter, b.String(), filter.Object, filter.Relation)
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -217,7 +217,7 @@ func (c *CachedDatastore) Read(
 	b.WriteString(
 		storage.GetReadCacheKey(store, tuple.TupleKeyToString(tupleKey)),
 	)
-	return c.newCachedIterator(ctx, store, iter, b.String(), storage.GetInvalidIteratorByObjectRelationCacheKeys(store, tupleKey.GetObject(), tupleKey.GetRelation()))
+	return c.newCachedIteratorByObjectRelation(ctx, store, iter, b.String(), tupleKey.GetObject(), tupleKey.GetRelation())
 }
 
 func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
@@ -245,6 +245,31 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 	return tupleEntry, true
 }
 
+func (c *CachedDatastore) newCachedIteratorByObjectRelation(
+	ctx context.Context,
+	store string,
+	dsIterFunc iterFunc,
+	cacheKey string,
+	object string,
+	relation string,
+) (storage.TupleIterator, error) {
+	objectType, objectID := tuple.SplitObject(object)
+	invalidEntityKeys := storage.GetInvalidIteratorByObjectRelationCacheKeys(store, object, relation)
+	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, objectID, relation)
+}
+
+func (c *CachedDatastore) newCachedIteratorByUserObjectType(
+	ctx context.Context,
+	store string,
+	dsIterFunc iterFunc,
+	cacheKey string,
+	users []string,
+	objectType string,
+) (storage.TupleIterator, error) {
+	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(store, users, objectType)
+	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, "", "")
+}
+
 // newCachedIterator either returns a cached static iterator for a cache hit, or
 // returns a new iterator that attempts to cache the results.
 func (c *CachedDatastore) newCachedIterator(
@@ -253,6 +278,9 @@ func (c *CachedDatastore) newCachedIterator(
 	dsIterFunc iterFunc,
 	cacheKey string,
 	invalidEntityKeys []string,
+	objectType string,
+	objectID string,
+	relation string,
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
@@ -261,7 +289,15 @@ func (c *CachedDatastore) newCachedIterator(
 	if cacheEntry, ok := c.findInCache(store, cacheKey, invalidEntityKeys); ok {
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
-		return storage.NewStaticTupleIterator(cacheEntry.Tuples), nil
+
+		staticIter := storage.NewStaticIterator[storage.CachedTuple](cacheEntry.Tuples)
+
+		return &cachedTupleIterator{
+			objectID:   objectID,
+			objectType: objectType,
+			relation:   relation,
+			iter:       staticIter,
+		}, nil
 	}
 
 	iter, err := dsIterFunc(ctx)
@@ -271,13 +307,17 @@ func (c *CachedDatastore) newCachedIterator(
 
 	return &cachedIterator{
 		iter:              iter,
-		tuples:            make([]*openfgav1.Tuple, 0, c.maxResultSize),
+		tuples:            make([]storage.CachedTuple, 0, c.maxResultSize),
 		cacheKey:          cacheKey,
 		invalidEntityKeys: invalidEntityKeys,
 		cache:             c.cache,
 		maxResultSize:     c.maxResultSize,
 		ttl:               c.ttl,
 		sf:                c.sf,
+
+		objectType: objectType,
+		objectID:   objectID,
+		relation:   relation,
 	}, nil
 }
 
@@ -288,11 +328,15 @@ func (c *CachedDatastore) Close() {
 
 type cachedIterator struct {
 	iter              storage.TupleIterator
-	tuples            []*openfgav1.Tuple
+	tuples            []storage.CachedTuple
 	cacheKey          string
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
 	ttl               time.Duration
+
+	objectID   string
+	objectType string
+	relation   string
 
 	// maxResultSize is the maximum number of tuples to cache. If the number
 	// of tuples found exceeds this value, it will not be cached.
@@ -388,7 +432,34 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	if c.tuples == nil {
 		return false
 	}
-	c.tuples = append(c.tuples, t)
+
+	tk := t.GetKey()
+	object := tk.GetObject()
+	objectType, objectID := tuple.SplitObject(object)
+
+	ct := storage.CachedTuple{
+		ObjectID:   objectID,
+		ObjectType: objectType,
+		Relation:   tk.GetRelation(),
+		User:       tk.GetUser(),
+		Condition:  tk.GetCondition(),
+		Timestamp:  t.GetTimestamp(),
+	}
+
+	if c.objectID != "" && c.objectID == ct.ObjectID {
+		ct.ObjectID = ""
+	}
+
+	if c.objectType != "" && c.objectType == ct.ObjectType {
+		ct.ObjectType = ""
+	}
+
+	if c.relation != "" && c.relation == ct.Relation {
+		ct.Relation = ""
+	}
+
+	c.tuples = append(c.tuples, ct)
+
 	if len(c.tuples) >= c.maxResultSize {
 		tuplesCacheDiscardCounter.Inc()
 		c.tuples = nil
@@ -405,7 +476,7 @@ func (c *cachedIterator) flush() {
 	// Copy tuples buffer into new destination before storing into cache
 	// otherwise, the cache will be storing pointers. This should also help
 	// with garbage collection.
-	tuples := make([]*openfgav1.Tuple, len(c.tuples))
+	tuples := make([]storage.CachedTuple, len(c.tuples))
 	copy(tuples, c.tuples)
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: tuples, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {
