@@ -14,7 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestExpandWithContextualTuples(t *testing.T) {
+func TestExpand(t *testing.T) {
 	tests := []struct {
 		name             string
 		modelStr         string

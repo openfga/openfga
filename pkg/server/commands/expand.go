@@ -68,7 +68,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 		}
 	}
 
-	err := validation.ValidateObject(typesys, tk);
+	err := validation.ValidateObject(typesys, tk)
 	if err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
