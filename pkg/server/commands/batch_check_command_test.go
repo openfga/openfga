@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"go.uber.org/goleak"
+
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -20,6 +22,10 @@ import (
 )
 
 func TestBatchCheckCommand(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	maxChecks := uint32(50)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -46,7 +52,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	)
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
-		numChecks := 50
+		numChecks := int(maxChecks)
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
 			checks[i] = &openfgav1.BatchCheckItem{
@@ -226,5 +232,8 @@ func TestBatchCheckCommand(t *testing.T) {
 			require.Nil(t, v.CheckResponse)
 			require.Equal(t, v.Err, context.Canceled)
 		}
+
+		// response should have 1 key per check
+		require.Equal(t, len(response), numChecks)
 	})
 }

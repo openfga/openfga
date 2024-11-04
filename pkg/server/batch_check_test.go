@@ -106,6 +106,10 @@ func TestBatchCheckUsesTypesystemModel(t *testing.T) {
 }
 
 func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	errMsg := "oh_no"
 	scenarios := map[string]struct {
 		inputError     error
@@ -171,6 +175,10 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 }
 
 func TestTransformCheckResultToProto(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
 	var expectedResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{}
 
