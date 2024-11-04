@@ -108,6 +108,8 @@ type AuthorizerInterface interface {
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
+	RootStoreID() string
+	IsNoop() bool
 }
 
 type NoopAuthorizer struct{}
@@ -134,6 +136,14 @@ func (a *NoopAuthorizer) ListAuthorizedStores(ctx context.Context) ([]string, er
 
 func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	return nil, nil
+}
+
+func (a *NoopAuthorizer) RootStoreID() string {
+	return ""
+}
+
+func (a *NoopAuthorizer) IsNoop() bool {
+	return true
 }
 
 type Authorizer struct {
@@ -197,6 +207,17 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	default:
 		return "", AuthorizationError{Err: ErrUnknownAPIMethod}.Err
 	}
+}
+
+func (a *Authorizer) RootStoreID() string {
+	if a.config != nil {
+		return a.config.StoreID
+	}
+	return ""
+}
+
+func (a *Authorizer) IsNoop() bool {
+	return false
 }
 
 // Authorize checks if the user has access to the resource.

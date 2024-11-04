@@ -63,6 +63,27 @@ func TestGetRelation(t *testing.T) {
 	}
 }
 
+func TestGetStoreID(t *testing.T) {
+	t.Run("has_store_ID", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockServer := mocks.NewMockServerInterface(mockController)
+
+		authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+		require.Equal(t, "test-store", authorizer.RootStoreID())
+	})
+	t.Run("no_config", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockServer := mocks.NewMockServerInterface(mockController)
+
+		authorizer := NewAuthorizer(nil, mockServer, logger.NewNoopLogger())
+		require.Equal(t, "", authorizer.RootStoreID())
+	})
+}
+
 func TestAuthorizeCreateStore(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
