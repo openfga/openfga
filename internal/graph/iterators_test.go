@@ -25,21 +25,20 @@ func TestCachedTupleIterator(t *testing.T) {
 		protocmp.Transform(),
 	}
 
-	ts := timestamppb.New(time.Now())
-	condition := tuple.NewRelationshipCondition("cond", nil)
+	ts := time.Now()
 
 	t.Run("next_object_and_relation", func(t *testing.T) {
-		cachedTuples := []storage.CachedTuple{
+		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType: "",
-				ObjectID:   "",
-				Relation:   "",
-				User:       "user:1",
-				Timestamp:  ts,
-				Condition:  condition,
+				ObjectType:    "",
+				ObjectID:      "",
+				Relation:      "",
+				User:          "user:1",
+				InsertedAt:    ts,
+				ConditionName: "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "1",
@@ -65,7 +64,7 @@ func TestCachedTupleIterator(t *testing.T) {
 		tuples := []*openfgav1.Tuple{
 			{
 				Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
-				Timestamp: ts,
+				Timestamp: timestamppb.New(ts),
 			},
 		}
 
@@ -75,17 +74,17 @@ func TestCachedTupleIterator(t *testing.T) {
 	})
 
 	t.Run("next_object_type", func(t *testing.T) {
-		cachedTuples := []storage.CachedTuple{
+		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType: "",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:1",
-				Timestamp:  ts,
-				Condition:  condition,
+				ObjectType:    "",
+				ObjectID:      "1",
+				Relation:      "viewer",
+				User:          "user:1",
+				InsertedAt:    ts,
+				ConditionName: "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "",
@@ -111,7 +110,7 @@ func TestCachedTupleIterator(t *testing.T) {
 		tuples := []*openfgav1.Tuple{
 			{
 				Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
-				Timestamp: ts,
+				Timestamp: timestamppb.New(ts),
 			},
 		}
 
@@ -121,17 +120,17 @@ func TestCachedTupleIterator(t *testing.T) {
 	})
 
 	t.Run("head_object_and_relation", func(t *testing.T) {
-		cachedTuples := []storage.CachedTuple{
+		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType: "",
-				ObjectID:   "",
-				Relation:   "",
-				User:       "user:1",
-				Timestamp:  ts,
-				Condition:  condition,
+				ObjectType:    "",
+				ObjectID:      "",
+				Relation:      "",
+				User:          "user:1",
+				InsertedAt:    ts,
+				ConditionName: "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "1",
@@ -144,7 +143,7 @@ func TestCachedTupleIterator(t *testing.T) {
 
 		tuple := &openfgav1.Tuple{
 			Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
-			Timestamp: ts,
+			Timestamp: timestamppb.New(ts),
 		}
 
 		if diff := cmp.Diff(tuple, tk, cmpOpts...); diff != "" {
@@ -153,17 +152,17 @@ func TestCachedTupleIterator(t *testing.T) {
 	})
 
 	t.Run("head_object_type", func(t *testing.T) {
-		cachedTuples := []storage.CachedTuple{
+		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType: "",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:1",
-				Timestamp:  ts,
-				Condition:  condition,
+				ObjectType:    "",
+				ObjectID:      "1",
+				Relation:      "viewer",
+				User:          "user:1",
+				InsertedAt:    ts,
+				ConditionName: "cond",
 			},
 		}
-		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
 		iter := &cachedTupleIterator{
 			objectType: "document",
 			objectID:   "",
@@ -176,7 +175,7 @@ func TestCachedTupleIterator(t *testing.T) {
 
 		tuple := &openfgav1.Tuple{
 			Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
-			Timestamp: ts,
+			Timestamp: timestamppb.New(ts),
 		}
 
 		if diff := cmp.Diff(tuple, tk, cmpOpts...); diff != "" {

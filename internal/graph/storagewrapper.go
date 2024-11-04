@@ -290,7 +290,7 @@ func (c *CachedDatastore) newCachedIterator(
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
-		staticIter := storage.NewStaticIterator[storage.CachedTuple](cacheEntry.Tuples)
+		staticIter := storage.NewStaticIterator[storage.TupleRecord](cacheEntry.Tuples)
 
 		return &cachedTupleIterator{
 			objectID:   objectID,
@@ -307,7 +307,7 @@ func (c *CachedDatastore) newCachedIterator(
 
 	return &cachedIterator{
 		iter:              iter,
-		tuples:            make([]storage.CachedTuple, 0, c.maxResultSize),
+		tuples:            make([]storage.TupleRecord, 0, c.maxResultSize),
 		cacheKey:          cacheKey,
 		invalidEntityKeys: invalidEntityKeys,
 		cache:             c.cache,
@@ -328,7 +328,7 @@ func (c *CachedDatastore) Close() {
 
 type cachedIterator struct {
 	iter              storage.TupleIterator
-	tuples            []storage.CachedTuple
+	tuples            []storage.TupleRecord
 	cacheKey          string
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
@@ -437,28 +437,34 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	object := tk.GetObject()
 	objectType, objectID := tuple.SplitObject(object)
 
-	ct := storage.CachedTuple{
+	record := storage.TupleRecord{
 		ObjectID:   objectID,
 		ObjectType: objectType,
 		Relation:   tk.GetRelation(),
 		User:       tk.GetUser(),
-		Condition:  tk.GetCondition(),
-		Timestamp:  t.GetTimestamp(),
 	}
 
-	if c.objectID != "" && c.objectID == ct.ObjectID {
-		ct.ObjectID = ""
+	if timestamp := t.GetTimestamp(); timestamp != nil {
+		record.InsertedAt = timestamp.AsTime()
 	}
 
-	if c.objectType != "" && c.objectType == ct.ObjectType {
-		ct.ObjectType = ""
+	if condition := tk.GetCondition(); condition != nil {
+		record.ConditionName = condition.GetName()
+		record.ConditionContext = condition.GetContext()
 	}
 
-	if c.relation != "" && c.relation == ct.Relation {
-		ct.Relation = ""
+	// Remove any fields that are duplicated and known by iterator
+	if c.objectID != "" && c.objectID == record.ObjectID {
+		record.ObjectID = ""
+	}
+	if c.objectType != "" && c.objectType == record.ObjectType {
+		record.ObjectType = ""
+	}
+	if c.relation != "" && c.relation == record.Relation {
+		record.Relation = ""
 	}
 
-	c.tuples = append(c.tuples, ct)
+	c.tuples = append(c.tuples, record)
 
 	if len(c.tuples) >= c.maxResultSize {
 		tuplesCacheDiscardCounter.Inc()
@@ -476,7 +482,7 @@ func (c *cachedIterator) flush() {
 	// Copy tuples buffer into new destination before storing into cache
 	// otherwise, the cache will be storing pointers. This should also help
 	// with garbage collection.
-	tuples := make([]storage.CachedTuple, len(c.tuples))
+	tuples := make([]storage.TupleRecord, len(c.tuples))
 	copy(tuples, c.tuples)
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: tuples, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {

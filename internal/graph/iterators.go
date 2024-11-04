@@ -4,6 +4,7 @@ import (
 	"context"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -15,7 +16,7 @@ type cachedTupleIterator struct {
 	objectID   string
 	objectType string
 	relation   string
-	iter       storage.Iterator[storage.CachedTuple]
+	iter       storage.Iterator[storage.TupleRecord]
 }
 
 var _ storage.TupleIterator = (*cachedTupleIterator)(nil)
@@ -47,7 +48,7 @@ func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 	return c.buildTuple(t), nil
 }
 
-func (c *cachedTupleIterator) buildTuple(t storage.CachedTuple) *openfgav1.Tuple {
+func (c *cachedTupleIterator) buildTuple(t storage.TupleRecord) *openfgav1.Tuple {
 	objectType := t.ObjectType
 	objectID := t.ObjectID
 	relation := t.Relation
@@ -65,12 +66,13 @@ func (c *cachedTupleIterator) buildTuple(t storage.CachedTuple) *openfgav1.Tuple
 	}
 
 	return &openfgav1.Tuple{
-		Key: &openfgav1.TupleKey{
-			User:      t.User,
-			Relation:  relation,
-			Object:    tuple.BuildObject(objectType, objectID),
-			Condition: t.Condition,
-		},
-		Timestamp: t.Timestamp,
+		Key: tuple.NewTupleKeyWithCondition(
+			tuple.BuildObject(objectType, objectID),
+			relation,
+			t.User,
+			t.ConditionName,
+			t.ConditionContext,
+		),
+		Timestamp: timestamppb.New(t.InsertedAt),
 	}
 }

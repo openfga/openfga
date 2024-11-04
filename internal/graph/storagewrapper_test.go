@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -53,7 +52,7 @@ func TestFindInCache(t *testing.T) {
 	t.Run("cache_hit_no_invalid", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).
-				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.CachedTuple{}, LastModified: time.Now()}),
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.TupleRecord{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
@@ -63,7 +62,7 @@ func TestFindInCache(t *testing.T) {
 	t.Run("cache_hit_invalid", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).
-				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.CachedTuple{}, LastModified: time.Now()}),
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.TupleRecord{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
@@ -73,7 +72,7 @@ func TestFindInCache(t *testing.T) {
 	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).
-				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.CachedTuple{}, LastModified: time.Now()}),
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.TupleRecord{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
@@ -84,7 +83,7 @@ func TestFindInCache(t *testing.T) {
 	t.Run("cache_hit_invalid_entity", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).
-				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.CachedTuple{}, LastModified: time.Now()}),
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.TupleRecord{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
@@ -95,7 +94,7 @@ func TestFindInCache(t *testing.T) {
 	t.Run("cache_hit_invalid_entity_stale", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).
-				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.CachedTuple{}, LastModified: time.Now()}),
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []storage.TupleRecord{}, LastModified: time.Now()}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
@@ -131,14 +130,16 @@ func TestReadStartingWithUser(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "company:1#viewer"),
 	}
 	var tuples []*openfgav1.Tuple
-	var cachedTuples []storage.CachedTuple
+	var cachedTuples []storage.TupleRecord
 	for _, tk := range tks {
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk})
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
 		_, objectID := tuple.SplitObject(tk.GetObject())
-		cachedTuples = append(cachedTuples, storage.CachedTuple{
-			ObjectID: objectID,
-			Relation: tk.GetRelation(),
-			User:     tk.GetUser(),
+		cachedTuples = append(cachedTuples, storage.TupleRecord{
+			ObjectID:   objectID,
+			Relation:   tk.GetRelation(),
+			User:       tk.GetUser(),
+			InsertedAt: ts.AsTime(),
 		})
 	}
 
@@ -218,7 +219,6 @@ func TestReadStartingWithUser(t *testing.T) {
 				require.Fail(t, "no error was expected")
 				break
 			}
-			log.Printf("iter said %+v", tuple)
 			actual = append(actual, tuple)
 		}
 
@@ -326,11 +326,13 @@ func TestReadUsersetTuples(t *testing.T) {
 		tuple.NewTupleKey("document:1", "viewer", "company:1#viewer"),
 	}
 	var tuples []*openfgav1.Tuple
-	var cachedTuples []storage.CachedTuple
+	var cachedTuples []storage.TupleRecord
 	for _, tk := range tks {
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk})
-		cachedTuples = append(cachedTuples, storage.CachedTuple{
-			User: tk.GetUser(),
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+		cachedTuples = append(cachedTuples, storage.TupleRecord{
+			User:       tk.GetUser(),
+			InsertedAt: ts.AsTime(),
 		})
 	}
 
@@ -520,11 +522,13 @@ func TestRead(t *testing.T) {
 		tuple.NewTupleKey("license:1", "owner", "company:2"),
 	}
 	var tuples []*openfgav1.Tuple
-	var cachedTuples []storage.CachedTuple
+	var cachedTuples []storage.TupleRecord
 	for _, tk := range tks {
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk})
-		cachedTuples = append(cachedTuples, storage.CachedTuple{
-			User: tk.GetUser(),
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+		cachedTuples = append(cachedTuples, storage.TupleRecord{
+			User:       tk.GetUser(),
+			InsertedAt: ts.AsTime(),
 		})
 	}
 
@@ -782,20 +786,20 @@ func TestCachedIterator(t *testing.T) {
 		},
 	}
 
-	cachedTuples := []storage.CachedTuple{
+	cachedTuples := []storage.TupleRecord{
 		{
 			ObjectID:   "doc1",
 			ObjectType: "document",
 			Relation:   "viewer",
 			User:       "bill",
-			Timestamp:  tuples[0].GetTimestamp(),
+			InsertedAt: tuples[0].GetTimestamp().AsTime(),
 		},
 		{
 			ObjectID:   "doc2",
 			ObjectType: "document",
 			Relation:   "editor",
 			User:       "bob",
-			Timestamp:  tuples[1].GetTimestamp(),
+			InsertedAt: tuples[1].GetTimestamp().AsTime(),
 		},
 	}
 
@@ -815,7 +819,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          mocks.NewErrorTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -849,7 +853,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -894,7 +898,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -920,7 +924,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -970,7 +974,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -1001,7 +1005,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter := &cachedIterator{
 			iter:          storage.NewStaticTupleIterator(tuples),
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         cache,
 			maxResultSize: maxCacheSize,
@@ -1047,7 +1051,7 @@ func TestCachedIterator(t *testing.T) {
 
 		iter1 := &cachedIterator{
 			iter:          mockedIter1,
-			tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+			tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 			cacheKey:      cacheKey,
 			cache:         mockCache,
 			maxResultSize: maxCacheSize,
@@ -1093,7 +1097,7 @@ func TestCachedIterator(t *testing.T) {
 
 			iter1 := &cachedIterator{
 				iter:          mockedIter1,
-				tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+				tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 				cacheKey:      cacheKey,
 				cache:         mockCache,
 				maxResultSize: maxCacheSize,
@@ -1107,7 +1111,7 @@ func TestCachedIterator(t *testing.T) {
 
 			iter2 := &cachedIterator{
 				iter:          mockedIter2,
-				tuples:        make([]storage.CachedTuple, 0, maxCacheSize),
+				tuples:        make([]storage.TupleRecord, 0, maxCacheSize),
 				cacheKey:      cacheKey,
 				cache:         mockCache,
 				maxResultSize: maxCacheSize,
