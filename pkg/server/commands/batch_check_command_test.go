@@ -178,7 +178,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
-		numChecks := int(maxChecks) + 1
+		numChecks := 1
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
 			checks[i] = &openfgav1.BatchCheckItem{
@@ -187,7 +187,7 @@ func TestBatchCheckCommand(t *testing.T) {
 					Relation: "viewer",
 					User:     "user:justin",
 				},
-				CorrelationId: fmt.Sprintf("fakeid%d", i),
+				CorrelationId: "",
 			}
 		}
 
@@ -201,6 +201,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		var expectedErr *BatchCheckValidationError
 		require.ErrorAs(t, err, &expectedErr)
+		require.ErrorContains(t, err, "received empty correlation id")
 	})
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
