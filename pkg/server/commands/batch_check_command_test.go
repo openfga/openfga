@@ -201,7 +201,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		var expectedErr *BatchCheckValidationError
 		require.ErrorAs(t, err, &expectedErr)
-		require.ErrorContains(t, err, "received empty correlation id")
+		require.ErrorContains(t, err, "received empty correlation id for tuple")
 	})
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {

@@ -171,7 +171,7 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	for _, check := range checks {
 		if check.GetCorrelationId() == "" {
 			return &BatchCheckValidationError{
-				Message: fmt.Sprintf("received empty correlation id: %s", check.GetCorrelationId()),
+				Message: fmt.Sprintf("received empty correlation id for tuple: %s", check.GetTupleKey()),
 			}
 		}
 
