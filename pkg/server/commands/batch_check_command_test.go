@@ -75,9 +75,13 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, _, err := cmd.Execute(context.Background(), params)
+		result, meta, err := cmd.Execute(context.Background(), params)
+
 		require.NoError(t, err)
 		require.Equal(t, len(result), numChecks)
+
+		// No actual datastore queries should have been run since we're mocking
+		require.Equal(t, 0, int(meta.TotalQueries))
 	})
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
