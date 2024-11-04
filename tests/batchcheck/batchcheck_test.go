@@ -36,7 +36,6 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 0 // no deadline
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
