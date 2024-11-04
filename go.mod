@@ -24,7 +24,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.6
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241028145042-7c098f10acd2
+	github.com/openfga/api/proto v0.0.0-20241104193559-ee46d6721514
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20240926131254-992b301a003f
 	github.com/pressly/goose/v3 v3.22.1
 	github.com/prometheus/client_golang v1.20.5
@@ -134,5 +134,3 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
-
-replace github.com/openfga/api/proto => github.com/sujitha-av/api/proto v0.0.0-20241031191721-50d1c0a9bae3
