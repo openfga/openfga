@@ -500,9 +500,6 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		ResolveCheck(gomock.Any(), gomock.Any()).
 		Return(&ResolveCheckResponse{
 			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				CycleDetected: false,
-			},
 		}, nil)
 
 	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
@@ -629,7 +626,7 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 		ResolveCheck(gomock.Any(), gomock.Any()).
 		Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
+			ResolutionMetadata: ResolveCheckResponseMetadata{
 				CycleDetected: true,
 			},
 		}, nil)
@@ -659,7 +656,7 @@ func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) 
 		Times(1).
 		Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
+			ResolutionMetadata: ResolveCheckResponseMetadata{
 				CycleDetected: true,
 			},
 		}, nil)
