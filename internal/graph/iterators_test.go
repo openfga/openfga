@@ -27,7 +27,7 @@ func TestCachedTupleIterator(t *testing.T) {
 	ts := timestamppb.New(time.Now())
 	condition := tuple.NewRelationshipCondition("cond", nil)
 
-	t.Run("object_and_relation", func(t *testing.T) {
+	t.Run("next_object_and_relation", func(t *testing.T) {
 		cachedTuples := []storage.CachedTuple{
 			{
 				ObjectType: "",
@@ -63,7 +63,7 @@ func TestCachedTupleIterator(t *testing.T) {
 
 		tuples := []*openfgav1.Tuple{
 			{
-				Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", condition.Name, nil),
+				Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
 				Timestamp: ts,
 			},
 		}
@@ -73,7 +73,7 @@ func TestCachedTupleIterator(t *testing.T) {
 		}
 	})
 
-	t.Run("object_type", func(t *testing.T) {
+	t.Run("next_object_type", func(t *testing.T) {
 		cachedTuples := []storage.CachedTuple{
 			{
 				ObjectType: "",
@@ -119,4 +119,67 @@ func TestCachedTupleIterator(t *testing.T) {
 		}
 	})
 
+	t.Run("head_object_and_relation", func(t *testing.T) {
+		cachedTuples := []storage.CachedTuple{
+			{
+				ObjectType: "",
+				ObjectID:   "",
+				Relation:   "",
+				User:       "user:1",
+				Timestamp:  ts,
+				Condition:  condition,
+			},
+		}
+		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		iter := &cachedTupleIterator{
+			objectType: "document",
+			objectID:   "1",
+			relation:   "viewer",
+			iter:       staticIter,
+		}
+
+		tk, err := iter.Head(ctx)
+		require.NoError(t, err)
+
+		tuple := &openfgav1.Tuple{
+			Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
+			Timestamp: ts,
+		}
+
+		if diff := cmp.Diff(tuple, tk, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("head_object_type", func(t *testing.T) {
+		cachedTuples := []storage.CachedTuple{
+			{
+				ObjectType: "",
+				ObjectID:   "1",
+				Relation:   "viewer",
+				User:       "user:1",
+				Timestamp:  ts,
+				Condition:  condition,
+			},
+		}
+		staticIter := storage.NewStaticIterator[storage.CachedTuple](cachedTuples)
+		iter := &cachedTupleIterator{
+			objectType: "document",
+			objectID:   "",
+			relation:   "",
+			iter:       staticIter,
+		}
+
+		tk, err := iter.Head(ctx)
+		require.NoError(t, err)
+
+		tuple := &openfgav1.Tuple{
+			Key:       tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:1", "cond", nil),
+			Timestamp: ts,
+		}
+
+		if diff := cmp.Diff(tuple, tk, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
 }

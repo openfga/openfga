@@ -28,6 +28,26 @@ func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 		return nil, err
 	}
 
+	return c.buildTuple(t), nil
+}
+
+// Stop see [storage.Iterator].Stop.
+func (c *cachedTupleIterator) Stop() {
+	c.iter.Stop()
+}
+
+// Head will return the first minimal cached tuple of the iterator as
+// a well-formed [openfgav1.Tuple].
+func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	t, err := c.iter.Head(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.buildTuple(t), nil
+}
+
+func (c *cachedTupleIterator) buildTuple(t storage.CachedTuple) *openfgav1.Tuple {
 	objectType := t.ObjectType
 	objectID := t.ObjectID
 	relation := t.Relation
@@ -44,7 +64,7 @@ func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 		relation = c.relation
 	}
 
-	cachedTuple := &openfgav1.Tuple{
+	return &openfgav1.Tuple{
 		Key: &openfgav1.TupleKey{
 			User:      t.User,
 			Relation:  relation,
@@ -53,32 +73,4 @@ func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 		},
 		Timestamp: t.Timestamp,
 	}
-
-	return cachedTuple, nil
-}
-
-// Stop see [storage.Iterator].Stop.
-func (c *cachedTupleIterator) Stop() {
-	c.iter.Stop()
-}
-
-// Head will return the first minimal cached tuple of the iterator as
-// a well-formed [openfgav1.Tuple].
-func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	t, err := c.iter.Head(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	cachedTuple := &openfgav1.Tuple{
-		Key: &openfgav1.TupleKey{
-			User:      t.User,
-			Object:    tuple.BuildObject(c.objectType, c.objectID),
-			Relation:  c.relation,
-			Condition: t.Condition,
-		},
-		Timestamp: t.Timestamp,
-	}
-
-	return cachedTuple, nil
 }
