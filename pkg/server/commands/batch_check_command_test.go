@@ -81,7 +81,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.Equal(t, len(result), numChecks)
 
 		// No actual datastore queries should have been run since we're mocking
-		require.Equal(t, 0, int(meta.TotalQueries))
+		require.Equal(t, 0, int(meta.DatastoreQueryCount))
 	})
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
