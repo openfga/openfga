@@ -1,8 +1,6 @@
 package server
 
 import (
-	"context"
-	"errors"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -13,7 +11,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -23,14 +20,13 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
+func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
 	start := time.Now()
 
-	targetObjectType := req.GetType()
-
-	ctx, span := tracer.Start(ctx, authz.ListObjects, trace.WithAttributes(
+	ctx := srv.Context()
+	ctx, span := tracer.Start(ctx, authz.StreamedListObjects, trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
-		attribute.String("object_type", targetObjectType),
+		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
 		attribute.String("user", req.GetUser()),
 		attribute.String("consistency", req.GetConsistency().String()),
@@ -39,27 +35,27 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
 
-	const methodName = "listobjects"
+	const methodName = "streamedlistobjects"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	q, err := commands.NewListObjectsQuery(
@@ -67,43 +63,33 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		s.checkResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
-		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithDispatchThrottlerConfig(threshold.Config{
 			Throttler:    s.listObjectsDispatchThrottler,
 			Enabled:      s.listObjectsDispatchThrottlingEnabled,
 			Threshold:    s.listObjectsDispatchDefaultThreshold,
 			MaxThreshold: s.listObjectsDispatchThrottlingMaxThreshold,
 		}),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 	if err != nil {
-		return nil, serverErrors.NewInternalError("", err)
+		return serverErrors.NewInternalError("", err)
 	}
 
-	result, err := q.Execute(
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
+
+	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
-		&openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			ContextualTuples:     req.GetContextualTuples(),
-			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
-			Type:                 targetObjectType,
-			Relation:             req.GetRelation(),
-			User:                 req.GetUser(),
-			Context:              req.GetContext(),
-			Consistency:          req.GetConsistency(),
-		},
+		req,
+		srv,
 	)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		if errors.Is(err, condition.ErrEvaluationFailed) {
-			return nil, serverErrors.ValidationError(err)
-		}
-
-		return nil, err
+		return err
 	}
-	datastoreQueryCount := float64(result.ResolutionMetadata.DatastoreQueryCount.Load())
+	datastoreQueryCount := float64(resolutionMetadata.DatastoreQueryCount.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, datastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, datastoreQueryCount))
@@ -112,7 +98,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		methodName,
 	).Observe(datastoreQueryCount)
 
-	dispatchCount := float64(result.ResolutionMetadata.DispatchCounter.Load())
+	dispatchCount := float64(resolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
@@ -125,16 +111,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		s.serviceName,
 		methodName,
 		utils.Bucketize(uint(datastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(result.ResolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
+		utils.Bucketize(uint(resolutionMetadata.DispatchCounter.Load()), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
+	wasRequestThrottled := resolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
 
-	return &openfgav1.ListObjectsResponse{
-		Objects: result.Objects,
-	}, nil
+	return nil
 }
