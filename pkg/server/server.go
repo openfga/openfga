@@ -19,8 +19,6 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
 	"github.com/openfga/openfga/internal/throttler"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -36,7 +34,6 @@ import (
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/condition"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -1026,50 +1023,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return res, nil
-}
-
-func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
-	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, authz.Expand, trace.WithAttributes(
-		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
-		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
-		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
-		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
-	))
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.Expand,
-	})
-
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
-	if err != nil {
-		return nil, err
-	}
-
-	storeID := req.GetStoreId()
-
-	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
-	return q.Execute(
-		typesystem.ContextWithTypesystem(ctx, typesys),
-		&openfgav1.ExpandRequest{
-			StoreId:          storeID,
-			TupleKey:         tk,
-			Consistency:      req.GetConsistency(),
-			ContextualTuples: req.GetContextualTuples(),
-		})
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
