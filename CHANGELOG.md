@@ -20,6 +20,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
   As a part of the implementation a new component called ContinuationTokenSerializer was introduced.
   If you are using a custom storage adapter, you will need to pick either a SQL or String Token Serializer, or implement your own one.
+* The storage adapter `ReadPage` return parameters changed from `([]*openfgav1.Tuple, []byte, error)` to `([]*openfgav1.Tuple, string, error)` [#2064](https://github.com/openfga/openfga/pull/2064)
+  If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
 
 ## [1.7.0] - 2024-10-29
 
