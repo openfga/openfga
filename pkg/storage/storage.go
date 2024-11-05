@@ -255,6 +255,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
+	// In addition to the models, it returns a continuation token that can be used to fetch the next page of results.
 	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
@@ -283,6 +284,10 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
+
+	// ListStores returns a list of stores that match the provided options.
+	// In addition to the stores, it returns a continuation token that can be used to fetch the next page of results.
+	// If no stores are found, it is expected to return an empty list and an empty continuation token.
 	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, string, error)
 }
 
@@ -307,9 +312,9 @@ type ChangelogBackend interface {
 	// in the order that they occurred.
 	// You can optionally provide a filter to filter out changes for objects of a specific type.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond.
-	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
+	// It should always return a ULID as a continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
-	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
+	// It's important that the continuation token is a ULID, so it could be generated from timestamp.
 	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, string, error)
 }
 

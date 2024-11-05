@@ -19,10 +19,6 @@ var (
 	// ErrInvalidStartTime is returned when start time param for ReadChanges API is invalid.
 	ErrInvalidStartTime = errors.New("invalid start time")
 
-	// ErrMismatchObjectType is returned when there is a type discrepancy between the requested
-	// object in the ReadChanges API and the type indicated by the continuation token.
-	ErrMismatchObjectType = errors.New("mismatched types in request and continuation token")
-
 	// ErrInvalidWriteInput is returned when the tuple to be written
 	// already existed or the tuple to be deleted did not exist.
 	ErrInvalidWriteInput = errors.New("invalid write input")
