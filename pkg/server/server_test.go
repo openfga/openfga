@@ -2284,7 +2284,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 				define viewer: [user]
 		type license
 			relations
-				define viewer: [user, user:*, company#viewer]`).GetTypeDefinitions()
+				define viewer: [user, company#viewer]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -2324,6 +2324,16 @@ func TestCheckWithCachedIterator(t *testing.T) {
 			},
 		}), nil)
 
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCacheLimit(10),
@@ -2348,6 +2358,16 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	// Sleep for a while to ensure that the iterator is cached
 	time.Sleep(1 * time.Millisecond)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
 
 	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
