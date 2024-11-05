@@ -19,9 +19,10 @@ import (
 // a given object ID or userset in a type, optionally
 // constrained by a relation name.
 type ReadQuery struct {
-	datastore storage.OpenFGADatastore
-	logger    logger.Logger
-	encoder   encoder.Encoder
+	datastore       storage.OpenFGADatastore
+	logger          logger.Logger
+	encoder         encoder.Encoder
+	tokenSerializer encoder.ContinuationTokenSerializer
 }
 
 type ReadQueryOption func(*ReadQuery)
@@ -38,12 +39,19 @@ func WithReadQueryEncoder(e encoder.Encoder) ReadQueryOption {
 	}
 }
 
+func WithReadQueryTokenSerializer(serializer encoder.ContinuationTokenSerializer) ReadQueryOption {
+	return func(rq *ReadQuery) {
+		rq.tokenSerializer = serializer
+	}
+}
+
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
 func NewReadQuery(datastore storage.OpenFGADatastore, opts ...ReadQueryOption) *ReadQuery {
 	rq := &ReadQuery{
-		datastore: datastore,
-		logger:    logger.NewNoopLogger(),
-		encoder:   encoder.NewBase64Encoder(),
+		datastore:       datastore,
+		logger:          logger.NewNoopLogger(),
+		encoder:         encoder.NewBase64Encoder(),
+		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -73,10 +81,23 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		return nil, serverErrors.InvalidContinuationToken
 	}
 
+	if len(decodedContToken) > 0 {
+		from, _, err := q.tokenSerializer.Deserialize(string(decodedContToken))
+		if err != nil {
+			return nil, serverErrors.InvalidContinuationToken
+		}
+		decodedContToken = []byte(from)
+	}
+
 	opts := storage.ReadPageOptions{
 		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
 	}
-	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)
+	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)
+	if err != nil {
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	contToken, err := q.tokenSerializer.Serialize(contUlid, "")
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

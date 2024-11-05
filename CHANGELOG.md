@@ -12,14 +12,19 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
 * Added support for Contextual Tuples in the `Expand` API. [#2045](https://github.com/openfga/openfga/pull/2045)
+* Added OTEL measurement for access control store check latency and write latency due to authorization [#2069](https://github.com/openfga/openfga/pull/2069)
 
 ### Performance
 * Improve `Check` performance in the case that the query involves resolving nested userset with type bound public access. Enable via experimental flag `enable-check-optimizations`. [#2063](https://github.com/openfga/openfga/pull/2063)
 
 ### Breaking changes
 * The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
-  As a part of the implementation a new component called ContinuationTokenSerializer was introduced.
-  If you are using a custom storage adapter, you will need to pick either a SQL or String Token Serializer, or implement your own one.
+  As a part of the implementation, a new server setting called `WithContinuationTokenSerializer` was introduced.
+  If you are using OpenFGA as a library, you will need to pass in either `StringContinuationTokenSerializer`, or `SQLContinuationTokenSerializer`, or implement your own (if you also have your own storage adapter)
+* The storage adapter `ReadPage` return parameters changed from `([]*openfgav1.Tuple, []byte, error)` to `([]*openfgav1.Tuple, string, error)` [#2064](https://github.com/openfga/openfga/pull/2064)
+  If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
+* `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore. 
+  Validation moved to `ReadChangesQuery` implementation.
 
 ## [1.7.0] - 2024-10-29
 

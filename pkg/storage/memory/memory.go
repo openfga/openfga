@@ -16,7 +16,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -26,7 +25,7 @@ var tracer = otel.Tracer("openfga/pkg/storage/memory")
 
 type staticIterator struct {
 	records           []*storage.TupleRecord
-	continuationToken []byte
+	continuationToken string
 	mu                sync.Mutex
 }
 
@@ -94,12 +93,12 @@ func (s *staticIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 }
 
 // ToArray converts the entire sequence of tuples in the staticIterator to an array format.
-func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, []byte, error) {
+func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for range s.records {
 		t, err := s.Next(ctx)
 		if err != nil {
-			return nil, nil, err
+			return nil, "", err
 		}
 
 		res = append(res, t)
@@ -143,9 +142,6 @@ type MemoryBackend struct {
 	// map: store id | authz model id => assertions
 	assertions      map[string][]*openfgav1.Assertion // GUARDED_BY(mutexAssertions).
 	mutexAssertions sync.RWMutex
-
-	// ContinuationTokenSerializer required to serialize the token
-	tokenSerializer encoder.ContinuationTokenSerializer
 }
 
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
@@ -168,7 +164,6 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgav1.Store, 0),
 		assertions:                    make(map[string][]*openfgav1.Assertion, 0),
-		tokenSerializer:               encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -192,11 +187,6 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
 }
 
-// WithContinuationTokenSerializer returns a [StorageOption] that sets the token serializer for the [MemoryBackend].
-func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) StorageOption {
-	return func(ds *MemoryBackend) { ds.tokenSerializer = tokenSerializer }
-}
-
 // Close does not do anything for [MemoryBackend].
 func (s *MemoryBackend) Close() {}
 
@@ -209,20 +199,20 @@ func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgav1.T
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
 	it, err := s.read(ctx, store, key, &options)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 
 	return it.ToArray(ctx)
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
+func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
 	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
@@ -230,27 +220,16 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 	defer s.mutexTuples.RUnlock()
 
 	var from *ulid.ULID
-	var typeInToken string
-	var err error
 	if options.Pagination.From != "" {
-		var concreteToken string
-		concreteToken, typeInToken, err = s.tokenSerializer.Deserialize(options.Pagination.From)
+		parsed, err := ulid.Parse(options.Pagination.From)
 		if err != nil {
-			return nil, nil, storage.ErrInvalidContinuationToken
-		}
-		parsed, err := ulid.Parse(concreteToken)
-		if err != nil {
-			return nil, nil, storage.ErrInvalidContinuationToken
+			return nil, "", storage.ErrInvalidContinuationToken
 		}
 		from = &parsed
 	}
 
 	objectType := filter.ObjectType
 	horizonOffset := filter.HorizonOffset
-
-	if typeInToken != "" && typeInToken != objectType {
-		return nil, nil, storage.ErrMismatchObjectType
-	}
 
 	var allChanges []*tupleChangeRec
 	now := time.Now().UTC()
@@ -270,7 +249,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		}
 	}
 	if len(allChanges) == 0 {
-		return nil, nil, storage.ErrNotFound
+		return nil, "", storage.ErrNotFound
 	}
 
 	pageSize := storage.DefaultPageSize
@@ -286,7 +265,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		to = len(allChanges)
 	}
 	if to == 0 {
-		return nil, nil, storage.ErrNotFound
+		return nil, "", storage.ErrNotFound
 	}
 
 	res := make([]*openfgav1.TupleChange, 0, to)
@@ -297,9 +276,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store string, filter st
 		last = change.Ulid
 	}
 
-	continuationToken, _ := s.tokenSerializer.Serialize(last.String(), objectType)
-
-	return res, continuationToken, nil
+	return res, last.String(), nil
 }
 
 // read returns an iterator of a store's tuples with a given tuple as filter.
@@ -342,7 +319,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 		to = options.Pagination.PageSize
 	}
 	if to != 0 && to < len(matches) {
-		return &staticIterator{records: matches[:to], continuationToken: []byte(strconv.Itoa(from + to))}, nil
+		return &staticIterator{records: matches[:to], continuationToken: strconv.Itoa(from + to)}, nil
 	}
 
 	return &staticIterator{records: matches}, nil
@@ -621,7 +598,7 @@ func (s *MemoryBackend) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
@@ -650,7 +627,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 	if options.Pagination.From != "" {
 		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
 		if err != nil {
-			return nil, nil, err
+			return nil, "", err
 		}
 	}
 
@@ -664,7 +641,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		continuationToken = strconv.Itoa(to)
 	}
 
-	return res, []byte(continuationToken), nil
+	return res, continuationToken, nil
 }
 
 // FindLatestAuthorizationModel see [storage.AuthorizationModelReadBackend].FindLatestAuthorizationModel.
@@ -805,7 +782,7 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgav
 }
 
 // ListStores provides a paginated list of all stores present in the MemoryBackend.
-func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
 	_, span := tracer.Start(ctx, "memory.ListStores")
 	defer span.End()
 
@@ -839,7 +816,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 	if options.Pagination.From != "" {
 		from, err = strconv.ParseInt(options.Pagination.From, 10, 32)
 		if err != nil {
-			return nil, nil, err
+			return nil, "", err
 		}
 	}
 	pageSize := storage.DefaultPageSize
@@ -852,7 +829,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 	}
 	res := stores[from:to]
 	if len(res) == 0 {
-		return nil, nil, nil
+		return nil, "", nil
 	}
 
 	continuationToken := ""
@@ -860,7 +837,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 		continuationToken = strconv.Itoa(to)
 	}
 
-	return res, []byte(continuationToken), nil
+	return res, continuationToken, nil
 }
 
 // IsReady see [storage.OpenFGADatastore].IsReady.

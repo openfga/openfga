@@ -48,7 +48,7 @@ func (m *InstrumentedOpenFGAStorage) Read(ctx context.Context, store string, tup
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (m *InstrumentedOpenFGAStorage) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *InstrumentedOpenFGAStorage) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.increaseReads()
 
 	return m.RelationshipTupleReader.ReadPage(ctx, store, tupleKey, options)

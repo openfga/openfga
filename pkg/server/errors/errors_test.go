@@ -60,10 +60,6 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              storage.ErrInvalidContinuationToken,
 			expectedTranslatedError: InvalidContinuationToken,
 		},
-		`invalid_token_for_read_changes_api`: {
-			storageErr:              storage.ErrMismatchObjectType,
-			expectedTranslatedError: MismatchObjectType,
-		},
 		`context_cancelled`: {
 			storageErr:              context.Canceled,
 			expectedTranslatedError: RequestCancelled,

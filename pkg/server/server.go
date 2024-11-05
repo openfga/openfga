@@ -114,6 +114,29 @@ var (
 		Name:      checkResultCounterName,
 		Help:      "The total number of check requests by response result",
 	}, []string{allowedLabel})
+
+	accessControlStoreCheckDurationHistogramName = "access_control_store_check_request_duration_ms"
+
+	accessControlStoreCheckDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            accessControlStoreCheckDurationHistogramName,
+		Help:                            "The request duration (in ms) for access control store's check duration labeled by method and buckets of datastore query counts and number of dispatches.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"datastore_query_count", "dispatch_count", "consistency"})
+
+	writeDurationHistogramName = "write_duration_ms"
+	writeDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            writeDurationHistogramName,
+		Help:                            "The request duration (in ms) for write duration labeled by whether an authorizer check is required or not.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"require_authorize_check"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -666,6 +689,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDispatchThrottlingFrequency:    serverconfig.DefaultListUsersDispatchThrottlingFrequency,
 		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
 		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
+
+		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
 	}
 
 	for _, opt := range opts {
@@ -1039,6 +1064,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 	q := commands.NewReadQuery(s.datastore,
 		commands.WithReadQueryLogger(s.logger),
 		commands.WithReadQueryEncoder(s.encoder),
+		commands.WithReadQueryTokenSerializer(s.tokenSerializer),
 	)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
@@ -1050,6 +1076,8 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, authz.Write, trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
@@ -1087,12 +1115,20 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
 	)
-	return cmd.Execute(ctx, &openfgav1.WriteRequest{
+	resp, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
+
+	// For now, we only measure the duration if it passes the authz step to make the comparison
+	// apple to apple.
+	writeDurationHistogram.WithLabelValues(
+		strconv.FormatBool(!s.authorizer.IsNoop() && !authclaims.SkipAuthzCheckFromContext(ctx)),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	return resp, err
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
@@ -1197,6 +1233,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
+
+	if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+		accessControlStoreCheckDurationHistogram.WithLabelValues(
+			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+			req.GetConsistency().String(),
+		).Observe(float64(time.Since(start).Milliseconds()))
+	}
 
 	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
