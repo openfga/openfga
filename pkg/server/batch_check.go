@@ -74,6 +74,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	})
 
 	if err != nil {
+		telemetry.TraceError(span, err)
 		var batchValidationError *commands.BatchCheckValidationError
 		if errors.As(err, &batchValidationError) {
 			return nil, serverErrors.ValidationError(err)
@@ -81,6 +82,14 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 
 		return nil, err
 	}
+
+	methodName := "batchCheck"
+	queryCount := float64(metadata.DatastoreQueryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(queryCount)
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
