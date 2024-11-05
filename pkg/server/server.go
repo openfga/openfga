@@ -131,7 +131,7 @@ var (
 	writeDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            writeDurationHistogramName,
-		Help:                            "The request duration (in ms) for write duration labeled by whether whether authorizer check is required.",
+		Help:                            "The request duration (in ms) for write duration labeled by whether an authorizer check is required or not.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
