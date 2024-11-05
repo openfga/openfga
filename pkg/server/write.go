@@ -2,6 +2,10 @@ package server
 
 import (
 	"context"
+	"strconv"
+	"time"
+
+	"github.com/openfga/openfga/pkg/authclaims"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +20,8 @@ import (
 )
 
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
+	start := time.Now()
+
 	ctx, span := tracer.Start(ctx, authz.Write, trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
@@ -53,10 +59,18 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
 	)
-	return cmd.Execute(ctx, &openfgav1.WriteRequest{
+	resp, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
+
+	// For now, we only measure the duration if it passes the authz step to make the comparison
+	// apple to apple.
+	writeDurationHistogram.WithLabelValues(
+		strconv.FormatBool(!s.authorizer.IsNoop() && !authclaims.SkipAuthzCheckFromContext(ctx)),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
+	return resp, err
 }

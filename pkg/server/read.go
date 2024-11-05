@@ -45,6 +45,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 	q := commands.NewReadQuery(s.datastore,
 		commands.WithReadQueryLogger(s.logger),
 		commands.WithReadQueryEncoder(s.encoder),
+		commands.WithReadQueryTokenSerializer(s.tokenSerializer),
 	)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),

@@ -125,6 +125,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+		accessControlStoreCheckDurationHistogram.WithLabelValues(
+			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+			req.GetConsistency().String(),
+		).Observe(float64(time.Since(start).Milliseconds()))
+	}
+
 	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
