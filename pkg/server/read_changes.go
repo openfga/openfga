@@ -2,15 +2,17 @@ package server
 
 import (
 	"context"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/pkg/middleware/validator"
-	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/pkg/middleware/validator"
+	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
