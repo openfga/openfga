@@ -34,7 +34,7 @@ func TestMySQLDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	test.RunAllTests(t, ds, sqlcommon.NewSQLContinuationTokenSerializer())
+	test.RunAllTests(t, ds)
 }
 
 func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
@@ -584,12 +584,11 @@ func TestNew(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "TokenSerializer_nil",
+			name: "bad_uri",
 			args: args{
 				uri: "my;uri?bad=true",
 				cfg: &sqlcommon.Config{
-					Logger:          logger.NewNoopLogger(),
-					TokenSerializer: nil,
+					Logger: logger.NewNoopLogger(),
 				},
 			},
 			want:    nil,

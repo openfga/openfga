@@ -22,7 +22,7 @@ func TestSQLiteDatastore(t *testing.T) {
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
-	test.RunAllTests(t, ds, sqlcommon.NewSQLContinuationTokenSerializer())
+	test.RunAllTests(t, ds)
 }
 
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {

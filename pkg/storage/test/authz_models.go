@@ -99,7 +99,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 
 	opts = storage.ReadAuthorizationModelsOptions{
-		Pagination: storage.NewPaginationOptions(2, string(continuationToken)),
+		Pagination: storage.NewPaginationOptions(2, continuationToken),
 	}
 	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, opts)
 	require.NoError(t, err)

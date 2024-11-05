@@ -235,7 +235,7 @@ func Test_combinedTupleReader_ReadPage(t *testing.T) {
 
 	mockRelationshipTupleReader.EXPECT().
 		ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{}).
-		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, nil, nil)
+		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
 
 	got, _, err := c.ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{})
 	require.NoError(t, err)
