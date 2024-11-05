@@ -71,7 +71,7 @@ func TestGetStoreID(t *testing.T) {
 		mockServer := mocks.NewMockServerInterface(mockController)
 
 		authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
-		require.Equal(t, "test-store", authorizer.RootStoreID())
+		require.Equal(t, "test-store", authorizer.AccessControlStoreID())
 	})
 	t.Run("no_config", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -80,7 +80,7 @@ func TestGetStoreID(t *testing.T) {
 		mockServer := mocks.NewMockServerInterface(mockController)
 
 		authorizer := NewAuthorizer(nil, mockServer, logger.NewNoopLogger())
-		require.Equal(t, "", authorizer.RootStoreID())
+		require.Equal(t, "", authorizer.AccessControlStoreID())
 	})
 }
 

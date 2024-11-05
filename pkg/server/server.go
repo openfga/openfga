@@ -115,12 +115,12 @@ var (
 		Help:      "The total number of check requests by response result",
 	}, []string{allowedLabel})
 
-	rootStoreCheckDurationHistogramName = "root_store_check_request_duration_ms"
+	accessControlStoreCheckDurationHistogramName = "access_control_store_check_request_duration_ms"
 
-	rootStoreCheckDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	accessControlStoreCheckDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
-		Name:                            rootStoreCheckDurationHistogramName,
-		Help:                            "The request duration (in ms) for root store's check duration labeled by method and buckets of datastore query counts and number of dispatches.",
+		Name:                            accessControlStoreCheckDurationHistogramName,
+		Help:                            "The request duration (in ms) for access control store's check duration labeled by method and buckets of datastore query counts and number of dispatches.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -1211,8 +1211,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	if s.authorizer.RootStoreID() == req.GetStoreId() {
-		rootStoreCheckDurationHistogram.WithLabelValues(
+	if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+		accessControlStoreCheckDurationHistogram.WithLabelValues(
 			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
 			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
 			req.GetConsistency().String(),

@@ -108,7 +108,7 @@ type AuthorizerInterface interface {
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
-	RootStoreID() string
+	AccessControlStoreID() string
 	IsNoop() bool
 }
 
@@ -138,7 +138,7 @@ func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, 
 	return nil, nil
 }
 
-func (a *NoopAuthorizer) RootStoreID() string {
+func (a *NoopAuthorizer) AccessControlStoreID() string {
 	return ""
 }
 
@@ -209,7 +209,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	}
 }
 
-func (a *Authorizer) RootStoreID() string {
+func (a *Authorizer) AccessControlStoreID() string {
 	if a.config != nil {
 		return a.config.StoreID
 	}
