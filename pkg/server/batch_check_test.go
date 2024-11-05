@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
+
 	"go.uber.org/goleak"
 
 	"github.com/openfga/openfga/cmd/util"
@@ -102,6 +104,52 @@ func TestBatchCheckUsesTypesystemModel(t *testing.T) {
 	// Both responses should be identical
 	for k, v := range firstResult {
 		require.Equal(t, v, secondResult[k])
+	}
+}
+
+func TestBatchCheckValidatesInboundRequest(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	scenarios := map[string]struct {
+		request       *openfgav1.BatchCheckRequest
+		errorContains string
+	}{
+		`test_invalid_correlation_id`: {
+			request: &openfgav1.BatchCheckRequest{
+				Checks: []*openfgav1.BatchCheckItem{
+					{
+						TupleKey: &openfgav1.CheckRequestTupleKey{
+							User:     "user:bob",
+							Relation: "viewer",
+							Object:   "document:1",
+						},
+						CorrelationId: "", // this is invalid and should fail
+					},
+				},
+			},
+			errorContains: "invalid BatchCheckItem.CorrelationId",
+		},
+		`test_empty_checks`: {
+			request: &openfgav1.BatchCheckRequest{
+				Checks: []*openfgav1.BatchCheckItem{},
+			},
+			errorContains: "invalid BatchCheckRequest.Checks",
+		},
+	}
+
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	for name, scenario := range scenarios {
+		t.Run(name, func(t *testing.T) {
+			batchReq := scenario.request
+			batchReq.StoreId = ulid.Make().String()
+			_, err := s.BatchCheck(context.Background(), batchReq)
+			require.ErrorContains(t, err, scenario.errorContains)
+		})
 	}
 }
 
