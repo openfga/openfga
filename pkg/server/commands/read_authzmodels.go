@@ -58,7 +58,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encoder.Encode(contToken)
+	encodedContToken, err := q.encoder.Encode([]byte(contToken))
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

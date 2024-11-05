@@ -128,8 +128,6 @@ func HandleError(public string, err error) error {
 		return InvalidContinuationToken
 	case errors.Is(err, storage.ErrInvalidStartTime):
 		return InvalidStartTime
-	case errors.Is(err, storage.ErrMismatchObjectType):
-		return MismatchObjectType
 	case errors.Is(err, context.Canceled):
 		// cancel by a client is not an "internal server error"
 		return RequestCancelled
