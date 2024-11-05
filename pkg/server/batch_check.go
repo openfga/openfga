@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+
+	"github.com/openfga/openfga/pkg/server/commands"
+
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -18,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
@@ -71,17 +74,22 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	})
 
 	if err != nil {
+		var batchValidationError *commands.BatchCheckValidationError
+		if errors.As(err, &batchValidationError) {
+			return nil, serverErrors.ValidationError(err)
+		}
+
 		return nil, err
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
-	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToRPC(result)}, nil
+	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToProto(result)}, nil
 }
 
-// transformCheckResultToRPC transform the internal BatchCheckOutcome into the external-facing
+// transformCheckResultToProto transform the internal BatchCheckOutcome into the external-facing
 // BatchCheckSingleResult struct for transmission back via the api.
-func transformCheckResultToRPC(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
+func transformCheckResultToProto(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for k, v := range checkResults {
 		singleResult := &openfgav1.BatchCheckSingleResult{}
