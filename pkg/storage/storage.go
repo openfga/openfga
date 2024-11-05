@@ -56,7 +56,7 @@ func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleR
 // PaginationOptions should not be instantiated directly. Use NewPaginationOptions.
 type PaginationOptions struct {
 	PageSize int
-	// From is an ulid that can be used to retrieve the next page of results
+	// From is a continuation token that can be used to retrieve the next page of results. Its contents will depend on the API.
 	From string
 }
 
