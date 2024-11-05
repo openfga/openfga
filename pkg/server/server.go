@@ -1240,12 +1240,14 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	}
 
 	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
-	return q.Execute(ctx, &openfgav1.ExpandRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
-		TupleKey:             tk,
-		Consistency:          req.GetConsistency(),
-	})
+	return q.Execute(
+		typesystem.ContextWithTypesystem(ctx, typesys),
+		&openfgav1.ExpandRequest{
+			StoreId:          storeID,
+			TupleKey:         tk,
+			Consistency:      req.GetConsistency(),
+			ContextualTuples: req.GetContextualTuples(),
+		})
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
