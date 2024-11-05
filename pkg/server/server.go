@@ -5,10 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -23,15 +21,6 @@ import (
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -39,13 +28,16 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
-	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
-	"github.com/openfga/openfga/pkg/middleware/validator"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 )
 
 type ExperimentalFeatureFlag string
@@ -806,130 +798,6 @@ func (s *Server) Close() {
 	s.datastore.Close()
 
 	s.typesystemResolverStop()
-}
-
-func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModel, trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
-		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
-	))
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.ReadAuthorizationModel,
-	})
-
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
-	if err != nil {
-		return nil, err
-	}
-
-	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
-	return q.Execute(ctx, req)
-}
-
-func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.WriteAuthorizationModel, trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
-	))
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.WriteAuthorizationModel,
-	})
-
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
-	if err != nil {
-		return nil, err
-	}
-
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
-		commands.WithWriteAuthModelLogger(s.logger),
-		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
-	)
-	res, err := c.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
-
-	return res, nil
-}
-
-func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModels, trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
-	))
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.ReadAuthorizationModels,
-	})
-
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
-	if err != nil {
-		return nil, err
-	}
-
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
-		commands.WithReadAuthModelsQueryLogger(s.logger),
-		commands.WithReadAuthModelsQueryEncoder(s.encoder),
-	)
-	return c.Execute(ctx, req)
-}
-
-func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadChanges, trace.WithAttributes(
-		attribute.String("store_id", req.GetStoreId()),
-		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
-	))
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.ReadChanges,
-	})
-
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
-	if err != nil {
-		return nil, err
-	}
-
-	q := commands.NewReadChangesQuery(s.datastore,
-		commands.WithReadChangesQueryLogger(s.logger),
-		commands.WithReadChangesQueryEncoder(s.encoder),
-		commands.WithContinuationTokenSerializer(s.tokenSerializer),
-		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
-	)
-	return q.Execute(ctx, req)
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
