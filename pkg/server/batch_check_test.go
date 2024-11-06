@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+
+	"github.com/openfga/openfga/internal/server/config"
 
 	"github.com/oklog/ulid/v2"
 
@@ -153,6 +156,66 @@ func TestBatchCheckValidatesInboundRequest(t *testing.T) {
 	}
 }
 
+func TestBatchCheckFailsIfTooManyChecks(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	numChecks := config.DefaultMaxChecksPerBatchCheck + 1
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	s := MustNewServerWithOpts(WithDatastore(ds))
+	t.Cleanup(s.Close)
+
+	createStoreResp, err := s.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+
+		type document
+			relations
+				define viewer: [user]
+	`)
+
+	_, err = s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+	})
+	require.NoError(t, err)
+
+	checks := make([]*openfgav1.BatchCheckItem, numChecks)
+	for i := 0; i < numChecks; i++ {
+		checks[i] = &openfgav1.BatchCheckItem{
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   "doc:doc1",
+				Relation: "viewer",
+				User:     "user:justin",
+			},
+			CorrelationId: fmt.Sprintf("abc%d", i),
+		}
+	}
+
+	request := &openfgav1.BatchCheckRequest{
+		StoreId: storeID,
+		Checks:  checks,
+	}
+
+	_, err = s.BatchCheck(context.Background(), request)
+	msg := fmt.Sprintf(
+		"batchCheck received %d checks, the maximum allowed is %d",
+		numChecks,
+		config.DefaultMaxChecksPerBatchCheck,
+	)
+	require.ErrorContains(t, err, msg)
+}
 func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
