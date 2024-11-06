@@ -322,3 +322,22 @@ func TestTransformCheckResultToProto(t *testing.T) {
 		require.Equal(t, expectedResult, result)
 	})
 }
+
+func BenchmarkTransformCheckResultToProto(b *testing.B) {
+	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{
+		"abc123": {
+			CheckResponse: &graph.ResolveCheckResponse{
+				Allowed: true,
+			},
+		},
+		"def456": {
+			Err: graph.ErrResolutionDepthExceeded,
+		},
+	}
+
+	b.Run("benchmark_transform_check_result_to_proto", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			transformCheckResultToProto(outcomes)
+		}
+	})
+}
