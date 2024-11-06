@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/storage/memory"
+
 	"github.com/openfga/openfga/internal/server/config"
 
 	"go.uber.org/goleak"
@@ -246,10 +248,7 @@ func TestBatchCheckCommand(t *testing.T) {
 }
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
-	mockController := gomock.NewController(b)
-	defer mockController.Finish()
-	ds := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	ds := memory.New()
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
@@ -260,11 +259,13 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	`)
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(b, err)
+	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+	b.Cleanup(checkResolverCloser)
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
 	cmd := NewBatchCheckCommand(
 		ds,
-		mockCheckResolver,
+		checkResolver,
 		ts,
 		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
 	)
@@ -281,10 +282,6 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 			CorrelationId: correlationID,
 		}
 	}
-
-	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-		AnyTimes().
-		Return(nil, nil)
 
 	params := &BatchCheckCommandParams{
 		AuthorizationModelID: ts.GetAuthorizationModelID(),
