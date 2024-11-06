@@ -315,6 +315,10 @@ type Config struct {
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
 
+	// ContextPropagationToDatastore enables propagation of a requests context to the datastore,
+	// thereby receiving API cancellation signals
+	ContextPropagationToDatastore bool
+
 	Datastore                     DatastoreConfig
 	GRPC                          GRPCConfig
 	HTTP                          HTTPConfig
@@ -679,7 +683,8 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		RequestTimeout:                DefaultRequestTimeout,
+		ContextPropagationToDatastore: false,
 	}
 }
 

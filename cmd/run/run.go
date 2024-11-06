@@ -237,6 +237,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms.")
 
+	flags.Bool("context-propagation-to-datastore", defaultConfig.ContextPropagationToDatastore, "enable propagation of a request's context to the datastore")
+
 	flags.Bool("check-dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, "enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
 
 	flags.Duration("check-dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "defines how frequent Check dispatch throttling will be evaluated. This controls how frequently throttled dispatch Check requests are dispatched.")
@@ -643,6 +645,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithContextPropagationToDatastore(config.ContextPropagationToDatastore),
 		server.WithDispatchThrottlingCheckResolverEnabled(checkDispatchThrottlingConfig.Enabled),
 		server.WithDispatchThrottlingCheckResolverFrequency(checkDispatchThrottlingConfig.Frequency),
 		server.WithDispatchThrottlingCheckResolverThreshold(checkDispatchThrottlingConfig.Threshold),
