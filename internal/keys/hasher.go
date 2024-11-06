@@ -5,9 +5,10 @@ import (
 	"sort"
 	"strconv"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type hasher interface {

@@ -11,13 +11,15 @@ import (
 	"testing"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"

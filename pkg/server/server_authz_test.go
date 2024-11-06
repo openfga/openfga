@@ -8,12 +8,14 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	language "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/pkg/authclaims"

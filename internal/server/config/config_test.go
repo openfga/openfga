@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-
 	"github.com/stretchr/testify/require"
 )
 

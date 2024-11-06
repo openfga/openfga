@@ -17,8 +17,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
@@ -26,6 +24,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 )

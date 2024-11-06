@@ -8,21 +8,20 @@ import (
 	"strings"
 	"testing"
 
-	parser "github.com/openfga/language/pkg/go/transformer"
-	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/openfga/openfga/pkg/tuple"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/yaml"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )

@@ -7,18 +7,19 @@ import (
 	"math"
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
+
 	"github.com/openfga/openfga/assets"
 	listuserstest "github.com/openfga/openfga/internal/test/listusers"
-	"github.com/openfga/openfga/pkg/typesystem"
-
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
 )
 

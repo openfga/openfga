@@ -9,25 +9,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/condition"
-
 	"github.com/emirpasic/gods/sets/hashset"
-
-	"github.com/openfga/openfga/internal/checkutil"
-
-	"github.com/openfga/openfga/internal/mocks"
-
-	"github.com/openfga/openfga/internal/concurrency"
-
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	parser "github.com/openfga/language/pkg/go/transformer"
+
+	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
