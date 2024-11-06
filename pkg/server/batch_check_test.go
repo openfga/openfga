@@ -323,6 +323,9 @@ func TestTransformCheckResultToProto(t *testing.T) {
 	})
 }
 
+// transformCheckResultToProto takes ~100-200ns per BatchCheckOutcome, or .0001 - .0002ms per.
+// At smaller batch sizes that's fine, but if sizes increase into the thousands the
+// transform might be better in its own concurrent routine rather than as post-processing.
 func BenchmarkTransformCheckResultToProto(b *testing.B) {
 	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{
 		"abc123": {
