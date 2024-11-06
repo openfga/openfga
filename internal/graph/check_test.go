@@ -3775,7 +3775,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 
 			checker := NewLocalChecker()
 			mapping := &nestedMapping{
-				kind:             NestedTTUKind,
+				kind:             TTUKind,
 				tuplesetRelation: "parent",
 			}
 			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
@@ -4404,7 +4404,7 @@ func TestBuildNestedMapper(t *testing.T) {
 
 		mapping := &nestedMapping{
 			tuplesetRelation: "parent",
-			kind:             NestedTTUKind,
+			kind:             TTUKind,
 		}
 		res, err := checker.buildNestedMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
@@ -4413,7 +4413,7 @@ func TestBuildNestedMapper(t *testing.T) {
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*NestedTTUMapper)
+		_, ok := res.(*TTUMapper)
 		require.True(t, ok)
 	})
 }

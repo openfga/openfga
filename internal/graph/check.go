@@ -1077,7 +1077,7 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
@@ -1088,7 +1088,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 		}()
 
 		for {
-			res, err := tupleMapper.Next(ctx)
+			res, err := iter.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
 					return
@@ -1206,7 +1206,7 @@ func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckR
 	defer span.End()
 
 	return c.nestedFastPath(ctx, req, iter, &nestedMapping{
-		kind:             NestedTTUKind,
+		kind:             TTUKind,
 		tuplesetRelation: rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
 	})
 }
@@ -1239,7 +1239,7 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 			Relation:                    req.GetTupleKey().GetRelation(),
 			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
-	case NestedTTUKind:
+	case TTUKind:
 		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
 			storage.ReadOptions{Consistency: consistencyOpts})
 	default:
@@ -1580,6 +1580,14 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.checkTTUSlowPath
 
+		if c.optimizationsEnabled {
+			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+				resolver = c.nestedTTUFastPath
+			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathLevel(objectType, relation, userType, rewrite.GetTupleToUserset(), 2) {
+				resolver = c.checkTTUFastPathV2
+			}
+		}
+
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
@@ -1588,9 +1596,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 				resolver = c.checkTTUFastPath
 			}
-		}
-		if c.optimizationsEnabled && typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-			resolver = c.nestedTTUFastPath
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}

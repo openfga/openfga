@@ -3832,7 +3832,7 @@ func TestUsersetCanFastPath(t *testing.T) {
 	}
 }
 
-func TestTTUCanUseFastTrack(t *testing.T) {
+func TestTTUCanFastPath(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string

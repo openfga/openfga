@@ -7,6 +7,7 @@ import (
 	"maps"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -172,6 +173,7 @@ type TypeSystem struct {
 	modelID                 string
 	schemaVersion           string
 	authorizationModelGraph *graph.AuthorizationModelGraph
+	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
@@ -225,6 +227,12 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		}
 	}
 
+	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
+	weightedGraph, err := wgb.Build(model)
+	if err != nil {
+		return nil, err
+	}
+
 	return &TypeSystem{
 		modelID:                 model.GetId(),
 		schemaVersion:           model.GetSchemaVersion(),
@@ -233,6 +241,7 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		conditions:              uncompiledConditions,
 		ttuRelations:            ttuRelations,
 		authorizationModelGraph: authorizationModelGraph,
+		authzWeightedGraph:      weightedGraph,
 	}, nil
 }
 
@@ -579,6 +588,64 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 		}
 	}
 	return false, nil
+}
+
+func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, ttu *openfgav1.TupleToUserset, level int) bool {
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
+	computedRelation := ttu.GetComputedUserset().GetRelation()
+	node, ok := t.authzWeightedGraph.GetNodesById(objRel)
+	if !ok {
+		return false
+	}
+
+	w, ok := node.GetWeight(userType)
+	if !ok {
+		return false
+	}
+
+	if w == level {
+		return true
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesByNode(node)
+	if !ok {
+		return false
+	}
+
+	ttuEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+	// find all TTU edges  with valid weight
+	// but exit immediately if there is any above level
+	for len(ttuEdges) == 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+		for _, edge := range edges {
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				operationalEdges, ok := t.authzWeightedGraph.GetEdgesByNode(edge.GetTo())
+				if !ok {
+					return false
+				}
+				innerEdges = append(innerEdges, operationalEdges...)
+			}
+
+			// a TuplesetRelation may have multiple parents and these need to be visited to ensure their weight does not
+			// exceed "level"
+			if edge.GetEdgeType() == graph.TTUEdge &&
+				edge.GetConditionedOn() == tuplesetRelationKey &&
+				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), fmt.Sprintf("#%s", computedRelation)) {
+				if w, ok := edge.GetWeight(userType); !ok && w > level {
+					return false
+				}
+				ttuEdges = append(ttuEdges, edge)
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+	return len(ttuEdges) != 0
 }
 
 // TTUCanFastPath returns whether object's tupleRelation's rewrite can support the fast path optimization.
