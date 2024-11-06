@@ -16,6 +16,7 @@ type cachedTupleIterator struct {
 	objectID   string
 	objectType string
 	relation   string
+	userType   string
 	iter       storage.Iterator[storage.TupleRecord]
 }
 
@@ -52,6 +53,7 @@ func (c *cachedTupleIterator) buildTuple(t storage.TupleRecord) *openfgav1.Tuple
 	objectType := t.ObjectType
 	objectID := t.ObjectID
 	relation := t.Relation
+	userType := t.UserObjectType
 
 	if c.objectType != "" {
 		objectType = c.objectType
@@ -65,11 +67,15 @@ func (c *cachedTupleIterator) buildTuple(t storage.TupleRecord) *openfgav1.Tuple
 		relation = c.relation
 	}
 
+	if c.userType != "" {
+		userType = c.userType
+	}
+
 	return &openfgav1.Tuple{
 		Key: tuple.NewTupleKeyWithCondition(
 			tuple.BuildObject(objectType, objectID),
 			relation,
-			t.User,
+			tuple.FromUserParts(userType, t.UserObjectID, t.UserRelation),
 			t.ConditionName,
 			t.ConditionContext,
 		),

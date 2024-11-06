@@ -30,12 +30,14 @@ func TestCachedTupleIterator(t *testing.T) {
 	t.Run("next_object_and_relation", func(t *testing.T) {
 		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType:    "",
-				ObjectID:      "",
-				Relation:      "",
-				User:          "user:1",
-				InsertedAt:    ts,
-				ConditionName: "cond",
+				ObjectType:     "",
+				ObjectID:       "",
+				Relation:       "",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
 			},
 		}
 		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
@@ -73,15 +75,17 @@ func TestCachedTupleIterator(t *testing.T) {
 		}
 	})
 
-	t.Run("next_object_type", func(t *testing.T) {
+	t.Run("next_user_type_and_object_type", func(t *testing.T) {
 		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType:    "",
-				ObjectID:      "1",
-				Relation:      "viewer",
-				User:          "user:1",
-				InsertedAt:    ts,
-				ConditionName: "cond",
+				ObjectType:     "",
+				ObjectID:       "1",
+				Relation:       "viewer",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
 			},
 		}
 		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
@@ -89,6 +93,7 @@ func TestCachedTupleIterator(t *testing.T) {
 			objectType: "document",
 			objectID:   "",
 			relation:   "",
+			userType:   "user",
 			iter:       staticIter,
 		}
 
@@ -122,12 +127,14 @@ func TestCachedTupleIterator(t *testing.T) {
 	t.Run("head_object_and_relation", func(t *testing.T) {
 		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType:    "",
-				ObjectID:      "",
-				Relation:      "",
-				User:          "user:1",
-				InsertedAt:    ts,
-				ConditionName: "cond",
+				ObjectType:     "",
+				ObjectID:       "",
+				Relation:       "",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
 			},
 		}
 		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
@@ -151,15 +158,17 @@ func TestCachedTupleIterator(t *testing.T) {
 		}
 	})
 
-	t.Run("head_object_type", func(t *testing.T) {
+	t.Run("head_user_type_and_object_type", func(t *testing.T) {
 		cachedTuples := []storage.TupleRecord{
 			{
-				ObjectType:    "",
-				ObjectID:      "1",
-				Relation:      "viewer",
-				User:          "user:1",
-				InsertedAt:    ts,
-				ConditionName: "cond",
+				ObjectType:     "",
+				ObjectID:       "1",
+				Relation:       "viewer",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
 			},
 		}
 		staticIter := storage.NewStaticIterator[storage.TupleRecord](cachedTuples)
@@ -167,6 +176,7 @@ func TestCachedTupleIterator(t *testing.T) {
 			objectType: "document",
 			objectID:   "",
 			relation:   "",
+			userType:   "user",
 			iter:       staticIter,
 		}
 

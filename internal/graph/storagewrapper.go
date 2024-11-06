@@ -255,7 +255,7 @@ func (c *CachedDatastore) newCachedIteratorByObjectRelation(
 ) (storage.TupleIterator, error) {
 	objectType, objectID := tuple.SplitObject(object)
 	invalidEntityKeys := storage.GetInvalidIteratorByObjectRelationCacheKeys(store, object, relation)
-	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, objectID, relation)
+	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, objectID, relation, "")
 }
 
 func (c *CachedDatastore) newCachedIteratorByUserObjectType(
@@ -266,8 +266,20 @@ func (c *CachedDatastore) newCachedIteratorByUserObjectType(
 	users []string,
 	objectType string,
 ) (storage.TupleIterator, error) {
+	// if all users in filter are of the same type, we can store in cache without the value
+	var userType string
+	for _, user := range users {
+		userObjectType, _ := tuple.SplitObject(user)
+		if userType == "" {
+			userType = userObjectType
+		} else if userType != userObjectType {
+			userType = ""
+			break
+		}
+	}
+
 	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(store, users, objectType)
-	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, "", "")
+	return c.newCachedIterator(ctx, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, "", "", userType)
 }
 
 // newCachedIterator either returns a cached static iterator for a cache hit, or
@@ -281,6 +293,7 @@ func (c *CachedDatastore) newCachedIterator(
 	objectType string,
 	objectID string,
 	relation string,
+	userType string,
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
@@ -296,6 +309,7 @@ func (c *CachedDatastore) newCachedIterator(
 			objectID:   objectID,
 			objectType: objectType,
 			relation:   relation,
+			userType:   userType,
 			iter:       staticIter,
 		}, nil
 	}
@@ -318,6 +332,7 @@ func (c *CachedDatastore) newCachedIterator(
 		objectType: objectType,
 		objectID:   objectID,
 		relation:   relation,
+		userType:   userType,
 	}, nil
 }
 
@@ -337,6 +352,7 @@ type cachedIterator struct {
 	objectID   string
 	objectType string
 	relation   string
+	userType   string
 
 	// maxResultSize is the maximum number of tuples to cache. If the number
 	// of tuples found exceeds this value, it will not be cached.
@@ -436,12 +452,15 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	tk := t.GetKey()
 	object := tk.GetObject()
 	objectType, objectID := tuple.SplitObject(object)
+	userObjectType, userObjectID, userRelation := tuple.ToUserParts(tk.GetUser())
 
 	record := storage.TupleRecord{
-		ObjectID:   objectID,
-		ObjectType: objectType,
-		Relation:   tk.GetRelation(),
-		User:       tk.GetUser(),
+		ObjectID:       objectID,
+		ObjectType:     objectType,
+		Relation:       tk.GetRelation(),
+		UserObjectType: userObjectType,
+		UserObjectID:   userObjectID,
+		UserRelation:   userRelation,
 	}
 
 	if timestamp := t.GetTimestamp(); timestamp != nil {
@@ -462,6 +481,9 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	}
 	if c.relation != "" && c.relation == record.Relation {
 		record.Relation = ""
+	}
+	if c.userType != "" && c.userType == record.UserObjectType {
+		record.UserObjectType = ""
 	}
 
 	c.tuples = append(c.tuples, record)

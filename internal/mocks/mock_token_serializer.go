@@ -19,6 +19,7 @@ import (
 type MockContinuationTokenSerializer struct {
 	ctrl     *gomock.Controller
 	recorder *MockContinuationTokenSerializerMockRecorder
+	isgomock struct{}
 }
 
 // MockContinuationTokenSerializerMockRecorder is the mock recorder for MockContinuationTokenSerializer.

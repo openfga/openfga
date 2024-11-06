@@ -127,7 +127,6 @@ func TestReadStartingWithUser(t *testing.T) {
 		tuple.NewTupleKey("document:3", "viewer", "user:3"),
 		tuple.NewTupleKey("document:4", "viewer", "user:4"),
 		tuple.NewTupleKey("document:5", "viewer", "user:*"),
-		tuple.NewTupleKey("document:1", "viewer", "company:1#viewer"),
 	}
 	var tuples []*openfgav1.Tuple
 	var cachedTuples []storage.TupleRecord
@@ -135,11 +134,14 @@ func TestReadStartingWithUser(t *testing.T) {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
 		_, objectID := tuple.SplitObject(tk.GetObject())
+		_, userObjectID, userRelation := tuple.ToUserParts(tk.GetUser())
 		cachedTuples = append(cachedTuples, storage.TupleRecord{
-			ObjectID:   objectID,
-			Relation:   tk.GetRelation(),
-			User:       tk.GetUser(),
-			InsertedAt: ts.AsTime(),
+			ObjectID:       objectID,
+			Relation:       tk.GetRelation(),
+			UserObjectType: "",
+			UserObjectID:   userObjectID,
+			UserRelation:   userRelation,
+			InsertedAt:     ts.AsTime(),
 		})
 	}
 
@@ -149,6 +151,7 @@ func TestReadStartingWithUser(t *testing.T) {
 		Relation:   "viewer",
 		UserFilter: []*openfgav1.ObjectRelation{
 			{Object: "user:5"},
+			{Object: "user:*"},
 		},
 		ObjectIDs: storage.NewSortedSet("1"),
 	}
@@ -157,6 +160,8 @@ func TestReadStartingWithUser(t *testing.T) {
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
+
+	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5#", "user:*#"}, filter.ObjectType)
 
 	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
@@ -169,7 +174,8 @@ func TestReadStartingWithUser(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5#"}, filter.ObjectType)[0]),
+			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
+			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -201,7 +207,8 @@ func TestReadStartingWithUser(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
-			mockCache.EXPECT().Get(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5#"}, filter.ObjectType)[0]).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKeys[1]).Return(nil),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -236,7 +243,8 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5#"}, filter.ObjectType)[0]),
+			mockCache.EXPECT().Delete(invalidEntityKeys[0]),
+			mockCache.EXPECT().Delete(invalidEntityKeys[1]),
 		)
 
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
@@ -330,9 +338,12 @@ func TestReadUsersetTuples(t *testing.T) {
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+		userObjectType, userObjectID, userRelation := tuple.ToUserParts(tk.GetUser())
 		cachedTuples = append(cachedTuples, storage.TupleRecord{
-			User:       tk.GetUser(),
-			InsertedAt: ts.AsTime(),
+			UserObjectType: userObjectType,
+			UserObjectID:   userObjectID,
+			UserRelation:   userRelation,
+			InsertedAt:     ts.AsTime(),
 		})
 	}
 
@@ -526,9 +537,12 @@ func TestRead(t *testing.T) {
 	for _, tk := range tks {
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+		userObjectType, userObjectID, userRelation := tuple.ToUserParts(tk.GetUser())
 		cachedTuples = append(cachedTuples, storage.TupleRecord{
-			User:       tk.GetUser(),
-			InsertedAt: ts.AsTime(),
+			UserObjectType: userObjectType,
+			UserObjectID:   userObjectID,
+			UserRelation:   userRelation,
+			InsertedAt:     ts.AsTime(),
 		})
 	}
 
@@ -788,18 +802,22 @@ func TestCachedIterator(t *testing.T) {
 
 	cachedTuples := []storage.TupleRecord{
 		{
-			ObjectID:   "doc1",
-			ObjectType: "document",
-			Relation:   "viewer",
-			User:       "bill",
-			InsertedAt: tuples[0].GetTimestamp().AsTime(),
+			ObjectID:       "doc1",
+			ObjectType:     "document",
+			Relation:       "viewer",
+			UserObjectType: "",
+			UserObjectID:   "bill",
+			UserRelation:   "",
+			InsertedAt:     tuples[0].GetTimestamp().AsTime(),
 		},
 		{
-			ObjectID:   "doc2",
-			ObjectType: "document",
-			Relation:   "editor",
-			User:       "bob",
-			InsertedAt: tuples[1].GetTimestamp().AsTime(),
+			ObjectID:       "doc2",
+			ObjectType:     "document",
+			Relation:       "editor",
+			UserObjectType: "",
+			UserObjectID:   "bob",
+			UserRelation:   "",
+			InsertedAt:     tuples[1].GetTimestamp().AsTime(),
 		},
 	}
 
