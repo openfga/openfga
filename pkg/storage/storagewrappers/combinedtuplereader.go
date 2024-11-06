@@ -66,7 +66,7 @@ func (c *CombinedTupleReader) Read(
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	// No reading from contextual tuples.
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options)
 }
