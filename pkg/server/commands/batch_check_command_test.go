@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/openfga/openfga/internal/server/config"
+
 	"go.uber.org/goleak"
 
 	"github.com/oklog/ulid/v2"
@@ -240,5 +242,60 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// response should have 1 key per check
 		require.Equal(t, len(response), numChecks)
+	})
+}
+
+func BenchmarkBatchCheckCommand(b *testing.B) {
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	ds := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type doc
+			relations
+				define viewer: [user]
+	`)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(b, err)
+
+	maxChecks := config.DefaultMaxChecksPerBatchCheck
+	cmd := NewBatchCheckCommand(
+		ds,
+		mockCheckResolver,
+		ts,
+		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
+	)
+
+	checks := make([]*openfgav1.BatchCheckItem, maxChecks)
+	for i := 0; i < maxChecks; i++ {
+		correlationID := fmt.Sprintf("fakeid%d", i)
+		checks[i] = &openfgav1.BatchCheckItem{
+			TupleKey: &openfgav1.CheckRequestTupleKey{
+				Object:   "doc:doc1",
+				Relation: "viewer",
+				User:     "user:justin",
+			},
+			CorrelationId: correlationID,
+		}
+	}
+
+	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(nil, nil)
+
+	params := &BatchCheckCommandParams{
+		AuthorizationModelID: ts.GetAuthorizationModelID(),
+		Checks:               checks,
+		StoreID:              ulid.Make().String(),
+	}
+
+	b.Run("benchmark_batch_check_with_max_checks", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _, err := cmd.Execute(context.Background(), params)
+			require.NoError(b, err)
+		}
 	})
 }
