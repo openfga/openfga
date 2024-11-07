@@ -103,6 +103,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		}
 	}
 
+	if len(params.Checks) == 0 {
+		return nil, nil, &BatchCheckValidationError{
+			Message: "batch check requires at least one check to evaluate, no checks were received",
+		}
+	}
+
 	if err := validateCorrelationIDs(params.Checks); err != nil {
 		return nil, nil, err
 	}

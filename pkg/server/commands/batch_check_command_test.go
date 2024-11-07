@@ -154,6 +154,19 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.ErrorAs(t, err, &expectedErr)
 	})
 
+	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               []*openfgav1.BatchCheckItem{},
+			StoreID:              ulid.Make().String(),
+		}
+
+		_, _, err := cmd.Execute(context.Background(), params)
+
+		var expectedErr *BatchCheckValidationError
+		require.ErrorAs(t, err, &expectedErr)
+	})
+
 	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
 		numChecks := 2
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
