@@ -52,7 +52,6 @@ const (
 	CanCallWrite                    = "can_call_write"
 	CanCallListObjects              = "can_call_list_objects"
 	CanCallCheck                    = "can_call_check"
-	CanCallBatchCheck               = "can_call_batch_check"
 	CanCallListUsers                = "can_call_list_users"
 	CanCallWriteAssertions          = "can_call_write_assertions"
 	CanCallReadAssertions           = "can_call_read_assertions"
@@ -184,10 +183,8 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallWrite, nil
 	case ListObjects, StreamedListObjects:
 		return CanCallListObjects, nil
-	case Check:
+	case Check, BatchCheck:
 		return CanCallCheck, nil
-	case BatchCheck:
-		return CanCallBatchCheck, nil
 	case ListUsers:
 		return CanCallListUsers, nil
 	case WriteAssertions:
