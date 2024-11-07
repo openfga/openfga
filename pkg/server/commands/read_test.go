@@ -112,19 +112,25 @@ func TestReadCommand(t *testing.T) {
 		pageSize := int32(45)
 
 		mockEncoder := mocks.NewMockEncoder(mockController)
-		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte{}, nil).Times(1)
+		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte("decodedtoken"), nil).Times(1)
 		mockEncoder.EXPECT().Encode(gomock.Any()).Return("encodedtoken", nil).Times(1)
+
+		tokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
+		tokenSerializer.EXPECT().Serialize(gomock.Any(), gomock.Any()).Return([]byte("serializedtoken"), nil).Times(1)
+		tokenSerializer.EXPECT().Deserialize("decodedtoken").Return("deserializedtoken", "", nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		opts := storage.ReadPageOptions{
 			Pagination: storage.PaginationOptions{
 				PageSize: int(pageSize),
-				From:     "",
+				From:     "deserializedtoken",
 			},
 		}
 		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
-
-		cmd := NewReadQuery(mockDatastore, WithReadQueryEncoder(mockEncoder))
+		cmd := NewReadQuery(mockDatastore,
+			WithReadQueryEncoder(mockEncoder),
+			WithReadQueryTokenSerializer(tokenSerializer),
+		)
 		resp, err := cmd.Execute(context.Background(), &openfgav1.ReadRequest{
 			StoreId:           storeID,
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},

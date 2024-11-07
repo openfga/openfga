@@ -1,3 +1,5 @@
+//go:generate mockgen -source token_serializer.go -destination ../../internal/mocks/mock_token_serializer.go -package mocks OpenFGADatastore
+
 package encoder
 
 import (

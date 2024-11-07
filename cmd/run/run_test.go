@@ -1189,6 +1189,10 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
 
+	val = res.Get("properties.contextPropagationToDatastore.default")
+	require.True(t, val.Exists())
+	require.False(t, val.Bool())
+
 	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
@@ -1261,6 +1265,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
@@ -1339,6 +1344,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
+	t.Setenv("OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE", "true")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1359,6 +1365,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("access-control-enabled"))
 		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
 		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
+		require.True(t, viper.GetBool("context-propagation-to-datastore"))
 
 		return nil
 	}

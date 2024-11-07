@@ -3377,12 +3377,10 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 						define allowed: [user, user:*]`,
 			objectType: "folder",
 			relation:   "allowed",
-			expected: []*openfgav1.RelationReference{
-				WildcardRelationReference("user"),
-			},
+			expected:   nil,
 		},
 		{
-			name: "with_ttu_relation",
+			name: "with_userset_relation",
 			model: `
 				model
 					schema 1.1
@@ -3401,7 +3399,7 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 			},
 		},
 		{
-			name: "mix_direct_and_public_relation",
+			name: "mix_direct_and_userset_relation",
 			model: `
 				model
 					schema 1.1
@@ -4621,7 +4619,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           false,
+			expected:           true,
 		},
 		{
 			name: "simple_recursive_wildcard_condition",
@@ -4638,7 +4636,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           false,
+			expected:           true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard",
@@ -4652,7 +4650,7 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           false,
+			expected:           true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
@@ -4669,7 +4667,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           false,
+			expected:           true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
@@ -4686,7 +4684,7 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
-			expected:           false,
+			expected:           true,
 		},
 		{
 			name: "complex_recursive_due_to_type_not_found",

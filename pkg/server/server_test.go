@@ -569,6 +569,79 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	require.False(t, resp.GetAllowed())
 }
 
+func TestRequestContextPropagation(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	for _, tc := range []struct {
+		name                   string
+		shouldPropagateContext bool
+	}{
+		{name: "disabled", shouldPropagateContext: false},
+		{name: "enabled", shouldPropagateContext: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			storeID := ulid.Make().String()
+			modelID := ulid.Make().String()
+
+			mockController := gomock.NewController(t)
+			t.Cleanup(mockController.Finish)
+
+			parentCtx, cancelParentCtx := context.WithCancel(context.Background())
+			t.Cleanup(cancelParentCtx)
+
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+			model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+
+			type user
+
+			type repo
+				relations
+					define reader: [user]`)
+
+			mockDatastore.EXPECT().
+				ReadAuthorizationModel(gomock.Any(), gomock.Eq(storeID), gomock.Eq(modelID)).
+				Return(model, nil)
+
+			mockDatastore.EXPECT().
+				ReadUserTuple(gomock.Any(), gomock.Eq(storeID), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _, _, _ any) (*openfgav1.Tuple, error) {
+					cancelParentCtx()
+					if tc.shouldPropagateContext {
+						require.ErrorIs(t, ctx.Err(), context.Canceled, "storage context must get cancelled if the request context is propagated")
+					} else {
+						require.NoError(t, ctx.Err(), "storage context must not get canceled if request context propagation is disabled")
+					}
+					// Return dummy error, we don't care about the check result for this testcase
+					return nil, storage.ErrNotFound
+				})
+
+			s := MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithContextPropagationToDatastore(tc.shouldPropagateContext),
+			)
+			t.Cleanup(func() {
+				mockDatastore.EXPECT().Close().Times(1)
+				s.Close()
+			})
+
+			// We do not care about the check result as we assert via mockDatastore.
+			_, _ = s.Check(parentCtx, &openfgav1.CheckRequest{
+				StoreId:              storeID,
+				TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike"),
+				AuthorizationModelId: modelID,
+			})
+		})
+	}
+}
+
 func TestThreeProngThroughVariousLayers(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2284,7 +2357,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 				define viewer: [user]
 		type license
 			relations
-				define viewer: [user, user:*, company#viewer]`).GetTypeDefinitions()
+				define viewer: [user, company#viewer]`).GetTypeDefinitions()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -2324,6 +2397,16 @@ func TestCheckWithCachedIterator(t *testing.T) {
 			},
 		}), nil)
 
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCacheLimit(10),
@@ -2348,6 +2431,16 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	// Sleep for a while to ensure that the iterator is cached
 	time.Sleep(1 * time.Millisecond)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
 
 	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
 	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{

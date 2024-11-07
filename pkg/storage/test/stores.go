@@ -49,7 +49,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NotEmpty(t, ct)
 
 		opts = storage.ListStoresOptions{
-			Pagination: storage.NewPaginationOptions(100, string(ct)),
+			Pagination: storage.NewPaginationOptions(100, ct),
 		}
 		_, ct, err = datastore.ListStores(ctx, opts)
 		require.NoError(t, err)
