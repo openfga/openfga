@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -302,9 +303,8 @@ type cachedIterator struct {
 	// across multiple requests.
 	sf *singleflight.Group
 
-	// closeOnce is used to synchronize .Close() and ensure
-	// it's only done once.
-	closeOnce sync.Once
+	// closeOnce is used to synchronize .Close() and ensure and stop producing tuples it's only done once.
+	closing atomic.Bool
 
 	// wg is used purely for testing and is an internal detail.
 	wg sync.WaitGroup
@@ -314,6 +314,9 @@ type cachedIterator struct {
 // will attempt to add to buffer if not yet full. To set buffered tuples in cache,
 // you must call .Stop().
 func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if c.closing.Load() {
+		return nil, storage.ErrIteratorDone
+	}
 	t, err := c.iter.Next(ctx)
 	if err != nil {
 		if !storage.IterIsDoneOrCancelled(err) {
@@ -333,49 +336,51 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 //   - If the iterator is not fully consumed, it will be drained in the background,
 //     and attempt will be made to cache its results.
 func (c *cachedIterator) Stop() {
-	c.closeOnce.Do(func() {
-		if c.tuples == nil {
-			c.iter.Stop()
+	swapped := c.closing.CompareAndSwap(false, true)
+	if !swapped {
+		return
+	}
+	if c.tuples == nil {
+		c.iter.Stop()
+		return
+	}
+	// prevent goroutine if iterator was already consumed
+	ctx := context.Background()
+	if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
+		c.flush()
+		c.iter.Stop()
+		return
+	}
+
+	c.wg.Add(1)
+	go func() {
+		defer c.iter.Stop()
+		defer c.wg.Done()
+
+		// if cache is already set, we don't need to drain the iterator
+		if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
 			return
 		}
-		// prevent goroutine if iterator was already consumed
-		ctx := context.Background()
-		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
-			c.flush()
-			c.iter.Stop()
-			return
-		}
 
-		c.wg.Add(1)
-		go func() {
-			defer c.iter.Stop()
-			defer c.wg.Done()
-
-			// if cache is already set, we don't need to drain the iterator
-			if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
-				return
-			}
-
-			// prevent draining on the same iterator across multiple requests
-			_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
-				for {
-					// attempt to drain the iterator to have it ready for subsequent calls
-					t, err := c.iter.Next(ctx)
-					if err != nil {
-						if errors.Is(err, storage.ErrIteratorDone) {
-							c.flush()
-						}
-						break
+		// prevent draining on the same iterator across multiple requests
+		_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
+			for {
+				// attempt to drain the iterator to have it ready for subsequent calls
+				t, err := c.iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						c.flush()
 					}
-					// if the size is exceeded we don't add anymore and exit
-					if !c.addToBuffer(t) {
-						break
-					}
+					break
 				}
-				return nil, nil
-			})
-		}()
-	})
+				// if the size is exceeded we don't add anymore and exit
+				if !c.addToBuffer(t) {
+					break
+				}
+			}
+			return nil, nil
+		})
+	}()
 }
 
 // Head see [storage.Iterator].Head.

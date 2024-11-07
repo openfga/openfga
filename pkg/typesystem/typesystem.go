@@ -228,10 +228,8 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 	}
 
 	wgb := graph.NewWeightedAuthorizationModelGraphBuilder()
-	weightedGraph, err := wgb.Build(model)
-	if err != nil {
-		return nil, err
-	}
+	// TODO: this will require a deprecation not ignore the error and remove nil checks
+	weightedGraph, _ := wgb.Build(model)
 
 	return &TypeSystem{
 		modelID:                 model.GetId(),
@@ -569,6 +567,9 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 }
 
 func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, ttu *openfgav1.TupleToUserset, level int) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
 	objRel := tuple.ToObjectRelationString(objectType, relation)
 	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
 	computedRelation := ttu.GetComputedUserset().GetRelation()
@@ -612,7 +613,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), fmt.Sprintf("#%s", computedRelation)) {
-				if w, ok := edge.GetWeight(userType); !ok && w > level {
+				if w, ok := edge.GetWeight(userType); !ok || w > level {
 					return false
 				}
 				ttuEdges = append(ttuEdges, edge)

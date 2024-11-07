@@ -1664,14 +1664,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.checkTTUSlowPath
 
-		if c.optimizationsEnabled {
-			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-				resolver = c.nestedTTUFastPath
-			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathLevel(objectType, relation, userType, rewrite.GetTupleToUserset(), 2) {
-				resolver = c.checkTTUFastPathV2
-			}
-		}
-
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
@@ -1679,6 +1671,14 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if canFastPath := typesys.TTUCanFastPath(
 				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 				resolver = c.checkTTUFastPath
+			}
+		}
+
+		if c.optimizationsEnabled {
+			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+				resolver = c.nestedTTUFastPath
+			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathLevel(objectType, relation, userType, rewrite.GetTupleToUserset(), 2) {
+				resolver = c.checkTTUFastPathV2
 			}
 		}
 		return resolver(ctx, req, rewrite, filteredIter)

@@ -3,10 +3,9 @@ package graph
 import (
 	"context"
 	"fmt"
-	"slices"
-
 	"github.com/emirpasic/gods/sets/hashset"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"slices"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
@@ -55,7 +54,7 @@ func (c *LocalChecker) fastPathComputed(ctx context.Context, req *ResolveCheckRe
 	objectType := tuple.GetType(tk.GetObject())
 	rel, err := typesys.GetRelation(objectType, computedRelation)
 	if err != nil {
-		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", computedRelation, rel)
+		return nil, err
 	}
 
 	return c.fastPathRewrite(ctx, childRequest, rel.GetRewrite())
@@ -100,12 +99,8 @@ func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducer
 }
 
 func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer func() {
-		close(iterChan)
-		for _, iter := range iterQueue {
-			close(iter.producer)
-		}
-	}()
+	defer close(iterChan)
+
 	/*
 		collect iterators from all channels, once none are nil
 		start performing union algorithm across the heads, if an iterator is drained
@@ -188,12 +183,8 @@ func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iter
 }
 
 func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer func() {
-		close(iterChan)
-		for _, iter := range iterQueue {
-			close(iter.producer)
-		}
-	}()
+	defer close(iterChan)
+
 	/*
 		collect iterators from all channels, once none are nil
 		start performing intersection algorithm across the heads, if an iterator is drained
@@ -306,12 +297,7 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 }
 
 func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer func() {
-		close(iterChan)
-		for _, iter := range iterQueue {
-			close(iter.producer)
-		}
-	}()
+	defer close(iterChan)
 
 	var newIters []storage.TupleKeyIterator
 	batch := make([]*openfgav1.TupleKey, 0)
@@ -438,14 +424,14 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 }
 
 func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op setOperatorType, children ...*openfgav1.Userset) (chan iteratorMsg, error) {
-	resultChan := make(chan iteratorMsg, 1)
-	iterQueue := make([]*iteratorProducerEntry, len(children))
+	resultChan := make(chan iteratorMsg, len(children))
+	iterQueue := make([]*iteratorProducerEntry, 0, len(children))
 	for idx, child := range children {
-		c, err := c.fastPathRewrite(ctx, req, child)
+		producerChan, err := c.fastPathRewrite(ctx, req, child)
 		if err != nil {
 			return nil, err
 		}
-		iterQueue = append(iterQueue, &iteratorProducerEntry{idx: idx, iter: storage.NewStaticTupleKeyIterator(nil), producer: c, producerDone: false})
+		iterQueue = append(iterQueue, &iteratorProducerEntry{idx: idx, iter: storage.NewStaticTupleKeyIterator(nil), producer: producerChan, producerDone: false})
 	}
 	var resolver fastPathSetHandler
 	switch op {
@@ -483,12 +469,8 @@ func (c *LocalChecker) fastPathRewrite(
 	}
 }
 
-func (c *LocalChecker) resolveFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
 	rightChan := streamedLookupUsersetFromIterator(ctx, iter)
-	leftChan, err := c.fastPathRewrite(ctx, req, rewrite)
-	if err != nil {
-		return nil, err
-	}
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
@@ -508,11 +490,15 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, req *ResolveCheckReq
 	}
 	rightSet.Add(r.userset)
 
-	for {
+	rightOpen := true
+	leftOpen := true
+
+	for rightOpen || leftOpen {
 		select {
 		case <-ctx.Done():
 		case msg, ok := <-rightChan:
 			if !ok {
+				rightOpen = false
 				break
 			}
 			if msg.err != nil {
@@ -524,6 +510,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, req *ResolveCheckReq
 			}
 		case msg, ok := <-leftChan:
 			if !ok {
+				leftOpen = false
 				if leftSet.Size() == 0 {
 					return res, nil
 				}
@@ -532,7 +519,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, req *ResolveCheckReq
 			if msg.err != nil {
 				return nil, msg.err
 			}
-			// this could be a goroutine
+			// NOTE: this could be a goroutine per msg
 			for {
 				t, err := msg.iter.Next(ctx)
 				if err != nil {
@@ -548,24 +535,65 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, req *ResolveCheckReq
 			}
 		}
 	}
+	return res, nil
 }
 
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPathV2")
 	defer span.End()
+	fmt.Println("ELBUO via fast path v2", req.GetTupleKey().String(), rewrite.String())
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	rel, err := typesys.GetRelation(objectType, computedRelation)
+
+	possibleParentsTypes, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
 	if err != nil {
-		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", computedRelation, objectType)
+		return nil, err
 	}
 
-	rw := rel.GetRewrite()
-	// V1 (directly assignable), the computed relation is a terminal type (no nested usersets/TTU)
-	if _, ok := rw.GetUserset().(*openfgav1.Userset_This); ok {
-		usersetDetails := checkutil.BuildUsersetDetailsTTU(typesys, computedRelation)
-		return c.checkMembership(ctx, req, iter, usersetDetails)
+	leftChans := make([]chan iteratorMsg, 0, len(possibleParentsTypes))
+	for _, parentType := range possibleParentsTypes {
+		r := req.clone()
+		r.TupleKey = &openfgav1.TupleKey{
+			Object:   tuple.BuildObject(parentType.GetType(), "ignore"),
+			Relation: computedRelation,
+			User:     r.GetTupleKey().GetUser(),
+		}
+		rel, err := typesys.GetRelation(parentType.GetType(), computedRelation)
+		if err != nil {
+			return nil, err
+		}
+		leftChan, err := c.fastPathRewrite(ctx, r, rel.GetRewrite())
+		if err != nil {
+			return nil, err
+		}
+		leftChans = append(leftChans, leftChan)
 	}
-	return c.resolveFastPath(ctx, req, rw, wrapIterator(TTUKind, iter))
+
+	leftChan := fanInIteratorChannels(ctx, leftChans)
+
+	return c.resolveFastPath(ctx, leftChan, wrapIterator(TTUKind, iter))
+}
+
+// NOTE: Can we make this generic and move it to concurrency pkg?
+func fanInIteratorChannels(ctx context.Context, chans []chan iteratorMsg) <-chan iteratorMsg {
+	pool := concurrency.NewPool(ctx, len(chans))
+	out := make(chan iteratorMsg)
+
+	go func() {
+		_ = pool.Wait()
+		close(out)
+	}()
+
+	for _, c := range chans {
+		pool.Go(func(ctx context.Context) error {
+			for v := range c {
+				concurrency.TrySendThroughChannel(ctx, v, out)
+			}
+			return nil
+		})
+	}
+
+	return out
 }
