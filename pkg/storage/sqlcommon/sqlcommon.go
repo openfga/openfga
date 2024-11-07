@@ -170,6 +170,9 @@ func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
 type SQLContinuationTokenSerializer struct{}
 
 func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
+	if ulid == "" {
+		return nil, errors.New("empty ulid provided for continuation token")
+	}
 	return json.Marshal(NewContToken(ulid, objType))
 }
 
