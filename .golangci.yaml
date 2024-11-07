@@ -8,9 +8,9 @@ run:
 linters:
   enable:
     - errname
-    - gci
     - gofmt
     - goimports
+    - gci
     - stylecheck
     - importas
     - errcheck
@@ -52,8 +52,6 @@ linters-settings:
     disable:
       - shadow
       - fieldalignment
-  goimports:
-    local-prefixes: github.com/openfga/openfga
   importas:
     no-unaliased: true # Do not allow unaliased imports of aliased packages.
     no-extra-aliases: false # Do not allow non-required aliases.
