@@ -547,13 +547,13 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-	possibleParentsTypes, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+	possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
 	if err != nil {
 		return nil, err
 	}
 
-	leftChans := make([]chan iteratorMsg, 0, len(possibleParentsTypes))
-	for _, parentType := range possibleParentsTypes {
+	leftChans := make([]chan iteratorMsg, 0)
+	for _, parentType := range possibleParents {
 		r := req.clone()
 		r.TupleKey = &openfgav1.TupleKey{
 			Object:   tuple.BuildObject(parentType.GetType(), "ignore"),
@@ -562,7 +562,9 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}
 		rel, err := typesys.GetRelation(parentType.GetType(), computedRelation)
 		if err != nil {
-			return nil, err
+			// NOTE: is there a better way to check and filter rather than skipping?
+			// other paths can be reachable
+			continue
 		}
 		leftChan, err := c.fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {
@@ -577,14 +579,9 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
-func fanInIteratorChannels(ctx context.Context, chans []chan iteratorMsg) <-chan iteratorMsg {
+func fanInIteratorChannels(ctx context.Context, chans []chan iteratorMsg) chan iteratorMsg {
 	pool := concurrency.NewPool(ctx, len(chans))
 	out := make(chan iteratorMsg)
-
-	go func() {
-		_ = pool.Wait()
-		close(out)
-	}()
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
@@ -594,6 +591,11 @@ func fanInIteratorChannels(ctx context.Context, chans []chan iteratorMsg) <-chan
 			return nil
 		})
 	}
+
+	go func() {
+		_ = pool.Wait()
+		close(out)
+	}()
 
 	return out
 }
