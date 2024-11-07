@@ -7,15 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-* Added `BatchCheck` API which allows multiple check operations to be performed in a single request.
-  It requires a unique `correlation_id` associated with each individual check to map each result to its associated tuple.
-  For more details, see [batch check docs](https://openfga.dev/docs/interacting/relationship-queries#batch-check) [#2039](https://github.com/openfga/openfga/pull/2039).
 
 ### Added
 * Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
 * Added support for Contextual Tuples in the `Expand` API. [#2045](https://github.com/openfga/openfga/pull/2045)
 * Added a flag `OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE` to control propagation of a request's context to the datastore. [#1838](https://github.com/openfga/openfga/pull/1838)
 * Added OTEL measurement for access control store check latency and write latency due to authorization [#2069](https://github.com/openfga/openfga/pull/2069)
+* Added `BatchCheck` API which allows multiple check operations to be performed in a single request.
+  It requires a unique `correlation_id` associated with each individual check to map each result to its associated tuple.
+  For more details, see [batch check docs](https://openfga.dev/docs/interacting/relationship-queries#batch-check) [#2039](https://github.com/openfga/openfga/pull/2039).
 
 ### Performance
 * Improve `Check` performance in the case that the query involves resolving nested userset with type bound public access. Enable via experimental flag `enable-check-optimizations`. [#2063](https://github.com/openfga/openfga/pull/2063)
