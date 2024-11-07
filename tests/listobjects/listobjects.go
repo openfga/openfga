@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/testutils"

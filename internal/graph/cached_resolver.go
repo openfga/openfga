@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"

@@ -24,6 +24,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"

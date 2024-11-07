@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/server/errors"
 )
 

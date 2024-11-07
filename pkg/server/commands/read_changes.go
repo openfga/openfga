@@ -8,6 +8,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"

@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
 )
 
