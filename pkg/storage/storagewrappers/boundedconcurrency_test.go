@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"

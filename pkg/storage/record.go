@@ -7,7 +7,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	tupleutils "github.com/openfga/openfga/pkg/tuple"
 )
 

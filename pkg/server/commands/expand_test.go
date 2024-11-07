@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"

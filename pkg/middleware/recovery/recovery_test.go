@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/pkg/logger"
 )
 

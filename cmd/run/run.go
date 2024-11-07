@@ -41,7 +41,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"

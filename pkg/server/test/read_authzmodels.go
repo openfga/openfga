@@ -9,7 +9,6 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/server/commands"
