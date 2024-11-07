@@ -620,7 +620,7 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			},
 			func(t *testing.T, response *openfgav1.ReadResponse) {
 				require.Len(t, response.GetTuples(), 1)
-				require.NotEmpty(t, response.GetContinuationToken())
+				require.Empty(t, response.GetContinuationToken())
 				for _, tpl := range response.GetTuples() {
 					require.NotNil(t, tpl.GetKey())
 					require.Equal(t, "user:1st", tpl.GetKey().GetUser())
@@ -629,7 +629,7 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			nil,
 		},
 		{
-			"with_tuple_key_by_user1",
+			"with_tuple_key_by_document1",
 			&openfgav1.ReadRequest{
 				StoreId: storeID,
 				TupleKey: &openfgav1.ReadRequestTupleKey{
@@ -639,7 +639,7 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			},
 			func(t *testing.T, response *openfgav1.ReadResponse) {
 				require.Len(t, response.GetTuples(), 2)
-				require.NotEmpty(t, response.GetContinuationToken())
+				require.Empty(t, response.GetContinuationToken())
 				for _, tpl := range response.GetTuples() {
 					require.NotNil(t, tpl.GetKey())
 					require.Equal(t, "document:1", tpl.GetKey().GetObject())
@@ -653,6 +653,30 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			nil,
 		},
 		{
+			"with_tuple_key_by_document1_page_size1",
+			&openfgav1.ReadRequest{
+				StoreId: storeID,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					Relation: "viewer",
+					Object:   "document:1",
+				},
+				PageSize: wrapperspb.Int32(1),
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), 1)
+				assert.NotEmpty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "document:1", tpl.GetKey().GetObject())
+				}
+				assert.ElementsMatch(t, []string{"user:1st"},
+					[]string{
+						response.GetTuples()[0].GetKey().GetUser(),
+					})
+			},
+			nil,
+		},
+		{
 			"with_continuation_token",
 			&openfgav1.ReadRequest{
 				StoreId:           storeID,
@@ -661,7 +685,7 @@ func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 			},
 			func(t *testing.T, response *openfgav1.ReadResponse) {
 				require.Len(t, response.GetTuples(), pageSize)
-				require.NotEmpty(t, response.GetContinuationToken())
+				require.Empty(t, response.GetContinuationToken())
 				for _, tpl := range response.GetTuples() {
 					require.NotNil(t, tpl.GetKey())
 					require.Equal(t, "user:2nd", tpl.GetKey().GetUser())

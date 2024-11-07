@@ -54,6 +54,10 @@ const (
 	DefaultCheckDispatchThrottlingDefaultThreshold = 100
 	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
+	// Batch Check.
+	DefaultMaxChecksPerBatchCheck           = 50
+	DefaultMaxConcurrentChecksPerBatchCheck = 50
+
 	DefaultListObjectsDispatchThrottlingEnabled          = false
 	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
@@ -257,6 +261,14 @@ type Config struct {
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
+
+	// MaxChecksPerBatchCheck defines the maximum number of tuples
+	// that can be passed in each BatchCheck request.
+	MaxChecksPerBatchCheck uint32
+
+	// MaxConcurrentChecksPerBatchCheck defines the maximum number of checks
+	// that can be run in simultaneously
+	MaxConcurrentChecksPerBatchCheck uint32
 
 	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per
 	// authorization model for the WriteAuthorizationModel endpoint.
@@ -567,6 +579,8 @@ func DefaultConfig() *Config {
 		MaxTuplesPerWrite:                         DefaultMaxTuplesPerWrite,
 		MaxTypesPerAuthorizationModel:             DefaultMaxTypesPerAuthorizationModel,
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
+		MaxChecksPerBatchCheck:                    DefaultMaxChecksPerBatchCheck,
+		MaxConcurrentChecksPerBatchCheck:          DefaultMaxConcurrentChecksPerBatchCheck,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,

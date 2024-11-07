@@ -34,6 +34,7 @@ const (
 	ListObjects             = "ListObjects"
 	StreamedListObjects     = "StreamedListObjects"
 	Check                   = "Check"
+	BatchCheck              = "BatchCheck"
 	ListUsers               = "ListUsers"
 	WriteAssertions         = "WriteAssertions"
 	ReadAssertions          = "ReadAssertions"
@@ -182,7 +183,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallWrite, nil
 	case ListObjects, StreamedListObjects:
 		return CanCallListObjects, nil
-	case Check:
+	case Check, BatchCheck:
 		return CanCallCheck, nil
 	case ListUsers:
 		return CanCallListUsers, nil

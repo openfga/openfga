@@ -76,11 +76,9 @@ func TestReadChangesQuery(t *testing.T) {
 		storeID := ulid.Make().String()
 		reqStore := storeID
 		reqToken := "token"
-		respToken := "responsetoken"
 
 		mockEncoder := mocks.NewMockEncoder(mockController)
 		mockEncoder.EXPECT().Decode(reqToken).Return([]byte{}, nil).Times(1)
-		mockEncoder.EXPECT().Encode(gomock.Any()).Return(respToken, nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		opts := storage.ReadChangesOptions{
@@ -102,7 +100,7 @@ func TestReadChangesQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Empty(t, resp.GetChanges())
-		require.Equal(t, respToken, resp.GetContinuationToken())
+		require.Empty(t, resp.GetContinuationToken())
 	})
 
 	t.Run("uses_start_time_as_token", func(t *testing.T) {
@@ -114,11 +112,9 @@ func TestReadChangesQuery(t *testing.T) {
 
 		startTime, _ := time.Parse(time.RFC3339, "2021-01-01T00:00:00Z")
 		reqToken := ""
-		respToken := "responsetoken"
 
 		mockEncoder := mocks.NewMockEncoder(mockController)
 		mockEncoder.EXPECT().Decode(reqToken).Return([]byte{}, nil).Times(1)
-		mockEncoder.EXPECT().Encode(gomock.Any()).Return(respToken, nil).Times(1)
 
 		expectedUlid := ulid.MustNew(ulid.Timestamp(startTime), nil).String()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -151,7 +147,7 @@ func TestReadChangesQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Empty(t, resp.GetChanges())
-		require.Equal(t, respToken, resp.GetContinuationToken())
+		require.Empty(t, resp.GetContinuationToken())
 	})
 
 	t.Run("start_time_is_invalid", func(t *testing.T) {
