@@ -97,6 +97,13 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		return nil, serverErrors.HandleError("", err)
 	}
 
+	if len(contUlid) == 0 {
+		return &openfgav1.ReadResponse{
+			Tuples:            tuples,
+			ContinuationToken: "",
+		}, nil
+	}
+
 	contToken, err := q.tokenSerializer.Serialize(contUlid, "")
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
