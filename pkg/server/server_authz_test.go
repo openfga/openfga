@@ -14,8 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	language "github.com/openfga/language/pkg/go/transformer"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -118,7 +117,7 @@ func newSetupAuthzModelAndTuples(t *testing.T, openfga *Server, clientID string)
 
 	writeAuthzModelResp, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         rootStore.GetId(),
-		TypeDefinitions: language.MustTransformDSLToProto(rootStoreModel).GetTypeDefinitions(),
+		TypeDefinitions: parser.MustTransformDSLToProto(rootStoreModel).GetTypeDefinitions(),
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)

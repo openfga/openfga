@@ -60,13 +60,13 @@ linters-settings:
     alias:
       - pkg: github.com/openfga/api/proto/openfga/v1
         alias: openfgav1
+      - pkg: github.com/openfga/language/pkg/go/transformer
+        alias: parser
   gci:
     sections:
       - standard # Standard section: captures all standard packages.
       - default # Default section: contains all imports that could not be matched to another section type.
-      - prefix(github.com/openfga/api)  # Custom section: groups all imports with the specified Prefix.
-      - prefix(github.com/openfga/openfga)
-      - prefix(github.com/openfga/language)
+      - prefix(github.com/openfga)  # Custom section: groups all imports with the specified Prefix.
 
 issues:
   exclude-use-default: false

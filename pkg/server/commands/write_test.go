@@ -13,7 +13,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"

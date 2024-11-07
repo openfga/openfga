@@ -14,8 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	language "github.com/openfga/language/pkg/go/transformer"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -298,7 +297,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`
+			TypeDefinitions: parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 				type user
