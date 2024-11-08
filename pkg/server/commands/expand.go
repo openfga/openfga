@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/errgroup"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/validation"

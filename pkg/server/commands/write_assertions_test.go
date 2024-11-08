@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/testutils"
-
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 

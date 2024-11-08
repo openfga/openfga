@@ -4,8 +4,11 @@ import (
 	"context"
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -78,6 +81,19 @@ func TestExpand(t *testing.T) {
 			Object: "document:1", Relation: "viewer",
 		}
 
+		expected := &openfgav1.UsersetTree_Node{
+			Name: "document:1#viewer",
+			Value: &openfgav1.UsersetTree_Node_Leaf{
+				Leaf: &openfgav1.UsersetTree_Leaf{
+					Value: &openfgav1.UsersetTree_Leaf_Users{
+						Users: &openfgav1.UsersetTree_Users{
+							Users: []string{"user:bob"},
+						},
+					},
+				},
+			},
+		}
+
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, tuples)
@@ -98,13 +114,11 @@ func TestExpand(t *testing.T) {
 				TupleKeys: contextualTuples,
 			},
 		})
-
 		require.NoError(t, err)
-		root := resp.GetTree().GetRoot()
-		require.Equal(t, "document:1#viewer", root.GetName())
 
-		finalUsers := root.GetLeaf().GetUsers().GetUsers()
-		require.Equal(t, []string{"user:bob"}, finalUsers)
+		if diff := cmp.Diff(expected, resp.GetTree().GetRoot(), protocmp.Transform()); diff != "" {
+			t.Errorf("expand response mismatch (-want +got):\n%s", diff)
+		}
 	})
 
 	t.Run("multiple_contextual_tuples_expand_correctly", func(t *testing.T) {
@@ -128,6 +142,18 @@ func TestExpand(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		require.NoError(t, err)
 
+		expected := &openfgav1.UsersetTree_Node{
+			Name: "document:1#viewer",
+			Value: &openfgav1.UsersetTree_Node_Leaf{
+				Leaf: &openfgav1.UsersetTree_Leaf{
+					Value: &openfgav1.UsersetTree_Leaf_Users{
+						Users: &openfgav1.UsersetTree_Users{
+							Users: []string{"user:bob", "user:alice"},
+						},
+					},
+				},
+			},
+		}
 		expandQuery := NewExpandQuery(ds)
 
 		resp, err := expandQuery.Execute(ctx, &openfgav1.ExpandRequest{
@@ -140,10 +166,8 @@ func TestExpand(t *testing.T) {
 
 		require.NoError(t, err)
 
-		root := resp.GetTree().GetRoot()
-		require.Equal(t, "document:1#viewer", root.GetName())
-
-		finalUsers := root.GetLeaf().GetUsers().GetUsers()
-		require.ElementsMatch(t, finalUsers, []string{"user:bob", "user:alice"})
+		if diff := cmp.Diff(expected, resp.GetTree().GetRoot(), protocmp.Transform()); diff != "" {
+			t.Errorf("expand response mismatch (-want +got):\n%s", diff)
+		}
 	})
 }

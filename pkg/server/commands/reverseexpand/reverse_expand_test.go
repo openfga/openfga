@@ -7,24 +7,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/dispatch"
-
 	"github.com/oklog/ulid/v2"
-	"go.uber.org/goleak"
-
-	"github.com/openfga/openfga/internal/throttler/threshold"
-	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
-
-	storagetest "github.com/openfga/openfga/pkg/storage/test"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 

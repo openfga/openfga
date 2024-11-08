@@ -23,7 +23,6 @@ import (
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
@@ -41,8 +40,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/gateway"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
@@ -50,7 +48,9 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -189,6 +189,10 @@ func NewRunCommand() *cobra.Command {
 	flags.String("metrics-addr", defaultConfig.Metrics.Addr, "the host:port address to serve the prometheus metrics server on")
 
 	flags.Bool("metrics-enable-rpc-histograms", defaultConfig.Metrics.EnableRPCHistograms, "enables prometheus histogram metrics for RPC latency distributions")
+
+	flags.Uint32("max-concurrent-checks-per-batch-check", defaultConfig.MaxConcurrentChecksPerBatchCheck, "the maximum number of checks that can be processed concurrently in a batch check request")
+
+	flags.Uint32("max-checks-per-batch-check", defaultConfig.MaxChecksPerBatchCheck, "the maximum number of tuples allowed in a BatchCheck request")
 
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 
@@ -654,6 +658,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingFrequency(config.ListUsersDispatchThrottling.Frequency),
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
+		server.WithMaxChecksPerBatchCheck(config.MaxChecksPerBatchCheck),
+		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithExperimentals(experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),

@@ -3,9 +3,10 @@ package storage
 import (
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	tupleutils "github.com/openfga/openfga/pkg/tuple"
 )
