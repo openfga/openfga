@@ -303,7 +303,7 @@ func (c *CachedDatastore) newCachedIterator(
 		tuplesCacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
-		staticIter := storage.NewStaticIterator[storage.TupleRecord](cacheEntry.Tuples)
+		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
 
 		return &cachedTupleIterator{
 			objectID:   objectID,
@@ -321,7 +321,7 @@ func (c *CachedDatastore) newCachedIterator(
 
 	return &cachedIterator{
 		iter:              iter,
-		tuples:            make([]storage.TupleRecord, 0, c.maxResultSize),
+		tuples:            make([]*storage.TupleRecord, 0, c.maxResultSize),
 		cacheKey:          cacheKey,
 		invalidEntityKeys: invalidEntityKeys,
 		cache:             c.cache,
@@ -343,7 +343,7 @@ func (c *CachedDatastore) Close() {
 
 type cachedIterator struct {
 	iter              storage.TupleIterator
-	tuples            []storage.TupleRecord
+	tuples            []*storage.TupleRecord
 	cacheKey          string
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
@@ -458,7 +458,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	objectType, objectID := tuple.SplitObject(object)
 	userObjectType, userObjectID, userRelation := tuple.ToUserParts(tk.GetUser())
 
-	record := storage.TupleRecord{
+	record := &storage.TupleRecord{
 		ObjectID:       objectID,
 		ObjectType:     objectType,
 		Relation:       tk.GetRelation(),
@@ -508,8 +508,9 @@ func (c *cachedIterator) flush() {
 	// Copy tuples buffer into new destination before storing into cache
 	// otherwise, the cache will be storing pointers. This should also help
 	// with garbage collection.
-	tuples := make([]storage.TupleRecord, len(c.tuples))
+	tuples := make([]*storage.TupleRecord, len(c.tuples))
 	copy(tuples, c.tuples)
+
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: tuples, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {
 		c.cache.Delete(k)

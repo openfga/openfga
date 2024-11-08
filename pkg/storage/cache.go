@@ -121,7 +121,7 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 }
 
 type TupleIteratorCacheEntry struct {
-	Tuples       []TupleRecord
+	Tuples       []*TupleRecord
 	LastModified time.Time
 }
 

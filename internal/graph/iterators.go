@@ -18,7 +18,7 @@ type cachedTupleIterator struct {
 	objectType string
 	relation   string
 	userType   string
-	iter       storage.Iterator[storage.TupleRecord]
+	iter       storage.Iterator[*storage.TupleRecord]
 }
 
 var _ storage.TupleIterator = (*cachedTupleIterator)(nil)
@@ -50,7 +50,7 @@ func (c *cachedTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error
 	return c.buildTuple(t), nil
 }
 
-func (c *cachedTupleIterator) buildTuple(t storage.TupleRecord) *openfgav1.Tuple {
+func (c *cachedTupleIterator) buildTuple(t *storage.TupleRecord) *openfgav1.Tuple {
 	objectType := t.ObjectType
 	objectID := t.ObjectID
 	relation := t.Relation
