@@ -218,6 +218,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("checkIteratorCache.maxResults", flags.Lookup("check-iterator-cache-max-results"))
 		util.MustBindEnv("checkIteratorCache.maxResults", "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS")
 
+		util.MustBindPFlag("checkIteratorCache.ttl", flags.Lookup("check-iterator-cache-ttl"))
+		util.MustBindEnv("checkIteratorCache.ttl", "OPENFGA_CHECK_ITERATOR_CACHE_TTL")
+
 		util.MustBindPFlag("checkQueryCache.enabled", flags.Lookup("check-query-cache-enabled"))
 		util.MustBindEnv("checkQueryCache.enabled", "OPENFGA_CHECK_QUERY_CACHE_ENABLED")
 

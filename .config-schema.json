@@ -489,6 +489,13 @@
                     "type": "integer",
                     "default": "10000",
                     "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS"
+                },
+                "ttl": {
+                    "description": "if caching of datastore iterators of Check requests is enabled, this is the TTL of each value",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_TTL"
                 }
             }
         },
@@ -502,7 +509,7 @@
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
                 },
                 "ttl": {
-                    "description": "if check-query-cache-enabled or check-iterator-cache-enabled, this is the TTL of each value",
+                    "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",

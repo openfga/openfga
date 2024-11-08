@@ -655,6 +655,7 @@ func DefaultConfig() *Config {
 		CheckIteratorCache: CheckIteratorCacheConfig{
 			Enabled:    DefaultCheckIteratorCacheEnabled,
 			MaxResults: DefaultCheckIteratorCacheMaxResults,
+			TTL:        DefaultCheckIteratorCacheTTL,
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,

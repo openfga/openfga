@@ -1180,6 +1180,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckIteratorCache.MaxResults)
 
+	val = res.Get("properties.checkIteratorCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckIteratorCache.TTL.String())
+
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
 	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
