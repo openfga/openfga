@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/karlseguin/ccache/v3"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (

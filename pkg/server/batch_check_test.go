@@ -6,22 +6,19 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/openfga/openfga/internal/server/config"
-
 	"github.com/oklog/ulid/v2"
-
+	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
-	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/require"
 
+	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestBatchCheckUsesTypesystemModel(t *testing.T) {

@@ -15,10 +15,10 @@ import (
 	jwt "github.com/golang-jwt/jwt/v5"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/pkg/authclaims"

@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/types"
