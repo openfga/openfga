@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.8.0] - 2024-11-08
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
+
 ### Added
 * Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
 * Added support for Contextual Tuples in the `Expand` API. [#2045](https://github.com/openfga/openfga/pull/2045)
@@ -1287,7 +1291,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/openfga/openfga/releases/tag/v1.8.0
 [1.7.0]: https://github.com/openfga/openfga/releases/tag/v1.7.0
 [1.6.2]: https://github.com/openfga/openfga/releases/tag/v1.6.2
 [1.6.1]: https://github.com/openfga/openfga/releases/tag/v1.6.1
