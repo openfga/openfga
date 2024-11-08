@@ -8,6 +8,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+* New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
+
+### Removed
+* Rename flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT` to `OPENFGA_CHECK_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
+
 ## [1.8.0] - 2024-11-08
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
@@ -20,7 +26,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Added `BatchCheck` API which allows multiple check operations to be performed in a single request.
   It requires a unique `correlation_id` associated with each individual check to map each result to its associated tuple.
   For more details, see [batch check docs](https://openfga.dev/docs/interacting/relationship-queries#batch-check) [#2039](https://github.com/openfga/openfga/pull/2039).
-* New flag `OPENFGA_CHECK_ITERATOR_TTL`
 
 ### Performance
 * Improve `Check` performance in the case that the query involves resolving nested userset with type bound public access. Enable via experimental flag `enable-check-optimizations`. [#2063](https://github.com/openfga/openfga/pull/2063)
@@ -33,7 +38,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
 * `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore. 
   Validation moved to `ReadChangesQuery` implementation.
-* Deprecate flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT` in favor of `OPENFGA_CHECK_CACHE_LIMIT`.
 
 ## [1.7.0] - 2024-10-29
 
