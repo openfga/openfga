@@ -28,6 +28,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -2336,6 +2337,69 @@ func TestServerCheckCache(t *testing.T) {
 
 		require.Nil(t, s.cache)
 		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+}
+
+func TestCheckWithCachedControllerEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("cache_controller_is_noop", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		_, ok := s.cacheController.(*cachecontroller.NoopCacheController)
+		require.True(t, ok)
+	})
+
+	t.Run("cache_controller_is_not_nil_if_check_query_cache_enabled", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+			WithCheckQueryCacheEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		require.NotNil(t, s.cacheController)
+	})
+
+	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+			WithCheckIteratorCacheEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		require.NotNil(t, s.cacheController)
 	})
 }
 
