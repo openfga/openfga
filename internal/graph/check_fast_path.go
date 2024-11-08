@@ -494,12 +494,10 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 		cancel()
 		if leftOpen {
 			go func() {
-				for {
-					msg, ok := <-leftChan
-					if !ok {
-						return
+				for msg := range leftChan {
+					if msg.iter != nil {
+						msg.iter.Stop()
 					}
-					msg.iter.Stop()
 				}
 			}()
 		}
