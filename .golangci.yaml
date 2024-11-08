@@ -10,6 +10,7 @@ linters:
     - errname
     - gofmt
     - goimports
+    - gci
     - stylecheck
     - importas
     - errcheck
@@ -51,14 +52,20 @@ linters-settings:
     disable:
       - shadow
       - fieldalignment
-  goimports:
-    local-prefixes: "github.com/openfga/openfga"
   importas:
     no-unaliased: true # Do not allow unaliased imports of aliased packages.
     no-extra-aliases: false # Do not allow non-required aliases.
     alias:
       - pkg: github.com/openfga/api/proto/openfga/v1
         alias: openfgav1
+      - pkg: github.com/openfga/language/pkg/go/transformer
+        alias: parser
+  gci:
+    sections:
+      - standard # Standard section: captures all standard packages.
+      - default # Default section: contains all imports that could not be matched to another section type.
+      - prefix(github.com/openfga)  # Custom section: groups all imports with the specified Prefix.
+      - localmodule
 
 issues:
   exclude-use-default: false

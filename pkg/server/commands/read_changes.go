@@ -119,12 +119,16 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	var contToken []byte
-	if contUlid != "" {
-		contToken, err = q.tokenSerializer.Serialize(contUlid, req.GetType())
-		if err != nil {
-			return nil, serverErrors.HandleError("", err)
-		}
+	if len(contUlid) == 0 {
+		return &openfgav1.ReadChangesResponse{
+			Changes:           changes,
+			ContinuationToken: "",
+		}, nil
+	}
+
+	contToken, err := q.tokenSerializer.Serialize(contUlid, req.GetType())
+	if err != nil {
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	encodedContToken, err := q.encoder.Encode(contToken)
