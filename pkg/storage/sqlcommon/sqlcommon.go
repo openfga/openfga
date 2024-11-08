@@ -169,14 +169,14 @@ func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
 
 type SQLContinuationTokenSerializer struct{}
 
-func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
+func (s *SQLContinuationTokenSerializer) SerializeReadChanges(ulid string, objType string) ([]byte, error) {
 	if ulid == "" {
 		return nil, errors.New("empty ulid provided for continuation token")
 	}
 	return json.Marshal(NewContToken(ulid, objType))
 }
 
-func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+func (s *SQLContinuationTokenSerializer) DeserializeReadChanges(continuationToken string) (ulid string, objType string, err error) {
 	var token ContToken
 	if err := json.Unmarshal([]byte(continuationToken), &token); err != nil {
 		return "", "", storage.ErrInvalidContinuationToken

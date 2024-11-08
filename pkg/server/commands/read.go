@@ -82,7 +82,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 	}
 
 	if len(decodedContToken) > 0 {
-		from, _, err := q.tokenSerializer.Deserialize(string(decodedContToken))
+		from, _, err := q.tokenSerializer.DeserializeReadChanges(string(decodedContToken))
 		if err != nil {
 			return nil, serverErrors.InvalidContinuationToken
 		}
@@ -104,7 +104,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 		}, nil
 	}
 
-	contToken, err := q.tokenSerializer.Serialize(contUlid, "")
+	contToken, err := q.tokenSerializer.SerializeReadChanges(contUlid, "")
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

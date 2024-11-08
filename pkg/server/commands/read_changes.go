@@ -84,7 +84,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 	}
 	if token != "" {
 		var objType string
-		fromUlid, objType, err = q.tokenSerializer.Deserialize(token)
+		fromUlid, objType, err = q.tokenSerializer.DeserializeReadChanges(token)
 		if err != nil {
 			return nil, serverErrors.InvalidContinuationToken
 		}
@@ -126,7 +126,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		}, nil
 	}
 
-	contToken, err := q.tokenSerializer.Serialize(contUlid, req.GetType())
+	contToken, err := q.tokenSerializer.SerializeReadChanges(contUlid, req.GetType())
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

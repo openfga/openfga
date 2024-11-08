@@ -40,9 +40,9 @@ func (m *MockContinuationTokenSerializer) EXPECT() *MockContinuationTokenSeriali
 }
 
 // Deserialize mocks base method.
-func (m *MockContinuationTokenSerializer) Deserialize(token string) (string, string, error) {
+func (m *MockContinuationTokenSerializer) DeserializeReadChanges(token string) (string, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Deserialize", token)
+	ret := m.ctrl.Call(m, "DeserializeReadChanges", token)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -52,13 +52,13 @@ func (m *MockContinuationTokenSerializer) Deserialize(token string) (string, str
 // Deserialize indicates an expected call of Deserialize.
 func (mr *MockContinuationTokenSerializerMockRecorder) Deserialize(token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Deserialize", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).Deserialize), token)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeserializeReadChanges", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).DeserializeReadChanges), token)
 }
 
 // Serialize mocks base method.
-func (m *MockContinuationTokenSerializer) Serialize(ulid, objType string) ([]byte, error) {
+func (m *MockContinuationTokenSerializer) SerializeReadChanges(ulid, objType string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Serialize", ulid, objType)
+	ret := m.ctrl.Call(m, "SerializeReadChanges", ulid, objType)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
@@ -67,5 +67,5 @@ func (m *MockContinuationTokenSerializer) Serialize(ulid, objType string) ([]byt
 // Serialize indicates an expected call of Serialize.
 func (mr *MockContinuationTokenSerializerMockRecorder) Serialize(ulid, objType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Serialize", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).Serialize), ulid, objType)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChanges", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).SerializeReadChanges), ulid, objType)
 }
