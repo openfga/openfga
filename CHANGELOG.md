@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Removed
+
+* Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name.
+
 ## [1.8.0] - 2024-11-08
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
@@ -32,7 +36,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
 * `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore. 
   Validation moved to `ReadChangesQuery` implementation.
-* Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name.
 
 ## [1.7.0] - 2024-10-29
 
