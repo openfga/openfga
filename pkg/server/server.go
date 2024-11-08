@@ -9,18 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/oklog/ulid/v2"
-
-	"github.com/openfga/openfga/internal/cachecontroller"
-
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-
-	"github.com/openfga/openfga/internal/graph"
-
-	"github.com/openfga/openfga/internal/throttler"
-
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
@@ -28,15 +18,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -147,6 +143,8 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
+	maxChecksPerBatchCheck           uint32
+	maxConcurrentChecksPerBatch      uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
 	maxConcurrentReadsForListUsers   uint32
@@ -617,6 +615,22 @@ func WithListUsersDispatchThrottlingMaxThreshold(maxThreshold uint32) OpenFGASer
 	}
 }
 
+// WithMaxConcurrentChecksPerBatchCheck defines the maximum number of checks
+// allowed to be processed concurrently in a single batch request.
+func WithMaxConcurrentChecksPerBatchCheck(maxConcurrentChecks uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentChecksPerBatch = maxConcurrentChecks
+	}
+}
+
+// WithMaxChecksPerBatchCheck defines the maximum number of checks allowed to be sent
+// in a single BatchCheck request.
+func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxChecksPerBatchCheck = maxChecks
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -631,6 +645,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
 		listUsersDeadline:                serverconfig.DefaultListUsersDeadline,
 		listUsersMaxResults:              serverconfig.DefaultListUsersMaxResults,
+		maxChecksPerBatchCheck:           serverconfig.DefaultMaxChecksPerBatchCheck,
+		maxConcurrentChecksPerBatch:      serverconfig.DefaultMaxConcurrentChecksPerBatchCheck,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,

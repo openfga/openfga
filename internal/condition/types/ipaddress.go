@@ -9,6 +9,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 

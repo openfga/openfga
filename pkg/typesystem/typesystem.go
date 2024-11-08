@@ -10,9 +10,10 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
-	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"

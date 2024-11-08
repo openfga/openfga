@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -37,6 +38,7 @@ func TestGetRelation(t *testing.T) {
 		{name: "ListObjects", expectedResult: CanCallListObjects},
 		{name: "StreamedListObjects", expectedResult: CanCallListObjects},
 		{name: "Check", expectedResult: CanCallCheck},
+		{name: "BatchCheck", expectedResult: CanCallCheck},
 		{name: "ListUsers", expectedResult: CanCallListUsers},
 		{name: "WriteAssertions", expectedResult: CanCallWriteAssertions},
 		{name: "ReadAssertions", expectedResult: CanCallReadAssertions},

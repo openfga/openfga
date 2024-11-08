@@ -6,21 +6,19 @@ import (
 	"strconv"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/openfga/openfga/pkg/storage"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
