@@ -44,7 +44,6 @@ type combinedIterator[T any] struct {
 	mu      *sync.Mutex
 	once    *sync.Once
 	pending []Iterator[T]
-	done    []Iterator[T]
 }
 
 // Next see [Iterator.Next].
@@ -61,7 +60,7 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
-			c.done = append(c.done, iter)
+			iter.Stop() // clean up before dropping the reference
 			c.mu.Unlock()
 			return c.Next(ctx)
 		}
@@ -77,9 +76,6 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 func (c *combinedIterator[T]) Stop() {
 	c.once.Do(func() {
 		c.mu.Lock()
-		for _, iter := range c.done {
-			iter.Stop()
-		}
 		for _, iter := range c.pending {
 			iter.Stop()
 		}
@@ -101,7 +97,7 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
-			c.done = append(c.done, iter)
+			iter.Stop()
 			c.mu.Unlock()
 			return c.Head(ctx)
 		}
@@ -122,7 +118,7 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 			pending = append(pending, iter)
 		}
 	}
-	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending)), once: &sync.Once{}, mu: &sync.Mutex{}}
+	return &combinedIterator[T]{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.

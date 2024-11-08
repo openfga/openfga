@@ -67,8 +67,7 @@ type iteratorProducerEntry struct {
 	producer     chan iteratorMsg
 }
 
-func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducerEntry, []storage.TupleKeyIterator, error) {
-	newIters := make([]storage.TupleKeyIterator, 0)
+func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducerEntry, error) {
 	for _, iter := range iterQueue {
 		// no need to poll further
 		if iter.producerDone || iter.iter != nil {
@@ -81,9 +80,8 @@ func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducer
 		}
 		if i.err != nil {
 			// NOTE: how do we want to handle missing iterators? full error out?
-			return nil, nil, i.err
+			return nil, i.err
 		}
-		newIters = append(newIters, i.iter)
 		// in the first instance the iterator is empty but not nil
 		if iter.iter == nil {
 			iter.iter = i.iter
@@ -95,31 +93,32 @@ func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducer
 	// clean up all empty entries that are both done and drained
 	return slices.DeleteFunc(iterQueue, func(entry *iteratorProducerEntry) bool {
 		return entry.producerDone && entry.iter == nil
-	}), newIters, nil
+	}), nil
 }
 
 func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer close(iterChan)
+	defer func() {
+		close(iterChan)
+		for _, iter := range iterQueue {
+			iter.iter.Stop()
+		}
+	}()
 
 	/*
 		collect iterators from all channels, once none are nil
 		start performing union algorithm across the heads, if an iterator is drained
 		ask to see if the channel has a new iterator, otherwise consider it done
 	*/
-	var newIters []storage.TupleKeyIterator
 	batch := make([]*openfgav1.TupleKey, 0)
 	for len(iterQueue) > 0 {
 		if ctx.Err() != nil {
 			return
 		}
 		var err error
-		iterQueue, newIters, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
-		}
-		for _, iter := range newIters {
-			defer iter.Stop()
 		}
 		allIters := true
 		minKey := ""
@@ -183,8 +182,12 @@ func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iter
 }
 
 func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer close(iterChan)
-
+	defer func() {
+		close(iterChan)
+		for _, iter := range iterQueue {
+			iter.iter.Stop()
+		}
+	}()
 	/*
 		collect iterators from all channels, once none are nil
 		start performing intersection algorithm across the heads, if an iterator is drained
@@ -193,14 +196,13 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 	*/
 
 	childrenTotal := len(iterQueue)
-	var newIters []storage.TupleKeyIterator
 	batch := make([]*openfgav1.TupleKey, 0)
 	for len(iterQueue) == childrenTotal {
 		if ctx.Err() != nil {
 			return
 		}
 		var err error
-		iterQueue, newIters, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
@@ -208,9 +210,6 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 		if len(iterQueue) != childrenTotal {
 			// short circuit
 			return
-		}
-		for _, iter := range newIters {
-			defer iter.Stop()
 		}
 
 		maxKey := ""
@@ -297,16 +296,20 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 }
 
 func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg) {
-	defer close(iterChan)
+	defer func() {
+		close(iterChan)
+		for _, iter := range iterQueue {
+			iter.iter.Stop()
+		}
+	}()
 
-	var newIters []storage.TupleKeyIterator
 	batch := make([]*openfgav1.TupleKey, 0)
 	for len(iterQueue) == 2 {
 		if ctx.Err() != nil {
 			return
 		}
 		var err error
-		iterQueue, newIters, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
@@ -314,9 +317,6 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 		if len(iterQueue) != 2 {
 			// short circuit
 			break
-		}
-		for _, iter := range newIters {
-			defer iter.Stop()
 		}
 
 		allIters := true
@@ -366,10 +366,11 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 			_, err := iterQueue[1].iter.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					// this would be weird
-					concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
-					return
+					iterQueue[1].iter = nil
+					break
 				}
+				concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
+				return
 			}
 			continue
 		}
@@ -377,10 +378,13 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 		t, err := iterQueue[0].iter.Next(ctx)
 		if err != nil {
 			if storage.IterIsDoneOrCancelled(err) {
-				// this would be weird
-				concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
-				return
+				iterQueue[0].iter = nil
+				break
 			}
+			// this would be weird
+			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
+			return
+
 		}
 		batch = append(batch, t)
 		// TODO: determine this size
@@ -409,12 +413,9 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 				batch = append(batch, t)
 			}
 			var err error
-			iterQueue, newIters, err = pollIteratorQueues(iterQueue)
+			iterQueue, err = pollIteratorQueues(iterQueue)
 			if err != nil {
 				concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
-			}
-			for _, iter := range newIters {
-				defer iter.Stop()
 			}
 		}
 	}
@@ -470,7 +471,9 @@ func (c *LocalChecker) fastPathRewrite(
 }
 
 func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
-	rightChan := streamedLookupUsersetFromIterator(ctx, iter)
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
@@ -523,12 +526,15 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 			for {
 				t, err := msg.iter.Next(ctx)
 				if err != nil {
+					msg.iter.Stop()
 					if storage.IterIsDoneOrCancelled(err) {
+						msg.iter.Stop()
 						break
 					}
 					return nil, err
 				}
 				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
+					msg.iter.Stop()
 					res.Allowed = true
 					return res, nil
 				}
@@ -572,8 +578,9 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}
 		leftChans = append(leftChans, leftChan)
 	}
-
-	leftChan := fanInIteratorChannels(ctx, leftChans)
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
 
 	return c.resolveFastPath(ctx, leftChan, wrapIterator(TTUKind, iter))
 }
