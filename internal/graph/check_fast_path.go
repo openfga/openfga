@@ -67,13 +67,20 @@ type iteratorProducerEntry struct {
 	producer     chan iteratorMsg
 }
 
-func pollIteratorQueues(iterQueue []*iteratorProducerEntry) ([]*iteratorProducerEntry, error) {
+func pollIteratorQueues(ctx context.Context, iterQueue []*iteratorProducerEntry) ([]*iteratorProducerEntry, error) {
 	for _, iter := range iterQueue {
 		// no need to poll further
 		if iter.producerDone || iter.iter != nil {
 			continue
 		}
-		i, ok := <-iter.producer
+
+		var i iteratorMsg
+		var ok bool
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case i, ok = <-iter.producer:
+		}
 		if !ok {
 			iter.producerDone = true
 			continue
@@ -100,7 +107,9 @@ func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iter
 	defer func() {
 		close(iterChan)
 		for _, iter := range iterQueue {
-			iter.iter.Stop()
+			if iter.iter != nil {
+				iter.iter.Stop()
+			}
 		}
 	}()
 
@@ -115,7 +124,7 @@ func fastPathUnion(ctx context.Context, iterQueue []*iteratorProducerEntry, iter
 			return
 		}
 		var err error
-		iterQueue, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(ctx, iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
@@ -185,7 +194,9 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 	defer func() {
 		close(iterChan)
 		for _, iter := range iterQueue {
-			iter.iter.Stop()
+			if iter.iter != nil {
+				iter.iter.Stop()
+			}
 		}
 	}()
 	/*
@@ -202,7 +213,7 @@ func fastPathIntersection(ctx context.Context, iterQueue []*iteratorProducerEntr
 			return
 		}
 		var err error
-		iterQueue, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(ctx, iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
@@ -299,7 +310,9 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 	defer func() {
 		close(iterChan)
 		for _, iter := range iterQueue {
-			iter.iter.Stop()
+			if iter.iter != nil {
+				iter.iter.Stop()
+			}
 		}
 	}()
 
@@ -309,7 +322,7 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 			return
 		}
 		var err error
-		iterQueue, err = pollIteratorQueues(iterQueue)
+		iterQueue, err = pollIteratorQueues(ctx, iterQueue)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			return
@@ -413,7 +426,7 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 				batch = append(batch, t)
 			}
 			var err error
-			iterQueue, err = pollIteratorQueues(iterQueue)
+			iterQueue, err = pollIteratorQueues(ctx, iterQueue)
 			if err != nil {
 				concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 			}
@@ -499,6 +512,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 	for rightOpen || leftOpen {
 		select {
 		case <-ctx.Done():
+			return nil, ctx.Err()
 		case msg, ok := <-rightChan:
 			if !ok {
 				rightOpen = false
