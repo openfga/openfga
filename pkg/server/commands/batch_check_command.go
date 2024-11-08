@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -114,6 +115,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	var resultMap = new(sync.Map)
 
+	// cacheKeyToCorrelationIDs is used to short-circuit in the event we
+	// receive duplicate checks with different correlation_ids
+	// it has the structure { key: [list of correlation ids] }
+	var cacheKeyToCorrelationIDs = new(sync.Map)
+
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
@@ -133,6 +139,36 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				WithCheckCommandLogger(bq.logger),
 				WithCacheController(bq.cacheController),
 			)
+
+			tupleKey := check.GetTupleKey()
+			cacheKeyParams := &graph.CacheKeyParams{
+				StoreID:     params.StoreID,
+				AuthModelID: bq.typesys.GetAuthorizationModelID(),
+				TupleKey: &openfgav1.TupleKey{
+					User:     tupleKey.GetUser(),
+					Relation: tupleKey.GetRelation(),
+					Object:   tupleKey.GetObject(),
+				},
+				ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
+				Context:          check.GetContext(),
+			}
+
+			// TODO this really shouldn't error
+			cacheKey, _ := graph.GenerateCacheKey(cacheKeyParams)
+
+			// if this is ok that means we've done this check already in this batch
+			existingCorrelationIDs, ok := cacheKeyToCorrelationIDs.Load(cacheKey)
+			if ok {
+				idList := existingCorrelationIDs.([]string)
+				idList = append(idList, check.GetCorrelationId())
+				cacheKeyToCorrelationIDs.Store(cacheKey, idList)
+
+				// we will map this duplicate check to its already-determined result after all routines have finished
+				return nil
+			}
+
+			// save this to this batch's cache
+			cacheKeyToCorrelationIDs.Store(cacheKey, []string{check.GetCorrelationId()})
 
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
@@ -164,6 +200,25 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		results[CorrelationID(k.(string))] = outcome
 
 		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
+		return true
+	})
+
+	// Now go through the checks which were dupes
+	cacheKeyToCorrelationIDs.Range(func(_, correlationIds interface{}) bool {
+		ids := correlationIds.([]string)
+
+		// this means there were no dupes
+		if len(ids) == 1 {
+			return true
+		}
+
+		// the first ID written to the cache list is necessarily present in the results
+		original := ids[0]
+
+		for _, dupe := range ids[1:] {
+			log.Printf("Returning cached result for id=%s , was a dupe of id=%s", dupe, original)
+			results[CorrelationID(dupe)] = results[CorrelationID(original)]
+		}
 		return true
 	})
 

@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -41,6 +42,15 @@ var (
 		Help:      "The total number of cache hits for ResolveCheck.",
 	})
 )
+
+// CacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
+type CacheKeyParams struct {
+	StoreID          string
+	AuthModelID      string
+	TupleKey         *openfgav1.TupleKey
+	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
+}
 
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
@@ -185,23 +195,34 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
+func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+	params := &CacheKeyParams{
+		StoreID:          req.GetStoreID(),
+		AuthModelID:      req.GetAuthorizationModelID(),
+		TupleKey:         req.GetTupleKey(),
+		ContextualTuples: req.GetContextualTuples(),
+		Context:          req.GetContext(),
+	}
+
+	return GenerateCacheKey(params)
+}
+
+// GenerateCacheKey converts the elements of a Check into a canonical cache key that can be
 // used for Check resolution cache key lookups in a stable way.
 //
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+func GenerateCacheKey(params *CacheKeyParams) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
-	tupleKey := req.GetTupleKey()
 	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		storage.SubproblemCachePrefix,
-		req.GetStoreID(),
-		req.GetAuthorizationModelID(),
-		tupleKey.GetObject(),
-		tupleKey.GetRelation(),
-		tupleKey.GetUser(),
+		storage.SubproblemCachePrefix, // this causes an import loop
+		params.StoreID,
+		params.AuthModelID,
+		params.TupleKey.GetObject(),
+		params.TupleKey.GetRelation(),
+		params.TupleKey.GetUser(),
 	)
 
 	if err := hasher.WriteString(key); err != nil {
@@ -209,15 +230,14 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	}
 
 	// here, and for context below, avoid hashing if we don't need to
-	contextualTuples := req.GetContextualTuples()
-	if len(contextualTuples) > 0 {
-		if err := keys.NewTupleKeysHasher(contextualTuples...).Append(hasher); err != nil {
+	if len(params.ContextualTuples) > 0 {
+		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
 			return "", err
 		}
 	}
 
-	if req.GetContext() != nil {
-		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
+	if params.Context != nil {
+		err := keys.NewContextHasher(params.Context).Append(hasher)
 		if err != nil {
 			return "", err
 		}
