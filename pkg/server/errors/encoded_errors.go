@@ -5,9 +5,10 @@ import (
 	"regexp"
 	"strings"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (

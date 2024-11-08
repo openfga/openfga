@@ -4,24 +4,20 @@ import (
 	"context"
 	"errors"
 
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-
-	"github.com/openfga/openfga/pkg/server/commands"
-
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/middleware/validator"
-
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/pkg/middleware/validator"
+	"github.com/openfga/openfga/pkg/server/commands"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 

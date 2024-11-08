@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	language "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -23,6 +21,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
@@ -76,7 +77,7 @@ func ExampleNewServerWithOpts() {
 		panic(err)
 	}
 
-	model := language.MustTransformDSLToProto(`
+	model := parser.MustTransformDSLToProto(`
 	model
 		schema 1.1
 
@@ -864,7 +865,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -947,7 +948,7 @@ func TestReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: language.MustTransformDSLToProto(`
+		TypeDefinitions: parser.MustTransformDSLToProto(`
 			model
 				schema 1.1
 
@@ -1050,7 +1051,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -1155,7 +1156,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -1236,7 +1237,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -1308,7 +1309,7 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -1543,7 +1544,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 
@@ -1620,7 +1621,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`
+			TypeDefinitions: parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 
@@ -1675,7 +1676,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: language.MustTransformDSLToProto(`
+			TypeDefinitions: parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 
@@ -1837,7 +1838,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: language.MustTransformDSLToProto(`
+			TypeDefinitions: parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
 
@@ -2348,7 +2349,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := language.MustTransformDSLToProto(`
+	typedefs := parser.MustTransformDSLToProto(`
 		model
 			schema 1.1
 		type user

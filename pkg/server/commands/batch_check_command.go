@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/server/config"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"

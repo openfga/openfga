@@ -7,19 +7,18 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openfga/openfga/pkg/dispatch"
-	"github.com/openfga/openfga/pkg/storage"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
-
+	"github.com/openfga/openfga/pkg/dispatch"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
