@@ -464,6 +464,17 @@
                 }
             }
         },
+        "checkCache": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "description": "the size limit (in items) of the cache for Check (queries and iterators)",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_CHECK_CACHE_LIMIT"
+                }
+            }
+        },
         "checkIteratorCache": {
             "type": "object",
             "properties": {
@@ -490,14 +501,8 @@
                     "default": "false",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
                 },
-                "limit": {
-                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit (in items) of the cache",
-                    "type": "integer",
-                    "default": "10000",
-                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
-                },
                 "ttl": {
-                    "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
+                    "description": "if check-query-cache-enabled or check-iterator-cache-enabled, this is the TTL of each value",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",

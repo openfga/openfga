@@ -34,7 +34,7 @@ const (
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
-	DefaultCacheLimit = 10000
+	DefaultCheckCacheLimit = 10000
 
 	DefaultCacheControllerEnabled = false
 	DefaultCacheControllerTTL     = 10 * time.Second
@@ -44,6 +44,7 @@ const (
 
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
+	DefaultCheckIteratorCacheTTL        = 10 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -211,13 +212,16 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
-type CacheConfig struct {
+// CheckCacheConfig defines configuration for a cache that is shared across Check requests.
+type CheckCacheConfig struct {
 	Limit uint32
 }
 
+// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
 type CheckIteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
+	TTL        time.Duration
 }
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
@@ -328,7 +332,7 @@ type Config struct {
 	Playground                    PlaygroundConfig
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
-	Cache                         CacheConfig
+	CheckCache                    CheckCacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	DispatchThrottling            DispatchThrottlingConfig
@@ -656,8 +660,8 @@ func DefaultConfig() *Config {
 			Enabled: DefaultCheckQueryCacheEnabled,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		Cache: CacheConfig{
-			Limit: DefaultCacheLimit,
+		CheckCache: CheckCacheConfig{
+			Limit: DefaultCheckCacheLimit,
 		},
 		DispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
