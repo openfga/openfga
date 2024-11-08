@@ -321,7 +321,7 @@ func (c *CachedDatastore) newCachedIterator(
 
 	return &cachedIterator{
 		iter:              iter,
-		tuples:            make([]*storage.TupleRecord, 0, c.maxResultSize),
+		tuples:            make([]*storage.TupleRecord, 0),
 		cacheKey:          cacheKey,
 		invalidEntityKeys: invalidEntityKeys,
 		cache:             c.cache,
