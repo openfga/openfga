@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"github.com/emirpasic/gods/sets/hashset"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"slices"
-
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"slices"
 )
 
 type fastPathSetHandler func(ctx context.Context, iterQueue []*iteratorProducerEntry, iterChan chan iteratorMsg)
@@ -81,6 +80,7 @@ func pollIteratorQueues(ctx context.Context, iterQueue []*iteratorProducerEntry)
 			return nil, ctx.Err()
 		case i, ok = <-iter.producer:
 		}
+
 		if !ok {
 			iter.producerDone = true
 			continue
@@ -92,9 +92,10 @@ func pollIteratorQueues(ctx context.Context, iterQueue []*iteratorProducerEntry)
 		// in the first instance the iterator is empty but not nil
 		if iter.iter == nil {
 			iter.iter = i.iter
-		} else {
-			iter.iter = storage.NewCombinedIterator(iter.iter, i.iter)
+			continue
 		}
+
+		iter.iter = storage.NewCombinedIterator(iter.iter, i.iter)
 	}
 	// TODO: in go1.23 compare performance vs slices.Collect
 	// clean up all empty entries that are both done and drained
@@ -367,7 +368,7 @@ func fastPathDifference(ctx context.Context, iterQueue []*iteratorProducerEntry,
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						iter.iter = nil
-						continue
+						break
 					}
 					concurrency.TrySendThroughChannel(ctx, iteratorMsg{err: err}, iterChan)
 					return
@@ -445,7 +446,7 @@ func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveC
 		if err != nil {
 			return nil, err
 		}
-		iterQueue = append(iterQueue, &iteratorProducerEntry{idx: idx, iter: storage.NewStaticTupleKeyIterator(nil), producer: producerChan, producerDone: false})
+		iterQueue = append(iterQueue, &iteratorProducerEntry{idx: idx, iter: storage.NewStaticTupleKeyIterator(nil), producer: producerChan})
 	}
 	var resolver fastPathSetHandler
 	switch op {
@@ -485,7 +486,25 @@ func (c *LocalChecker) fastPathRewrite(
 
 func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+
+	rightOpen := true
+	leftOpen := true
+
+	defer func() {
+		cancel()
+		if leftOpen {
+			go func() {
+				for {
+					msg, ok := <-leftChan
+					if !ok {
+						return
+					}
+					msg.iter.Stop()
+				}
+			}()
+		}
+	}()
+
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 
 	res := &ResolveCheckResponse{
@@ -505,26 +524,10 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 		return nil, r.err
 	}
 	rightSet.Add(r.userset)
-
-	rightOpen := true
-	leftOpen := true
-
-	for rightOpen || leftOpen {
+	for leftOpen || rightOpen {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case msg, ok := <-rightChan:
-			if !ok {
-				rightOpen = false
-				break
-			}
-			if msg.err != nil {
-				return nil, msg.err
-			}
-			if processUsersetMessage(msg.userset, rightSet, leftSet) {
-				res.Allowed = true
-				return res, nil
-			}
 		case msg, ok := <-leftChan:
 			if !ok {
 				leftOpen = false
@@ -542,7 +545,6 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 				if err != nil {
 					msg.iter.Stop()
 					if storage.IterIsDoneOrCancelled(err) {
-						msg.iter.Stop()
 						break
 					}
 					return nil, err
@@ -552,6 +554,18 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan iter
 					res.Allowed = true
 					return res, nil
 				}
+			}
+		case msg, ok := <-rightChan:
+			if !ok {
+				rightOpen = false
+				break
+			}
+			if msg.err != nil {
+				return nil, msg.err
+			}
+			if processUsersetMessage(msg.userset, rightSet, leftSet) {
+				res.Allowed = true
+				return res, nil
 			}
 		}
 	}
@@ -592,6 +606,14 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}
 		leftChans = append(leftChans, leftChan)
 	}
+
+	if len(leftChans) == 0 {
+		// NOTE: this should be an error right?
+		return &ResolveCheckResponse{
+			Allowed: false,
+		}, nil
+	}
+
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
