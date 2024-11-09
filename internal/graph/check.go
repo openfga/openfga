@@ -30,7 +30,8 @@ var tracer = otel.Tracer("internal/graph/check")
 type setOperatorType int
 
 var (
-	ErrShortCircuit = errors.New("short circuit")
+	ErrShortCircuit       = errors.New("short circuit")
+	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
 )
 
 const (
@@ -1715,7 +1716,7 @@ func (c *LocalChecker) checkSetOperation(
 		}
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
-			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+			return nil, ErrUnknownSetOperator
 		}
 	}
 
@@ -1755,7 +1756,7 @@ func (c *LocalChecker) checkRewrite(
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
-			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+			return nil, ErrUnknownSetOperator
 		}
 	}
 }

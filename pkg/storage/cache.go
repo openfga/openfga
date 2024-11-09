@@ -136,5 +136,5 @@ func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) s
 }
 
 func GetReadCacheKey(store, tuple string) string {
-	return fmt.Sprintf("%sr%s/%s", iteratorCachePrefix, store, tuple)
+	return fmt.Sprintf("%sr/%s/%s", iteratorCachePrefix, store, tuple)
 }
