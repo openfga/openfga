@@ -33,12 +33,6 @@ var (
 	ErrNotFound = errors.New("not found")
 )
 
-// ExceededMaxTypeDefinitionsLimitError constructs an error indicating that
-// the maximum allowed limit for type definitions has been exceeded.
-func ExceededMaxTypeDefinitionsLimitError(limit int) error {
-	return fmt.Errorf("exceeded number of allowed type definitions: %d", limit)
-}
-
 // InvalidWriteInputError generates an error for invalid operations in a tuple store.
 // This function is invoked when an attempt is made to write or delete a tuple with invalid conditions.
 // Specifically, it addresses two scenarios:

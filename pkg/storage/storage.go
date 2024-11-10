@@ -251,7 +251,7 @@ type ReadUsersetTuplesFilter struct {
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel reads the model corresponding to store and model ID.
-	// If it's not found, it must return ErrNotFound.
+	// If it's not found, or if the model has zero types, it must return ErrNotFound.
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
@@ -269,6 +269,7 @@ type TypeDefinitionWriteBackend interface {
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
+	// If the model has zero types, the datastore may choose to do nothing and return no error.
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
