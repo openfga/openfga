@@ -810,7 +810,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 		AuthorizationModelId: modelID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
 	})
-	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
+	require.ErrorIs(t, err, serverErrors.ErrThrottledTimeout)
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
@@ -1716,7 +1716,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 
 		t.Run("resolution_depth_exceeded_error_streaming", func(t *testing.T) {
@@ -1728,7 +1728,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				User:                 "user:jon",
 			}, NewMockStreamServer(context.Background()))
 
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 	})
 }
