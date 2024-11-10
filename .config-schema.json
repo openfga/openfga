@@ -479,13 +479,13 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable caching of datastore iterators of Check requests",
+                    "description": "enable caching of datastore iterators. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"
                 },
                 "maxResults": {
-                    "description": "if caching of datastore iterators of Check requests is enabled, this is the limit of rows to cache per query",
+                    "description": "if caching of datastore iterators of Check requests is enabled, this is the limit of tuples to cache per iterator",
                     "type": "integer",
                     "default": "10000",
                     "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS"
@@ -503,7 +503,7 @@
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs.",
+                    "description": "enable caching of Check requests. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
