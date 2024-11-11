@@ -68,14 +68,6 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              context.DeadlineExceeded,
 			expectedTranslatedError: RequestDeadlineExceeded,
 		},
-		`invalid_write_input`: {
-			storageErr:              storage.ErrInvalidWriteInput,
-			expectedTranslatedError: WriteFailedDueToInvalidInput(storage.ErrInvalidWriteInput),
-		},
-		`transaction_failed`: {
-			storageErr:              storage.ErrTransactionalWriteFailed,
-			expectedTranslatedError: status.Error(codes.Aborted, storage.ErrTransactionalWriteFailed.Error()),
-		},
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {

@@ -217,10 +217,6 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > s.MaxTuplesPerWrite() {
-		return storage.ErrExceededWriteBatchLimit
-	}
-
 	return s.write(ctx, store, deletes, writes, time.Now().UTC())
 }
 

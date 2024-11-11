@@ -214,10 +214,10 @@ type RelationshipTupleReader interface {
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
 	// Write updates data in the tuple backend, performing all delete operations in
-	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// If there are more than MaxTuplesPerWrite, it must return ErrExceededWriteBatchLimit.
-	// If two requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed.
-	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput.
+	// `deletes` before adding new values in `writes`.
+	// It must also write to the changelog.
+	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
+	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput. TODO write test
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
