@@ -94,7 +94,7 @@ func (s *Server) ListUsers(
 
 		switch {
 		case errors.Is(err, graph.ErrResolutionDepthExceeded):
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+			return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 		case errors.Is(err, condition.ErrEvaluationFailed):
 			return nil, serverErrors.ValidationError(err)
 		default:
