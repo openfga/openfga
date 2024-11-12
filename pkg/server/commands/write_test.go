@@ -135,7 +135,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			name:          "nil_for_deletes_and_writes",
 			deletes:       nil,
 			writes:        nil,
-			expectedError: serverErrors.InvalidWriteInput,
+			expectedError: serverErrors.ErrInvalidWriteInput,
 		},
 		{
 			name: "write_failure_with_invalid_user",

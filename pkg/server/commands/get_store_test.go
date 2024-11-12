@@ -58,7 +58,7 @@ func TestGetStore(t *testing.T) {
 		resp, err := NewGetStoreQuery(mockDatastore).Execute(context.Background(), &openfgav1.GetStoreRequest{
 			StoreId: store.GetId(),
 		})
-		require.Equal(t, err, serverErrors.StoreIDNotFound)
+		require.Equal(t, err, serverErrors.ErrStoreIDNotFound)
 		require.Nil(t, resp)
 	})
 
