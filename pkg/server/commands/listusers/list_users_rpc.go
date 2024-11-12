@@ -86,9 +86,9 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
-func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
-		d.maxResults = max
+		d.maxResults = maxResults
 	}
 }
 
