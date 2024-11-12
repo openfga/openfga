@@ -508,8 +508,8 @@ func (c *cachedIterator) flush() {
 	// Copy tuples buffer into new destination before storing into cache
 	// otherwise, the cache will be storing pointers. This should also help
 	// with garbage collection.
-	tuples := make([]*storage.TupleRecord, len(c.tuples))
-	copy(tuples, c.tuples)
+	tuples := c.tuples
+	c.tuples = nil
 
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: tuples, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {
