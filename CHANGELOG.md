@@ -10,9 +10,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added
 * New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
+* New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 
 ### Removed
-* Rename flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT` to `OPENFGA_CHECK_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
+* Begin deprecation process for flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
+* Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name. [#2083](https://github.com/openfga/openfga/pull/2082)
+
 
 ## [1.8.0] - 2024-11-08
 

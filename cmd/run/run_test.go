@@ -1202,18 +1202,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.False(t, val.Bool())
 
-	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
-
-	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
-
 	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)

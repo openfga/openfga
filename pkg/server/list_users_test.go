@@ -338,7 +338,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 	})
 }

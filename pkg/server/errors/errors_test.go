@@ -58,15 +58,15 @@ func TestHandleErrors(t *testing.T) {
 	}{
 		`invalid_token`: {
 			storageErr:              storage.ErrInvalidContinuationToken,
-			expectedTranslatedError: InvalidContinuationToken,
+			expectedTranslatedError: ErrInvalidContinuationToken,
 		},
 		`context_cancelled`: {
 			storageErr:              context.Canceled,
-			expectedTranslatedError: RequestCancelled,
+			expectedTranslatedError: ErrRequestCancelled,
 		},
 		`context_deadline_exceeded`: {
 			storageErr:              context.DeadlineExceeded,
-			expectedTranslatedError: RequestDeadlineExceeded,
+			expectedTranslatedError: ErrRequestDeadlineExceeded,
 		},
 		`invalid_write_input`: {
 			storageErr:              storage.ErrInvalidWriteInput,

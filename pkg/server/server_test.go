@@ -28,6 +28,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -809,7 +810,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 		AuthorizationModelId: modelID,
 		TupleKey:             tuple.NewCheckRequestTupleKey("group:x", "member", "user:anne"),
 	})
-	require.ErrorIs(t, err, serverErrors.ThrottledTimeout)
+	require.ErrorIs(t, err, serverErrors.ErrThrottledTimeout)
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
@@ -1715,7 +1716,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			})
 
 			require.Nil(t, res)
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 
 		t.Run("resolution_depth_exceeded_error_streaming", func(t *testing.T) {
@@ -1727,7 +1728,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 				User:                 "user:jon",
 			}, NewMockStreamServer(context.Background()))
 
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+			require.ErrorIs(t, err, serverErrors.ErrAuthorizationModelResolutionTooComplex)
 		})
 	})
 }
@@ -1893,7 +1894,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.DispatchThrottling.Enabled)
 		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
 		require.False(t, cfg.ListUsersDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
@@ -2336,6 +2336,69 @@ func TestServerCheckCache(t *testing.T) {
 
 		require.Nil(t, s.checkCache)
 		require.Equal(t, s.datastore, s.checkDatastore)
+	})
+}
+
+func TestCheckWithCachedControllerEnabled(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("cache_controller_is_noop", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		_, ok := s.cacheController.(*cachecontroller.NoopCacheController)
+		require.True(t, ok)
+	})
+
+	t.Run("cache_controller_is_not_nil_if_check_query_cache_enabled", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+			WithCheckQueryCacheEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		require.NotNil(t, s.cacheController)
+	})
+
+	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCacheControllerEnabled(true),
+			WithCheckIteratorCacheEnabled(true),
+		)
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		require.NotNil(t, s.cacheController)
 	})
 }
 
