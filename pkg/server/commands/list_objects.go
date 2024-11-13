@@ -100,9 +100,9 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption
 	}
 }
 
-func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
+func WithListObjectsMaxResults(maxResults uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.listObjectsMaxResults = max
+		d.listObjectsMaxResults = maxResults
 	}
 }
 
@@ -430,7 +430,7 @@ func (q *ListObjectsQuery) Execute(
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
@@ -479,7 +479,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {

@@ -346,9 +346,9 @@ func WithListUsersMaxResults(limit uint32) OpenFGAServiceV1Option {
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
-func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
+func WithMaxConcurrentReadsForListObjects(maxConcurrentReads uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.maxConcurrentReadsForListObjects = max
+		s.maxConcurrentReadsForListObjects = maxConcurrentReads
 	}
 }
 
@@ -359,9 +359,9 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
-func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
+func WithMaxConcurrentReadsForCheck(maxConcurrentReadsForCheck uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.maxConcurrentReadsForCheck = max
+		s.maxConcurrentReadsForCheck = maxConcurrentReadsForCheck
 	}
 }
 
@@ -372,9 +372,9 @@ func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 // - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
 // - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
 // - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
-func WithMaxConcurrentReadsForListUsers(max uint32) OpenFGAServiceV1Option {
+func WithMaxConcurrentReadsForListUsers(maxConcurrentReadsForListUsers uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.maxConcurrentReadsForListUsers = max
+		s.maxConcurrentReadsForListUsers = maxConcurrentReadsForListUsers
 	}
 }
 
