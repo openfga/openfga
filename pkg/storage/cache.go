@@ -84,17 +84,15 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		i.Delete(key)
 		return
 	}
-
-	// Don't attempt to set if cache has been stopped
-	if i.cache == nil {
-		return
+	if i.cache != nil {
+		i.cache.SetWithTTL(key, value, 1, ttl)
 	}
-
-	i.cache.SetWithTTL(key, value, 1, ttl)
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
-	i.cache.Delete(key)
+	if i.cache != nil {
+		i.cache.Delete(key)
+	}
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
