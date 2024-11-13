@@ -217,7 +217,7 @@ func GenerateCacheKey(params *CacheKeyParams) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		storage.SubproblemCachePrefix, // this causes an import loop
+		storage.SubproblemCachePrefix,
 		params.StoreID,
 		params.AuthModelID,
 		params.TupleKey.GetObject(),

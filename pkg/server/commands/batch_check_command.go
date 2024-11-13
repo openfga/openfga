@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -114,13 +115,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		return nil, nil, err
 	}
 
-	// build a cache key map before concurrency
-	// if resultMap.load(cacheKey) is ok, just attach that to the correlation id
-	// can even pre-allocate the results map in a non-sync manner I think
+	// Before processing the batch, deduplicate the checks based on their unique cache key
+	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
 	cacheKeyToCorrelationIDs := make(map[CacheKey][]CorrelationID)
 	cacheKeyToCheck := make(map[CacheKey]*openfgav1.BatchCheckItem)
 	for _, check := range params.Checks {
-		// now prebuild the map
 		key := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
 		cacheKeyToCheck[key] = check
 		cacheKeyToCorrelationIDs[key] = append(cacheKeyToCorrelationIDs[key], CorrelationID(check.GetCorrelationId()))
@@ -134,9 +133,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		pool.Go(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
-				// TODO do it in here too
-				// this should probably be based on the correlation id itself actually
-				// is possible the dupe was processed first
 				resultMap.Store(key, &BatchCheckOutcome{
 					Err: ctx.Err(),
 				})
@@ -177,19 +173,22 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
 
-	// cacheKey: [correlation ids]
-	// cacheKey: &{the actual check}
-	// cacheKey: &Result{}
+	duplicateCount := 0
+	// Each cacheKey can have > 1 associated CorrelationID
 	for cacheKey, ids := range cacheKeyToCorrelationIDs {
+		duplicateCount = duplicateCount + len(ids) - 1 // there should always be at least 1 id
 		res, _ := resultMap.Load(cacheKey)
-		//if !ok {
-		//	panic("AHHH")
-		//}
 
 		outcome := res.(*BatchCheckOutcome)
 		for _, id := range ids {
+			// map all associated CorrelationIDs to this outcome
 			results[id] = outcome
 		}
+	}
+
+	if duplicateCount > 0 {
+		// TODO: telemetry "there were N duplicates"
+		log.Printf("\nJUSTIN DUPLICATES: %d\n", duplicateCount)
 	}
 
 	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount.Load()}, nil
