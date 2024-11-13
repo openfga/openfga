@@ -406,7 +406,7 @@ func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	}
 }
 
-// WithCheckCacheLimit sets the check checkCache size limit (in items).
+// WithCheckCacheLimit sets the check cache size limit (in items).
 func WithCheckCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkCacheLimit = limit

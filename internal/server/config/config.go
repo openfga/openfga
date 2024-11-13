@@ -495,6 +495,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
 	}
 
+	if viper.IsSet("cache.limit") && !viper.IsSet("checkCache.limit") {
+		fmt.Println("WARNING: flag `check-query-cache-limit` is deprecated. Please set --check-cache-limit instead.")
+	}
+
 	return nil
 }
 

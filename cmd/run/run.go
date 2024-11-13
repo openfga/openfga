@@ -224,13 +224,15 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("check-cache-limit", defaultConfig.CheckCache.Limit, "if check-query-cache-enabled or check-iterator-cache-enabled, this is the size limit of the cache")
 
-	flags.Bool("check-iterator-cache-enabled", defaultConfig.CheckIteratorCache.Enabled, "enable caching of datastore iterators. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.")
+	flags.Bool("check-iterator-cache-enabled", defaultConfig.CheckIteratorCache.Enabled, "enable caching of datastore iterators. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.")
 
-	flags.Uint32("check-iterator-cache-max-results", defaultConfig.CheckIteratorCache.MaxResults, "if caching of datastore iterators of Check requests is enabled, this is the limit of tuples to cache per iterator.")
+	flags.Uint32("check-iterator-cache-max-results", defaultConfig.CheckIteratorCache.MaxResults, "if caching of datastore iterators of Check requests is enabled, this is the limit of tuples to cache per key.")
 
 	flags.Duration("check-iterator-cache-ttl", defaultConfig.CheckIteratorCache.TTL, "if caching of datastore iterators of Check requests is enabled, this is the TTL of each value")
 
 	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "enable caching of Check requests. For example, if you have a relation define viewer: owner or editor, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the owner relation and the editor relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.")
+
+	flags.Uint32("check-query-cache-limit", defaultConfig.CheckCache.Limit, "DEPRECATED: Use check-cache-limit instead. If caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if check-query-cache-enabled, this is the TTL of each value")
 
