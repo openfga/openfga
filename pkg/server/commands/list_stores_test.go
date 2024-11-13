@@ -68,7 +68,7 @@ func TestListStores(t *testing.T) {
 			ContinuationToken: "",
 		}, []string{"store1"})
 		require.Nil(t, resp)
-		require.ErrorIs(t, actualError, serverErrors.InvalidContinuationToken)
+		require.ErrorIs(t, actualError, serverErrors.ErrInvalidContinuationToken)
 	})
 
 	t.Run("error_encoding_token", func(t *testing.T) {
