@@ -117,36 +117,31 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	// build a cache key map before concurrency
 	// if resultMap.load(cacheKey) is ok, just attach that to the correlation id
 	// can even pre-allocate the results map in a non-sync manner I think
-	correlationToCacheKey := make(map[CorrelationID]CacheKey)
+	cacheKeyToCorrelationIDs := make(map[CacheKey][]CorrelationID)
+	cacheKeyToCheck := make(map[CacheKey]*openfgav1.BatchCheckItem)
 	for _, check := range params.Checks {
 		// now prebuild the map
-		correlationToCacheKey[CorrelationID(check.GetCorrelationId())] =
-			generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+		key := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+		cacheKeyToCheck[key] = check
+		cacheKeyToCorrelationIDs[key] = append(cacheKeyToCorrelationIDs[key], CorrelationID(check.GetCorrelationId()))
 	}
 
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
-	for _, check := range params.Checks {
-		cacheKey := correlationToCacheKey[CorrelationID(check.GetCorrelationId())]
-
+	for key, check := range cacheKeyToCheck {
 		pool.Go(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				// TODO do it in here too
-				resultMap.Store(cacheKey, &BatchCheckOutcome{
+				// this should probably be based on the correlation id itself actually
+				// is possible the dupe was processed first
+				resultMap.Store(key, &BatchCheckOutcome{
 					Err: ctx.Err(),
 				})
 				return nil
 			default:
-			}
-
-			// if this check has already been run, we can bail
-			// we reconcile after the worker pool is finished
-			_, ok := resultMap.Load(cacheKey)
-			if ok {
-				return nil
 			}
 
 			checkQuery := NewCheckCommand(
@@ -167,7 +162,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			resultMap.Store(cacheKey, &BatchCheckOutcome{
+			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,
 				Err:           err,
 			})
@@ -182,12 +177,19 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
 
-	for id, key := range correlationToCacheKey {
-		response, ok := resultMap.Load(key)
-		if !ok {
-			panic("this is bad")
+	// cacheKey: [correlation ids]
+	// cacheKey: &{the actual check}
+	// cacheKey: &Result{}
+	for cacheKey, ids := range cacheKeyToCorrelationIDs {
+		res, _ := resultMap.Load(cacheKey)
+		//if !ok {
+		//	panic("AHHH")
+		//}
+
+		outcome := res.(*BatchCheckOutcome)
+		for _, id := range ids {
+			results[id] = outcome
 		}
-		results[id] = response.(*BatchCheckOutcome)
 	}
 
 	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount.Load()}, nil
