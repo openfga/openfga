@@ -9,10 +9,8 @@ import (
 )
 
 func TestInMemoryCache(t *testing.T) {
-	cache := NewInMemoryLRUCache[string]()
-	defer cache.Stop()
-
 	t.Run("set_and_get", func(t *testing.T) {
+		cache := NewInMemoryLRUCache[string]()
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
@@ -23,6 +21,7 @@ func TestInMemoryCache(t *testing.T) {
 	})
 
 	t.Run("set_and_get_expired", func(t *testing.T) {
+		cache := NewInMemoryLRUCache[string]() // can't call get/set on a closed cache store
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
@@ -33,6 +32,7 @@ func TestInMemoryCache(t *testing.T) {
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
+		cache := NewInMemoryLRUCache[string]()
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
