@@ -160,7 +160,7 @@ func TestReadCommand(t *testing.T) {
 			ContinuationToken: "token",
 		})
 		require.Nil(t, resp)
-		require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
+		require.ErrorIs(t, err, serverErrors.ErrInvalidContinuationToken)
 	})
 
 	t.Run("accepts_types_that_are_not_defined_in_current_model", func(t *testing.T) {

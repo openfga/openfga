@@ -53,7 +53,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 	relation := tupleKey.GetRelation()
 
 	if object == "" || relation == "" {
-		return nil, serverErrors.InvalidExpandInput
+		return nil, serverErrors.ErrInvalidExpandInput
 	}
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
@@ -137,7 +137,7 @@ func (q *ExpandQuery) resolveUserset(
 	case *openfgav1.Userset_Intersection:
 		return q.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys, consistency)
 	default:
-		return nil, serverErrors.UnsupportedUserSet
+		return nil, serverErrors.ErrUnsupportedUserSet
 	}
 }
 

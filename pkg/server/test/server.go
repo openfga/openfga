@@ -18,8 +18,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestExpandQuery", func(t *testing.T) { TestExpandQuery(t, ds) })
 	t.Run("TestExpandQueryErrors", func(t *testing.T) { TestExpandQueryErrors(t, ds) })
 
-	t.Run("TestGetStoreQuery", func(t *testing.T) { TestGetStoreQuery(t, ds) })
-	t.Run("TestGetStoreSucceeds", func(t *testing.T) { TestGetStoreSucceeds(t, ds) })
 	t.Run("TestListStores", func(t *testing.T) { TestListStores(t, ds) })
 
 	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds) })
@@ -44,8 +42,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, ds) })
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { TestWriteAndReadAssertions(t, ds) })
-	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
-	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

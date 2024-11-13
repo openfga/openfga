@@ -72,7 +72,7 @@ func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQu
 func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 	token := string(decodedContToken)
 
@@ -86,10 +86,10 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChang
 		var objType string
 		fromUlid, objType, err = q.tokenSerializer.DeserializeReadChanges(token)
 		if err != nil {
-			return nil, serverErrors.InvalidContinuationToken
+			return nil, serverErrors.ErrInvalidContinuationToken
 		}
 		if objType != req.GetType() {
-			return nil, serverErrors.MismatchObjectType
+			return nil, serverErrors.ErrMismatchObjectType
 		}
 	} else if !startTime.IsZero() {
 		tokenUlid, ulidErr := ulid.New(ulid.Timestamp(startTime), nil)

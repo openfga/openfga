@@ -317,7 +317,7 @@ func TestReadChangesQuery(t *testing.T) {
 			ContinuationToken: reqToken,
 		})
 		require.Nil(t, resp)
-		require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
+		require.ErrorIs(t, err, serverErrors.ErrInvalidContinuationToken)
 	})
 
 	t.Run("returns_input_request_token_if_storage_returned_no_results", func(t *testing.T) {
