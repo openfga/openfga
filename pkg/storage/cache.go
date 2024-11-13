@@ -68,6 +68,10 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 
 func (i InMemoryLRUCache[T]) Get(key string) T {
 	var zero T
+	if i.cache == nil {
+		return zero
+	}
+
 	value, ok := i.cache.Get(key)
 	if !ok {
 		return zero
@@ -80,6 +84,12 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		i.Delete(key)
 		return
 	}
+
+	// Don't attempt to set if cache has been stopped
+	if i.cache == nil {
+		return
+	}
+
 	i.cache.SetWithTTL(key, value, 1, ttl)
 }
 
