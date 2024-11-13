@@ -4,11 +4,10 @@ package storage
 
 import (
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
+	"github.com/Yiling-J/theine-go"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
@@ -37,7 +36,7 @@ type InMemoryCache[T any] interface {
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
-	ccache      *ccache.Cache[T]
+	cache       *theine.Cache[string, T]
 	maxElements int64
 	closeOnce   *sync.Once
 }
@@ -62,35 +61,35 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 		opt(t)
 	}
 
-	t.ccache = ccache.New(ccache.Configure[T]().MaxSize(t.maxElements))
+	cache, _ := theine.NewBuilder[string, T](t.maxElements).Build()
+	t.cache = cache
 	return t
 }
 
 func (i InMemoryLRUCache[T]) Get(key string) T {
 	var zero T
-	item := i.ccache.Get(key)
-	if item == nil {
+	value, ok := i.cache.Get(key)
+	if !ok {
 		return zero
 	}
-
-	if value, expired := item.Value(), item.Expired(); !reflect.ValueOf(value).IsZero() && !expired {
-		return value
-	}
-
-	return zero
+	return value
 }
 
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
-	i.ccache.Set(key, value, ttl)
+	if ttl <= 0 {
+		i.Delete(key)
+		return
+	}
+	i.cache.SetWithTTL(key, value, 1, ttl)
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
-	i.ccache.Delete(key)
+	i.cache.Delete(key)
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
 	i.closeOnce.Do(func() {
-		i.ccache.Stop()
+		i.cache.Close()
 	})
 }
 

@@ -5,6 +5,7 @@ go 1.22.7
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc/v2 v2.1.0
+	github.com/Yiling-J/theine-go v0.6.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/docker/docker v27.3.1+incompatible
@@ -21,7 +22,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
-	github.com/karlseguin/ccache/v3 v3.0.6
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20241107182745-c14fb4b3d4b4
@@ -80,6 +80,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
@@ -110,6 +111,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.31.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.22.0 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
