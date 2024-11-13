@@ -31,7 +31,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	defer mockController.Finish()
 	ds := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	// mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
@@ -43,7 +43,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	// cmd := NewBatchCheckCommand(
+	//cmd := NewBatchCheckCommand(
 	//	ds,
 	//	mockCheckResolver,
 	//	ts,
@@ -52,7 +52,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	//)
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := int(maxChecks)
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -87,7 +86,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 10
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -130,7 +128,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_too_many_tuples", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(
 			ds,
 			mockCheckResolver,
@@ -163,7 +160,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -178,7 +174,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_duplicated_correlation_ids", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 2
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -207,7 +202,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 1
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -236,7 +230,6 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 
 	t.Run("returns_errors_per_check_if_context_cancelled", func(t *testing.T) {
-		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
@@ -275,47 +268,46 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.Equal(t, len(response), numChecks)
 	})
 
-	// t.Run("uses_command_cache_to_resolve_dupe_checks", func(t *testing.T) {
-	//	mockCheckResolver := graph.NewMockCheckResolver(mockController)
-	//	cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
-	//	numChecks := 5
-	//	checks := make([]*openfgav1.BatchCheckItem, numChecks)
-	//
-	//	justinTuple := &openfgav1.CheckRequestTupleKey{
-	//		Object:   "doc:doc1",
-	//		Relation: "viewer",
-	//		User:     "user:justin",
-	//	}
-	//
-	//	// create numChecks of the same tuple
-	//	for i := 0; i < numChecks; i++ {
-	//		checks[i] = &openfgav1.BatchCheckItem{
-	//			TupleKey:      justinTuple,
-	//			CorrelationId: fmt.Sprintf("fakeid%d", i),
-	//		}
-	//	}
-	//
-	//	// The check resolver should only receive this check once
-	//	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-	//		//AnyTimes().
-	//		Times(1).
-	//		Return(nil, nil)
-	//
-	//	params := &BatchCheckCommandParams{
-	//		AuthorizationModelID: ts.GetAuthorizationModelID(),
-	//		Checks:               checks,
-	//		StoreID:              ulid.Make().String(),
-	//	}
-	//
-	//	result, meta, err := cmd.Execute(context.Background(), params)
-	//
-	//	require.NoError(t, err)
-	//	require.Equal(t, len(result), numChecks)
-	//	log.Printf("justin result: %+v", result)
-	//	log.Printf("justin meta: %+v", meta)
-	//	// No actual datastore queries should have been run since we're mocking
-	//	//require.Equal(t, 0, int(meta.DatastoreQueryCount))
-	// })
+	t.Run("uses_command_cache_to_resolve_dupe_checks", func(t *testing.T) {
+		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+		numChecks := 5
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+
+		justinTuple := &openfgav1.CheckRequestTupleKey{
+			Object:   "doc:doc1",
+			Relation: "viewer",
+			User:     "user:justin",
+		}
+
+		// create numChecks of the same tuple
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey:      justinTuple,
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
+		}
+
+		// The check resolver should only receive this check once
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			//AnyTimes().
+			Times(1).
+			Return(nil, nil)
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              ulid.Make().String(),
+		}
+
+		result, meta, err := cmd.Execute(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Equal(t, len(result), numChecks)
+		log.Printf("justin result: %+v", result)
+		log.Printf("justin meta: %+v", meta)
+		// No actual datastore queries should have been run since we're mocking
+		//require.Equal(t, 0, int(meta.DatastoreQueryCount))
+	})
 }
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
