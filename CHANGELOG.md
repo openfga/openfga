@@ -27,6 +27,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Performance
 * Improve `Check` performance in the case that the query involves resolving nested userset with type bound public access. Enable via experimental flag `enable-check-optimizations`. [#2063](https://github.com/openfga/openfga/pull/2063)
+* Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
+
 
 ### Breaking changes
 * The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
