@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -110,7 +109,6 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		// Quantity of correlation IDs should be equal
-		// log.Printf("Justin 120 result: %v, %v", result, ids)
 		require.Equal(t, len(ids), len(result))
 
 		// And each ID should appear in the response
@@ -288,7 +286,6 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// The check resolver should only receive this check once
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-			// AnyTimes().
 			Times(1).
 			Return(nil, nil)
 
@@ -298,12 +295,10 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, meta, err := cmd.Execute(context.Background(), params)
+		result, _, err := cmd.Execute(context.Background(), params)
 
 		require.NoError(t, err)
 		require.Len(t, result, numChecks)
-		log.Printf("justin result: %+v", result)
-		log.Printf("justin meta: %+v", meta)
 	})
 }
 
