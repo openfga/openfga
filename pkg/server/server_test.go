@@ -1894,7 +1894,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
 		require.False(t, cfg.CheckDispatchThrottling.Enabled)
-		require.False(t, cfg.DispatchThrottling.Enabled)
 		require.False(t, cfg.ListObjectsDispatchThrottling.Enabled)
 		require.False(t, cfg.ListUsersDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
