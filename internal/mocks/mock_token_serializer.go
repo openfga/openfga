@@ -39,7 +39,7 @@ func (m *MockContinuationTokenSerializer) EXPECT() *MockContinuationTokenSeriali
 	return m.recorder
 }
 
-// Deserialize mocks base method.
+// DeserializeReadChanges mocks base method.
 func (m *MockContinuationTokenSerializer) DeserializeReadChanges(token string) (string, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeserializeReadChanges", token)
@@ -49,13 +49,13 @@ func (m *MockContinuationTokenSerializer) DeserializeReadChanges(token string) (
 	return ret0, ret1, ret2
 }
 
-// Deserialize indicates an expected call of Deserialize.
-func (mr *MockContinuationTokenSerializerMockRecorder) Deserialize(token any) *gomock.Call {
+// DeserializeReadChanges indicates an expected call of DeserializeReadChanges.
+func (mr *MockContinuationTokenSerializerMockRecorder) DeserializeReadChanges(token any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeserializeReadChanges", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).DeserializeReadChanges), token)
 }
 
-// Serialize mocks base method.
+// SerializeReadChanges mocks base method.
 func (m *MockContinuationTokenSerializer) SerializeReadChanges(ulid, objType string) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SerializeReadChanges", ulid, objType)
@@ -64,8 +64,8 @@ func (m *MockContinuationTokenSerializer) SerializeReadChanges(ulid, objType str
 	return ret0, ret1
 }
 
-// Serialize indicates an expected call of Serialize.
-func (mr *MockContinuationTokenSerializerMockRecorder) Serialize(ulid, objType any) *gomock.Call {
+// SerializeReadChanges indicates an expected call of SerializeReadChanges.
+func (mr *MockContinuationTokenSerializerMockRecorder) SerializeReadChanges(ulid, objType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SerializeReadChanges", reflect.TypeOf((*MockContinuationTokenSerializer)(nil).SerializeReadChanges), ulid, objType)
 }
