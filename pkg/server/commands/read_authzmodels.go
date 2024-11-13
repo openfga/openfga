@@ -47,7 +47,7 @@ func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBacke
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 
 	opts := storage.ReadAuthorizationModelsOptions{

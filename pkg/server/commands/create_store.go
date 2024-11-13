@@ -44,6 +44,7 @@ func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1.CreateS
 	store, err := s.storesBackend.CreateStore(ctx, &openfgav1.Store{
 		Id:   ulid.Make().String(),
 		Name: req.GetName(),
+		// TODO why not pass CreatedAt and UpdatedAt as derived from the ulid?
 	})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
