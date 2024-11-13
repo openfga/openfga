@@ -451,7 +451,7 @@ func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 }
 
 // WithCheckIteratorCacheTTL sets the TTL of iterator caches.
-// Needs WithCheckQueryCacheEnabled set to true.
+// Needs WithCheckIteratorCacheEnabled set to true.
 func WithCheckIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkIteratorCacheTTL = ttl
