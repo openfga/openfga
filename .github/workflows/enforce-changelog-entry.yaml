@@ -20,10 +20,9 @@ jobs:
       - run: |
           files=$(git status --porcelain)
           if [[ -n ${files}  ]]; then
-            >&2 echo "Tidy modules resulted in changed files:"
+            >&2 echo "Please run \`npx keep-a-changelog\` to fix changelog."
             >&2 echo ""
             >&2 echo "${files}"
             >&2 echo ""
-            >&2 echo "Please run \`npx keep-a-changelog\` to fix changelog."
             exit 1
           fi
