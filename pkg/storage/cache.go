@@ -39,7 +39,6 @@ type InMemoryLRUCache[T any] struct {
 	cache       *theine.Cache[string, T]
 	maxElements int64
 	closeOnce   *sync.Once
-	mu          sync.RWMutex
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -67,12 +66,8 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 	return t
 }
 
-func (i *InMemoryLRUCache[T]) Get(key string) T {
+func (i InMemoryLRUCache[T]) Get(key string) T {
 	var zero T
-
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
 	if i.cache == nil {
 		return zero
 	}
@@ -84,37 +79,27 @@ func (i *InMemoryLRUCache[T]) Get(key string) T {
 	return value
 }
 
-func (i *InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
+func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 	if ttl <= 0 {
 		i.Delete(key)
 		return
 	}
 
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	if i.cache != nil {
-		i.cache.SetWithTTL(key, value, 1, ttl)
+	// Don't attempt to set if cache has been stopped
+	if i.cache == nil {
+		return
 	}
+
+	i.cache.SetWithTTL(key, value, 1, ttl)
 }
 
-func (i *InMemoryLRUCache[T]) Delete(key string) {
-	i.mu.RLock()
-	defer i.mu.RUnlock()
-
-	if i.cache != nil {
-		i.cache.Delete(key)
-	}
+func (i InMemoryLRUCache[T]) Delete(key string) {
+	i.cache.Delete(key)
 }
 
-func (i *InMemoryLRUCache[T]) Stop() {
+func (i InMemoryLRUCache[T]) Stop() {
 	i.closeOnce.Do(func() {
-		i.mu.Lock()
-		defer i.mu.Unlock()
-		if i.cache != nil {
-			i.cache.Close()
-			i.cache = nil
-		}
+		i.cache.Close()
 	})
 }
 
