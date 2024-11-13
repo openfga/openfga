@@ -3,8 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -52,6 +52,7 @@ func (e BatchCheckValidationError) Error() string {
 }
 
 type CorrelationID string
+type CacheKey string
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
@@ -113,23 +114,39 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		return nil, nil, err
 	}
 
-	var resultMap = new(sync.Map)
+	// build a cache key map before concurrency
+	// if resultMap.load(cacheKey) is ok, just attach that to the correlation id
+	// can even pre-allocate the results map in a non-sync manner I think
+	correlationToCacheKey := make(map[CorrelationID]CacheKey)
+	for _, check := range params.Checks {
+		// now prebuild the map
+		correlationToCacheKey[CorrelationID(check.GetCorrelationId())] =
+			generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+	}
 
-	// cacheKeyToCorrelationIDs is used to short-circuit in the event we
-	// receive duplicate checks with different correlation_ids
-	// it has the structure { key: [list of correlation ids] }
-	var cacheKeyToCorrelationIDs = new(sync.Map)
+	var resultMap = new(sync.Map)
+	var totalQueryCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
+		cacheKey := correlationToCacheKey[CorrelationID(check.GetCorrelationId())]
+
 		pool.Go(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
-				resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
+				// TODO do it in here too
+				resultMap.Store(cacheKey, &BatchCheckOutcome{
 					Err: ctx.Err(),
 				})
 				return nil
 			default:
+			}
+
+			// if this check has already been run, we can bail
+			// we reconcile after the worker pool is finished
+			_, ok := resultMap.Load(cacheKey)
+			if ok {
+				return nil
 			}
 
 			checkQuery := NewCheckCommand(
@@ -139,36 +156,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				WithCheckCommandLogger(bq.logger),
 				WithCacheController(bq.cacheController),
 			)
-
-			tupleKey := check.GetTupleKey()
-			cacheKeyParams := &graph.CacheKeyParams{
-				StoreID:     params.StoreID,
-				AuthModelID: bq.typesys.GetAuthorizationModelID(),
-				TupleKey: &openfgav1.TupleKey{
-					User:     tupleKey.GetUser(),
-					Relation: tupleKey.GetRelation(),
-					Object:   tupleKey.GetObject(),
-				},
-				ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
-				Context:          check.GetContext(),
-			}
-
-			// TODO this really shouldn't error
-			cacheKey, _ := graph.GenerateCacheKey(cacheKeyParams)
-
-			// if this is ok that means we've done this check already in this batch
-			existingCorrelationIDs, ok := cacheKeyToCorrelationIDs.Load(cacheKey)
-			if ok {
-				idList := existingCorrelationIDs.([]string)
-				idList = append(idList, check.GetCorrelationId())
-				cacheKeyToCorrelationIDs.Store(cacheKey, idList)
-
-				// we will map this duplicate check to its already-determined result after all routines have finished
-				return nil
-			}
-
-			// save this to this batch's cache
-			cacheKeyToCorrelationIDs.Store(cacheKey, []string{check.GetCorrelationId()})
 
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
@@ -180,10 +167,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
+			resultMap.Store(cacheKey, &BatchCheckOutcome{
 				CheckResponse: response,
 				Err:           err,
 			})
+
+			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
 
 			return nil
 		})
@@ -192,37 +181,16 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	_ = pool.Wait()
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
-	var totalQueryCount uint32
 
-	resultMap.Range(func(k, v interface{}) bool {
-		// Convert types since sync.Map is `any`
-		outcome := v.(*BatchCheckOutcome)
-		results[CorrelationID(k.(string))] = outcome
-
-		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
-		return true
-	})
-
-	// Now go through the checks which were dupes
-	cacheKeyToCorrelationIDs.Range(func(_, correlationIds interface{}) bool {
-		ids := correlationIds.([]string)
-
-		// this means there were no dupes
-		if len(ids) == 1 {
-			return true
+	for id, key := range correlationToCacheKey {
+		response, ok := resultMap.Load(key)
+		if !ok {
+			panic("this is bad")
 		}
+		results[id] = response.(*BatchCheckOutcome)
+	}
 
-		// the first ID written to the cache list is necessarily present in the results
-		original := ids[0]
-
-		for _, dupe := range ids[1:] {
-			log.Printf("Returning cached result for id=%s , was a dupe of id=%s", dupe, original)
-			results[CorrelationID(dupe)] = results[CorrelationID(original)]
-		}
-		return true
-	})
-
-	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount}, nil
+	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount.Load()}, nil
 }
 
 func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
@@ -246,4 +214,22 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	}
 
 	return nil
+}
+
+func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) CacheKey {
+	tupleKey := check.GetTupleKey()
+	cacheKeyParams := &graph.CacheKeyParams{
+		StoreID:     storeID,
+		AuthModelID: authModelID,
+		TupleKey: &openfgav1.TupleKey{
+			User:     tupleKey.GetUser(),
+			Relation: tupleKey.GetRelation(),
+			Object:   tupleKey.GetObject(),
+		},
+		ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
+		Context:          check.GetContext(),
+	}
+
+	cacheKey, _ := graph.GenerateCacheKey(cacheKeyParams)
+	return CacheKey(cacheKey)
 }

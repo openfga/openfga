@@ -43,7 +43,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	//cmd := NewBatchCheckCommand(
+	// cmd := NewBatchCheckCommand(
 	//	ds,
 	//	mockCheckResolver,
 	//	ts,
@@ -117,8 +117,8 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		// Quantity of correlation IDs should be equal
-		log.Printf("Justin 120 result: %v, %v", result, ids)
-		require.Equal(t, len(result), len(ids))
+		// log.Printf("Justin 120 result: %v, %v", result, ids)
+		require.Equal(t, len(ids), len(result))
 
 		// And each ID should appear in the response
 		for _, id := range ids {
@@ -289,7 +289,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// The check resolver should only receive this check once
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-			//AnyTimes().
+			// AnyTimes().
 			Times(1).
 			Return(nil, nil)
 
@@ -302,11 +302,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		result, meta, err := cmd.Execute(context.Background(), params)
 
 		require.NoError(t, err)
-		require.Equal(t, len(result), numChecks)
+		require.Len(t, result, numChecks)
 		log.Printf("justin result: %+v", result)
 		log.Printf("justin meta: %+v", meta)
-		// No actual datastore queries should have been run since we're mocking
-		//require.Equal(t, 0, int(meta.DatastoreQueryCount))
 	})
 }
 
