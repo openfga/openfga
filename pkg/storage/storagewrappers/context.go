@@ -3,8 +3,9 @@ package storagewrappers
 import (
 	"context"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -45,7 +46,7 @@ func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey 
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
-func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	queryCtx := queryContext(ctx)
 
 	return c.OpenFGADatastore.ReadPage(queryCtx, store, tupleKey, options)

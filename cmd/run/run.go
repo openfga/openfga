@@ -23,7 +23,6 @@ import (
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
@@ -41,7 +40,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	"github.com/openfga/openfga/pkg/gateway"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
@@ -50,6 +49,8 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -87,7 +88,15 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable.")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-access-control`")
+
+	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
+
+	flags.String("access-control-store-id", defaultConfig.AccessControl.StoreID, "the store ID of the OpenFGA store that will be used to access the access control store")
+
+	flags.String("access-control-model-id", defaultConfig.AccessControl.ModelID, "the model ID of the OpenFGA store that will be used to access the access control store")
+
+	cmd.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
 
 	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 
@@ -128,6 +137,8 @@ func NewRunCommand() *cobra.Command {
 	flags.StringSlice("authn-oidc-issuer-aliases", defaultConfig.Authn.IssuerAliases, "the OIDC issuer DNS aliases that will be accepted as valid when verifying the `iss` field of the JWTs.")
 
 	flags.StringSlice("authn-oidc-subjects", defaultConfig.Authn.Subjects, "the OIDC subject names that will be accepted as valid when verifying the `sub` field of the JWTs. If empty, every `sub` will be allowed")
+
+	flags.StringSlice("authn-oidc-client-id-claims", defaultConfig.Authn.ClientIDClaims, "the ClientID claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]")
 
 	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 
@@ -179,6 +190,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("metrics-enable-rpc-histograms", defaultConfig.Metrics.EnableRPCHistograms, "enables prometheus histogram metrics for RPC latency distributions")
 
+	flags.Uint32("max-concurrent-checks-per-batch-check", defaultConfig.MaxConcurrentChecksPerBatchCheck, "the maximum number of checks that can be processed concurrently in a batch check request")
+
+	flags.Uint32("max-checks-per-batch-check", defaultConfig.MaxChecksPerBatchCheck, "the maximum number of tuples allowed in a BatchCheck request")
+
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
@@ -222,6 +237,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.StringSlice("request-duration-dispatch-count-buckets", defaultConfig.RequestDurationDispatchCountBuckets, "dispatch count (i.e number of concurrent traversals to resolve a query) buckets used in labelling request_duration_ms.")
 
+	flags.Bool("context-propagation-to-datastore", defaultConfig.ContextPropagationToDatastore, "enable propagation of a request's context to the datastore")
+
 	flags.Bool("check-dispatch-throttling-enabled", defaultConfig.CheckDispatchThrottling.Enabled, "enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
 
 	flags.Duration("check-dispatch-throttling-frequency", defaultConfig.CheckDispatchThrottling.Frequency, "defines how frequent Check dispatch throttling will be evaluated. This controls how frequently throttled dispatch Check requests are dispatched.")
@@ -245,22 +262,6 @@ func NewRunCommand() *cobra.Command {
 	flags.Uint32("listUsers-dispatch-throttling-threshold", defaultConfig.ListUsersDispatchThrottling.Threshold, "defines the number of dispatches above which ListUsers requests will be throttled.")
 
 	flags.Uint32("listUsers-dispatch-throttling-max-threshold", defaultConfig.ListUsersDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list users requests will be throttled. 0 will use the 'listUsers-dispatch-throttling-threshold' value as maximum")
-
-	flags.Bool("dispatch-throttling-enabled", defaultConfig.DispatchThrottling.Enabled, `DEPRECATED: Use check-dispatch-throttling-enabled instead.
-
-    Enable throttling for Check requests when the request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.`)
-
-	flags.Duration("dispatch-throttling-frequency", defaultConfig.DispatchThrottling.Frequency, `DEPRECATED: Use check-dispatch-throttling-frequency instead.
-
-    Defines how frequent Check dispatch throttling will be evaluated. Frequency controls how frequently throttled dispatch Check requests are dispatched.`)
-
-	flags.Uint32("dispatch-throttling-threshold", defaultConfig.DispatchThrottling.Threshold, `DEPRECATED: Use check-dispatch-throttling-threshold instead.
-
-	Define the default threshold on number of dispatches above which requests will be throttled.`)
-
-	flags.Uint32("dispatch-throttling-max-threshold", defaultConfig.DispatchThrottling.MaxThreshold, `DEPRECATED: Use check-dispatch-throttling-max-threshold instead.
-
-	Define the maximum dispatch threshold beyond which requests will be throttled. 0 will use the 'dispatch-throttling-threshold' value as maximum`)
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
@@ -361,7 +362,9 @@ func (s *ServerContext) telemetryConfig(config *serverconfig.Config) func() erro
 	}
 }
 
-func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, error) {
+func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.OpenFGADatastore, encoder.ContinuationTokenSerializer, error) {
+	// SQL Token Serializer by default
+	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
@@ -384,6 +387,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
+		// override for "memory" datastore
+		tokenSerializer = encoder.NewStringContinuationTokenSerializer()
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
@@ -392,24 +397,25 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize mysql datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize postgres datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	case "sqlite":
 		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return nil, fmt.Errorf("initialize sqlite datastore: %w", err)
+			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+		return nil, nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 
 	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
-	return datastore, nil
+
+	return datastore, tokenSerializer, nil
 }
 
 func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.Authenticator, error) {
@@ -425,7 +431,7 @@ func (s *ServerContext) authenticatorConfig(config *serverconfig.Config) (authn.
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		s.Logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.IssuerAliases, config.Authn.Audience, config.Authn.Subjects, config.Authn.ClientIDClaims)
 	default:
 		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
@@ -452,7 +458,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	datastore, err := s.datastoreConfig(config)
+	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {
 		return err
 	}
@@ -601,6 +607,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
+		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
@@ -622,6 +629,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithRequestDurationByDispatchCountHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDispatchCountBuckets)),
 		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
+		server.WithContextPropagationToDatastore(config.ContextPropagationToDatastore),
 		server.WithDispatchThrottlingCheckResolverEnabled(checkDispatchThrottlingConfig.Enabled),
 		server.WithDispatchThrottlingCheckResolverFrequency(checkDispatchThrottlingConfig.Frequency),
 		server.WithDispatchThrottlingCheckResolverThreshold(checkDispatchThrottlingConfig.Threshold),
@@ -634,7 +642,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingFrequency(config.ListUsersDispatchThrottling.Frequency),
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
+		server.WithMaxChecksPerBatchCheck(config.MaxChecksPerBatchCheck),
+		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithExperimentals(experimentals...),
+		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
 	)
 

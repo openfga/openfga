@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,33 +24,36 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	"go.uber.org/goleak"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/openfga/openfga/pkg/middleware/requestid"
-	"github.com/openfga/openfga/pkg/middleware/storeid"
-	"github.com/openfga/openfga/pkg/server"
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestMain(m *testing.M) {
@@ -814,7 +818,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	metricsPort, metricsPortReleaser := testutils.TCPRandomPort()
 	metricsPortReleaser()
 
-	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
+	cfg.Metrics.Addr = fmt.Sprintf("localhost:%d", metricsPort)
 
 	cfg.MaxConcurrentReadsForCheck = 30
 	cfg.MaxConcurrentReadsForListObjects = 30
@@ -1182,17 +1186,9 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
 
-	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	val = res.Get("properties.contextPropagationToDatastore.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
-
-	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+	require.False(t, val.Bool())
 
 	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
@@ -1254,6 +1250,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
@@ -1329,6 +1326,10 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_THRESHOLD", "120")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD", "130")
 	t.Setenv("OPENFGA_MAX_CONDITION_EVALUATION_COST", "120")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
+	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
+	t.Setenv("OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE", "true")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1346,6 +1347,10 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "130", viper.GetString("dispatch-throttling-max-threshold"))
 		require.Equal(t, "120", viper.GetString("max-condition-evaluation-cost"))
 		require.Equal(t, uint64(120), viper.GetUint64("max-condition-evaluation-cost"))
+		require.True(t, viper.GetBool("access-control-enabled"))
+		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
+		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
+		require.True(t, viper.GetBool("context-propagation-to-datastore"))
 
 		return nil
 	}
@@ -1462,6 +1467,97 @@ func TestHTTPHeaders(t *testing.T) {
 			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
 
 			httpResponse.Body.Close()
+		})
+	}
+}
+
+func TestServerContext_datastoreConfig(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         *serverconfig.Config
+		wantDSType     interface{}
+		wantSerializer encoder.ContinuationTokenSerializer
+		wantErr        error
+	}{
+		{
+			name: "sqlite",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "sqlite",
+				},
+			},
+			wantDSType:     &sqlite.Datastore{},
+			wantSerializer: &sqlcommon.SQLContinuationTokenSerializer{},
+			wantErr:        nil,
+		},
+		{
+			name: "sqlite_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "sqlite",
+					URI:    "uri?is;bad=true",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("invalid semicolon separator in query"),
+		},
+		{
+			name: "mysql_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine:   "mysql",
+					Username: "root",
+					Password: "password",
+					URI:      "uri?is;bad=true",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("missing the slash separating the database name"),
+		},
+		{
+			name: "postgres_bad_uri",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine:   "postgres",
+					Username: "root",
+					Password: "password",
+					URI:      "~!@#$%^&*()_+}{:<>?",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("parse postgres connection uri"),
+		},
+		{
+			name: "unsupported_engine",
+			config: &serverconfig.Config{
+				Datastore: serverconfig.DatastoreConfig{
+					Engine: "unsupported",
+				},
+			},
+			wantDSType:     nil,
+			wantSerializer: nil,
+			wantErr:        errors.New("storage engine 'unsupported' is unsupported"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &ServerContext{
+				Logger: logger.NewNoopLogger(),
+			}
+			datastore, serializer, err := s.datastoreConfig(tt.config)
+			if tt.wantErr != nil {
+				require.Error(t, err)
+				assert.Nil(t, datastore)
+				assert.Nil(t, serializer)
+				assert.ErrorContains(t, err, tt.wantErr.Error())
+			} else {
+				require.NoError(t, err)
+				assert.IsType(t, tt.wantDSType, datastore)
+				assert.Equal(t, tt.wantSerializer, serializer)
+			}
 		})
 	}
 }

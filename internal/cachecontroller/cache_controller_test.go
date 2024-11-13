@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sync/singleflight"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -57,7 +57,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 						Relation: "viewer",
 						User:     "test",
 					}},
-			}, []byte{}, nil),
+			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
@@ -158,7 +158,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now()),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "viewer",
 						User:     "test",
 					},
@@ -167,7 +167,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().UTC().Add(-50 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -175,7 +175,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("5"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("5", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0]},
 		},
 		{
 			name:    "last_change_is_halfway_in_the_newest_batch",
@@ -185,7 +186,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now()),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:5",
 						Relation: "viewer",
 						User:     "test",
 					},
@@ -194,7 +195,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-10 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:6",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -203,7 +204,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-11 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:7",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -212,7 +213,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(time.Now().Add(-12 * time.Second)),
 					TupleKey: &openfgav1.TupleKey{
-						Object:   "test",
+						Object:   "test:8",
 						Relation: "writer",
 						User:     "test",
 					},
@@ -220,7 +221,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("6"),
-				storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test", "viewer")},
+				storage.GetInvalidIteratorByObjectRelationCacheKeys("6", "test:5", "viewer")[0],
+				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0]},
 		},
 		{
 			name:               "last_change_not_in_newest_batch",
@@ -244,7 +246,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}
 
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
-			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, []byte{}, test.readChangesResults.err)
+			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
 			cacheController := &InMemoryCacheController{
 				ds:               datastore,
 				cache:            cache,

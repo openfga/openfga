@@ -8,16 +8,18 @@ import (
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -29,6 +31,7 @@ func TestMySQLDatastore(t *testing.T) {
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
+
 	test.RunAllTests(t, ds)
 }
 
@@ -565,4 +568,42 @@ func TestHandleSQLError(t *testing.T) {
 		err := HandleSQLError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
+}
+
+func TestNew(t *testing.T) {
+	type args struct {
+		uri string
+		cfg *sqlcommon.Config
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *Datastore
+		wantErr bool
+	}{
+		{
+			name: "bad_uri",
+			args: args{
+				uri: "my;uri?bad=true",
+				cfg: &sqlcommon.Config{
+					Logger: logger.NewNoopLogger(),
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := New(tt.args.uri, tt.args.cfg)
+			if got != nil {
+				defer got.Close()
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("New() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

@@ -1,29 +1,24 @@
 package graph
 
+type ResolveCheckResponseMetadata struct {
+	// Number of Read operations accumulated after this request completes.
+	DatastoreQueryCount uint32
+	// Indicates if the ResolveCheck subproblem that was evaluated involved
+	// a cycle in the evaluation.
+	CycleDetected bool
+}
+
 // clone clones the provided ResolveCheckResponse.
-//
-// If 'r' defines a nil ResolutionMetadata then this function returns
-// an empty value struct for the resolution metadata instead of nil.
 func (r *ResolveCheckResponse) clone() *ResolveCheckResponse {
-	resolutionMetadata := &ResolveCheckResponseMetadata{
-		DatastoreQueryCount: 0,
-		CycleDetected:       false,
-	}
-
-	if r.GetResolutionMetadata() != nil {
-		resolutionMetadata.DatastoreQueryCount = r.GetResolutionMetadata().DatastoreQueryCount
-		resolutionMetadata.CycleDetected = r.GetResolutionMetadata().CycleDetected
-	}
-
 	return &ResolveCheckResponse{
 		Allowed:            r.GetAllowed(),
-		ResolutionMetadata: resolutionMetadata,
+		ResolutionMetadata: r.GetResolutionMetadata(),
 	}
 }
 
 type ResolveCheckResponse struct {
 	Allowed            bool
-	ResolutionMetadata *ResolveCheckResponseMetadata
+	ResolutionMetadata ResolveCheckResponseMetadata
 }
 
 func (r *ResolveCheckResponse) GetCycleDetected() bool {
@@ -40,9 +35,9 @@ func (r *ResolveCheckResponse) GetAllowed() bool {
 	return r.Allowed
 }
 
-func (r *ResolveCheckResponse) GetResolutionMetadata() *ResolveCheckResponseMetadata {
+func (r *ResolveCheckResponse) GetResolutionMetadata() ResolveCheckResponseMetadata {
 	if r == nil {
-		return nil
+		return ResolveCheckResponseMetadata{}
 	}
 	return r.ResolutionMetadata
 }

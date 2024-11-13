@@ -1,8 +1,9 @@
 package check
 
 import (
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	checktest "github.com/openfga/openfga/internal/test/check"
 )
@@ -748,6 +749,160 @@ var ttuCompleteTestingModelTest = []*stage{
 				Name:        "base_false_diff_false",
 				Tuple:       &openfgav1.TupleKey{Object: "ttus:17_1", Relation: "nested_butnot_ttu", User: "user:2"},
 				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "nested_ttu",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:ttus_nested_ttu_direct_assign", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+			{Object: "ttus:ttus_nested_ttu_parent_case_1_1", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_direct_assign"},
+			{Object: "ttus:ttus_nested_ttu_parent_case_1_2", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_parent_case_1_1"},
+			{Object: "ttus:ttus_nested_ttu_parent_case_1_3", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_parent_case_1_2"},
+			{Object: "ttus:ttus_nested_ttu_parent_case_1_4", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_parent_case_1_3"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "nested_ttu_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_direct_assign", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_direct_assign", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_1", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_1", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_2", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_2", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_3", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_3", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_4", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_parent_case_1_4", Relation: "nested_ttu", User: "directs-user:ttus_nested_ttu_not_direct_assign"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "nested_ttu_public",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:ttus_nested_ttu_public_direct_assign", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+			{Object: "ttus:ttus_nested_ttu_public_parent_case_1_1", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_direct_assign"},
+			{Object: "ttus:ttus_nested_ttu_public_parent_case_1_2", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_parent_case_1_1"},
+			{Object: "ttus:ttus_nested_ttu_public_parent_case_1_3", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_parent_case_1_2"},
+			{Object: "ttus:ttus_nested_ttu_public_parent_case_1_4", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_parent_case_1_3"},
+			{Object: "ttus:ttus_nested_ttu_public_wildcard", Relation: "nested_ttu_public", User: "directs-user:*"},
+			{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_1", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_wildcard"},
+			{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_2", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_1"},
+			{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_3", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_2"},
+			{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_4", Relation: "nested_ttu_parent", User: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_3"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "nested_ttu_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_direct_assign", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_direct_assign", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_1", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_1", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_2", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_2", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_3", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_3", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_4", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_not_direct_assigned_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_parent_case_1_4", Relation: "nested_ttu_public", User: "directs-user:ttus_nested_ttu_public_not_direct_assign"},
+				Expectation: false,
+			},
+			{
+				Name:        "nested_ttu_public_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_wildcard", Relation: "nested_ttu_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_public_wildcard_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_1", Relation: "nested_ttu_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_public_wildcard_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_2", Relation: "nested_ttu_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_public_wildcard_level_3",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_3", Relation: "nested_ttu_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "nested_ttu_public_wildcard_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_nested_ttu_public_wildcard_parent_case_1_4", Relation: "nested_ttu_public", User: "directs-user:any"},
+				Expectation: true,
 			},
 		},
 	},

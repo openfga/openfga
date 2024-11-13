@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
@@ -81,7 +82,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
-		return serverErrors.InvalidWriteInput
+		return serverErrors.ErrInvalidWriteInput
 	}
 
 	if len(writes) > 0 {

@@ -11,12 +11,14 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/pressly/goose/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -159,14 +161,27 @@ func NewContToken(ulid, objectType string) *ContToken {
 	}
 }
 
-// UnmarshallContToken takes a string representation of a continuation
-// token and attempts to unmarshal it into a ContToken struct.
-func UnmarshallContToken(from string) (*ContToken, error) {
-	var token ContToken
-	if err := json.Unmarshal([]byte(from), &token); err != nil {
-		return nil, storage.ErrInvalidContinuationToken
+// MarshallContToken takes a ContToken struct and attempts to marshal it into a string.
+
+func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
+	return &SQLContinuationTokenSerializer{}
+}
+
+type SQLContinuationTokenSerializer struct{}
+
+func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
+	if ulid == "" {
+		return nil, errors.New("empty ulid provided for continuation token")
 	}
-	return &token, nil
+	return json.Marshal(NewContToken(ulid, objType))
+}
+
+func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
+	var token ContToken
+	if err := json.Unmarshal([]byte(continuationToken), &token); err != nil {
+		return "", "", storage.ErrInvalidContinuationToken
+	}
+	return token.Ulid, token.ObjectType, nil
 }
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
@@ -315,15 +330,15 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 // If the continuation token exists it is the ulid of the last element of the returned array.
 func (t *SQLTupleIterator) ToArray(
 	opts storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.ErrIteratorDone {
-				return res, nil, nil
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return res, "", nil
 			}
-			return nil, nil, err
+			return nil, "", err
 		}
 		res = append(res, tupleRecord.AsTuple())
 	}
@@ -334,17 +349,12 @@ func (t *SQLTupleIterator) ToArray(
 	tupleRecord, err := t.next()
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
-			return res, nil, nil
+			return res, "", nil
 		}
-		return nil, nil, err
+		return nil, "", err
 	}
 
-	contToken, err := json.Marshal(NewContToken(tupleRecord.Ulid, ""))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return res, contToken, nil
+	return res, tupleRecord.Ulid, nil
 }
 
 // Next will return the next available item.
@@ -703,4 +713,11 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	return storage.ReadinessStatus{
 		IsReady: true,
 	}, nil
+}
+
+func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.SelectBuilder {
+	if sortDescending {
+		return sb.Where(sq.Lt{"ulid": fromUlid})
+	}
+	return sb.Where(sq.Gt{"ulid": fromUlid})
 }

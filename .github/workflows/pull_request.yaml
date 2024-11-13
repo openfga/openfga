@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -29,9 +29,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -59,7 +59,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
       - name: Run govulncheck
         uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
         with:
@@ -70,9 +70,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -100,15 +100,15 @@ jobs:
 
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # until we do https://github.com/openfga/openfga/issues/1172
+    timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v3.5.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Set up Go
-        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -132,13 +132,13 @@ jobs:
 
       - name: Get benchmark JSON from main branch
         id: cache
-        uses: actions/cache/restore@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2 # v4.1.0
+        uses: actions/cache/restore@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
         with:
           path: ./cache/benchmark-data.json
           key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark
 
       - name: Compare benchmarks with Main
-        uses: benchmark-action/github-action-benchmark@4de1bed97a47495fc4c5404952da0499e31f5c29 # v1.20.3
+        uses: benchmark-action/github-action-benchmark@d48d326b4ca9ba73ca0cd0d59f108f9e02a381c7 # v1.20.4
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           # What benchmark tool the output.txt came from
@@ -156,7 +156,7 @@ jobs:
           summary-always: true
 
       - name: Run benchmarks but don't compare to Main branch
-        uses: benchmark-action/github-action-benchmark@4de1bed97a47495fc4c5404952da0499e31f5c29 # v1.20.3
+        uses: benchmark-action/github-action-benchmark@d48d326b4ca9ba73ca0cd0d59f108f9e02a381c7 # v1.20.4
         if: steps.cache.outputs.cache-hit != 'true'
         with:
           # What benchmark tool the output.txt came from

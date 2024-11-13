@@ -5,20 +5,18 @@ import (
 	"math"
 	"time"
 
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/openfga/openfga/internal/build"
-
 	"go.opentelemetry.io/otel"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -100,7 +98,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	return lastModified.(time.Time)
 }
 
-func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, []byte, error) {
+func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
 		Pagination: storage.PaginationOptions{
@@ -156,7 +154,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		// only a subset of changes are new, revoke the respective ones
 		lastModified := time.Now()
 		for ; idx >= 0; idx-- {
-			c.invalidateIteratorCacheByObjectRelation(storeID, changes[idx].GetTupleKey().GetObject(), changes[idx].GetTupleKey().GetRelation(), lastModified)
+			t := changes[idx].GetTupleKey()
+			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
+			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
 
@@ -170,5 +170,11 @@ func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
 	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	// GetInvalidIteratorByObjectRelationCacheKeys returns only 1 instance
+	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+}
+
+func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, user, objectType string, ts time.Time) {
+	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
+	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

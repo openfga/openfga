@@ -7,9 +7,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -789,6 +790,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(t, err)
 
+			ts, err := typesystem.NewAndValidate(ctx, test.model)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			require.NoError(t, err)
+
 			err = datastore.Write(
 				ctx,
 				store,
@@ -838,7 +843,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			allowSchema10: true,
-			expected:      serverErrors.InvalidExpandInput,
+			expected:      serverErrors.ErrInvalidExpandInput,
 		},
 		{
 			name: "missing_object_id_and_type_in_request",
@@ -895,7 +900,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			allowSchema10: true,
-			expected:      serverErrors.InvalidExpandInput,
+			expected:      serverErrors.ErrInvalidExpandInput,
 		},
 		{
 			name: "1.1_object_type_not_found_in_model",
@@ -949,6 +954,10 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			// arrange
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
+			require.NoError(t, err)
+
+			ts, err := typesystem.NewAndValidate(ctx, test.model)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			require.NoError(t, err)
 
 			err = datastore.Write(

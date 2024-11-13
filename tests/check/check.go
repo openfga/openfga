@@ -8,21 +8,19 @@ import (
 	"strings"
 	"testing"
 
-	parser "github.com/openfga/language/pkg/go/transformer"
-	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/openfga/openfga/pkg/tuple"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/yaml"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 )
@@ -1114,6 +1112,8 @@ type usersets-user
     define userset_to_butnot_computed: [directs-user#butnot_computed]
     define userset_to_and_computed:[directs-user#and_computed]
     define userset_recursive: [user, usersets-user#userset_recursive]
+    define userset_recursive_public: [user, user:*, usersets-user#userset_recursive_public]
+    define userset_recursive_public_only: [user:*, usersets-user#userset_recursive_public_only]
     define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
@@ -1154,6 +1154,10 @@ type ttus
     define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
     define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
     define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
+	define nested_ttu_parent: [ttus]
+	define nested_ttu: [directs-user] or nested_ttu from nested_ttu_parent
+	define nested_ttu_public: [directs-user, directs-user:*] or nested_ttu_public from nested_ttu_parent
+
 type complexity3
   relations
     define ttu_parent: [ttus]

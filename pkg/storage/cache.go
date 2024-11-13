@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/karlseguin/ccache/v3"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (
@@ -110,8 +110,16 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 	return fmt.Sprintf("%s%s", invalidIteratorCachePrefix, storeID)
 }
 
-func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
-	return fmt.Sprintf("%s%s/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)
+func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation string) []string {
+	return []string{fmt.Sprintf("%s%s-or/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)}
+}
+
+func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
+	res := make([]string, 0, len(users))
+	for _, user := range users {
+		res = append(res, fmt.Sprintf("%s%s-otr/%s|%s", invalidIteratorCachePrefix, storeID, user, objectType))
+	}
+	return res
 }
 
 type TupleIteratorCacheEntry struct {
@@ -121,6 +129,10 @@ type TupleIteratorCacheEntry struct {
 
 func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
 	return fmt.Sprintf("%srut/%s/%s#%s", iteratorCachePrefix, store, object, relation)
+}
+
+func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) string {
+	return fmt.Sprintf("%srtwu/%s/%s#%s", iteratorCachePrefix, store, objectType, relation)
 }
 
 func GetReadCacheKey(store, tuple string) string {

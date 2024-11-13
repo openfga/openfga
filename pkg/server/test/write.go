@@ -6,15 +6,15 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -52,7 +52,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			request: &openfgav1.WriteRequest{},
 			// output
-			err: serverErrors.InvalidWriteInput,
+			err: serverErrors.ErrInvalidWriteInput,
 		},
 		{
 			_name: "ExecuteWithSameTupleInWritesReturnsError",

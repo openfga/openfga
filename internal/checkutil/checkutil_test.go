@@ -6,19 +6,17 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/testutils"
-
-	"github.com/openfga/openfga/pkg/storage"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -268,6 +266,7 @@ type mockResolveCheckRequest struct {
 	StoreID     string
 	TupleKey    *openfgav1.TupleKey
 	Consistency openfgav1.ConsistencyPreference
+	Context     *structpb.Struct
 }
 
 func (m *mockResolveCheckRequest) GetStoreID() string {
@@ -280,6 +279,10 @@ func (m *mockResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
 
 func (m *mockResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	return m.Consistency
+}
+
+func (m *mockResolveCheckRequest) GetContext() *structpb.Struct {
+	return m.Context
 }
 
 func TestIteratorReadStartingFromUser(t *testing.T) {

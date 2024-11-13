@@ -8,14 +8,14 @@ import (
 	"sync"
 	"sync/atomic"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/concurrency"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -182,8 +182,6 @@ type ReverseExpandResult struct {
 }
 
 type ResolutionMetadata struct {
-	DatastoreQueryCount *uint32
-
 	// The number of times we are expanding from each node to find set of objects
 	DispatchCounter *atomic.Uint32
 
@@ -193,9 +191,8 @@ type ResolutionMetadata struct {
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		DatastoreQueryCount: new(uint32),
-		DispatchCounter:     new(atomic.Uint32),
-		WasThrottled:        new(atomic.Bool),
+		DispatchCounter: new(atomic.Uint32),
+		WasThrottled:    new(atomic.Bool),
 	}
 }
 
@@ -497,7 +494,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			Preference: req.Consistency,
 		},
 	})
-	atomic.AddUint32(resolutionMetadata.DatastoreQueryCount, 1)
 	if err != nil {
 		return err
 	}

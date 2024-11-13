@@ -16,9 +16,8 @@ var (
 	// ErrInvalidContinuationToken is returned when the continuation token is invalid.
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
 
-	// ErrMismatchObjectType is returned when there is a type discrepancy between the requested
-	// object in the ReadChanges API and the type indicated by the continuation token.
-	ErrMismatchObjectType = errors.New("mismatched types in request and continuation token")
+	// ErrInvalidStartTime is returned when start time param for ReadChanges API is invalid.
+	ErrInvalidStartTime = errors.New("invalid start time")
 
 	// ErrInvalidWriteInput is returned when the tuple to be written
 	// already existed or the tuple to be deleted did not exist.

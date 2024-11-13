@@ -6,24 +6,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openfga/openfga/internal/throttler/threshold"
-	"github.com/openfga/openfga/internal/utils"
-
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/middleware/validator"
-	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -55,6 +55,11 @@ func (s *Server) ListUsers(
 		Service: s.serviceName,
 		Method:  methodName,
 	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListUsers)
+	if err != nil {
+		return nil, err
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -89,7 +94,7 @@ func (s *Server) ListUsers(
 
 		switch {
 		case errors.Is(err, graph.ErrResolutionDepthExceeded):
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+			return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 		case errors.Is(err, condition.ErrEvaluationFailed):
 			return nil, serverErrors.ValidationError(err)
 		default:

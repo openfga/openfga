@@ -5,9 +5,10 @@ import (
 	"sort"
 	"strconv"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type hasher interface {
@@ -18,7 +19,7 @@ type hashableValue interface {
 	Append(hasher) error
 }
 
-// strinHasher implements the hashableValue interface for string types.
+// stringHasher implements the hashableValue interface for string types.
 type stringHasher string
 
 var _ hashableValue = (*stringHasher)(nil)

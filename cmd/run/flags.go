@@ -14,6 +14,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
 		util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
 
+		util.MustBindPFlag("accessControl.enabled", flags.Lookup("access-control-enabled"))
+		util.MustBindEnv("accessControl.enabled", "OPENFGA_ACCESS_CONTROL_ENABLED")
+
+		util.MustBindPFlag("accessControl.storeId", flags.Lookup("access-control-store-id"))
+		util.MustBindEnv("accessControl.storeId", "OPENFGA_ACCESS_CONTROL_STORE_ID")
+
+		util.MustBindPFlag("accessControl.modelId", flags.Lookup("access-control-model-id"))
+		util.MustBindEnv("accessControl.modelId", "OPENFGA_ACCESS_CONTROL_MODEL_ID")
+
+		command.MarkFlagsRequiredTogether("access-control-enabled", "access-control-store-id", "access-control-model-id")
+
 		util.MustBindPFlag("grpc.addr", flags.Lookup("grpc-addr"))
 		util.MustBindEnv("grpc.addr", "OPENFGA_GRPC_ADDR")
 
@@ -71,6 +82,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("authn.oidc.subjects", flags.Lookup("authn-oidc-subjects"))
 		util.MustBindEnv("authn.oidc.subjects", "OPENFGA_AUTHN_OIDC_SUBJECTS")
+
+		util.MustBindPFlag("authn.oidc.clientIdClaims", flags.Lookup("authn-oidc-client-id-claims"))
+		util.MustBindEnv("authn.oidc.clientIdClaims", "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS")
 
 		util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 		util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
@@ -147,6 +161,12 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("metrics.enableRPCHistograms", flags.Lookup("metrics-enable-rpc-histograms"))
 		util.MustBindEnv("metrics.enableRPCHistograms", "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS")
 
+		util.MustBindPFlag("maxChecksPerBatchCheck", flags.Lookup("max-checks-per-batch-check"))
+		util.MustBindEnv("maxChecksPerBatchCheck", "OPENFGA_MAX_CHECKS_PER_BATCH_CHECK")
+
+		util.MustBindPFlag("maxConcurrentChecksPerBatchCheck", flags.Lookup("max-concurrent-checks-per-batch-check"))
+		util.MustBindEnv("maxConcurrentChecksPerBatchCheck", "OPENFGA_MAX_CONCURRENT_CHECKS_PER_BATCH_CHECK")
+
 		util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
 		util.MustBindEnv("maxTuplesPerWrite", "OPENFGA_MAX_TUPLES_PER_WRITE", "OPENFGA_MAXTUPLESPERWRITE")
 
@@ -211,6 +231,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("requestDurationDispatchCountBuckets", flags.Lookup("request-duration-dispatch-count-buckets"))
 		util.MustBindEnv("requestDurationDispatchCountBuckets", "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS")
 
+		util.MustBindPFlag("contextPropagationToDatastore", flags.Lookup("context-propagation-to-datastore"))
+		util.MustBindEnv("contextPropagationToDatastore", "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE")
+
 		util.MustBindPFlag("checkDispatchThrottling.enabled", flags.Lookup("check-dispatch-throttling-enabled"))
 		util.MustBindEnv("checkDispatchThrottling.enabled", "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED")
 
@@ -246,22 +269,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
 		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
-		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
-		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY
-		util.MustBindPFlag("dispatchThrottling.frequency", flags.Lookup("dispatch-throttling-frequency"))
-		util.MustBindEnv("dispatchThrottling.frequency", "OPENFGA_DISPATCH_THROTTLING_FREQUENCY")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD
-		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
-		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD
-		util.MustBindPFlag("dispatchThrottling.maxThreshold", flags.Lookup("dispatch-throttling-max-threshold"))
-		util.MustBindEnv("dispatchThrottling.maxThreshold", "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD")
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")

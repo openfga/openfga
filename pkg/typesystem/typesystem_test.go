@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
@@ -3251,6 +3252,20 @@ func TestIsPubliclyAssignable(t *testing.T) {
 			result:     false,
 		},
 		{
+			name: "is_publicly_assignable_mix_public_non_public",
+			model: `
+				model
+					schema 1.1
+				type user
+
+				type document
+					relations
+						define viewer: [user, user:*]`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     true,
+		},
+		{
 			name: "is_not_publicly_assignable_mismatch_type",
 			model: `
 				model
@@ -3363,12 +3378,10 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 						define allowed: [user, user:*]`,
 			objectType: "folder",
 			relation:   "allowed",
-			expected: []*openfgav1.RelationReference{
-				WildcardRelationReference("user"),
-			},
+			expected:   nil,
 		},
 		{
-			name: "with_ttu_relation",
+			name: "with_userset_relation",
 			model: `
 				model
 					schema 1.1
@@ -3387,7 +3400,7 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 			},
 		},
 		{
-			name: "mix_direct_and_public_relation",
+			name: "mix_direct_and_userset_relation",
 			model: `
 				model
 					schema 1.1

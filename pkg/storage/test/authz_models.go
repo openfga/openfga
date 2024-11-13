@@ -6,8 +6,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -99,7 +100,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 
 	opts = storage.ReadAuthorizationModelsOptions{
-		Pagination: storage.NewPaginationOptions(2, string(continuationToken)),
+		Pagination: storage.NewPaginationOptions(2, continuationToken),
 	}
 	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, opts)
 	require.NoError(t, err)

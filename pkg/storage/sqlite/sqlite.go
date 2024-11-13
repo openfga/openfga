@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,19 +11,17 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
-
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	// Pull in sqlite driver.
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -147,18 +144,13 @@ func (s *Datastore) Read(
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *Datastore) ReadPage(
-	ctx context.Context,
-	store string,
-	tupleKey *openfgav1.TupleKey,
-	options storage.ReadPageOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
 	iter, err := s.read(ctx, store, tupleKey, &options)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 	defer iter.Stop()
 
@@ -200,11 +192,8 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		})
 	}
 	if options != nil && options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
-		if err != nil {
-			return nil, err
-		}
-		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
+		token := options.Pagination.From
+		sb = sb.Where(sq.GtOrEq{"ulid": token})
 	}
 	if options != nil && options.Pagination.PageSize != 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -635,11 +624,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
-func (s *Datastore) ReadAuthorizationModels(
-	ctx context.Context,
-	store string,
-	options storage.ReadAuthorizationModelsOptions,
-) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
@@ -650,11 +635,7 @@ func (s *Datastore) ReadAuthorizationModels(
 		OrderBy("authorization_model_id desc")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
-		if err != nil {
-			return nil, nil, err
-		}
-		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
+		sb = sb.Where(sq.LtOrEq{"authorization_model_id": options.Pagination.From})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -662,7 +643,7 @@ func (s *Datastore) ReadAuthorizationModels(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -671,33 +652,28 @@ func (s *Datastore) ReadAuthorizationModels(
 	var marshalledModel []byte
 
 	models := make([]*openfgav1.AuthorizationModel, 0, options.Pagination.PageSize)
-	var token []byte
+	var token string
 
 	for rows.Next() {
 		err = rows.Scan(&modelID, &schemaVersion, &marshalledModel)
 		if err != nil {
-			return nil, nil, HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		if options.Pagination.PageSize > 0 && len(models) >= options.Pagination.PageSize {
-			token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
-			if err != nil {
-				return nil, nil, err
-			}
-
-			return models, token, nil
+			return models, modelID, nil
 		}
 
 		var model openfgav1.AuthorizationModel
 		if err := proto.Unmarshal(marshalledModel, &model); err != nil {
-			return nil, nil, err
+			return nil, "", err
 		}
 
 		models = append(models, &model)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 
 	return models, token, nil
@@ -826,22 +802,28 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 }
 
 // ListStores provides a paginated list of all stores present in the storage.
-func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
 	ctx, span := startTrace(ctx, "ListStores")
 	defer span.End()
+
+	var whereClause sq.Sqlizer
+	if len(options.IDs) > 0 {
+		whereClause = sq.And{
+			sq.Eq{"deleted_at": nil},
+			sq.Eq{"id": options.IDs},
+		}
+	} else {
+		whereClause = sq.Eq{"deleted_at": nil}
+	}
 
 	sb := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
-		Where(sq.Eq{"deleted_at": nil}).
+		Where(whereClause).
 		OrderBy("id")
 
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
-		if err != nil {
-			return nil, nil, err
-		}
-		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
+		sb = sb.Where(sq.GtOrEq{"id": options.Pagination.From})
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
@@ -849,7 +831,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -860,7 +842,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, nil, HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -872,18 +854,14 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 
 	if len(stores) > options.Pagination.PageSize {
-		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
-		if err != nil {
-			return nil, nil, err
-		}
-		return stores[:options.Pagination.PageSize], contToken, nil
+		return stores[:options.Pagination.PageSize], id, nil
 	}
 
-	return stores, nil, nil
+	return stores, "", nil
 }
 
 // DeleteStore removes a store from storage.
@@ -961,12 +939,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.
-func (s *Datastore) ReadChanges(
-	ctx context.Context,
-	store string,
-	filter storage.ReadChangesFilter,
-	options storage.ReadChangesOptions,
-) ([]*openfgav1.TupleChange, []byte, error) {
+func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
 	ctx, span := startTrace(ctx, "ReadChanges")
 	defer span.End()
 
@@ -994,19 +967,7 @@ func (s *Datastore) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if options.Pagination.From != "" {
-		token, err := sqlcommon.UnmarshallContToken(options.Pagination.From)
-		if err != nil {
-			return nil, nil, err
-		}
-		if token.ObjectType != objectTypeFilter {
-			return nil, nil, storage.ErrMismatchObjectType
-		}
-
-		if options.SortDesc {
-			sb = sb.Where(sq.Lt{"ulid": token.Ulid})
-		} else {
-			sb = sb.Where(sq.Gt{"ulid": token.Ulid})
-		}
+		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
@@ -1014,7 +975,7 @@ func (s *Datastore) ReadChanges(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -1041,14 +1002,14 @@ func (s *Datastore) ReadChanges(
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, nil, HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		var conditionContextStruct structpb.Struct
 		if conditionName.String != "" {
 			if conditionContext != nil {
 				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-					return nil, nil, err
+					return nil, "", err
 				}
 			}
 		}
@@ -1069,15 +1030,10 @@ func (s *Datastore) ReadChanges(
 	}
 
 	if len(changes) == 0 {
-		return nil, nil, storage.ErrNotFound
+		return nil, "", storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return changes, contToken, nil
+	return changes, ulid, nil
 }
 
 // IsReady see [sqlcommon.IsReady].

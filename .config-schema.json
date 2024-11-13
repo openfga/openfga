@@ -110,15 +110,45 @@
             "default": [50, 200],
             "x-env-variable": "OPENFGA_REQUEST_DURATION_DISPATCH_COUNT_BUCKETS"
         },
+        "contextPropagationToDatastore": {
+            "description": "Propagate a requests context to the datastore implementation. Settings this parameter can result in connection pool draining on request aborts and timeouts.",
+            "type": "boolean",
+            "default": false,
+            "x-env-variable": "OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations"]
+                "enum": ["enable-check-optimizations", "enable-access-control"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
+        },
+        "accessControl": {
+            "description": "the configuration needed for the access control store",
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable the access control store.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_ENABLED"
+                },
+                "storeId": {
+                    "description": "The storeId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_STORE_ID"
+                },
+                "modelId": {
+                    "description": "The modelId to be used for the access control store.",
+                    "type": "string",
+                    "default": "",
+                    "x-env-variable": "OPENFGA_ACCESS_CONTROL_MODEL_ID"
+                }
+            }
         },
         "playground": {
             "type": "object",
@@ -475,35 +505,6 @@
                 }
             }
         },
-        "dispatchThrottling": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "DEPRECATED: Use checkDispatchThrottling.enabled instead. enable throttling when request's number of dispatches is high",
-                    "type": "bool",
-                    "default": "false",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_ENABLED"
-                },
-                "frequency": {
-                    "description": "DEPRECATED: Use checkDispatchThrottling.frequency instead. the frequency period that the deprioritized throttling queue is evaluated. A higher value will result in more aggressive throttling",
-                    "type": "duration",
-                    "default": "10µs",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_FREQUENCY"
-                },
-                "threshold": {
-                    "description": "DEPRECATED: Use checkDispatchThrottling.threshold instead. define the number of recursive operations to occur before getting throttled",
-                    "type": "integer",
-                    "default": "100",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_THRESHOLD"
-                },
-                "maxThreshold": {
-                    "description": "DEPRECATED: Use checkDispatchThrottling.maxThreshold instead. define the maximum dispatch threshold beyond above which requests will be throttled. 0 will use the 'dispatchThrottling.threshold' value as maximum",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD"
-                }
-            }
-        },
         "checkDispatchThrottling": {
             "type": "object",
             "properties": {
@@ -627,6 +628,14 @@
                         "type": "string"
                     },
                     "x-env-variable": "OPENFGA_AUTHN_OIDC_SUBJECTS"
+                },
+                "clientIdClaims": {
+                    "description": "the OIDC client id claims that will be used to parse the clientID - configure in order of priority (first is highest). Defaults to [`azp`, `client_id`]",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_CLIENT_ID_CLAIMS"
                 }
             },
             "required": ["issuer", "audience"]

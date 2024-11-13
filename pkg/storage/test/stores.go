@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -17,18 +17,21 @@ import (
 func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	entropy := ulid.DefaultEntropy()
+
 	// Create some stores.
 	numStores := 10
 	var stores []*openfgav1.Store
 	for i := 0; i < numStores; i++ {
 		store := &openfgav1.Store{
-			Id:        ulid.Make().String(),
-			Name:      testutils.CreateRandomString(10),
-			CreatedAt: timestamppb.New(time.Now()),
+			Id:   ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String(),
+			Name: testutils.CreateRandomString(10),
 		}
 
-		_, err := datastore.CreateStore(ctx, store)
+		resp, err := datastore.CreateStore(ctx, store)
 		require.NoError(t, err)
+		require.NotEmpty(t, resp.GetCreatedAt())
+		require.NotEmpty(t, resp.GetUpdatedAt())
 
 		stores = append(stores, store)
 	}
@@ -49,7 +52,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NotEmpty(t, ct)
 
 		opts = storage.ListStoresOptions{
-			Pagination: storage.NewPaginationOptions(100, string(ct)),
+			Pagination: storage.NewPaginationOptions(100, ct),
 		}
 		_, ct, err = datastore.ListStores(ctx, opts)
 		require.NoError(t, err)

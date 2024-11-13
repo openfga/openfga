@@ -1,8 +1,9 @@
 package sqlcommon
 
 import (
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 func MarshalRelationshipCondition(

@@ -17,8 +17,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
@@ -26,6 +24,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 )
@@ -241,8 +242,8 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	grpcPort, grpcPortReleaser := TCPRandomPort()
 	defer grpcPortReleaser()
 
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	config.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 
 	return config
 }
@@ -250,7 +251,7 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 // TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
 // It is the responsibility of the caller to call the release function right before trying to listen on the given port.
 func TCPRandomPort() (int, func()) {
-	l, err := net.Listen("tcp", "")
+	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		panic(err)
 	}

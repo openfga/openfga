@@ -8,15 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
-
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"

@@ -7,12 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Removed
+- Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name.
+
+## [1.8.0] - 2024-11-08
+[Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
+
 ### Added
-- Documenting OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
-- Cache Controller to extend Sub-problems and Iterators lifetime in cache [#2006](https://github.com/openfga/openfga/pull/2006)
+- Added `start_time` parameter to `ReadChanges` API to allow filtering by specific time [#2020](https://github.com/openfga/openfga/pull/2020)
+- Added support for Contextual Tuples in the `Expand` API. [#2045](https://github.com/openfga/openfga/pull/2045)
+- Added a flag `OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE` to control propagation of a request's context to the datastore. [#1838](https://github.com/openfga/openfga/pull/1838)
+- Added OTEL measurement for access control store check latency and write latency due to authorization [#2069](https://github.com/openfga/openfga/pull/2069)
+- Added `BatchCheck` API which allows multiple check operations to be performed in a single request.
+  It requires a unique `correlation_id` associated with each individual check to map each result to its associated tuple.
+  For more details, see [batch check docs](https://openfga.dev/docs/interacting/relationship-queries#batch-check) [#2039](https://github.com/openfga/openfga/pull/2039).
+
+### Changed
+- The storage adapter `ReadChanges`'s parameter ReadChangesOptions allows filtering by `StartTime` [#2020](https://github.com/openfga/openfga/pull/2020).
+  As a part of the implementation, a new server setting called `WithContinuationTokenSerializer` was introduced.
+  If you are using OpenFGA as a library, you will need to pass in either `StringContinuationTokenSerializer`, or `SQLContinuationTokenSerializer`, or implement your own (if you also have your own storage adapter)
+- The storage adapter `ReadPage` return parameters changed from `([]*openfgav1.Tuple, []byte, error)` to `([]*openfgav1.Tuple, string, error)` [#2064](https://github.com/openfga/openfga/pull/2064)
+  If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
+- `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore.
+  Validation moved to `ReadChangesQuery` implementation.
 
 ### Fixed
-- Label ListUsers API calls [#2000](https://github.com/openfga/openfga/pull/2000)
+- Improve `Check` performance in the case that the query involves resolving nested userset with type bound public access. Enable via experimental flag `enable-check-optimizations`. [#2063](https://github.com/openfga/openfga/pull/2063)
+
+## [1.7.0] - 2024-10-29
+### Added
+- Add an experimental access control feature [#1913](https://github.com/openfga/openfga/pull/1913)
+  Learn more about this feature and how to enable it [here](https://openfga.dev/docs/getting-started/setup-openfga/access-control)
+  If you do try it out, please provide feedback in the [GitHub Discussion](https://github.com/orgs/openfga/discussions)
+- Document OpenFGA release process [#1923](https://github.com/openfga/openfga/pull/1923)
+
+### Changed
+- Bump max number of contextual tuples in a single request to `100`. [#2040](https://github.com/openfga/openfga/pull/2040)
+  Note: In assertions, they are still restricted to `20` per assertion
+- The storage adapter `ListStores`'s parameter `ListStoresOptions` allows filtering by `IDs` [#1913](https://github.com/openfga/openfga/pull/1913)
+  If you are using a custom storage adapter, `ListStores` now expects `ListStoresOptions` parameter that accepts passing in a list of IDs.
+  See the following adapter [change](https://github.com/openfga/openfga/pull/1913/files#diff-8b98b331c5d4acbeb7274c68973d20900daaed47c8d8f3e62ba39284379166bbR86-R87) and the following [change](https://github.com/openfga/openfga/pull/1913/files#diff-087f50fca2d7eab21b8d342dbbf8fb0de6d405f85b51334b3801d2c34d810ff9L582-L587) for a sample storage adapter implementation.
+  If you are not using OpenFGA as a library with a custom storage adapter, this will not affect you. (for example, if you are using OpenFGA through our published docker images, you are not affected).
+
+### Fixed
+- Improve `Check` performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
+- Improve the sub-problem caching in `Check` [#2006](https://github.com/openfga/openfga/pull/2006), [#2035](https://github.com/openfga/openfga/pull/2035)
+- Fixed internal error for `Check` where model has nested userset with publicly assignable wildcard. [#2049](https://github.com/openfga/openfga/pull/2049)
+- Fixed goroutine leak when `ListObjects` or `StreamedListObjects` call cannot be completed within `REQUEST_TIMEOUT`. [#2030](https://github.com/openfga/openfga/pull/2030)
+- Fixed incorrect dispatch counts in `ListObjects` used for observability [2013](https://github.com/openfga/openfga/pull/2013)
+- Correct metrics label for `ListUsers` API calls [#2000](https://github.com/openfga/openfga/pull/2000)
 
 ## [1.6.2] - 2024-10-03
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
@@ -1085,7 +1128,9 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/openfga/openfga/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/openfga/openfga/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/openfga/openfga/compare/v1.5.9...v1.6.0

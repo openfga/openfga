@@ -8,19 +8,14 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/mocks"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestResolveCheckFromCache(t *testing.T) {
@@ -506,10 +501,6 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		ResolveCheck(gomock.Any(), gomock.Any()).
 		Return(&ResolveCheckResponse{
 			Allowed: true,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-				CycleDetected:       false,
-			},
 		}, nil)
 
 	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
@@ -525,14 +516,11 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-			resp1.GetResolutionMetadata().DatastoreQueryCount = 0
 		}()
 
-		var datastoreQueryCount uint32
 		go func() {
 			defer wg.Done()
 			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-			datastoreQueryCount = resp2.GetResolutionMetadata().DatastoreQueryCount
 		}()
 
 		wg.Wait()
@@ -541,7 +529,6 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		require.NoError(t, err2)
 		require.NotNil(t, resp1)
 		require.NotNil(t, resp2)
-		require.Equal(t, uint32(0), datastoreQueryCount)
 		require.False(t, resp1.GetCycleDetected())
 		require.False(t, resp2.GetCycleDetected())
 	}
@@ -640,118 +627,20 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 		ResolveCheck(gomock.Any(), gomock.Any()).
 		Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-				CycleDetected:       true,
+			ResolutionMetadata: ResolveCheckResponseMetadata{
+				CycleDetected: true,
 			},
 		}, nil)
 
 	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 
 	resp, err = cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, uint32(0), resp.GetResolutionMetadata().DatastoreQueryCount)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
-}
-
-func TestCachedCheckDatastoreQueryCount(t *testing.T) {
-	t.Parallel()
-
-	ds := memory.New()
-	defer ds.Close()
-
-	storeID := ulid.Make().String()
-
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:x", "parent", "org:fga"),
-		tuple.NewTupleKey("org:fga", "member", "user:maria"),
-	})
-	require.NoError(t, err)
-
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-
-		type user
-
-		type org
-			relations
-				define member: [user]
-
-		type document
-			relations
-				define ttu: member from parent
-				define parent: [org]`)
-
-	ts, err := typesystem.New(model)
-	require.NoError(t, err)
-	ctx := typesystem.ContextWithTypesystem(
-		context.Background(),
-		ts,
-	)
-
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-
-	cachedCheckResolver := NewCachedCheckResolver(
-		WithExistingCache(mockCache),
-		WithCacheTTL(10*time.Hour),
-	)
-	defer cachedCheckResolver.Close()
-
-	localCheckResolver := NewLocalChecker(
-		WithMaxConcurrentReads(1),
-		WithOptimizations(true),
-	)
-	defer localCheckResolver.Close()
-
-	cachedCheckResolver.SetDelegate(localCheckResolver)
-	localCheckResolver.SetDelegate(cachedCheckResolver)
-
-	req := &ResolveCheckRequest{
-		StoreID:          storeID,
-		TupleKey:         tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		ContextualTuples: nil,
-		RequestMetadata:  NewCheckRequestMetadata(25),
-	}
-	reqKey, err := CheckRequestCacheKey(req)
-	require.NoError(t, err)
-
-	// The first check is a cache miss, so goes to DB and populates cache.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(nil)
-	mockCache.EXPECT().Set(reqKey, gomock.Any(), gomock.Any()).Times(1)
-	res, err := cachedCheckResolver.ResolveCheck(ctx, req)
-
-	require.NoError(t, err)
-	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
-
-	// The second check is a cache hit.
-	mockCache.EXPECT().Get(reqKey).Times(1).Return(&CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: &ResolveCheckResponse{Allowed: true}})
-	res, err = cachedCheckResolver.ResolveCheck(ctx, req)
-
-	require.NoError(t, err)
-	require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
-
-	// For TTU fastpath, we no longer call ResolveCheck to get the parent / child.
-	// As such, it should not have called the cache.
-	mockCache.EXPECT().Get(reqKey).Times(0).Return(&ResolveCheckResponse{Allowed: true})
-	res, err = localCheckResolver.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:          storeID,
-		TupleKey:         tuple.NewTupleKey("document:x", "ttu", "user:maria"),
-		ContextualTuples: nil,
-		RequestMetadata:  NewCheckRequestMetadata(25),
-	})
-
-	require.NoError(t, err)
-	require.Equal(t, uint32(2), res.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
@@ -768,16 +657,14 @@ func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) 
 		Times(1).
 		Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: &ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 1,
-				CycleDetected:       true,
+			ResolutionMetadata: ResolveCheckResponseMetadata{
+				CycleDetected: true,
 			},
 		}, nil)
 
 	cachedCheckResolver.Close()
-	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	_, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
-	require.Equal(t, uint32(1), resp.GetResolutionMetadata().DatastoreQueryCount)
 }
 
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {

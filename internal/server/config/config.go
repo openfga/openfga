@@ -54,6 +54,10 @@ const (
 	DefaultCheckDispatchThrottlingDefaultThreshold = 100
 	DefaultCheckDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
+	// Batch Check.
+	DefaultMaxChecksPerBatchCheck           = 50
+	DefaultMaxConcurrentChecksPerBatchCheck = 50
+
 	DefaultListObjectsDispatchThrottlingEnabled          = false
 	DefaultListObjectsDispatchThrottlingFrequency        = 10 * time.Microsecond
 	DefaultListObjectsDispatchThrottlingDefaultThreshold = 100
@@ -140,10 +144,11 @@ type AuthnConfig struct {
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
-	Issuer        string
-	IssuerAliases []string
-	Subjects      []string
-	Audience      string
+	Issuer         string
+	IssuerAliases  []string
+	Subjects       []string
+	Audience       string
+	ClientIDClaims []string
 }
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
@@ -223,6 +228,13 @@ type DispatchThrottlingConfig struct {
 	MaxThreshold uint32
 }
 
+// AccessControlConfig is the configuration for the access control feature.
+type AccessControlConfig struct {
+	Enabled bool
+	StoreID string
+	ModelID string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -249,6 +261,14 @@ type Config struct {
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
+
+	// MaxChecksPerBatchCheck defines the maximum number of tuples
+	// that can be passed in each BatchCheck request.
+	MaxChecksPerBatchCheck uint32
+
+	// MaxConcurrentChecksPerBatchCheck defines the maximum number of checks
+	// that can be run in simultaneously
+	MaxConcurrentChecksPerBatchCheck uint32
 
 	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per
 	// authorization model for the WriteAuthorizationModel endpoint.
@@ -280,6 +300,9 @@ type Config struct {
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
 
+	// AccessControl is the configuration for the access control feature.
+	AccessControl AccessControlConfig
+
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query
 	// errors out.
 	ResolveNodeLimit uint32
@@ -291,6 +314,10 @@ type Config struct {
 	// RequestTimeout configures request timeout.  If both HTTP upstream timeout and request timeout are specified,
 	// request timeout will be prioritized
 	RequestTimeout time.Duration
+
+	// ContextPropagationToDatastore enables propagation of a requests context to the datastore,
+	// thereby receiving API cancellation signals
+	ContextPropagationToDatastore bool
 
 	Datastore                     DatastoreConfig
 	GRPC                          GRPCConfig
@@ -304,7 +331,6 @@ type Config struct {
 	Cache                         CacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
-	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -314,6 +340,13 @@ type Config struct {
 }
 
 func (cfg *Config) Verify() error {
+	if err := cfg.VerifyServerSettings(); err != nil {
+		return err
+	}
+	return cfg.VerifyBinarySettings()
+}
+
+func (cfg *Config) VerifyServerSettings() error {
 	configuredTimeout := DefaultContextTimeout(cfg)
 
 	if cfg.ListObjectsDeadline > configuredTimeout {
@@ -335,6 +368,75 @@ func (cfg *Config) Verify() error {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
+	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
+		return errors.New("request duration datastore query count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration datastore query count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
+		return errors.New("request duration datastore dispatch count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDispatchCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration dispatch count bucket items must be non-negative integer",
+			)
+		}
+	}
+
+	err := cfg.VerifyCheckDispatchThrottlingConfig()
+	if err != nil {
+		return err
+	}
+
+	if cfg.ListObjectsDispatchThrottling.Enabled {
+		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.ListObjectsDeadline < 0 {
+		return errors.New("listObjectsDeadline must be non-negative time duration")
+	}
+
+	if cfg.ListUsersDeadline < 0 {
+		return errors.New("listUsersDeadline must be non-negative time duration")
+	}
+
+	if cfg.MaxConditionEvaluationCost < 100 {
+		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
+	}
+
+	return nil
+}
+
+func (cfg *Config) VerifyBinarySettings() error {
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
 		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
 	}
@@ -381,78 +483,12 @@ func (cfg *Config) Verify() error {
 		}
 	}
 
-	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
-		return errors.New("request duration datastore query count buckets must not be empty")
-	}
-	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration datastore query count bucket items must be non-negative integer",
-			)
-		}
-	}
-
-	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
-		return errors.New("request duration datastore dispatch count buckets must not be empty")
-	}
-	for _, val := range cfg.RequestDurationDispatchCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration dispatch count bucket items must be non-negative integer",
-			)
-		}
-	}
-
-	// Tha validation ensures we are picking the right values for Check dispatch throttling
-	err := cfg.VerifyCheckDispatchThrottlingConfig()
-	if err != nil {
-		return err
-	}
-
-	if cfg.ListObjectsDispatchThrottling.Enabled {
-		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
-		}
-	}
-
-	if cfg.ListUsersDispatchThrottling.Enabled {
-		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
-		}
-	}
-
 	if cfg.RequestTimeout < 0 {
 		return errors.New("requestTimeout must be a non-negative time duration")
 	}
 
 	if cfg.RequestTimeout == 0 && cfg.HTTP.Enabled && cfg.HTTP.UpstreamTimeout < 0 {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
-	}
-
-	if cfg.ListObjectsDeadline < 0 {
-		return errors.New("listObjectsDeadline must be non-negative time duration")
-	}
-
-	if cfg.ListUsersDeadline < 0 {
-		return errors.New("listUsersDeadline must be non-negative time duration")
-	}
-
-	if cfg.MaxConditionEvaluationCost < 100 {
-		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
 	return nil
@@ -472,39 +508,12 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
-// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
-// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
-// a non-zero value exists there.
+// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check.
 func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
 	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
 	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
 	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
 	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
-
-	if viper.IsSet("dispatchThrottling.enabled") && !viper.IsSet("checkDispatchThrottling.enabled") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.enabled' is deprecated. Please use 'checkDispatchThrottling.enabled'")
-		}
-		checkDispatchThrottlingEnabled = config.DispatchThrottling.Enabled
-	}
-	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
-		}
-		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
-	}
-	if viper.IsSet("dispatchThrottling.threshold") && !viper.IsSet("checkDispatchThrottling.threshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.threshold' is deprecated. Please use 'checkDispatchThrottling.threshold'")
-		}
-		checkDispatchThrottlingDefaultThreshold = config.DispatchThrottling.Threshold
-	}
-	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
-		}
-		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
-	}
 
 	return DispatchThrottlingConfig{
 		Enabled:      checkDispatchThrottlingEnabled,
@@ -519,13 +528,13 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
 	if checkDispatchThrottlingConfig.Enabled {
 		if checkDispatchThrottlingConfig.Frequency <= 0 {
-			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
+			return errors.New("'checkDispatchThrottling.frequency' must be non-negative time duration")
 		}
 		if checkDispatchThrottlingConfig.Threshold <= 0 {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
+			return errors.New("'checkDispatchThrottling.threshold' must be non-negative integer")
 		}
 		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
+			return errors.New("'checkDispatchThrottling.threshold' must be less than or equal to 'checkDispatchThrottling.maxThreshold' respectively")
 		}
 	}
 	return nil
@@ -542,6 +551,8 @@ func DefaultConfig() *Config {
 		MaxTuplesPerWrite:                         DefaultMaxTuplesPerWrite,
 		MaxTypesPerAuthorizationModel:             DefaultMaxTypesPerAuthorizationModel,
 		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
+		MaxChecksPerBatchCheck:                    DefaultMaxChecksPerBatchCheck,
+		MaxConcurrentChecksPerBatchCheck:          DefaultMaxConcurrentChecksPerBatchCheck,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		MaxConcurrentReadsForListUsers:            DefaultMaxConcurrentReadsForListUsers,
@@ -550,6 +561,7 @@ func DefaultConfig() *Config {
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
+		AccessControl:                             AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		ListUsersMaxResults:                       DefaultListUsersMaxResults,
@@ -619,12 +631,6 @@ func DefaultConfig() *Config {
 		Cache: CacheConfig{
 			Limit: DefaultCacheLimit,
 		},
-		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultCheckDispatchThrottlingEnabled,
-			Frequency:    DefaultCheckDispatchThrottlingFrequency,
-			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
-		},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
 			Frequency:    DefaultCheckDispatchThrottlingFrequency,
@@ -643,7 +649,8 @@ func DefaultConfig() *Config {
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
 		},
-		RequestTimeout: DefaultRequestTimeout,
+		RequestTimeout:                DefaultRequestTimeout,
+		ContextPropagationToDatastore: false,
 	}
 }
 

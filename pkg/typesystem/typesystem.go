@@ -9,9 +9,10 @@ import (
 	"sort"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
-	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/server/config"
@@ -364,7 +365,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	}
 
 	for _, ref := range refs {
-		if ref.GetRelation() != "" || ref.GetWildcard() != nil {
+		if ref.GetRelation() != "" {
 			usersetRelationReferences = append(usersetRelationReferences, ref)
 		}
 	}
@@ -408,11 +409,6 @@ func (t *TypeSystem) resolvesTypeRelationToDirectlyAssignable(objectType, relati
 // UsersetCanFastPath returns whether object's userset's rewrite can support the fast path optimization.
 func (t *TypeSystem) UsersetCanFastPath(relationReferences []*openfgav1.RelationReference) bool {
 	for _, rr := range relationReferences {
-		// In the case they are publicly wildcarded for the relationReferences, slow path and fast path does not
-		// have any significant performance difference.  For the sake of simplicity, we defer it to use slowpath.
-		if _, ok := rr.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); !ok {
-			return false
-		}
 		if _, directlyAssignable, err := t.resolvesTypeRelationToDirectlyAssignable(rr.GetType(), rr.GetRelation()); err != nil || !directlyAssignable {
 			return false
 		}
@@ -603,20 +599,29 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 // In the example above, the 'user' objectType is publicly assignable to the 'document#viewer' relation.
 // If the input target is not a defined relation, it returns false and RelationUndefinedError.
 func (t *TypeSystem) IsPubliclyAssignable(target *openfgav1.RelationReference, objectType string) (bool, error) {
-	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
+	ref, err := t.PubliclyAssignableReferences(target, objectType)
 	if err != nil {
 		return false, err
+	}
+	return ref != nil, nil
+}
+
+// PubliclyAssignableReferences returns the publicly assignable references with the specified objectType.
+func (t *TypeSystem) PubliclyAssignableReferences(target *openfgav1.RelationReference, objectType string) (*openfgav1.RelationReference, error) {
+	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
+	if err != nil {
+		return nil, err
 	}
 
 	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 		if typeRestriction.GetType() == objectType {
 			if typeRestriction.GetWildcard() != nil {
-				return true, nil
+				return typeRestriction, nil
 			}
 		}
 	}
 
-	return false, nil
+	return nil, nil
 }
 
 // HasTypeInfo determines if a given objectType-relation pair has associated type information.

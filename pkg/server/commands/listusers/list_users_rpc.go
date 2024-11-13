@@ -8,30 +8,25 @@ import (
 	"sync/atomic"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
-
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
-	"github.com/openfga/openfga/pkg/telemetry"
-
-	"github.com/openfga/openfga/pkg/logger"
-
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -91,9 +86,9 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
-func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
-		d.maxResults = max
+		d.maxResults = maxResults
 	}
 }
 
@@ -188,8 +183,10 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
+	metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(l.ds)
 	l.ds = storagewrappers.NewCombinedTupleReader(
-		storagewrappers.NewBoundedConcurrencyTupleReader(l.ds, l.maxConcurrentReads),
+		storagewrappers.NewBoundedConcurrencyTupleReader(
+			metricsDs, l.maxConcurrentReads),
 		req.GetContextualTuples(),
 	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
@@ -210,15 +207,13 @@ func (l *listUsersQuery) ListUsers(
 			return &listUsersResponse{
 				Users: []*openfgav1.User{},
 				Metadata: listUsersResponseMetadata{
-					DatastoreQueryCount: 0,
-					DispatchCounter:     new(atomic.Uint32),
-					WasThrottled:        new(atomic.Bool),
+					DispatchCounter: new(atomic.Uint32),
+					WasThrottled:    new(atomic.Bool),
 				},
 			}, nil
 		}
 	}
 
-	datastoreQueryCount := atomic.Uint32{}
 	dispatchCount := atomic.Uint32{}
 
 	foundUsersCh := l.buildResultsChannel()
@@ -243,7 +238,7 @@ func (l *listUsersQuery) ListUsers(
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &datastoreQueryCount, &dispatchCount)
+		internalRequest := fromListUsersRequest(req, &dispatchCount)
 		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
 		if resp.err != nil {
 			expandErrCh <- resp.err
@@ -291,7 +286,7 @@ func (l *listUsersQuery) ListUsers(
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: datastoreQueryCount.Load(),
+			DatastoreQueryCount: metricsDs.GetMetrics().DatastoreQueryCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},
@@ -453,7 +448,6 @@ func (l *listUsersQuery) expandDirect(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),
@@ -874,7 +868,6 @@ func (l *listUsersQuery) expandTTU(
 		}
 	}
 	defer iter.Stop()
-	req.datastoreQueryCount.Add(1)
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(iter),

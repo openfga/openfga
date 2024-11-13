@@ -3,14 +3,18 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/sync/errgroup"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -18,7 +22,7 @@ import (
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
 	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	datastore storage.RelationshipTupleReader
 }
 
 type ExpandQueryOption func(*ExpandQuery)
@@ -44,36 +48,29 @@ func NewExpandQuery(datastore storage.OpenFGADatastore, opts ...ExpandQueryOptio
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	tupleKey := req.GetTupleKey()
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
 
 	if object == "" || relation == "" {
-		return nil, serverErrors.InvalidExpandInput
+		return nil, serverErrors.ErrInvalidExpandInput
 	}
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
 		}
-
-		return nil, serverErrors.HandleError("", err)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
+	err := validation.ValidateObject(typesys, tk)
 	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
-	}
-
-	if err = validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
@@ -81,6 +78,11 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 	if err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
+
+	q.datastore = storagewrappers.NewCombinedTupleReader(
+		q.datastore,
+		req.GetContextualTuples().GetTupleKeys(),
+	)
 
 	objectType := tupleUtils.GetType(object)
 	rel, err := typesys.GetRelation(objectType, relation)
@@ -135,7 +137,7 @@ func (q *ExpandQuery) resolveUserset(
 	case *openfgav1.Userset_Intersection:
 		return q.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys, consistency)
 	default:
-		return nil, serverErrors.UnsupportedUserSet
+		return nil, serverErrors.ErrUnsupportedUserSet
 	}
 }
 

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/cmd/run"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -40,9 +41,9 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	ctx, cancel := context.WithCancel(context.Background())
 
 	httpPort, httpPortReleaser := testutils.TCPRandomPort()
-	cfg.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	cfg.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 	grpcPort, grpcPortReleaser := testutils.TCPRandomPort()
-	cfg.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	cfg.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
 
 	// these two functions release the ports so that the server can start listening on them
 	httpPortReleaser()
