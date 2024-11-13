@@ -614,7 +614,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), fmt.Sprintf("#%s", computedRelation)) {
-				if w, ok := edge.GetWeight(userType); !ok || w > level {
+				if w, ok := edge.GetWeight(userType); ok && w > level {
 					return false
 				}
 				ttuEdges = append(ttuEdges, edge)
