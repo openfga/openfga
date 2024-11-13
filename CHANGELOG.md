@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Changed
+
+* Replaced `ccache` with `theine-go` for improved in-memory caching performance ([#2101](https://github.com/openfga/openfga/pull/2101)) - @Siddhant-K-code
+
 ### Removed
 
 * Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name.
@@ -34,7 +38,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   If you are using OpenFGA as a library, you will need to pass in either `StringContinuationTokenSerializer`, or `SQLContinuationTokenSerializer`, or implement your own (if you also have your own storage adapter)
 * The storage adapter `ReadPage` return parameters changed from `([]*openfgav1.Tuple, []byte, error)` to `([]*openfgav1.Tuple, string, error)` [#2064](https://github.com/openfga/openfga/pull/2064)
   If you are using a custom storage adapter or consume `ReadPage` func in your code, you will need to update the return type and/or handling of the `ReadPage` function.
-* `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore. 
+* `ErrMismatchObjectType` error type removed from `openfga` package [#2064](https://github.com/openfga/openfga/pull/2064) as storage is not validating this anymore.
   Validation moved to `ReadChangesQuery` implementation.
 
 ## [1.7.0] - 2024-10-29
