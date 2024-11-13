@@ -225,7 +225,7 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 	}{
 		`1`: {
 			inputError:    graph.ErrResolutionDepthExceeded,
-			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
+			expectedError: serverErrors.ErrAuthorizationModelResolutionTooComplex,
 		},
 		`2`: {
 			inputError:    condition.ErrEvaluationFailed,
@@ -233,11 +233,11 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 		},
 		`3`: {
 			inputError:    &ThrottledError{},
-			expectedError: serverErrors.ThrottledTimeout,
+			expectedError: serverErrors.ErrThrottledTimeout,
 		},
 		`4`: {
 			inputError:    context.DeadlineExceeded,
-			expectedError: serverErrors.RequestDeadlineExceeded,
+			expectedError: serverErrors.ErrRequestDeadlineExceeded,
 		},
 		`5`: {
 			inputError: &InvalidTupleError{Cause: errors.New("oh no")},
