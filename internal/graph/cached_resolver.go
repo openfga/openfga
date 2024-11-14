@@ -183,11 +183,11 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	params := &storage.CheckCacheKeyParams{
-		StoreID:          req.GetStoreID(),
-		AuthModelID:      req.GetAuthorizationModelID(),
-		TupleKey:         req.GetTupleKey(),
-		ContextualTuples: req.GetContextualTuples(),
-		Context:          req.GetContext(),
+		StoreID:              req.GetStoreID(),
+		AuthorizationModelID: req.GetAuthorizationModelID(),
+		TupleKey:             req.GetTupleKey(),
+		ContextualTuples:     req.GetContextualTuples(),
+		Context:              req.GetContext(),
 	}
 
 	return storage.GetCheckCacheKey(params)

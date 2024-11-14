@@ -146,11 +146,11 @@ func GetReadCacheKey(store, tuple string) string {
 
 // CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
 type CheckCacheKeyParams struct {
-	StoreID          string
-	AuthModelID      string
-	TupleKey         *openfgav1.TupleKey
-	ContextualTuples []*openfgav1.TupleKey
-	Context          *structpb.Struct
+	StoreID              string
+	AuthorizationModelID string
+	TupleKey             *openfgav1.TupleKey
+	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
 }
 
 // GetCheckCacheKey converts the elements of a Check into a canonical cache key that can be
@@ -165,7 +165,7 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
 		SubproblemCachePrefix,
 		params.StoreID,
-		params.AuthModelID,
+		params.AuthorizationModelID,
 		params.TupleKey.GetObject(),
 		params.TupleKey.GetRelation(),
 		params.TupleKey.GetUser(),
