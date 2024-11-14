@@ -268,7 +268,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 5
-		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		var checks []*openfgav1.BatchCheckItem
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -276,17 +276,30 @@ func TestBatchCheckCommand(t *testing.T) {
 			User:     "user:justin",
 		}
 
-		// create numChecks of the same tuple
-		for i := 0; i < numChecks; i++ {
-			checks[i] = &openfgav1.BatchCheckItem{
-				TupleKey:      justinTuple,
-				CorrelationId: fmt.Sprintf("fakeid%d", i),
-			}
+		ewanTuple := &openfgav1.CheckRequestTupleKey{
+			Object:   "doc:doc1",
+			Relation: "viewer",
+			User:     "user:ewan",
 		}
 
-		// The check resolver should only receive this check once
+		// add 10 tuples, only two of which are unique
+		for i := 0; i < numChecks; i++ {
+			checkItems := []*openfgav1.BatchCheckItem{
+				{
+					TupleKey:      justinTuple,
+					CorrelationId: fmt.Sprintf("justin_id_%d", i),
+				},
+				{
+					TupleKey:      ewanTuple,
+					CorrelationId: fmt.Sprintf("ewan_id_%d", i),
+				},
+			}
+			checks = append(checks, checkItems...)
+		}
+
+		// The check resolver should only receive two distinct checks
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-			Times(1).
+			Times(2).
 			Return(nil, nil)
 
 		params := &BatchCheckCommandParams{
@@ -298,7 +311,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		result, _, err := cmd.Execute(context.Background(), params)
 
 		require.NoError(t, err)
-		require.Len(t, result, numChecks)
+		require.Len(t, result, numChecks*2)
 	})
 }
 
