@@ -7,6 +7,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -87,6 +88,14 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(queryCount)
 	span.SetAttributes(attribute.Int("duplicate_checks", metadata.DuplicateCheckCount))
+
+	if metadata.DuplicateCheckCount != 0 {
+		s.logger.InfoWithContext(ctx, "batch check received duplicate checks",
+			zap.String("store_id", storeID),
+			zap.Int("batch size", len(req.GetChecks())),
+			zap.Int("duplicate count", metadata.DuplicateCheckCount),
+		)
+	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
