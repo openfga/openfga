@@ -574,7 +574,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 	objRel := tuple.ToObjectRelationString(objectType, relation)
 	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
 	computedRelation := ttu.GetComputedUserset().GetRelation()
-	node, ok := t.authzWeightedGraph.GetNodesById(objRel)
+	node, ok := t.authzWeightedGraph.GetNodeById(objRel)
 	if !ok {
 		return false
 	}
@@ -584,7 +584,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 		return false
 	}
 
-	if w == level {
+	if w == level && len(node.GetWildcards()) == 0 {
 		return true
 	}
 
@@ -614,6 +614,9 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), fmt.Sprintf("#%s", computedRelation)) {
+				if len(edge.GetWildcards()) != 0 {
+					return false
+				}
 				if w, ok := edge.GetWeight(userType); ok && w > level {
 					return false
 				}
