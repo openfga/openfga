@@ -212,7 +212,10 @@ func TestFastPathUnion(t *testing.T) {
 		producers := make([]*iteratorProducer, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer := make(chan *iteratorMsg, 1)
+		producer <- &iteratorMsg{iter: iter1}
+		close(producer)
+		producers = append(producers, &iteratorProducer{producer: producer})
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
@@ -236,11 +239,18 @@ func TestFastPathUnion(t *testing.T) {
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorProducer{producer: producer1})
 
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter2})
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: iter2}
+		close(producer2)
+		producers = append(producers, &iteratorProducer{producer: producer2})
+
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
 			fastPathUnion(ctx, producers, res)
@@ -346,7 +356,10 @@ func TestFastPathIntersection(t *testing.T) {
 		producers := make([]*iteratorProducer, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer := make(chan *iteratorMsg, 1)
+		producer <- &iteratorMsg{iter: iter1}
+		close(producer)
+		producers = append(producers, &iteratorProducer{producer: producer})
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
@@ -370,10 +383,16 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorProducer{producer: producer1})
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter2})
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: iter2}
+		close(producer2)
+		producers = append(producers, &iteratorProducer{producer: producer2})
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
 			fastPathIntersection(ctx, producers, res)
@@ -486,13 +505,20 @@ func TestFastPathDifference(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorProducer, 0)
+
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorProducer{producer: producer1})
 
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter2})
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: iter2}
+		close(producer2)
+		producers = append(producers, &iteratorProducer{producer: producer2})
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
@@ -516,10 +542,16 @@ func TestFastPathDifference(t *testing.T) {
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter1})
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorProducer{producer: producer1})
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producers = append(producers, &iteratorProducer{initialized: true, iter: iter2})
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: iter2}
+		close(producer2)
+		producers = append(producers, &iteratorProducer{producer: producer2})
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
 			fastPathDifference(ctx, producers, res)
