@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -42,6 +41,7 @@ type BatchCheckOutcome struct {
 
 type BatchCheckMetadata struct {
 	DatastoreQueryCount uint32
+	DuplicateCheckCount int
 }
 
 type BatchCheckValidationError struct {
@@ -186,12 +186,10 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		}
 	}
 
-	if duplicateCount > 0 {
-		// TODO: telemetry "there were N duplicates"
-		log.Printf("\nJUSTIN DUPLICATES: %d\n", duplicateCount)
-	}
-
-	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount.Load()}, nil
+	return results, &BatchCheckMetadata{
+		DatastoreQueryCount: totalQueryCount.Load(),
+		DuplicateCheckCount: duplicateCount,
+	}, nil
 }
 
 func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {

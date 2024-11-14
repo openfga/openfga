@@ -268,6 +268,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
 		numChecks := 5
+		totalChecks := numChecks * 2
 		var checks []*openfgav1.BatchCheckItem
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
@@ -282,7 +283,7 @@ func TestBatchCheckCommand(t *testing.T) {
 			User:     "user:ewan",
 		}
 
-		// add 10 tuples, only two of which are unique
+		// add (2 * numChecks) tuples, only two of which are unique
 		for i := 0; i < numChecks; i++ {
 			checkItems := []*openfgav1.BatchCheckItem{
 				{
@@ -308,10 +309,11 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, _, err := cmd.Execute(context.Background(), params)
+		result, meta, err := cmd.Execute(context.Background(), params)
 
 		require.NoError(t, err)
-		require.Len(t, result, numChecks*2)
+		require.Len(t, result, totalChecks)
+		require.Equal(t, meta.DuplicateCheckCount, totalChecks-2)
 	})
 }
 

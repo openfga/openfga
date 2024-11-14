@@ -86,6 +86,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.serviceName,
 		methodName,
 	).Observe(queryCount)
+	span.SetAttributes(attribute.Int("duplicate_checks", metadata.DuplicateCheckCount))
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
