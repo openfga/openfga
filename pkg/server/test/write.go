@@ -52,7 +52,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			request: &openfgav1.WriteRequest{},
 			// output
-			err: serverErrors.InvalidWriteInput,
+			err: serverErrors.ErrInvalidWriteInput,
 		},
 		{
 			_name: "ExecuteWithSameTupleInWritesReturnsError",

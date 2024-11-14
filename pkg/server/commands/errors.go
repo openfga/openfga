@@ -61,7 +61,7 @@ func CheckCommandErrorToServerError(err error) error {
 	}
 
 	if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-		return serverErrors.AuthorizationModelResolutionTooComplex
+		return serverErrors.ErrAuthorizationModelResolutionTooComplex
 	}
 
 	if errors.Is(err, condition.ErrEvaluationFailed) {
@@ -70,11 +70,11 @@ func CheckCommandErrorToServerError(err error) error {
 
 	var throttledError *ThrottledError
 	if errors.As(err, &throttledError) {
-		return serverErrors.ThrottledTimeout
+		return serverErrors.ErrThrottledTimeout
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		return serverErrors.RequestDeadlineExceeded
+		return serverErrors.ErrRequestDeadlineExceeded
 	}
 
 	return serverErrors.HandleError("", err)
