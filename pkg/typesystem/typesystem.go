@@ -586,7 +586,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
-func (t *TypeSystem) PathExists(user, relation, object string) (bool, error) {
+func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
 	userType, _, userRelation := tuple.ToUserParts(user)
 	userTypeRelation := userType
 	if userRelation != "" {
@@ -597,7 +597,7 @@ func (t *TypeSystem) PathExists(user, relation, object string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	toNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.ToObjectRelationString(object, relation))
+	toNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.ToObjectRelationString(objectType, relation))
 	if err != nil {
 		return false, err
 	}
