@@ -32,7 +32,7 @@ type iteratorProducer struct {
 	producer    chan *iteratorMsg
 }
 
-// NOTE: caller should consider running this in a goroutine to not block
+// NOTE: caller should consider running this in a goroutine to not block.
 func cleanupIteratorProducers(iterProducers []*iteratorProducer) {
 	for _, iterProducer := range iterProducers {
 		if iterProducer.iter != nil {
