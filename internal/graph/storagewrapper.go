@@ -414,7 +414,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
 	if err != nil {
 		if !storage.IterIsDoneOrCancelled(err) {
-			c.tuples = nil
+			c.tuples = nil // don't store results that are incomplete
 		}
 		return nil, err
 	}
@@ -454,14 +454,12 @@ func (c *cachedIterator) Stop() {
 		defer c.wg.Done()
 		defer c.iter.Stop()
 
-		ctx := context.Background()
-
-		for i, t := range c.tuples {
+		for _, t := range c.tuples {
 			c.addToBuffer(t)
-			c.tuples[i] = nil
 		}
 
 		// prevent goroutine if iterator was already consumed
+		ctx := context.Background()
 		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
 			c.flush()
 			return
@@ -508,7 +506,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	}
 
 	if c.records == nil {
-		c.records = make([]*storage.TupleRecord, len(c.tuples))
+		c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
 	}
 
 	tk := t.GetKey()
