@@ -89,7 +89,7 @@ func TestWriteCommand(t *testing.T) {
 			setMock:       func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
 			deletes:       nil,
 			writes:        nil,
-			expectedError: serverErrors.InvalidWriteInput,
+			expectedError: serverErrors.ErrInvalidWriteInput,
 		},
 		{
 			name:    "empty_deletes_and_writes",
@@ -100,7 +100,7 @@ func TestWriteCommand(t *testing.T) {
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{},
 			},
-			expectedError: serverErrors.InvalidWriteInput,
+			expectedError: serverErrors.ErrInvalidWriteInput,
 		},
 		{
 			name:    "duplicate_deletes",

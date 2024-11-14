@@ -843,7 +843,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			allowSchema10: true,
-			expected:      serverErrors.InvalidExpandInput,
+			expected:      serverErrors.ErrInvalidExpandInput,
 		},
 		{
 			name: "missing_object_id_and_type_in_request",
@@ -900,7 +900,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			allowSchema10: true,
-			expected:      serverErrors.InvalidExpandInput,
+			expected:      serverErrors.ErrInvalidExpandInput,
 		},
 		{
 			name: "1.1_object_type_not_found_in_model",

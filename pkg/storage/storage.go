@@ -284,13 +284,12 @@ type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 
 	// DeleteStore must delete the store by either setting its DeletedAt field or removing the entry.
-	// If the store ID didn't exist it must return ErrNotFound. TODO write test (memory doesn't satisfy this?)
 	DeleteStore(ctx context.Context, id string) error
 
 	// GetStore must return ErrNotFound if the store is not found or its DeletedAt is set.
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
 
-	// ListStores returns a list of non-deleted stores that match the provided options. TODO write test with the IDs filter.
+	// ListStores returns a list of non-deleted stores that match the provided options.
 	// In addition to the stores, it returns a continuation token that can be used to fetch the next page of results.
 	// If no stores are found, it is expected to return an empty list and an empty continuation token.
 	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, string, error)

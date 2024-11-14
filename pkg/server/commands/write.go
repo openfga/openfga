@@ -90,7 +90,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
-		return serverErrors.InvalidWriteInput
+		return serverErrors.ErrInvalidWriteInput
 	}
 
 	if len(writes) > 0 {
