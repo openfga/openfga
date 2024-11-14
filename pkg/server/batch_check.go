@@ -92,8 +92,8 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if metadata.DuplicateCheckCount != 0 {
 		s.logger.InfoWithContext(ctx, "batch check received duplicate checks",
 			zap.String("store_id", storeID),
-			zap.Int("batch size", len(req.GetChecks())),
-			zap.Int("duplicate count", metadata.DuplicateCheckCount),
+			zap.Int("batch_size", len(req.GetChecks())),
+			zap.Int("duplicate_checks", metadata.DuplicateCheckCount),
 		)
 	}
 
