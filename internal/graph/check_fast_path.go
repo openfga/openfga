@@ -535,8 +535,6 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan *ite
 	rightSet := hashset.New()
 	leftSet := hashset.New()
 
-	// check to see if there are any tuplesetrelation assigned. If not,
-	// we don't even need to check the computedrelation side.
 	r, ok := <-rightChan
 	if !ok {
 		return res, nil

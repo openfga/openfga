@@ -302,7 +302,7 @@ type cachedIterator struct {
 	// across multiple requests.
 	sf *singleflight.Group
 
-	// closeOnce is used to synchronize .Close() and ensure and stop producing tuples it's only done once.
+	// closing is used to synchronize .Close() and ensure and stop producing tuples it's only done once.
 	closing atomic.Bool
 
 	// wg is used purely for testing and is an internal detail.
