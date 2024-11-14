@@ -188,13 +188,13 @@ func TestWriteAssertions(t *testing.T) {
 	}
 
 	var tests = []struct {
-		_name         string
+		name          string
 		input         *openfgav1.WriteAssertionsRequest
 		setMock       func(*mockstorage.MockOpenFGADatastore)
 		expectedError string
 	}{
 		{
-			_name: "succeeds",
+			name: "succeeds",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -223,7 +223,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "succeeds_when_empty_assertions",
+			name: "succeeds_when_empty_assertions",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -235,7 +235,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "succeeds_when_it_is_not_directly_assignable",
+			name: "succeeds_when_it_is_not_directly_assignable",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -260,7 +260,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "succeeds_with_contextual_tuple",
+			name: "succeeds_with_contextual_tuple",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -280,7 +280,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "succeeds_with_context",
+			name: "succeeds_with_context",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -300,7 +300,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "succeeds_with_contextual_tuple_with_condition",
+			name: "succeeds_with_contextual_tuple_with_condition",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -321,7 +321,7 @@ func TestWriteAssertions(t *testing.T) {
 			},
 		},
 		{
-			_name: "fails_with_invalid_model_version",
+			name: "fails_with_invalid_model_version",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -333,7 +333,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "invalid schema version",
 		},
 		{
-			_name: "fails_with_contextual_tuple_and_condition_because_invalid_context_parameter",
+			name: "fails_with_contextual_tuple_and_condition_because_invalid_context_parameter",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -354,7 +354,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Invalid tuple 'repo:test#reader@user:elbuo (condition condX)'. Reason: found invalid context parameter: unknownparam",
 		},
 		{
-			_name: "fails_with_contextual_tuple_with_condition_because_undefined_condition",
+			name: "fails_with_contextual_tuple_with_condition_because_undefined_condition",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -374,7 +374,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Invalid tuple 'repo:test#reader@user:elbuo (condition condundefined)'. Reason: undefined condition",
 		},
 		{
-			_name: "fails_with_contextual_tuple_because_contextual_tuple_is_not_directly_assignable",
+			name: "fails_with_contextual_tuple_because_contextual_tuple_is_not_directly_assignable",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -394,7 +394,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Invalid tuple 'repo:test#can_read@user:elbuo'. Reason: type 'user' is not an allowed type restriction for 'repo#can_read'",
 		},
 		{
-			_name: "fails_with_contextual_tuple_because_invalid_relation_in_contextual_tuple",
+			name: "fails_with_contextual_tuple_because_invalid_relation_in_contextual_tuple",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -414,7 +414,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Invalid tuple 'repo:test#invalidrelation@user:elbuo'. Reason: relation 'repo#invalidrelation' not found",
 		},
 		{
-			_name: "fails_with_contextual_tuple_because_invalid_type_in_contextual_tuple",
+			name: "fails_with_contextual_tuple_because_invalid_type_in_contextual_tuple",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -434,7 +434,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Invalid tuple 'unknown:test#reader@user:elbuo'. Reason: type 'unknown' not found",
 		},
 		{
-			_name: "fails_with_invalid_relation",
+			name: "fails_with_invalid_relation",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -455,7 +455,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "relation 'repo#invalidrelation' not found",
 		},
 		{
-			_name: "fails_if_model_not_found",
+			name: "fails_if_model_not_found",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: "123",
@@ -467,7 +467,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Authorization Model '123' not found",
 		},
 		{
-			_name: "fails_if_database_error_when_reading_model",
+			name: "fails_if_database_error_when_reading_model",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -479,7 +479,7 @@ func TestWriteAssertions(t *testing.T) {
 			expectedError: "Internal Server Error",
 		},
 		{
-			_name: "fails_if_database_error_when_writing_assertions",
+			name: "fails_if_database_error_when_writing_assertions",
 			input: &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -494,7 +494,7 @@ func TestWriteAssertions(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test._name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 
