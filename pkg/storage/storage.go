@@ -87,6 +87,7 @@ type ReadAuthorizationModelsOptions struct {
 type ListStoresOptions struct {
 	// IDs is a list of store IDs to filter the results.
 	IDs        []string
+	Name       string
 	Pagination PaginationOptions
 }
 

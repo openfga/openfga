@@ -53,45 +53,63 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	thirdStoreName := testutils.CreateRandomString(10)
 	thirdStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: thirdStoreName})
 	require.NoError(t, err, "error creating store 3")
-	// first page: 1st store
-	listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: "",
-	}, nil)
-	require.NoError(t, actualError)
-	require.Len(t, listStoresResponse.GetStores(), 1)
-	require.Equal(t, firstStoreName, listStoresResponse.GetStores()[0].GetName())
-	require.NotEmpty(t, listStoresResponse.GetContinuationToken())
 
-	// first page: 2nd store
-	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: listStoresResponse.GetContinuationToken(),
-	}, nil)
-	require.NoError(t, actualError)
-	require.Len(t, secondListStoresResponse.GetStores(), 1)
-	require.Equal(t, secondStoreName, secondListStoresResponse.GetStores()[0].GetName())
-	require.NotEmpty(t, secondListStoresResponse.GetContinuationToken())
+	t.Run("list with page size 1", func(t *testing.T) {
+		// first page: 1st store
+		listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+			PageSize:          wrapperspb.Int32(1),
+			ContinuationToken: "",
+		}, nil)
+		require.NoError(t, actualError)
+		require.Len(t, listStoresResponse.GetStores(), 1)
+		require.Equal(t, firstStoreName, listStoresResponse.GetStores()[0].GetName())
+		require.NotEmpty(t, listStoresResponse.GetContinuationToken())
 
-	// first page: 3rd store
-	thirdListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: secondListStoresResponse.GetContinuationToken(),
-	}, nil)
-	require.NoError(t, actualError)
-	require.Len(t, thirdListStoresResponse.GetStores(), 1)
-	require.Equal(t, thirdStoreName, thirdListStoresResponse.GetStores()[0].GetName())
-	// no token <=> no more results
-	require.Empty(t, thirdListStoresResponse.GetContinuationToken())
+		secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+			PageSize:          wrapperspb.Int32(1),
+			ContinuationToken: listStoresResponse.GetContinuationToken(),
+		}, nil)
+		require.NoError(t, actualError)
+		require.Len(t, secondListStoresResponse.GetStores(), 1)
+		require.Equal(t, secondStoreName, secondListStoresResponse.GetStores()[0].GetName())
+		require.NotEmpty(t, secondListStoresResponse.GetContinuationToken())
 
-	// test filter by store IDs
-	filterListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(2),
-		ContinuationToken: "",
-	}, []string{firstStoreResponse.GetId(), thirdStoreResponse.GetId()})
-	require.NoError(t, actualError)
-	require.Len(t, filterListStoresResponse.GetStores(), 2)
-	require.Equal(t, firstStoreName, filterListStoresResponse.GetStores()[0].GetName())
-	require.Equal(t, thirdStoreName, filterListStoresResponse.GetStores()[1].GetName())
-	require.Empty(t, filterListStoresResponse.GetContinuationToken())
+		// first page: 3rd store
+		thirdListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+			PageSize:          wrapperspb.Int32(1),
+			ContinuationToken: secondListStoresResponse.GetContinuationToken(),
+		}, nil)
+		require.NoError(t, actualError)
+		require.Len(t, thirdListStoresResponse.GetStores(), 1)
+		require.Equal(t, thirdStoreName, thirdListStoresResponse.GetStores()[0].GetName())
+
+		// first page: 2nd store
+		// no token <=> no more results
+		require.Empty(t, thirdListStoresResponse.GetContinuationToken())
+	})
+
+	t.Run("list with store ids filter", func(t *testing.T) {
+		// test filter by store IDs
+		filterListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+			PageSize:          wrapperspb.Int32(2),
+			ContinuationToken: "",
+		}, []string{firstStoreResponse.GetId(), thirdStoreResponse.GetId()})
+		require.NoError(t, actualError)
+		require.Len(t, filterListStoresResponse.GetStores(), 2)
+		require.Equal(t, firstStoreName, filterListStoresResponse.GetStores()[0].GetName())
+		require.Equal(t, thirdStoreName, filterListStoresResponse.GetStores()[1].GetName())
+		require.Empty(t, filterListStoresResponse.GetContinuationToken())
+	})
+
+	t.Run("list with name filter", func(t *testing.T) {
+		// test filter by name
+		filterListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
+			PageSize: wrapperspb.Int32(3),
+			Name:     firstStoreName,
+		}, nil)
+		require.NoError(t, actualError)
+		require.Len(t, filterListStoresResponse.GetStores(), 1)
+		require.Equal(t, firstStoreName, filterListStoresResponse.GetStores()[0].GetName())
+		require.Empty(t, filterListStoresResponse.GetContinuationToken())
+	})
 }
