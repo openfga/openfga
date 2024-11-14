@@ -170,6 +170,7 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -198,6 +199,9 @@ func TestReadStartingWithUser(t *testing.T) {
 		}
 
 		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -240,6 +244,7 @@ func TestReadStartingWithUser(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -266,6 +271,9 @@ func TestReadStartingWithUser(t *testing.T) {
 		}
 
 		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -373,6 +381,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -400,6 +409,9 @@ func TestReadUsersetTuples(t *testing.T) {
 		}
 
 		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -443,6 +455,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockDatastore.EXPECT().
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -468,6 +481,9 @@ func TestReadUsersetTuples(t *testing.T) {
 		}
 
 		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -565,6 +581,7 @@ func TestRead(t *testing.T) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -575,7 +592,6 @@ func TestRead(t *testing.T) {
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		defer iter.Stop()
 
 		var actual []*openfgav1.Tuple
 
@@ -591,6 +607,11 @@ func TestRead(t *testing.T) {
 
 			actual = append(actual, tuple)
 		}
+
+		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -634,6 +655,7 @@ func TestRead(t *testing.T) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
+			mockCache.EXPECT().Get(gomock.Any()),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -642,7 +664,6 @@ func TestRead(t *testing.T) {
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		defer iter.Stop()
 
 		var actual []*openfgav1.Tuple
 
@@ -658,6 +679,11 @@ func TestRead(t *testing.T) {
 
 			actual = append(actual, tuple)
 		}
+
+		iter.Stop() // has to be sync otherwise the assertion fails
+		i, ok := iter.(*cachedIterator)
+		require.True(t, ok)
+		i.wg.Wait()
 
 		require.Empty(t, actual)
 	})
@@ -846,11 +872,8 @@ func TestCachedIterator(t *testing.T) {
 		_, err = iter.Next(ctx)
 		require.Error(t, err)
 
-		require.Nil(t, iter.tuples)
-
 		iter.Stop()
-
-		iter.wg.Wait()
+		require.Nil(t, iter.tuples)
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
 	})
@@ -1046,7 +1069,6 @@ func TestCachedIterator(t *testing.T) {
 			defer wg.Done()
 
 			iter1.Stop()
-			iter1.wg.Wait()
 		}()
 
 		wg.Wait()
