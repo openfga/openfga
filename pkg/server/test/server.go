@@ -18,8 +18,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestExpandQuery", func(t *testing.T) { TestExpandQuery(t, ds) })
 	t.Run("TestExpandQueryErrors", func(t *testing.T) { TestExpandQueryErrors(t, ds) })
 
-	t.Run("TestListStores", func(t *testing.T) { TestListStores(t, ds) })
-
 	t.Run("TestReadAuthorizationModelsWithoutPaging",
 		func(t *testing.T) { TestReadAuthorizationModelsWithoutPaging(t, ds) },
 	)

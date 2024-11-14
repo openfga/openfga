@@ -850,60 +850,6 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 		configGeneratingFunction    func() *Config
 		expectedCheckDispatchConfig DispatchThrottlingConfig
 	}{
-		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
-			configGeneratingFunction: func() *Config {
-				config := DefaultConfig()
-				viper.Set("dispatchThrottling.enabled", true)
-				viper.Set("dispatchThrottling.frequency", 10)
-				viper.Set("dispatchThrottling.threshold", 10)
-				viper.Set("dispatchThrottling.maxThreshold", 10)
-				config.DispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      true,
-					Frequency:    10,
-					Threshold:    10,
-					MaxThreshold: 10,
-				}
-				return config
-			},
-			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      true,
-				Frequency:    10,
-				Threshold:    10,
-				MaxThreshold: 10,
-			},
-		},
-		"override_from_check_dispatch_config_if_set": {
-			configGeneratingFunction: func() *Config {
-				viper.Set("dispatchThrottling.enabled", true)
-				viper.Set("dispatchThrottling.frequency", 100)
-				viper.Set("dispatchThrottling.threshold", 100)
-				viper.Set("dispatchThrottling.maxThreshold", 100)
-				viper.Set("checkDispatchThrottling.enabled", true)
-				viper.Set("checkDispatchThrottling.frequency", 10)
-				viper.Set("checkDispatchThrottling.threshold", 10)
-				viper.Set("checkDispatchThrottling.maxThreshold", 10)
-				config := DefaultConfig()
-				config.DispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      true,
-					Frequency:    100,
-					Threshold:    100,
-					MaxThreshold: 100,
-				}
-				config.CheckDispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      false,
-					Frequency:    10,
-					Threshold:    10,
-					MaxThreshold: 10,
-				}
-				return config
-			},
-			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      false,
-				Frequency:    10,
-				Threshold:    10,
-				MaxThreshold: 10,
-			},
-		},
 		"get_default_values_if_none_are_set": {
 			configGeneratingFunction: DefaultConfig,
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{

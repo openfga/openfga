@@ -156,5 +156,5 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 			StoreId:           store,
 			ContinuationToken: "foo",
 		})
-	require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
+	require.ErrorIs(t, err, serverErrors.ErrInvalidContinuationToken)
 }

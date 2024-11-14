@@ -16,12 +16,12 @@ func Bucketize(value uint, buckets []uint) string {
 // LinearBuckets returns an evenly distributed range of buckets in the closed interval
 // [min...max]. The min and max count toward the bucket count since they are included
 // in the range.
-func LinearBuckets(min, max float64, count int) []float64 {
+func LinearBuckets(minValue, maxValue float64, count int) []float64 {
 	var buckets []float64
 
-	width := (max - min) / float64(count-1)
+	width := (maxValue - minValue) / float64(count-1)
 
-	for i := min; i <= max; i += width {
+	for i := minValue; i <= maxValue; i += width {
 		buckets = append(buckets, i)
 	}
 
