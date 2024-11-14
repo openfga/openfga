@@ -2,22 +2,17 @@ package graph
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -42,15 +37,6 @@ var (
 		Help:      "The total number of cache hits for ResolveCheck.",
 	})
 )
-
-// CacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
-type CacheKeyParams struct {
-	StoreID          string
-	AuthModelID      string
-	TupleKey         *openfgav1.TupleKey
-	ContextualTuples []*openfgav1.TupleKey
-	Context          *structpb.Struct
-}
 
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
@@ -196,7 +182,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 }
 
 func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	params := &CacheKeyParams{
+	params := &storage.CheckCacheKeyParams{
 		StoreID:          req.GetStoreID(),
 		AuthModelID:      req.GetAuthorizationModelID(),
 		TupleKey:         req.GetTupleKey(),
@@ -204,44 +190,44 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		Context:          req.GetContext(),
 	}
 
-	return GenerateCacheKey(params)
+	return storage.GetCheckCacheKey(params)
 }
 
-// GenerateCacheKey converts the elements of a Check into a canonical cache key that can be
-// used for Check resolution cache key lookups in a stable way.
+//// GenerateCacheKey converts the elements of a Check into a canonical cache key that can be
+//// used for Check resolution cache key lookups in a stable way.
+////
+//// For one store and model ID, the same tuple provided with the same contextual tuples and context
+//// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
+//// only the contents are compared.
+// func GenerateCacheKey(params *CacheKeyParams) (string, error) {
+//	hasher := keys.NewCacheKeyHasher(xxhash.New())
 //
-// For one store and model ID, the same tuple provided with the same contextual tuples and context
-// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
-// only the contents are compared.
-func GenerateCacheKey(params *CacheKeyParams) (string, error) {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
-
-	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		storage.SubproblemCachePrefix,
-		params.StoreID,
-		params.AuthModelID,
-		params.TupleKey.GetObject(),
-		params.TupleKey.GetRelation(),
-		params.TupleKey.GetUser(),
-	)
-
-	if err := hasher.WriteString(key); err != nil {
-		return "", err
-	}
-
-	// here, and for context below, avoid hashing if we don't need to
-	if len(params.ContextualTuples) > 0 {
-		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
-			return "", err
-		}
-	}
-
-	if params.Context != nil {
-		err := keys.NewContextHasher(params.Context).Append(hasher)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
-}
+//	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
+//		storage.SubproblemCachePrefix,
+//		params.StoreID,
+//		params.AuthModelID,
+//		params.TupleKey.GetObject(),
+//		params.TupleKey.GetRelation(),
+//		params.TupleKey.GetUser(),
+//	)
+//
+//	if err := hasher.WriteString(key); err != nil {
+//		return "", err
+//	}
+//
+//	// here, and for context below, avoid hashing if we don't need to
+//	if len(params.ContextualTuples) > 0 {
+//		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+//			return "", err
+//		}
+//	}
+//
+//	if params.Context != nil {
+//		err := keys.NewContextHasher(params.Context).Append(hasher)
+//		if err != nil {
+//			return "", err
+//		}
+//	}
+//
+//	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+//}

@@ -219,7 +219,7 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 
 func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) CacheKey {
 	tupleKey := check.GetTupleKey()
-	cacheKeyParams := &graph.CacheKeyParams{
+	cacheKeyParams := &storage.CheckCacheKeyParams{
 		StoreID:     storeID,
 		AuthModelID: authModelID,
 		TupleKey: &openfgav1.TupleKey{
@@ -231,6 +231,6 @@ func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, 
 		Context:          check.GetContext(),
 	}
 
-	cacheKey, _ := graph.GenerateCacheKey(cacheKeyParams)
+	cacheKey, _ := storage.GetCheckCacheKey(cacheKeyParams)
 	return CacheKey(cacheKey)
 }
