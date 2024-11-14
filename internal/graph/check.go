@@ -479,6 +479,18 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
+	if c.optimizationsEnabled {
+		hasPath, err := typesys.PathExists(tupleKey.GetUser(), relation, objectType)
+		if err != nil {
+			return nil, err
+		}
+		if !hasPath {
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+	}
+
 	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)

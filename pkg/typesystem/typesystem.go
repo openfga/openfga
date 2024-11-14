@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel"
+	"gonum.org/v1/gonum/graph/topo"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
@@ -654,6 +655,34 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 		}
 	}
 	return true
+}
+
+func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
+	userType, _, userRelation := tuple.ToUserParts(user)
+	userTypeRelation := userType
+	if userRelation != "" {
+		// this is an userset
+		userTypeRelation = tuple.ToObjectRelationString(userType, userRelation)
+	}
+	fromNode, err := t.authorizationModelGraph.GetNodeByLabel(userTypeRelation)
+	if err != nil {
+		return false, err
+	}
+	toNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.ToObjectRelationString(objectType, relation))
+	if err != nil {
+		return false, err
+	}
+	normalPathExists := topo.PathExistsIn(t.authorizationModelGraph, fromNode, toNode)
+	if normalPathExists {
+		return true, nil
+	}
+	wildcardFromNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.TypedPublicWildcard(userType))
+	if err != nil {
+		// the only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
+		// be found.  Given this, we are safe to conclude there is no path.
+		return false, nil
+	}
+	return topo.PathExistsIn(t.authorizationModelGraph, wildcardFromNode, toNode), nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
