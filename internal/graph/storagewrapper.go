@@ -13,6 +13,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
@@ -20,6 +21,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -67,7 +69,10 @@ type CachedDatastore struct {
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
 	ttl           time.Duration
-	sf            *singleflight.Group
+
+	// sf is used to prevent draining the same iterator
+	// across multiple requests.
+	sf *singleflight.Group
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -319,26 +324,57 @@ func (c *CachedDatastore) newCachedIterator(
 		return nil, err
 	}
 
-	return &cachedIterator{
-		iter:              iter,
-		tuples:            make([]*storage.TupleRecord, 0),
-		cacheKey:          cacheKey,
-		invalidEntityKeys: invalidEntityKeys,
-		cache:             c.cache,
-		maxResultSize:     c.maxResultSize,
-		ttl:               c.ttl,
-		sf:                c.sf,
-
-		objectType: objectType,
-		objectID:   objectID,
-		relation:   relation,
-		userType:   userType,
-	}, nil
+	return newCachedIterator(
+		iter, cacheKey, invalidEntityKeys, c.cache, c.maxResultSize,
+		c.ttl, c.sf, objectType, objectID, relation, userType,
+	), nil
 }
 
 // Close closes the datastore and cleans up any residual resources.
 func (c *CachedDatastore) Close() {
 	c.OpenFGADatastore.Close()
+}
+
+func newCachedIterator(
+	iter storage.TupleIterator,
+	cacheKey string,
+	invalidEntityKeys []string,
+	cache storage.InMemoryCache[any],
+	maxResultSize int,
+	ttl time.Duration,
+	sf *singleflight.Group,
+	objectType string,
+	objectID string,
+	relation string,
+	userType string,
+) *cachedIterator {
+	c := &cachedIterator{
+		iter:              iter,
+		tuples:            make([]*storage.TupleRecord, 0),
+		cacheKey:          cacheKey,
+		invalidEntityKeys: invalidEntityKeys,
+		cache:             cache,
+		maxResultSize:     maxResultSize,
+		ttl:               ttl,
+		sf:                sf,
+		wg:                &sync.WaitGroup{},
+		bufferChan:        make(chan *openfgav1.Tuple, 100),
+		objectType:        objectType,
+		objectID:          objectID,
+		relation:          relation,
+		userType:          userType,
+	}
+
+	c.pool = concurrency.NewPool(context.Background(), 100)
+	c.pool.Go(func(ctx context.Context) error {
+		for t := range c.bufferChan {
+			c.addToBuffer(t)
+		}
+
+		return nil
+	})
+
+	return c
 }
 
 type cachedIterator struct {
@@ -366,7 +402,11 @@ type cachedIterator struct {
 	closing atomic.Bool
 
 	// wg is used purely for testing and is an internal detail.
-	wg sync.WaitGroup
+	wg *sync.WaitGroup
+
+	pool *pool.ContextPool
+
+	bufferChan chan *openfgav1.Tuple
 }
 
 // Next will return the next available tuple from the underlying iterator and
@@ -384,7 +424,8 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, err
 	}
 
-	c.addToBuffer(t)
+	// todo: is there a race here between the buffer channel and .Stop() closing it?
+	c.bufferChan <- t
 
 	return t, nil
 }
@@ -399,10 +440,15 @@ func (c *cachedIterator) Stop() {
 	if !swapped {
 		return
 	}
+
+	close(c.bufferChan)
+	_ = c.pool.Wait()
+
 	if c.tuples == nil {
 		c.iter.Stop()
 		return
 	}
+
 	// prevent goroutine if iterator was already consumed
 	ctx := context.Background()
 	if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
