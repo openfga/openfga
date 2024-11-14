@@ -5201,6 +5201,13 @@ type folder
 					expectedErr: graph.ErrQueryingGraph,
 				},
 				{
+					user:        "user:y",
+					relation:    "undefined",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: graph.ErrQueryingGraph,
+				},
+				{
 					// TODO: ideally this should be false.  However, for now, this
 					// will return true as there is some path.
 					user:        "group:y#member",
