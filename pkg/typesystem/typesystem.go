@@ -606,11 +606,10 @@ func (t *TypeSystem) PathExists(user, relation, object string) (bool, error) {
 		return true, nil
 	}
 	wildcardFromNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.TypedPublicWildcard(userType))
-	if errors.Is(err, graph.ErrQueryingGraph) {
-		return false, nil
-	}
 	if err != nil {
-		return false, err
+		// the only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
+		// be found.  Given this, we are safe to conclude there is no path.
+		return false, nil
 	}
 	return topo.PathExistsIn(t.authorizationModelGraph, wildcardFromNode, toNode), nil
 }
