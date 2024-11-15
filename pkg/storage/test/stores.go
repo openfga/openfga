@@ -73,7 +73,6 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 
 	t.Run("list_stores_succeeds_with_filter_match", func(t *testing.T) {
-		t.Skip("fix me")
 		opts := storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 			IDs:        []string{stores[0].GetId()},
