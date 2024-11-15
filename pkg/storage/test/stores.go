@@ -72,7 +72,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Empty(t, ct)
 	})
 
-	t.Run("list_stores_succeeds_with_filter_match", func(t *testing.T) {
+	t.Run("list_stores_succeeds_with_ids_filter_match", func(t *testing.T) {
 		opts := storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 			IDs:        []string{stores[0].GetId()},
@@ -81,6 +81,18 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.Len(t, gotStores, 1)
 		require.Empty(t, ct)
+	})
+
+	t.Run("list_stores_succeeds_with_name_filter_match", func(t *testing.T) {
+		opts := storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(10, ""),
+			Name:       stores[1].Name,
+		}
+		gotStores, ct, err := datastore.ListStores(ctx, opts)
+		require.NoError(t, err)
+		require.Len(t, gotStores, 1)
+		require.Empty(t, ct)
+		require.Equal(t, stores[1].Name, gotStores[0].Name)
 	})
 
 	t.Run("get_store_succeeds", func(t *testing.T) {
