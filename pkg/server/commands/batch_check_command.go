@@ -185,12 +185,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	results := map[CorrelationID]*BatchCheckOutcome{}
 
 	// Each cacheKey can have > 1 associated CorrelationID
-	for cacheKey, item := range cacheKeyMap {
+	for cacheKey, checkItem := range cacheKeyMap {
 		res, _ := resultMap.Load(cacheKey)
 		outcome := res.(*BatchCheckOutcome)
 
-		ids := item.CorrelationIDs
-		for _, id := range ids {
+		for _, id := range checkItem.CorrelationIDs {
 			// map all associated CorrelationIDs to this outcome
 			results[id] = outcome
 		}
