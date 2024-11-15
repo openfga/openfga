@@ -575,7 +575,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 	objRel := tuple.ToObjectRelationString(objectType, relation)
 	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
 	computedRelation := ttu.GetComputedUserset().GetRelation()
-	node, ok := t.authzWeightedGraph.GetNodeById(objRel)
+	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
 	if !ok {
 		return false
 	}
