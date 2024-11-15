@@ -419,7 +419,7 @@ func fastPathDifference(ctx context.Context, iterProducers []*iteratorProducer, 
 			continue
 		}
 
-		// base > diff, then move the diff to catch up with base
+		// diff < base, then move the diff to catch up with base
 		for diff < base {
 			t, err := iterProducers[1].iter.Next(ctx)
 			if err != nil {
