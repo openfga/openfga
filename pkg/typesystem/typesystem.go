@@ -596,7 +596,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 
 	ttuEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 
-	// find all TTU edges  with valid weight
+	// find all TTU edges with valid weight
 	// but exit immediately if there is any above level
 	for len(ttuEdges) == 0 {
 		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)

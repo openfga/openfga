@@ -15,7 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const IteratorBatchThreshold = 100
+const IteratorBatchThreshold = 1000
 
 type fastPathSetHandler func(ctx context.Context, iterQueue []*iteratorProducer, iterChan chan *iteratorMsg)
 
@@ -48,7 +48,7 @@ func cleanupIteratorProducers(iterProducers []*iteratorProducer) {
 
 func pollIteratorProducers(ctx context.Context, iterProducers []*iteratorProducer) ([]*iteratorProducer, error) {
 	for _, producer := range iterProducers {
-		if producer.iter != nil || (producer.done && producer.iter == nil) {
+		if producer.iter != nil || producer.done {
 			// no need to poll further
 			continue
 		}
