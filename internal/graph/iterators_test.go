@@ -13,6 +13,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -125,6 +126,37 @@ func TestCachedTupleIterator(t *testing.T) {
 		}
 	})
 
+	t.Run("next_error", func(t *testing.T) {
+		cachedTuples := []*storage.TupleRecord{
+			{
+				ObjectType:     "",
+				ObjectID:       "1",
+				Relation:       "viewer",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
+			},
+		}
+
+		staticIter := mocks.NewErrorIterator[*storage.TupleRecord](cachedTuples)
+
+		iter := &cachedTupleIterator{
+			objectType: "document",
+			objectID:   "",
+			relation:   "",
+			userType:   "user",
+			iter:       staticIter,
+		}
+
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, mocks.ErrSimulatedError)
+	})
+
 	t.Run("head_object_and_relation", func(t *testing.T) {
 		cachedTuples := []*storage.TupleRecord{
 			{
@@ -192,5 +224,36 @@ func TestCachedTupleIterator(t *testing.T) {
 		if diff := cmp.Diff(tuple, tk, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+	})
+
+	t.Run("head_error", func(t *testing.T) {
+		cachedTuples := []*storage.TupleRecord{
+			{
+				ObjectType:     "",
+				ObjectID:       "1",
+				Relation:       "viewer",
+				UserObjectType: "user",
+				UserObjectID:   "1",
+				UserRelation:   "",
+				InsertedAt:     ts,
+				ConditionName:  "cond",
+			},
+		}
+
+		staticIter := mocks.NewErrorIterator[*storage.TupleRecord](cachedTuples)
+
+		iter := &cachedTupleIterator{
+			objectType: "document",
+			objectID:   "",
+			relation:   "",
+			userType:   "user",
+			iter:       staticIter,
+		}
+
+		_, err := iter.Head(ctx)
+		require.NoError(t, err)
+
+		_, err = iter.Head(ctx)
+		require.ErrorIs(t, err, mocks.ErrSimulatedError)
 	})
 }
