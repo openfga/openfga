@@ -21,23 +21,14 @@ var (
 
 	// ErrInvalidWriteInput is returned when the tuple to be written
 	// already existed or the tuple to be deleted did not exist.
-	ErrInvalidWriteInput = errors.New("invalid write input")
+	ErrInvalidWriteInput = errors.New("tuple to be written already existed or the tuple to be deleted did not exist")
 
 	// ErrTransactionalWriteFailed is returned when two writes attempt to write the same tuple at the same time.
 	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
 
-	// ErrExceededWriteBatchLimit is returned when MaxTuplesPerWrite is exceeded.
-	ErrExceededWriteBatchLimit = errors.New("number of operations exceeded write batch limit")
-
 	// ErrNotFound is returned when the object does not exist.
 	ErrNotFound = errors.New("not found")
 )
-
-// ExceededMaxTypeDefinitionsLimitError constructs an error indicating that
-// the maximum allowed limit for type definitions has been exceeded.
-func ExceededMaxTypeDefinitionsLimitError(limit int) error {
-	return fmt.Errorf("exceeded number of allowed type definitions: %d", limit)
-}
 
 // InvalidWriteInputError generates an error for invalid operations in a tuple store.
 // This function is invoked when an attempt is made to write or delete a tuple with invalid conditions.
