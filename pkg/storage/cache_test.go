@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
