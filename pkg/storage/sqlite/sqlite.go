@@ -716,10 +716,6 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return nil
 	}
 
-	if len(typeDefinitions) > s.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(s.maxTypesPerModelField)
-	}
-
 	pbdata, err := proto.Marshal(model)
 	if err != nil {
 		return err

@@ -488,12 +488,6 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	typeDefinitions := model.GetTypeDefinitions()
-
-	if len(typeDefinitions) > s.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(s.maxTypesPerModelField)
-	}
-
 	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
 }
 
