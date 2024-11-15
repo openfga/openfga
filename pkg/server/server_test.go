@@ -1272,7 +1272,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
 		WithCheckQueryCacheEnabled(true),
-		WithCacheLimit(10),
+		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 	)
 	t.Cleanup(func() {
@@ -2283,13 +2283,13 @@ func TestServerCheckCache(t *testing.T) {
 			WithDatastore(memory.New()),
 			WithCheckQueryCacheEnabled(true),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheLimit(10),
+			WithCheckCacheLimit(10),
 			WithCheckIteratorCacheEnabled(true),
 			WithCheckIteratorCacheMaxResults(10),
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.cache)
+		require.NotNil(t, s.checkCache)
 		require.NotEqual(t, s.datastore, s.checkDatastore)
 	})
 
@@ -2298,13 +2298,13 @@ func TestServerCheckCache(t *testing.T) {
 			WithDatastore(memory.New()),
 			WithCheckQueryCacheEnabled(false),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheLimit(10),
+			WithCheckCacheLimit(10),
 			WithCheckIteratorCacheEnabled(true),
 			WithCheckIteratorCacheMaxResults(10),
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.cache)
+		require.NotNil(t, s.checkCache)
 		require.NotEqual(t, s.datastore, s.checkDatastore)
 	})
 
@@ -2313,13 +2313,13 @@ func TestServerCheckCache(t *testing.T) {
 			WithDatastore(memory.New()),
 			WithCheckQueryCacheEnabled(true),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheLimit(10),
+			WithCheckCacheLimit(10),
 			WithCheckIteratorCacheEnabled(false),
 			WithCheckIteratorCacheMaxResults(10),
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.cache)
+		require.NotNil(t, s.checkCache)
 		require.Equal(t, s.datastore, s.checkDatastore)
 	})
 
@@ -2328,13 +2328,13 @@ func TestServerCheckCache(t *testing.T) {
 			WithDatastore(memory.New()),
 			WithCheckQueryCacheEnabled(false),
 			WithCheckQueryCacheTTL(1*time.Minute),
-			WithCacheLimit(10),
+			WithCheckCacheLimit(10),
 			WithCheckIteratorCacheEnabled(false),
 			WithCheckIteratorCacheMaxResults(10),
 		)
 		t.Cleanup(s.Close)
 
-		require.Nil(t, s.cache)
+		require.Nil(t, s.checkCache)
 		require.Equal(t, s.datastore, s.checkDatastore)
 	})
 }
@@ -2473,7 +2473,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithCacheLimit(10),
+		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
 		WithCheckIteratorCacheEnabled(true),
 		WithCheckIteratorCacheMaxResults(10),
