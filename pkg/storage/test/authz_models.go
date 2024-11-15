@@ -19,7 +19,22 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
-	t.Run("write, then read, succeeds", func(t *testing.T) {
+	t.Run("write_model_with_zero_type_succeeds_but_read_returns_not_found", func(t *testing.T) {
+		model := &openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgav1.TypeDefinition{},
+		}
+
+		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+		require.NoError(t, err)
+
+		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.GetId())
+		require.Nil(t, got)
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
+
+	t.Run("write_model_with_one_type_succeeds_and_read_succeeds", func(t *testing.T) {
 		model := &openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,
