@@ -217,10 +217,6 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > s.MaxTuplesPerWrite() {
-		return storage.ErrExceededWriteBatchLimit
-	}
-
 	return s.write(ctx, store, deletes, writes, time.Now().UTC())
 }
 
@@ -714,10 +710,6 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 
 	if len(typeDefinitions) < 1 {
 		return nil
-	}
-
-	if len(typeDefinitions) > s.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(s.maxTypesPerModelField)
 	}
 
 	pbdata, err := proto.Marshal(model)
