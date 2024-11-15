@@ -326,8 +326,9 @@ func (c *CachedDatastore) newCachedIterator(
 	}
 
 	return &cachedIterator{
-		iter:              iter,
-		operation:         operation,
+		iter:      iter,
+		operation: operation,
+		// set an initial fraction capacity to balance constant reallocation and memory usage
 		tuples:            make([]*openfgav1.Tuple, 0, c.maxResultSize/2),
 		cacheKey:          cacheKey,
 		invalidEntityKeys: invalidEntityKeys,
