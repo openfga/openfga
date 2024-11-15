@@ -74,6 +74,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// No actual datastore queries should have been run since we're mocking
 		require.Equal(t, 0, int(meta.DatastoreQueryCount))
+		require.Equal(t, 0, meta.DuplicateCheckCount)
 	})
 
 	t.Run("returns_a_result_for_each_correlation_id", func(t *testing.T) {
@@ -105,11 +106,12 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 		}
 
-		result, _, err := cmd.Execute(context.Background(), params)
+		result, meta, err := cmd.Execute(context.Background(), params)
 		require.NoError(t, err)
 
 		// Quantity of correlation IDs should be equal
 		require.Equal(t, len(ids), len(result))
+		require.Equal(t, 9, meta.DuplicateCheckCount)
 
 		// And each ID should appear in the response
 		for _, id := range ids {
@@ -198,7 +200,7 @@ func TestBatchCheckCommand(t *testing.T) {
 	t.Run("fails_with_validation_error_if_empty_correlation_id", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
-		numChecks := 1
+		numChecks := 3
 		checks := make([]*openfgav1.BatchCheckItem, numChecks)
 		for i := 0; i < numChecks; i++ {
 			checks[i] = &openfgav1.BatchCheckItem{
@@ -251,7 +253,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		ctx, cancel := context.WithCancel(ctx)
 		cancel()
 
-		response, _, err := cmd.Execute(ctx, params)
+		response, meta, err := cmd.Execute(ctx, params)
 		require.NoError(t, err) // request itself should not error
 
 		// But all checks should return a context cancelled error
@@ -262,14 +264,15 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		// response should have 1 key per check
 		require.Equal(t, len(response), numChecks)
+
+		// The context was canceled, but we still marked 2 duplicates before processing began
+		require.Equal(t, 2, meta.DuplicateCheckCount)
+		require.EqualValues(t, 0, meta.DatastoreQueryCount)
 	})
 
 	t.Run("uses_command_cache_to_resolve_dupe_checks", func(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckResolver(mockController)
 		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
-		numChecks := 5
-		totalChecks := numChecks * 2
-		var checks []*openfgav1.BatchCheckItem
 
 		justinTuple := &openfgav1.CheckRequestTupleKey{
 			Object:   "doc:doc1",
@@ -283,19 +286,12 @@ func TestBatchCheckCommand(t *testing.T) {
 			User:     "user:ewan",
 		}
 
-		// add (2 * numChecks) tuples, only two of which are unique
-		for i := 0; i < numChecks; i++ {
-			checkItems := []*openfgav1.BatchCheckItem{
-				{
-					TupleKey:      justinTuple,
-					CorrelationId: fmt.Sprintf("justin_id_%d", i),
-				},
-				{
-					TupleKey:      ewanTuple,
-					CorrelationId: fmt.Sprintf("ewan_id_%d", i),
-				},
-			}
-			checks = append(checks, checkItems...)
+		// 4 items but only 2 distinct checks
+		checks := []*openfgav1.BatchCheckItem{
+			{TupleKey: justinTuple, CorrelationId: "qwe"},
+			{TupleKey: justinTuple, CorrelationId: "rty"},
+			{TupleKey: ewanTuple, CorrelationId: "asd"},
+			{TupleKey: ewanTuple, CorrelationId: "fgh"},
 		}
 
 		// The check resolver should only receive two distinct checks
@@ -312,8 +308,8 @@ func TestBatchCheckCommand(t *testing.T) {
 		result, meta, err := cmd.Execute(context.Background(), params)
 
 		require.NoError(t, err)
-		require.Len(t, result, totalChecks)
-		require.Equal(t, meta.DuplicateCheckCount, totalChecks-2)
+		require.Len(t, result, len(checks))
+		require.Equal(t, 2, meta.DuplicateCheckCount)
 	})
 }
 
