@@ -419,7 +419,12 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, err
 	}
 
-	c.tuples = append(c.tuples, t)
+	if c.tuples != nil {
+		c.tuples = append(c.tuples, t)
+		if len(c.tuples) >= c.maxResultSize {
+			c.tuples = nil // don't store results that are incomplete
+		}
+	}
 
 	return t, nil
 }
@@ -446,6 +451,7 @@ func (c *cachedIterator) Stop() {
 	// if cache is already set, we don't need to drain the iterator
 	if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
 		c.iter.Stop()
+		c.tuples = nil
 		return
 	}
 
@@ -453,6 +459,8 @@ func (c *cachedIterator) Stop() {
 	go func() {
 		defer c.wg.Done()
 		defer c.iter.Stop()
+
+		c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
 
 		for _, t := range c.tuples {
 			c.addToBuffer(t)
@@ -505,10 +513,6 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 		return false
 	}
 
-	if c.records == nil {
-		c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
-	}
-
 	tk := t.GetKey()
 	object := tk.GetObject()
 	objectType, objectID := tuple.SplitObject(object)
@@ -548,7 +552,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 
 	c.records = append(c.records, record)
 
-	if len(c.tuples) >= c.maxResultSize {
+	if len(c.records) >= c.maxResultSize {
 		tuplesCacheDiscardCounter.Inc()
 		c.tuples = nil
 		c.records = nil

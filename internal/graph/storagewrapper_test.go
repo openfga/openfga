@@ -878,6 +878,26 @@ func TestCachedIterator(t *testing.T) {
 		require.Nil(t, cachedResults)
 	})
 
+	t.Run("next_at_max_discards_results", func(t *testing.T) {
+		maxCacheSize := 1
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+			storage.WithMaxCacheSize[any](int64(100)),
+		}...)
+		defer cache.Stop()
+
+		iter := newCachedIterator(
+			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
+			ttl, &singleflight.Group{}, "", "", "", "",
+		)
+
+		_, err := iter.Next(ctx)
+		require.NoError(t, err)
+
+		require.Nil(t, iter.tuples)
+	})
+
 	t.Run("calling_stop_doesnt_cache_due_to_size_foreground", func(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
@@ -912,10 +932,12 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter.Stop()
-
 		iter.wg.Wait()
+
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 	})
 
 	t.Run("calling_stop_doesnt_cache_due_to_size_background", func(t *testing.T) {
@@ -933,10 +955,12 @@ func TestCachedIterator(t *testing.T) {
 		)
 
 		iter.Stop()
-
 		iter.wg.Wait()
+
 		cachedResults := cache.Get(cacheKey)
 		require.Nil(t, cachedResults)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 	})
 
 	t.Run("calling_stop_caches_in_foreground", func(t *testing.T) {
@@ -974,8 +998,11 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 		iter.wg.Wait()
+
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 
 		entry := cachedResults.(*storage.TupleIteratorCacheEntry)
 
@@ -1000,8 +1027,11 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 		iter.wg.Wait()
+
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 
 		entry := cachedResults.(*storage.TupleIteratorCacheEntry)
 
@@ -1032,8 +1062,11 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 		iter.wg.Wait()
+
 		cachedResults := cache.Get(cacheKey)
 		require.NotNil(t, cachedResults)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 
 		entry := cachedResults.(*storage.TupleIteratorCacheEntry)
 
@@ -1054,12 +1087,12 @@ func TestCachedIterator(t *testing.T) {
 
 		var wg sync.WaitGroup
 
-		mockedIter1 := &mockCalledTupleIterator{
+		mockedIter := &mockCalledTupleIterator{
 			iter: storage.NewStaticTupleIterator(tuples),
 		}
 
-		iter1 := newCachedIterator(
-			mockedIter1, cacheKey, []string{}, mockCache, maxCacheSize,
+		iter := newCachedIterator(
+			mockedIter, cacheKey, []string{}, mockCache, maxCacheSize,
 			ttl, &singleflight.Group{}, "", "", "", "",
 		)
 
@@ -1068,12 +1101,14 @@ func TestCachedIterator(t *testing.T) {
 		go func() {
 			defer wg.Done()
 
-			iter1.Stop()
+			iter.Stop()
 		}()
 
 		wg.Wait()
 
-		require.Zero(t, mockedIter1.nextCalled)
+		require.Zero(t, mockedIter.nextCalled)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
 	})
 
 	t.Run("prevent_draining_on_the_same_iterator_across_concurrent_requests", func(t *testing.T) {
