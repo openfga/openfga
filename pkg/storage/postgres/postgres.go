@@ -233,10 +233,6 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > s.MaxTuplesPerWrite() {
-		return storage.ErrExceededWriteBatchLimit
-	}
-
 	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, time.Now().UTC())
 }
 
@@ -487,12 +483,6 @@ func (s *Datastore) MaxTypesPerAuthorizationModel() int {
 func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
-
-	typeDefinitions := model.GetTypeDefinitions()
-
-	if len(typeDefinitions) > s.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(s.maxTypesPerModelField)
-	}
 
 	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
 }
