@@ -55,6 +55,11 @@ func (e BatchCheckValidationError) Error() string {
 type CorrelationID string
 type CacheKey string
 
+type checkAndCorrelationIDs struct {
+	Check          *openfgav1.BatchCheckItem
+	CorrelationIDs []CorrelationID
+}
+
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
 func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
@@ -117,19 +122,25 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	// Before processing the batch, deduplicate the checks based on their unique cache key
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
-	cacheKeyToCorrelationIDs := make(map[CacheKey][]CorrelationID)
-	cacheKeyToCheck := make(map[CacheKey]*openfgav1.BatchCheckItem)
+	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
 		key := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
-		cacheKeyToCheck[key] = check
-		cacheKeyToCorrelationIDs[key] = append(cacheKeyToCorrelationIDs[key], CorrelationID(check.GetCorrelationId()))
+		if item, ok := cacheKeyMap[key]; ok {
+			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
+		} else {
+			cacheKeyMap[key] = &checkAndCorrelationIDs{
+				Check:          check,
+				CorrelationIDs: []CorrelationID{CorrelationID(check.GetCorrelationId())},
+			}
+		}
 	}
 
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
-	for key, check := range cacheKeyToCheck {
+	for key, item := range cacheKeyMap {
+		check := item.Check
 		pool.Go(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
@@ -173,13 +184,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
 
-	duplicateCount := 0
 	// Each cacheKey can have > 1 associated CorrelationID
-	for cacheKey, ids := range cacheKeyToCorrelationIDs {
-		duplicateCount = duplicateCount + len(ids) - 1 // there should always be at least 1 id
+	for cacheKey, item := range cacheKeyMap {
 		res, _ := resultMap.Load(cacheKey)
-
 		outcome := res.(*BatchCheckOutcome)
+
+		ids := item.CorrelationIDs
 		for _, id := range ids {
 			// map all associated CorrelationIDs to this outcome
 			results[id] = outcome
@@ -188,7 +198,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	return results, &BatchCheckMetadata{
 		DatastoreQueryCount: totalQueryCount.Load(),
-		DuplicateCheckCount: duplicateCount,
+		DuplicateCheckCount: len(params.Checks) - len(cacheKeyMap),
 	}, nil
 }
 
