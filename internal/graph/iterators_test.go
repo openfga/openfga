@@ -250,7 +250,7 @@ func TestCachedTupleIterator(t *testing.T) {
 			iter:       staticIter,
 		}
 
-		_, err := iter.Head(ctx)
+		_, err := iter.Next(ctx)
 		require.NoError(t, err)
 
 		_, err = iter.Head(ctx)
