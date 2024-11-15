@@ -16,6 +16,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name.
 
+### Performance
+
+* Improve `Check` performance in the case that the query involves types that cannot be reached from the source. Enable via experimental flag `enable-check-optimizations`. [#2104](https://github.com/openfga/openfga/pull/2104)
+
+
 ## [1.8.0] - 2024-11-08
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
