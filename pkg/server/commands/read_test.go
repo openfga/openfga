@@ -116,7 +116,7 @@ func TestReadCommand(t *testing.T) {
 		mockEncoder.EXPECT().Decode(gomock.Any()).Return([]byte("decodedtoken"), nil).Times(1)
 
 		tokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		tokenSerializer.EXPECT().Deserialize("decodedtoken").Return("deserializedtoken", "", nil).Times(1)
+		tokenSerializer.EXPECT().DeserializeReadChanges("decodedtoken").Return("deserializedtoken", "", nil).Times(1)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		opts := storage.ReadPageOptions{

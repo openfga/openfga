@@ -130,7 +130,7 @@ func TestReadChangesQuery(t *testing.T) {
 		filter := storage.ReadChangesFilter{}
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().Serialize(gomock.Any(), "").Times(0)
+		mockTokenSerializer.EXPECT().SerializeReadChanges(gomock.Any(), "").Times(0)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, expectedOpts).Times(1)
 
 		cmd := NewReadChangesQuery(
@@ -211,8 +211,8 @@ func TestReadChangesQuery(t *testing.T) {
 		filter := storage.ReadChangesFilter{}
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().Deserialize(reqToken).Return(reqToken, "", nil).Times(1)
-		mockTokenSerializer.EXPECT().Serialize(gomock.Any(), "").Times(1)
+		mockTokenSerializer.EXPECT().DeserializeReadChanges(reqToken).Return(reqToken, "", nil).Times(1)
+		mockTokenSerializer.EXPECT().SerializeReadChanges(gomock.Any(), "").Times(1)
 		mockDatastore.EXPECT().ReadChanges(gomock.Any(), reqStore, filter, opts).
 			Return([]*openfgav1.TupleChange{}, reqToken, nil).Times(1)
 
@@ -249,7 +249,7 @@ func TestReadChangesQuery(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().Deserialize(gomock.Any()).Return("", "", errors.New("")).Times(1)
+		mockTokenSerializer.EXPECT().DeserializeReadChanges(gomock.Any()).Return("", "", errors.New("")).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore,
 			WithReadChangesQueryEncoder(mockEncoder),
@@ -283,7 +283,7 @@ func TestReadChangesQuery(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 		mockTokenSerializer := mocks.NewMockContinuationTokenSerializer(mockController)
-		mockTokenSerializer.EXPECT().Deserialize(gomock.Any()).Return("some-value", "bad-type", nil).Times(1)
+		mockTokenSerializer.EXPECT().DeserializeReadChanges(gomock.Any()).Return("some-value", "bad-type", nil).Times(1)
 
 		cmd := NewReadChangesQuery(mockDatastore,
 			WithReadChangesQueryEncoder(mockEncoder),
