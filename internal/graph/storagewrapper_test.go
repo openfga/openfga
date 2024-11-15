@@ -861,10 +861,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			mocks.NewErrorTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              mocks.NewErrorTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		_, err := iter.Next(ctx)
 		require.NoError(t, err)
@@ -887,10 +898,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              storage.NewStaticTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		_, err := iter.Next(ctx)
 		require.NoError(t, err)
@@ -907,10 +929,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              storage.NewStaticTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		var actual []*openfgav1.Tuple
 
@@ -949,10 +982,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			mocks.NewErrorTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              mocks.NewErrorTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		iter.Stop()
 		iter.wg.Wait()
@@ -972,10 +1016,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              storage.NewStaticTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		var actual []*openfgav1.Tuple
 
@@ -1020,10 +1075,21 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              storage.NewStaticTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		iter.Stop()
 		iter.wg.Wait()
@@ -1049,10 +1115,22 @@ func TestCachedIterator(t *testing.T) {
 		}...)
 		defer cache.Stop()
 
-		iter := newCachedIterator(
-			storage.NewStaticTupleIterator(tuples), cacheKey, []string{}, cache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              storage.NewStaticTupleIterator(tuples),
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             cache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
+
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 
@@ -1091,10 +1169,21 @@ func TestCachedIterator(t *testing.T) {
 			iter: storage.NewStaticTupleIterator(tuples),
 		}
 
-		iter := newCachedIterator(
-			mockedIter, cacheKey, []string{}, mockCache, maxCacheSize,
-			ttl, &singleflight.Group{}, "", "", "", "",
-		)
+		iter := &cachedIterator{
+			iter:              mockedIter,
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             mockCache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
 
 		wg.Add(1)
 
@@ -1133,19 +1222,41 @@ func TestCachedIterator(t *testing.T) {
 				iter: storage.NewStaticTupleIterator(tuples),
 			}
 
-			iter1 := newCachedIterator(
-				mockedIter1, cacheKey, []string{}, mockCache, maxCacheSize,
-				ttl, sf, "", "", "", "",
-			)
+			iter1 := &cachedIterator{
+				iter:              mockedIter1,
+				operation:         "operation",
+				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+				cacheKey:          cacheKey,
+				invalidEntityKeys: []string{},
+				cache:             mockCache,
+				maxResultSize:     maxCacheSize,
+				ttl:               ttl,
+				sf:                sf,
+				objectType:        "",
+				objectID:          "",
+				relation:          "",
+				userType:          "",
+			}
 
 			mockedIter2 := &mockCalledTupleIterator{
 				iter: storage.NewStaticTupleIterator(tuples),
 			}
 
-			iter2 := newCachedIterator(
-				mockedIter2, cacheKey, []string{}, mockCache, maxCacheSize,
-				ttl, sf, "", "", "", "",
-			)
+			iter2 := &cachedIterator{
+				iter:              mockedIter2,
+				operation:         "operation",
+				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+				cacheKey:          cacheKey,
+				invalidEntityKeys: []string{},
+				cache:             mockCache,
+				maxResultSize:     maxCacheSize,
+				ttl:               ttl,
+				sf:                sf,
+				objectType:        "",
+				objectID:          "",
+				relation:          "",
+				userType:          "",
+			}
 
 			wg.Add(2)
 
