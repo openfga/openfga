@@ -214,10 +214,10 @@ type RelationshipTupleReader interface {
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
 	// Write updates data in the tuple backend, performing all delete operations in
-	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// If there are more than MaxTuplesPerWrite, it must return ErrExceededWriteBatchLimit.
-	// If two requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed.
-	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput.
+	// `deletes` before adding new values in `writes`.
+	// It must also write to the changelog.
+	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
+	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput. TODO write test
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
@@ -251,7 +251,7 @@ type ReadUsersetTuplesFilter struct {
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel reads the model corresponding to store and model ID.
-	// If it's not found, it must return ErrNotFound.
+	// If it's not found, or if the model has zero types, it must return ErrNotFound.
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
@@ -269,6 +269,7 @@ type TypeDefinitionWriteBackend interface {
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
+	// If the model has zero types, the datastore may choose to do nothing and return no error.
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
