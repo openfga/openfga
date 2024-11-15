@@ -61,6 +61,28 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Empty(t, ct)
 	})
 
+	t.Run("list_stores_succeeds_with_filter_no_match", func(t *testing.T) {
+		opts := storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(1, ""),
+			IDs:        []string{"unknown"},
+		}
+		gotStores, ct, err := datastore.ListStores(ctx, opts)
+		require.NoError(t, err)
+		require.Empty(t, gotStores)
+		require.Empty(t, ct)
+	})
+
+	t.Run("list_stores_succeeds_with_filter_match", func(t *testing.T) {
+		opts := storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(1, ""),
+			IDs:        []string{stores[0].GetId()},
+		}
+		gotStores, ct, err := datastore.ListStores(ctx, opts)
+		require.NoError(t, err)
+		require.Len(t, gotStores, 1)
+		require.Empty(t, ct)
+	})
+
 	t.Run("get_store_succeeds", func(t *testing.T) {
 		store := stores[0]
 		gotStore, err := datastore.GetStore(ctx, store.GetId())
@@ -82,6 +104,11 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		// Should not be able to get the store now.
 		_, err = datastore.GetStore(ctx, store.GetId())
 		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
+
+	t.Run("delete_store_if_not_found_succeeds", func(t *testing.T) {
+		err := datastore.DeleteStore(ctx, "unknown")
+		require.NoError(t, err)
 	})
 
 	t.Run("deleted_store_does_not_appear_in_list", func(t *testing.T) {
