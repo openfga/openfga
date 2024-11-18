@@ -15,7 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const IteratorBatchThreshold = 1000
+const IteratorMinBatchThreshold = 1000
 
 type fastPathSetHandler func(ctx context.Context, iterQueue []*iteratorProducer, iterChan chan *iteratorMsg)
 
@@ -25,11 +25,10 @@ type iteratorMsg struct {
 }
 
 type iteratorProducer struct {
-	idx         int
-	iter        storage.TupleKeyIterator
-	initialized bool
-	done        bool
-	producer    chan *iteratorMsg
+	idx      int
+	iter     storage.TupleKeyIterator
+	done     bool
+	producer chan *iteratorMsg
 }
 
 // NOTE: caller should consider running this in a goroutine to not block.
@@ -46,6 +45,8 @@ func cleanupIteratorProducers(iterProducers []*iteratorProducer) {
 	}
 }
 
+// pollIteratorProducers will return a list of the remaining active producers.
+// To be considered active your producer channel must still be open.
 func pollIteratorProducers(ctx context.Context, iterProducers []*iteratorProducer) ([]*iteratorProducer, error) {
 	for _, producer := range iterProducers {
 		if producer.iter != nil || producer.done {
@@ -127,8 +128,8 @@ func fastPathUnion(ctx context.Context, iterProducers []*iteratorProducer, iterC
 	}()
 
 	/*
-		collect iterators from all channels, once none are nil
-		start performing union algorithm across the heads, if an iterator is drained
+		collect iterators from all channels, until all drained
+		start performing union algorithm across the heads, if an iterator is empty, poll once again the producer
 		ask to see if the channel has a new iterator, otherwise consider it done
 	*/
 
@@ -194,7 +195,7 @@ func fastPathUnion(ctx context.Context, iterProducers []*iteratorProducer, iterC
 				batch = append(batch, t)
 			}
 		}
-		if len(batch) > IteratorBatchThreshold {
+		if len(batch) > IteratorMinBatchThreshold {
 			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, iterChan)
 			batch = make([]*openfgav1.TupleKey, 0)
 		}
@@ -290,7 +291,7 @@ func fastPathIntersection(ctx context.Context, iterProducers []*iteratorProducer
 				}
 			}
 
-			if len(batch) > IteratorBatchThreshold {
+			if len(batch) > IteratorMinBatchThreshold {
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, iterChan)
 				batch = make([]*openfgav1.TupleKey, 0)
 			}
@@ -302,6 +303,7 @@ func fastPathIntersection(ctx context.Context, iterProducers []*iteratorProducer
 			t, err := producer.iter.Head(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
+					// this is highly unlikely due to the previous check
 					producer.iter.Stop()
 					producer.iter = nil
 					continue
@@ -339,6 +341,7 @@ func fastPathDifference(ctx context.Context, iterProducers []*iteratorProducer, 
 		cleanupIteratorProducers(iterProducers)
 	}()
 
+	// both base and difference are still remaining
 	for len(iterProducers) == 2 {
 		if ctx.Err() != nil {
 			return
@@ -412,7 +415,7 @@ func fastPathDifference(ctx context.Context, iterProducers []*iteratorProducer, 
 				return
 			}
 			batch = append(batch, t)
-			if len(batch) > IteratorBatchThreshold {
+			if len(batch) > IteratorMinBatchThreshold {
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, iterChan)
 				batch = make([]*openfgav1.TupleKey, 0)
 			}
@@ -428,7 +431,6 @@ func fastPathDifference(ctx context.Context, iterProducers []*iteratorProducer, 
 					iterProducers[1].iter = nil
 					break
 				}
-				// this would be weird
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, iterChan)
 				return
 			}
@@ -451,6 +453,10 @@ func fastPathDifference(ctx context.Context, iterProducers []*iteratorProducer, 
 					return
 				}
 				batch = append(batch, t)
+			}
+			if len(batch) > IteratorMinBatchThreshold {
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, iterChan)
+				batch = make([]*openfgav1.TupleKey, 0)
 			}
 			var err error
 			iterProducers, err = pollIteratorProducers(ctx, iterProducers)
@@ -508,11 +514,21 @@ func (c *LocalChecker) fastPathRewrite(
 	}
 }
 
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
+// resolveFastPath attempts to find the intersection across 2 producers (channels) of ObjectIDs.
+// In the case of a TTU:
+// Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
+// Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
+// From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
+func (c *LocalChecker) resolveFastPath(ctx context.Context, chans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
 	rightOpen := true
 	leftOpen := true
 
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	leftChan := fanInIteratorChannels(cancellableCtx, chans)
+	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
+
 	defer func() {
+		cancel()
 		iter.Stop()
 		if !leftOpen {
 			return
@@ -525,8 +541,6 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan *ite
 			}
 		}()
 	}()
-
-	rightChan := streamedLookupUsersetFromIterator(ctx, iter)
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
@@ -558,7 +572,6 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChan <-chan *ite
 			if msg.err != nil {
 				return nil, msg.err
 			}
-			// NOTE: this could be a goroutine per msg
 			for {
 				t, err := msg.iter.Next(ctx)
 				if err != nil {
@@ -635,9 +648,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}, nil
 	}
 
-	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
-
-	return c.resolveFastPath(ctx, leftChan, wrapIterator(TTUKind, iter))
+	return c.resolveFastPath(ctx, leftChans, wrapIterator(TTUKind, iter))
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
