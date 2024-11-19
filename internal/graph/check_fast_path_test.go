@@ -35,7 +35,7 @@ func TestPollIteratorProducers(t *testing.T) {
 		c := make(chan *iteratorMsg, 1)
 		expectedErr := errors.New("boom")
 		c <- &iteratorMsg{err: expectedErr}
-		_, err := pollIteratorProducers(ctx, []*iteratorProducer{{done: true, initialized: true}, {done: false, producer: c}})
+		_, err := pollIteratorProducers(ctx, []*iteratorProducer{{done: true}, {done: false, producer: c}})
 		require.Equal(t, expectedErr, err)
 	})
 	t.Run("should_filter_out_drained_producers", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestPollIteratorProducers(t *testing.T) {
 		ctx := context.Background()
 		producers := make([]*iteratorProducer, 0)
 		for i := 0; i < 5; i++ {
-			producer := &iteratorProducer{initialized: true, iter: nil, done: true}
+			producer := &iteratorProducer{iter: nil, done: true}
 			producers = append(producers, producer)
 		}
 		res, err := pollIteratorProducers(ctx, producers)
