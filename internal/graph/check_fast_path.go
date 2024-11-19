@@ -519,7 +519,7 @@ func (c *LocalChecker) fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, chans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
 	rightOpen := true
 	leftOpen := true
 
