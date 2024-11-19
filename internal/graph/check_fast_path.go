@@ -63,7 +63,6 @@ func pollIteratorProducers(ctx context.Context, iterProducers []*iteratorProduce
 				break
 			}
 			if i.err != nil {
-				// NOTE: how do we want to handle missing iterators? full error out?
 				return nil, i.err
 			}
 			producer.iter = i.iter
