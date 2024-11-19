@@ -166,9 +166,7 @@ func fastPathUnion(ctx context.Context, iterProducers []*iteratorProducer, iterC
 
 			if minKey == v.GetObject() {
 				indexes = append(indexes, idx)
-			}
-
-			if minKey > v.GetObject() {
+			} else if minKey > v.GetObject() {
 				minKey = v.GetObject()
 				indexes = []int{idx}
 			}
@@ -259,9 +257,7 @@ func fastPathIntersection(ctx context.Context, iterProducers []*iteratorProducer
 
 			if maxKey == v.GetObject() {
 				indexes = append(indexes, idx)
-			}
-
-			if maxKey < v.GetObject() {
+			} else if maxKey < v.GetObject() {
 				maxKey = v.GetObject()
 				indexes = []int{idx}
 			}
@@ -524,7 +520,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	leftOpen := true
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := fanInIteratorChannels(cancellableCtx, chans)
+	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 
 	defer func() {
