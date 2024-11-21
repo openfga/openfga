@@ -1334,16 +1334,9 @@ func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest
 		Method:  "authzen.Evaluation",
 	})
 
-	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              req.GetStoreId(),
-		AuthorizationModelId: req.GetAuthorizationModelId(),
-		TupleKey: &openfgav1.CheckRequestTupleKey{
-			User:     fmt.Sprintf("%s:%s", req.GetSubject().GetType(), req.GetSubject().GetId()),
-			Relation: req.GetAction().GetName(),
-			Object:   fmt.Sprintf("%s:%s", req.GetResource().GetType(), req.GetResource().GetId()),
-		},
-		Context: req.GetContext(),
-	})
+	evalReqCmd := commands.NewEvaluateRequestCommand(req)
+
+	checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
 	if err != nil {
 		return nil, err
 	}
@@ -1470,13 +1463,13 @@ func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsReque
 
 	// AuthZen returns an array of items in the same order
 	evaluationsResponse := &authzenv1.EvaluationsResponse{
-		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(batchCheckRequest.Checks)),
+		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(batchCheckRequest.GetChecks())),
 	}
 
 	// Populate the evaluationsResponse with the results from batchCheckResponse
-	for i := range evaluationsResponse.EvaluationResponses {
+	for i := range evaluationsResponse.GetEvaluationResponses() {
 		evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
-			Decision: batchCheckResponse.Result[fmt.Sprintf("%d", i)].GetAllowed(),
+			Decision: batchCheckResponse.GetResult()[fmt.Sprintf("%d",i)].GetAllowed()),
 		}
 	}
 
