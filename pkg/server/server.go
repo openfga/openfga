@@ -1404,3 +1404,81 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 
 	return typesys, nil
 }
+
+func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
+	ctx, span := tracer.Start(ctx, "authzen.Evaluations")
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "authzen.Evaluations",
+	})
+
+	resource := req.GetResource()
+	action := req.GetAction()
+	subject := req.GetSubject()
+	context := req.GetContext()
+
+	batchCheckRequest := &openfgav1.BatchCheckRequest{
+		StoreId: req.GetStoreId(),
+	}
+
+	for counter, evaluation := range req.GetEvaluations() {
+		batchCheckItem := &openfgav1.BatchCheckItem{
+			TupleKey:      &openfgav1.CheckRequestTupleKey{},
+			CorrelationId: fmt.Sprintf("%d", counter),
+		}
+
+		if evaluation.GetAction() == nil {
+			batchCheckItem.TupleKey.Relation = action.GetName()
+		} else {
+			batchCheckItem.TupleKey.Relation = evaluation.GetAction().GetName()
+		}
+
+		if evaluation.GetResource() == nil {
+			batchCheckItem.TupleKey.Object = fmt.Sprintf("%s:%s", resource.GetType(), resource.GetId())
+		} else {
+			batchCheckItem.TupleKey.Object = fmt.Sprintf("%s:%s", evaluation.GetResource().GetType(), evaluation.GetResource().GetId())
+		}
+
+		if evaluation.GetSubject() == nil {
+			batchCheckItem.TupleKey.User = fmt.Sprintf("%s:%s", subject.GetType(), subject.GetId())
+		} else {
+			batchCheckItem.TupleKey.User = fmt.Sprintf("%s:%s", evaluation.GetSubject().GetType(), evaluation.GetSubject().GetId())
+		}
+
+		if evaluation.GetContext() == nil {
+			batchCheckItem.Context = context
+		} else {
+			batchCheckItem.Context = evaluation.GetContext()
+		}
+
+		batchCheckRequest.Checks = append(batchCheckRequest.Checks, batchCheckItem)
+	}
+
+	batchCheckResponse, err := s.BatchCheck(ctx, batchCheckRequest)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// AuthZen returns an array of items in the same order
+	evaluationsResponse := &authzenv1.EvaluationsResponse{
+		EvaluationResponses: make([]*authzenv1.EvaluationResponse, len(batchCheckRequest.Checks)),
+	}
+
+	// Populate the evaluationsResponse with the results from batchCheckResponse
+	for i := range evaluationsResponse.EvaluationResponses {
+		evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+			Decision: batchCheckResponse.Result[fmt.Sprintf("%d", i)].GetAllowed(),
+		}
+	}
+
+	return evaluationsResponse, nil
+}
