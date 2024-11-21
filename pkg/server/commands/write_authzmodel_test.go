@@ -798,7 +798,7 @@ func TestWriteAuthorizationModel(t *testing.T) {
 					type user`).GetTypeDefinitions(),
 			},
 			errCode:    codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
-			errMessage: "The number of bytes in an authorization model exceeds the allowed limit of 262144",
+			errMessage: "model exceeds size limit: 262184 bytes vs 262144 bytes",
 		},
 		`fail_if_datastore_errors`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {

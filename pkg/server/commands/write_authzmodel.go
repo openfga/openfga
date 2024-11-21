@@ -2,8 +2,11 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/oklog/ulid/v2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -71,7 +74,11 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
 	if modelSize > w.maxAuthorizationModelSizeInBytes {
-		return nil, serverErrors.ExceededEntityLimit("bytes in an authorization model", w.maxAuthorizationModelSizeInBytes)
+		// Consider using serverErrors.ExceededEntityLimit.
+		return nil, status.Error(
+			codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
+			fmt.Sprintf("model exceeds size limit: %d bytes vs %d bytes", modelSize, w.maxAuthorizationModelSizeInBytes),
+		)
 	}
 
 	_, err := typesystem.NewAndValidate(ctx, model)
