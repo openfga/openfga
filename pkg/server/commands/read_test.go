@@ -91,6 +91,7 @@ func TestReadCommand(t *testing.T) {
 				PageSize: storage.DefaultPageSize,
 				From:     "",
 			},
+			Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
 		}
 		mockDatastore.EXPECT().ReadPage(gomock.Any(), storeID, tupleKey, opts).Times(1)
 
@@ -100,6 +101,7 @@ func TestReadCommand(t *testing.T) {
 			TupleKey:          &openfgav1.ReadRequestTupleKey{Object: "document:1", Relation: "reader", User: "user:maria"},
 			PageSize:          nil,
 			ContinuationToken: "",
+			Consistency:       openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		require.NoError(t, err)
 	})
