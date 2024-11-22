@@ -339,6 +339,7 @@ LoopOnEdges:
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
 			edge:             innerLoopEdge,
+			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
