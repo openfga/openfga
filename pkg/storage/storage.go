@@ -217,7 +217,7 @@ type RelationshipTupleWriter interface {
 	// `deletes` before adding new values in `writes`.
 	// It must also write to the changelog.
 	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
-	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput. TODO write test
+	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)

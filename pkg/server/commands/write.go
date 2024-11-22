@@ -72,7 +72,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 			return nil, status.Error(codes.Aborted, err.Error())
 		}
 		if errors.Is(err, storage.ErrInvalidWriteInput) {
-			return nil, serverErrors.WriteFailedDueToInvalidInput()
+			return nil, serverErrors.WriteFailedDueToInvalidInput(err)
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
