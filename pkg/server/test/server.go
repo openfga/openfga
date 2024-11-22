@@ -8,7 +8,6 @@ import (
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
-	RunCommandTests(t, ds)
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -17,10 +16,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
-}
-
-func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

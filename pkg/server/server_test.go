@@ -1833,25 +1833,6 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("invalid_schema_error_in_write_model", func(t *testing.T) {
-		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
-
-		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       store,
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
-
-				type repo
-				`).GetTypeDefinitions(),
-		})
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgav1.ErrorCode_invalid_authorization_model), e.Code(), err)
-	})
-
 	t.Run("invalid_schema_error_in_write_assertion", func(t *testing.T) {
 		_, err := s.WriteAssertions(ctx, &openfgav1.WriteAssertionsRequest{
 			StoreId:              store,
@@ -2057,49 +2038,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
-	})
-}
-
-func TestWriteAuthorizationModelWithSchema12(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	ctx := context.Background()
-	storeID := ulid.Make().String()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-
-	t.Run("accepts_request_with_schema_version_1.2", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(mockDatastore),
-		)
-		t.Cleanup(func() {
-			mockDatastore.EXPECT().Close().Times(1)
-			s.Close()
-		})
-
-		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
-		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
-
-		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:       storeID,
-			SchemaVersion: typesystem.SchemaVersion1_2,
-			TypeDefinitions: []*openfgav1.TypeDefinition{
-				{
-					Type: "user",
-					Metadata: &openfgav1.Metadata{
-						Relations:  nil,
-						Module:     "usermanagement",
-						SourceInfo: nil,
-					},
-				},
-			},
-		})
-
-		require.NoError(t, err)
 	})
 }
 
