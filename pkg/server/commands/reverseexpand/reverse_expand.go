@@ -567,6 +567,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
+				Consistency:      req.Consistency,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
