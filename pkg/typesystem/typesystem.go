@@ -568,7 +568,7 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, ttu *openfgav1.TupleToUserset, level int) bool {
+func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -579,13 +579,15 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 	if !ok {
 		return false
 	}
+	if len(node.GetWildcards()) != 0 {
+		return false
+	}
 
 	w, ok := node.GetWeight(userType)
 	if !ok {
 		return false
 	}
-
-	if w == level && len(node.GetWildcards()) == 0 {
+	if w == 2 {
 		return true
 	}
 
@@ -618,7 +620,7 @@ func (t *TypeSystem) TTUCanFastPathLevel(objectType, relation, userType string, 
 				if len(edge.GetWildcards()) != 0 {
 					return false
 				}
-				if w, ok := edge.GetWeight(userType); ok && w > level {
+				if w, ok := edge.GetWeight(userType); ok && w > 2 {
 					return false
 				}
 				ttuEdges = append(ttuEdges, edge)

@@ -4361,7 +4361,7 @@ func TestTTUCanFastPath(t *testing.T) {
 	}
 }
 
-func TestTTUCanFastPathLevel2(t *testing.T) {
+func TestTTUCanFastPathWeight2(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string
@@ -4679,7 +4679,7 @@ func TestTTUCanFastPathLevel2(t *testing.T) {
 			expectCanFastPath: true,
 		},
 		{
-			name: "ttu_child_not_directly_assignable_union",
+			name: "ttu_child_is_computed_in_intersection",
 			model: `
 						model
 							schema 1.1
@@ -4931,7 +4931,7 @@ func TestTTUCanFastPathLevel2(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPathLevel(test.objectType, test.relation, "user",
+			actual := typesys.TTUCanFastPathWeight2(test.objectType, test.relation, "user",
 				&openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
@@ -4939,7 +4939,7 @@ func TestTTUCanFastPathLevel2(t *testing.T) {
 					ComputedUserset: &openfgav1.ObjectRelation{
 						Relation: test.computedRelation,
 					},
-				}, 2)
+				})
 			require.Equal(t, test.expectCanFastPath, actual)
 		})
 	}
