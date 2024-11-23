@@ -16,8 +16,8 @@ import (
 )
 
 const IteratorMinBatchThreshold = 1000
-const BASE_INDEX = 0
-const DIFFERENCE_INDEX = 1
+const BaseIndex = 0
+const DifferenceIndex = 1
 
 type fastPathSetHandler func(context.Context, *iteratorStreams, chan<- *iteratorMsg)
 
@@ -374,10 +374,10 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
 			}
-			if idx == BASE_INDEX {
+			if idx == BaseIndex {
 				base = v.GetObject()
 			}
-			if idx == DIFFERENCE_INDEX {
+			if idx == DifferenceIndex {
 				diff = v.GetObject()
 			}
 		}
@@ -405,11 +405,11 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 		}
 
 		if diff > base {
-			t, err := iterStreams[BASE_INDEX].buffer.Next(ctx)
+			t, err := iterStreams[BaseIndex].buffer.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					iterStreams[BASE_INDEX].buffer.Stop()
-					iterStreams[BASE_INDEX].buffer = nil
+					iterStreams[BaseIndex].buffer.Stop()
+					iterStreams[BaseIndex].buffer = nil
 					break
 				}
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
@@ -425,11 +425,11 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 
 		// diff < base, then move the diff to catch up with base
 		for diff < base {
-			t, err := iterStreams[DIFFERENCE_INDEX].buffer.Next(ctx)
+			t, err := iterStreams[DifferenceIndex].buffer.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					iterStreams[DIFFERENCE_INDEX].buffer.Stop()
-					iterStreams[DIFFERENCE_INDEX].buffer = nil
+					iterStreams[DifferenceIndex].buffer.Stop()
+					iterStreams[DifferenceIndex].buffer = nil
 					break
 				}
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
@@ -446,9 +446,9 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 	}
 
 	// drain the base
-	if len(iterStreams) == 1 && iterStreams[BASE_INDEX].idx == BASE_INDEX {
+	if len(iterStreams) == 1 && iterStreams[BaseIndex].idx == BaseIndex {
 		for len(iterStreams) == 1 {
-			stream := iterStreams[BASE_INDEX]
+			stream := iterStreams[BaseIndex]
 			for {
 				t, err := stream.buffer.Next(ctx)
 				if err != nil {
