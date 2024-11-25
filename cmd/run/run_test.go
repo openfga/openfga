@@ -576,8 +576,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			_name:      "Header_with_invalid_token_fails",
 			authHeader: "Bearer incorrecttoken",
 			expectedErrorResponse: &serverErrors.ErrorResponse{
-				Code:    "auth_failed_invalid_bearer_token",
-				Message: "invalid bearer token",
+				Code:    "invalid_claims",
+				Message: "invalid claims",
 			},
 			expectedStatusCode: 401,
 		},
