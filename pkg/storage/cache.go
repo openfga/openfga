@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/Yiling-J/theine-go"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (
@@ -121,7 +119,7 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 }
 
 type TupleIteratorCacheEntry struct {
-	Tuples       []*openfgav1.Tuple
+	Tuples       []*TupleRecord
 	LastModified time.Time
 }
 

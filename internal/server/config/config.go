@@ -34,7 +34,7 @@ const (
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
-	DefaultCacheLimit = 10000
+	DefaultCheckCacheLimit = 10000
 
 	DefaultCacheControllerEnabled = false
 	DefaultCacheControllerTTL     = 10 * time.Second
@@ -44,6 +44,7 @@ const (
 
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
+	DefaultCheckIteratorCacheTTL        = 10 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -211,13 +212,16 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
-type CacheConfig struct {
+// CheckCacheConfig defines configuration for a cache that is shared across Check requests.
+type CheckCacheConfig struct {
 	Limit uint32
 }
 
+// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
 type CheckIteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
+	TTL        time.Duration
 }
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
@@ -328,10 +332,9 @@ type Config struct {
 	Playground                    PlaygroundConfig
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
-	Cache                         CacheConfig
+	CheckCache                    CheckCacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
-	DispatchThrottling            DispatchThrottlingConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -492,6 +495,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
 	}
 
+	if viper.IsSet("cache.limit") && !viper.IsSet("checkCache.limit") {
+		fmt.Println("WARNING: flag `check-query-cache-limit` is deprecated. Please set --check-cache-limit instead.")
+	}
+
 	return nil
 }
 
@@ -509,39 +516,12 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
-// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
-// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
-// a non-zero value exists there.
+// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check.
 func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
 	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
 	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
 	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
 	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
-
-	if viper.IsSet("dispatchThrottling.enabled") && !viper.IsSet("checkDispatchThrottling.enabled") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.enabled' is deprecated. Please use 'checkDispatchThrottling.enabled'")
-		}
-		checkDispatchThrottlingEnabled = config.DispatchThrottling.Enabled
-	}
-	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
-		}
-		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
-	}
-	if viper.IsSet("dispatchThrottling.threshold") && !viper.IsSet("checkDispatchThrottling.threshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.threshold' is deprecated. Please use 'checkDispatchThrottling.threshold'")
-		}
-		checkDispatchThrottlingDefaultThreshold = config.DispatchThrottling.Threshold
-	}
-	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
-		}
-		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
-	}
 
 	return DispatchThrottlingConfig{
 		Enabled:      checkDispatchThrottlingEnabled,
@@ -556,13 +536,13 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
 	if checkDispatchThrottlingConfig.Enabled {
 		if checkDispatchThrottlingConfig.Frequency <= 0 {
-			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
+			return errors.New("'checkDispatchThrottling.frequency' must be non-negative time duration")
 		}
 		if checkDispatchThrottlingConfig.Threshold <= 0 {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
+			return errors.New("'checkDispatchThrottling.threshold' must be non-negative integer")
 		}
 		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
+			return errors.New("'checkDispatchThrottling.threshold' must be less than or equal to 'checkDispatchThrottling.maxThreshold' respectively")
 		}
 	}
 	return nil
@@ -651,19 +631,14 @@ func DefaultConfig() *Config {
 		CheckIteratorCache: CheckIteratorCacheConfig{
 			Enabled:    DefaultCheckIteratorCacheEnabled,
 			MaxResults: DefaultCheckIteratorCacheMaxResults,
+			TTL:        DefaultCheckIteratorCacheTTL,
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		Cache: CacheConfig{
-			Limit: DefaultCacheLimit,
-		},
-		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultCheckDispatchThrottlingEnabled,
-			Frequency:    DefaultCheckDispatchThrottlingFrequency,
-			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+		CheckCache: CheckCacheConfig{
+			Limit: DefaultCheckCacheLimit,
 		},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,
