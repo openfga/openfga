@@ -90,8 +90,10 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 	}
 
 	opts := storage.ReadPageOptions{
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination:  storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()},
 	}
+
 	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)

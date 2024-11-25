@@ -888,7 +888,7 @@ func TestWriteCommand(t *testing.T) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrInvalidWriteInput)
 			},
-			expectedError: serverErrors.WriteFailedDueToInvalidInput(),
+			expectedError: serverErrors.WriteFailedDueToInvalidInput(storage.ErrInvalidWriteInput),
 		},
 	}
 

@@ -106,9 +106,8 @@ func DuplicateTupleInWrite(tk tuple.TupleWithoutCondition) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_cannot_allow_duplicate_tuples_in_one_request), fmt.Sprintf("duplicate tuple in write: user: '%s', relation: '%s', object: '%s'", tk.GetUser(), tk.GetRelation(), tk.GetObject()))
 }
 
-func WriteFailedDueToInvalidInput() error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_write_failed_due_to_invalid_input),
-		"tuple to be written already existed or the tuple to be deleted did not exist")
+func WriteFailedDueToInvalidInput(err error) error {
+	return status.Error(codes.Code(openfgav1.ErrorCode_write_failed_due_to_invalid_input), err.Error())
 }
 
 func InvalidAuthorizationModelInput(err error) error {
