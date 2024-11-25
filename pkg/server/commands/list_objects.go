@@ -12,14 +12,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/concurrency"
-
-	openfgaErrors "github.com/openfga/openfga/internal/errors"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
@@ -102,9 +100,9 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption
 	}
 }
 
-func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
+func WithListObjectsMaxResults(maxResults uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.listObjectsMaxResults = max
+		d.listObjectsMaxResults = maxResults
 	}
 }
 
@@ -432,7 +430,7 @@ func (q *ListObjectsQuery) Execute(
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
@@ -481,7 +479,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {

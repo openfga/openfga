@@ -4,8 +4,9 @@ import (
 	"maps"
 	"sync/atomic"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type listUsersRequest interface {

@@ -23,40 +23,37 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	"github.com/openfga/openfga/pkg/storage/sqlite"
-
 	"github.com/hashicorp/go-retryablehttp"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	"go.uber.org/goleak"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/encoding/protojson"
 
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/middleware/requestid"
-	"github.com/openfga/openfga/pkg/middleware/storeid"
-	"github.com/openfga/openfga/pkg/server"
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestMain(m *testing.M) {
@@ -1163,17 +1160,29 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Trace.OTLP.TLS.Enabled)
 
+	val = res.Get("properties.checkCache.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckCache.Limit)
+
 	val = res.Get("properties.checkQueryCache.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
 
-	val = res.Get("properties.checkQueryCache.properties.limit.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Cache.Limit)
-
 	val = res.Get("properties.checkQueryCache.properties.ttl.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
+
+	val = res.Get("properties.checkIteratorCache.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckIteratorCache.Enabled)
+
+	val = res.Get("properties.checkIteratorCache.properties.maxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckIteratorCache.MaxResults)
+
+	val = res.Get("properties.checkIteratorCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckIteratorCache.TTL.String())
 
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
@@ -1189,17 +1198,9 @@ func TestDefaultConfig(t *testing.T) {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
 
-	val = res.Get("properties.dispatchThrottling.properties.enabled.default")
+	val = res.Get("properties.contextPropagationToDatastore.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDispatchThrottling.Enabled)
-
-	val = res.Get("properties.dispatchThrottling.properties.frequency.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckDispatchThrottling.Frequency.String())
-
-	val = res.Get("properties.dispatchThrottling.properties.threshold.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDispatchThrottling.Threshold)
+	require.False(t, val.Bool())
 
 	val = res.Get("properties.checkDispatchThrottling.properties.enabled.default")
 	require.True(t, val.Exists())
@@ -1261,6 +1262,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
@@ -1328,7 +1330,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
-	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
+	t.Setenv("OPENFGA_CHECK_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
@@ -1339,6 +1341,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_ACCESS_CONTROL_ENABLED", "true")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
+	t.Setenv("OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE", "true")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1346,7 +1349,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
 		require.True(t, viper.GetBool("check-query-cache-enabled"))
-		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, uint32(33), viper.GetUint32("check-cache-limit"))
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
@@ -1359,6 +1362,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("access-control-enabled"))
 		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
 		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
+		require.True(t, viper.GetBool("context-propagation-to-datastore"))
 
 		return nil
 	}

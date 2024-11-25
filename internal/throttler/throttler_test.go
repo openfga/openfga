@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/goleak"
-
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func mockThrottlerTest(ctx context.Context, throttler Throttler, counter *int) {

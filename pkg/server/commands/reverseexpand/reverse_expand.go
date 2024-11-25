@@ -8,14 +8,14 @@ import (
 	"sync"
 	"sync/atomic"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/openfga/openfga/internal/concurrency"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
@@ -339,6 +339,7 @@ LoopOnEdges:
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
 			edge:             innerLoopEdge,
+			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
@@ -566,6 +567,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
+				Consistency:      req.Consistency,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}

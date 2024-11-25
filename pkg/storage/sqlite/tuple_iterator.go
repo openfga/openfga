@@ -3,16 +3,15 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"sync"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
@@ -165,15 +164,15 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 // If the continuation token exists it is the ulid of the last element of the returned array.
 func (t *SQLTupleIterator) ToArray(
 	opts storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
-				return res, nil, nil
+				return res, "", nil
 			}
-			return nil, nil, err
+			return nil, "", err
 		}
 		res = append(res, tupleRecord.AsTuple())
 	}
@@ -184,17 +183,12 @@ func (t *SQLTupleIterator) ToArray(
 	tupleRecord, err := t.next()
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
-			return res, nil, nil
+			return res, "", nil
 		}
-		return nil, nil, err
+		return nil, "", err
 	}
 
-	contToken, err := json.Marshal(sqlcommon.NewContToken(tupleRecord.Ulid, ""))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return res, contToken, nil
+	return res, tupleRecord.Ulid, nil
 }
 
 // Next will return the next available item.

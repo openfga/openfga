@@ -8,30 +8,25 @@ import (
 	"sync/atomic"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
-
-	"github.com/openfga/openfga/internal/throttler/threshold"
-
-	"github.com/openfga/openfga/pkg/telemetry"
-
-	"github.com/openfga/openfga/pkg/logger"
-
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -91,9 +86,9 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
-func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
-		d.maxResults = max
+		d.maxResults = maxResults
 	}
 }
 

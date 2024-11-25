@@ -6,26 +6,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/storage"
-
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -346,7 +343,6 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
 	t.Run("TestWriteAssertions", func(t *testing.T) { GRPCWriteAssertionsTest(t, client) })
 
-	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, client) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, client) })
 }
@@ -519,18 +515,30 @@ func GRPCWriteTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	}
 }
 
-func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
-
+func writeTuples(client openfgav1.OpenFGAServiceClient, storeID string, modelID string, count int, user string) (*openfgav1.WriteResponse, error) {
+	tupleKeys := make([]*openfgav1.TupleKey, count)
+	for i := 0; i < count; i++ {
+		tupleKeys[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", user)
+	}
+	return client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tupleKeys,
+		},
+		AuthorizationModelId: modelID,
+	})
 }
 
-func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+func GRPCReadTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	storeResponse, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "GRPCReadChangesTest",
 	})
 	require.NoError(t, err)
 
+	storeID := storeResponse.GetId()
+
 	modelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: storeResponse.GetId(),
+		StoreId: storeID,
 		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "user",
@@ -556,20 +564,202 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	})
 	require.NoError(t, err)
 
+	const pageSize = 20
+
+	modelID := modelResponse.GetAuthorizationModelId()
+
+	// one page of tuples with user:1st
+	_, err = writeTuples(client, storeID, modelID, pageSize, "user:1st")
+	require.NoError(t, err)
+
+	// one page of tuples with user:2nd - after continuation token is captured
+	_, err = writeTuples(client, storeID, modelID, pageSize, "user:2nd")
+	require.NoError(t, err)
+
+	// find the continuation token for the 3rd page from the start
+	require.NoError(t, err)
+	firstPage, err := client.Read(context.Background(), &openfgav1.ReadRequest{
+		StoreId:  storeID,
+		PageSize: wrapperspb.Int32(pageSize),
+	})
+	require.NoError(t, err)
+
+	continuationToken := firstPage.GetContinuationToken()
+
+	tests := []struct {
+		name     string
+		input    *openfgav1.ReadRequest
+		validate func(*testing.T, *openfgav1.ReadResponse)
+		err      error
+	}{
+		{
+			"empty_request",
+			&openfgav1.ReadRequest{
+				StoreId:  storeID,
+				PageSize: wrapperspb.Int32(pageSize),
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), pageSize)
+				require.NotEmpty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "user:1st", tpl.GetKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_tuple_key_single_document",
+			&openfgav1.ReadRequest{
+				StoreId: storeID,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					User:     "user:1st",
+					Relation: "viewer",
+					Object:   "document:1",
+				},
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), 1)
+				require.Empty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "user:1st", tpl.GetKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_tuple_key_by_document1",
+			&openfgav1.ReadRequest{
+				StoreId: storeID,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					Relation: "viewer",
+					Object:   "document:1",
+				},
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), 2)
+				require.Empty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "document:1", tpl.GetKey().GetObject())
+				}
+				assert.ElementsMatch(t, []string{"user:1st", "user:2nd"},
+					[]string{
+						response.GetTuples()[0].GetKey().GetUser(),
+						response.GetTuples()[1].GetKey().GetUser(),
+					})
+			},
+			nil,
+		},
+		{
+			"with_tuple_key_by_document1_page_size1",
+			&openfgav1.ReadRequest{
+				StoreId: storeID,
+				TupleKey: &openfgav1.ReadRequestTupleKey{
+					Relation: "viewer",
+					Object:   "document:1",
+				},
+				PageSize: wrapperspb.Int32(1),
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), 1)
+				assert.NotEmpty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "document:1", tpl.GetKey().GetObject())
+				}
+				assert.ElementsMatch(t, []string{"user:1st"},
+					[]string{
+						response.GetTuples()[0].GetKey().GetUser(),
+					})
+			},
+			nil,
+		},
+		{
+			"with_continuation_token",
+			&openfgav1.ReadRequest{
+				StoreId:           storeID,
+				ContinuationToken: continuationToken,
+				PageSize:          wrapperspb.Int32(pageSize),
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				require.Len(t, response.GetTuples(), pageSize)
+				require.Empty(t, response.GetContinuationToken())
+				for _, tpl := range response.GetTuples() {
+					require.NotNil(t, tpl.GetKey())
+					require.Equal(t, "user:2nd", tpl.GetKey().GetUser())
+				}
+			},
+			nil,
+		},
+		{
+			"with_invalid_continuation_token",
+			&openfgav1.ReadRequest{
+				StoreId:           storeID,
+				ContinuationToken: "invalid-token",
+			},
+			func(t *testing.T, response *openfgav1.ReadResponse) {
+				// do nothing
+			},
+			status.Error(2007, "Invalid continuation token"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := client.Read(context.Background(), test.input)
+			if test.err != nil {
+				require.Error(t, err)
+				assert.Equal(t, test.err, err)
+			} else {
+				require.NoError(t, err)
+				test.validate(t, response)
+			}
+		})
+	}
+}
+
+func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	storeResponse, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "GRPCReadChangesTest",
+	})
+	require.NoError(t, err)
+
+	storeID := storeResponse.GetId()
+	modelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+								typesystem.WildcardRelationReference("user"),
+							},
+						},
+					},
+				},
+			},
+		},
+		SchemaVersion: "1.1",
+	})
+	require.NoError(t, err)
+
+	modelID := modelResponse.GetAuthorizationModelId()
+
 	const pageSize = storage.DefaultPageSize
 
 	// one page of tuples with user:before - before start_time is captured
-	tupleKeysBefore := make([]*openfgav1.TupleKey, pageSize)
-	for i := 0; i < pageSize; i++ {
-		tupleKeysBefore[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:before")
-	}
-	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: storeResponse.GetId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tupleKeysBefore,
-		},
-		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
-	})
+	_, err = writeTuples(client, storeID, modelID, pageSize, "user:before")
 	require.NoError(t, err)
 
 	// wait for the tuples to be written
@@ -580,43 +770,22 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	time.Sleep(1 * time.Millisecond)
 
 	// one page of tuples with user:after - after start_time is captured
-	tupleKeysAfter := make([]*openfgav1.TupleKey, pageSize)
-	for i := 0; i < pageSize; i++ {
-		tupleKeysAfter[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:after")
-	}
-	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: storeResponse.GetId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tupleKeysAfter,
-		},
-		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
-	})
+	_, err = writeTuples(client, storeID, modelID, pageSize, "user:after")
 	require.NoError(t, err)
 
 	// one page of tuples with user:3rd - one page after the start_time is captured
-	tupleKeys3rd := make([]*openfgav1.TupleKey, pageSize)
-	for i := 0; i < pageSize; i++ {
-		tupleKeys3rd[i] = tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", "user:3rd")
-	}
-	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-		StoreId: storeResponse.GetId(),
-		Writes: &openfgav1.WriteRequestWrites{
-			TupleKeys: tupleKeys3rd,
-		},
-		AuthorizationModelId: modelResponse.GetAuthorizationModelId(),
-	})
+	_, err = writeTuples(client, storeID, modelID, pageSize, "user:3rd")
 	require.NoError(t, err)
 
 	// find the continuation token for the 3rd page from the start
-	pages100, err := runtime.Int32Value("100")
 	require.NoError(t, err)
-	changes100, err := client.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
-		StoreId:  storeResponse.GetId(),
-		PageSize: pages100,
+	twoPages, err := client.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
+		StoreId:  storeID,
+		PageSize: wrapperspb.Int32(pageSize * 2),
 	})
 	require.NoError(t, err)
 
-	continuationToken := changes100.GetContinuationToken()
+	continuationToken := twoPages.GetContinuationToken()
 
 	tests := []struct {
 		name     string
@@ -627,7 +796,7 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 		{
 			"empty_request",
 			&openfgav1.ReadChangesRequest{
-				StoreId: storeResponse.GetId(),
+				StoreId: storeID,
 			},
 			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
 				require.Len(t, response.GetChanges(), pageSize)
@@ -642,7 +811,7 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 		{
 			"with_continuation_token",
 			&openfgav1.ReadChangesRequest{
-				StoreId:           storeResponse.GetId(),
+				StoreId:           storeID,
 				ContinuationToken: continuationToken,
 			},
 			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
@@ -658,7 +827,7 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 		{
 			"with_start_time",
 			&openfgav1.ReadChangesRequest{
-				StoreId:   storeResponse.GetId(),
+				StoreId:   storeID,
 				StartTime: timestamppb.New(startTime),
 			},
 			func(t *testing.T, response *openfgav1.ReadChangesResponse) {
@@ -674,7 +843,7 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 		{
 			"with_start_time_and_token",
 			&openfgav1.ReadChangesRequest{
-				StoreId:           storeResponse.GetId(),
+				StoreId:           storeID,
 				StartTime:         timestamppb.New(startTime),
 				ContinuationToken: continuationToken,
 			},
@@ -691,7 +860,7 @@ func GRPCReadChangesTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 		{
 			"with_invalid_start_time",
 			&openfgav1.ReadChangesRequest{
-				StoreId: storeResponse.GetId(),
+				StoreId: storeID,
 				StartTime: timestamppb.New(startTime.
 					Add(-1 * startTime.Sub(startTime)). // until the beginning of time
 					Add(-1_000_000 * time.Hour),        // and then minus a million hours

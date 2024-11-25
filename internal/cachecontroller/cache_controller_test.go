@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sync/singleflight"
-
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -57,7 +57,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 						Relation: "viewer",
 						User:     "test",
 					}},
-			}, []byte{}, nil),
+			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
@@ -246,7 +246,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}
 
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
-			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, []byte{}, test.readChangesResults.err)
+			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
 			cacheController := &InMemoryCacheController{
 				ds:               datastore,
 				cache:            cache,

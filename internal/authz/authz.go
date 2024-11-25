@@ -7,13 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/utils"
 
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
@@ -34,6 +35,7 @@ const (
 	ListObjects             = "ListObjects"
 	StreamedListObjects     = "StreamedListObjects"
 	Check                   = "Check"
+	BatchCheck              = "BatchCheck"
 	ListUsers               = "ListUsers"
 	WriteAssertions         = "WriteAssertions"
 	ReadAssertions          = "ReadAssertions"
@@ -108,6 +110,8 @@ type AuthorizerInterface interface {
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
+	AccessControlStoreID() string
+	IsNoop() bool
 }
 
 type NoopAuthorizer struct{}
@@ -134,6 +138,14 @@ func (a *NoopAuthorizer) ListAuthorizedStores(ctx context.Context) ([]string, er
 
 func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	return nil, nil
+}
+
+func (a *NoopAuthorizer) AccessControlStoreID() string {
+	return ""
+}
+
+func (a *NoopAuthorizer) IsNoop() bool {
+	return true
 }
 
 type Authorizer struct {
@@ -172,7 +184,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 		return CanCallWrite, nil
 	case ListObjects, StreamedListObjects:
 		return CanCallListObjects, nil
-	case Check:
+	case Check, BatchCheck:
 		return CanCallCheck, nil
 	case ListUsers:
 		return CanCallListUsers, nil
@@ -197,6 +209,17 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	default:
 		return "", AuthorizationError{Err: ErrUnknownAPIMethod}.Err
 	}
+}
+
+func (a *Authorizer) AccessControlStoreID() string {
+	if a.config != nil {
+		return a.config.StoreID
+	}
+	return ""
+}
+
+func (a *Authorizer) IsNoop() bool {
+	return false
 }
 
 // Authorize checks if the user has access to the resource.

@@ -6,16 +6,15 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/openfga/openfga/pkg/tuple"
+	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -235,7 +234,7 @@ func Test_combinedTupleReader_ReadPage(t *testing.T) {
 
 	mockRelationshipTupleReader.EXPECT().
 		ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{}).
-		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, nil, nil)
+		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
 
 	got, _, err := c.ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{})
 	require.NoError(t, err)

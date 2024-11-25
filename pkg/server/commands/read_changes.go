@@ -72,43 +72,62 @@ func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQu
 func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 	token := string(decodedContToken)
+
+	var fromUlid string
 
 	var startTime time.Time
 	if req.GetStartTime() != nil {
 		startTime = req.GetStartTime().AsTime()
 	}
-	if token == "" && !startTime.IsZero() {
+	if token != "" {
+		var objType string
+		fromUlid, objType, err = q.tokenSerializer.Deserialize(token)
+		if err != nil {
+			return nil, serverErrors.ErrInvalidContinuationToken
+		}
+		if objType != req.GetType() {
+			return nil, serverErrors.ErrMismatchObjectType
+		}
+	} else if !startTime.IsZero() {
 		tokenUlid, ulidErr := ulid.New(ulid.Timestamp(startTime), nil)
 		if ulidErr != nil {
 			return nil, serverErrors.HandleError(ulidErr.Error(), storage.ErrInvalidStartTime)
 		}
-		if ulidBytes, err := q.tokenSerializer.Serialize(tokenUlid.String(), req.GetType()); err == nil {
-			token = string(ulidBytes)
-		} else {
-			return nil, serverErrors.HandleError("", err)
-		}
+		fromUlid = tokenUlid.String()
 	}
 
 	opts := storage.ReadChangesOptions{
 		Pagination: storage.NewPaginationOptions(
 			req.GetPageSize().GetValue(),
-			token,
+			fromUlid,
 		),
 	}
 	filter := storage.ReadChangesFilter{
 		ObjectType:    req.GetType(),
 		HorizonOffset: q.horizonOffset,
 	}
-	changes, contToken, err := q.backend.ReadChanges(ctx, req.GetStoreId(), filter, opts)
+	changes, contUlid, err := q.backend.ReadChanges(ctx, req.GetStoreId(), filter, opts)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1.ReadChangesResponse{
 				ContinuationToken: req.GetContinuationToken(),
 			}, nil
 		}
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if len(contUlid) == 0 {
+		return &openfgav1.ReadChangesResponse{
+			Changes:           changes,
+			ContinuationToken: "",
+		}, nil
+	}
+
+	contToken, err := q.tokenSerializer.Serialize(contUlid, req.GetType())
+	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 

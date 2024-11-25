@@ -56,8 +56,7 @@ func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleR
 // PaginationOptions should not be instantiated directly. Use NewPaginationOptions.
 type PaginationOptions struct {
 	PageSize int
-	// From is a continuation token that can be used to retrieve the next page of results. It may be also overloaded
-	// to represent a starting time for the first page of results.
+	// From is a continuation token that can be used to retrieve the next page of results. Its contents will depend on the API.
 	From string
 }
 
@@ -163,12 +162,7 @@ type RelationshipTupleReader interface {
 	// mandatory ReadPageOptions options. PageSize will always be greater than zero.
 	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
-	ReadPage(
-		ctx context.Context,
-		store string,
-		tupleKey *openfgav1.TupleKey,
-		options ReadPageOptions,
-	) ([]*openfgav1.Tuple, []byte, error)
+	ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadPageOptions) ([]*openfgav1.Tuple, string, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
 	// If none is found, it must return [ErrNotFound].
@@ -220,10 +214,10 @@ type RelationshipTupleReader interface {
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
 	// Write updates data in the tuple backend, performing all delete operations in
-	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// If there are more than MaxTuplesPerWrite, it must return ErrExceededWriteBatchLimit.
-	// If two requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed.
-	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput.
+	// `deletes` before adding new values in `writes`.
+	// It must also write to the changelog.
+	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
+	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
@@ -257,11 +251,12 @@ type ReadUsersetTuplesFilter struct {
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel reads the model corresponding to store and model ID.
-	// If it's not found, it must return ErrNotFound.
+	// If it's not found, or if the model has zero types, it must return ErrNotFound.
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels reads all models for the supplied store and returns them in descending order of ULID (from newest to oldest).
-	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
+	// In addition to the models, it returns a continuation token that can be used to fetch the next page of results.
+	ReadAuthorizationModels(ctx context.Context, store string, options ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error)
 
 	// FindLatestAuthorizationModel returns the last model for the store.
 	// If none were ever written, it must return ErrNotFound.
@@ -274,6 +269,7 @@ type TypeDefinitionWriteBackend interface {
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
+	// If the model has zero types, the datastore may choose to do nothing and return no error.
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
@@ -283,13 +279,21 @@ type AuthorizationModelBackend interface {
 	TypeDefinitionWriteBackend
 }
 
-// StoresBackend is an interface that defines the set of methods required
-// for interacting with and managing different types of storage backends.
 type StoresBackend interface {
+	// CreateStore must return an error if the store ID or the name aren't set. TODO write test.
+	// If the store ID already existed it must return ErrCollision.
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
+
+	// DeleteStore must delete the store by either setting its DeletedAt field or removing the entry.
 	DeleteStore(ctx context.Context, id string) error
+
+	// GetStore must return ErrNotFound if the store is not found or its DeletedAt is set.
 	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
-	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, []byte, error)
+
+	// ListStores returns a list of non-deleted stores that match the provided options.
+	// In addition to the stores, it returns a continuation token that can be used to fetch the next page of results.
+	// If no stores are found, it is expected to return an empty list and an empty continuation token.
+	ListStores(ctx context.Context, options ListStoresOptions) ([]*openfgav1.Store, string, error)
 }
 
 // AssertionsBackend is an interface that defines the set of methods for reading and writing assertions.
@@ -313,10 +317,10 @@ type ChangelogBackend interface {
 	// in the order that they occurred.
 	// You can optionally provide a filter to filter out changes for objects of a specific type.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond.
-	// It should always return a non-empty continuation token so readers can continue reading later, except the case where
+	// It should always return a ULID as a continuation token so readers can continue reading later, except the case where
 	// if no changes are found, it should return storage.ErrNotFound and an empty continuation token.
-	// It the objectType and the type in the continuation token don't match, it should return ErrMismatchObjectType.
-	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error)
+	// It's important that the continuation token is a ULID, so it could be generated from timestamp.
+	ReadChanges(ctx context.Context, store string, filter ReadChangesFilter, options ReadChangesOptions) ([]*openfgav1.TupleChange, string, error)
 }
 
 // OpenFGADatastore is an interface that defines a set of methods for interacting

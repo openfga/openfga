@@ -7,29 +7,21 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/openfga/openfga/pkg/encoder"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestMemdbStorage(t *testing.T) {
-	tokenSerializer := encoder.NewStringContinuationTokenSerializer()
-	ds := New(WithContinuationTokenSerializer(tokenSerializer))
-	test.RunAllTests(t, ds, tokenSerializer)
-}
-
-func TestMemdbStorageWithSqlTokenSerializer(t *testing.T) {
-	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
-	ds := New(WithContinuationTokenSerializer(tokenSerializer))
-	t.Run("TestReadChanges", func(t *testing.T) { test.ReadChangesTest(t, ds, tokenSerializer) })
+	ds := New()
+	test.RunAllTests(t, ds)
 }
 
 func TestStaticTupleIterator(t *testing.T) {

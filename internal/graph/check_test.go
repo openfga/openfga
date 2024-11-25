@@ -9,25 +9,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/condition"
-
 	"github.com/emirpasic/gods/sets/hashset"
-
-	"github.com/openfga/openfga/internal/checkutil"
-
-	"github.com/openfga/openfga/internal/mocks"
-
-	"github.com/openfga/openfga/internal/concurrency"
-
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
+
+	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -4651,6 +4647,336 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			resp, err := function(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
+		})
+	}
+}
+
+func TestShouldCheckDirectTuple(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name        string
+		model       *openfgav1.AuthorizationModel
+		reqTupleKey *openfgav1.TupleKey
+		expected    bool
+	}{
+		{
+			name: "directly_assigned",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "directly_assigned_public_wildcard",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    false,
+		},
+		{
+			name: "directly_assigned_public_wildcard_mixed",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "userset_indirect",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "user:bob"),
+			expected:    false,
+		},
+		{
+			name: "userset_direct",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "group:2#member"),
+			expected:    true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+			result := shouldCheckDirectTuple(ctx, tt.reqTupleKey)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestShouldCheckPubliclyAssigned(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name        string
+		model       *openfgav1.AuthorizationModel
+		reqTupleKey *openfgav1.TupleKey
+		expected    bool
+	}{
+		{
+			name: "directly_assigned",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    false,
+		},
+		{
+			name: "directly_assigned_public_wildcard",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "directly_assigned_public_wildcard_mixed",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "member", "user:bob"),
+			expected:    true,
+		},
+		{
+			name: "userset_indirect",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "user:bob"),
+			expected:    false,
+		},
+		{
+			name: "userset_direct",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+			define other_member: [group#member]
+
+	`),
+			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "group:2#member"),
+			expected:    false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+			ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+			result := shouldCheckPublicAssignable(ctx, tt.reqTupleKey)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCheckPublicAssignable(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	modelWithNoCond := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+				`)
+
+	modelWithCond := parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user with condX, user:* with condX]
+	condition condX(x: int) {
+		x < 100
+	}
+				`)
+
+	tests := []struct {
+		name                   string
+		readUsersetTuples      []*openfgav1.Tuple
+		readUsersetTuplesError error
+		context                map[string]interface{}
+		model                  *openfgav1.AuthorizationModel
+		expected               *ResolveCheckResponse
+		expectedError          error
+	}{
+		{
+			name: "found",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:1", "member", "user:*"),
+				},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+			},
+			expectedError: nil,
+		},
+		{
+			name: "not_found",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+			},
+			expectedError: nil,
+		},
+		{
+			name: "error",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{},
+			},
+			readUsersetTuplesError: fmt.Errorf("mock_error"),
+			context:                map[string]interface{}{},
+			model:                  modelWithNoCond,
+			expected:               nil,
+			expectedError:          fmt.Errorf("mock_error"),
+		},
+		{
+			name: "wildcard_cond_match",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condX", nil),
+				},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{"x": "5"},
+			model:                  modelWithCond,
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+			},
+			expectedError: nil,
+		},
+		{
+			name: "wildcard_cond_not_match",
+			readUsersetTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "condX", nil),
+				},
+			},
+			readUsersetTuplesError: nil,
+			context:                map[string]interface{}{"x": "200"},
+			model:                  modelWithCond,
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+			},
+			expectedError: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			storeID := ulid.Make().String()
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
+			ctx := context.Background()
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+
+			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
+
+			ts, err := typesystem.New(tt.model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			checker := NewLocalChecker()
+
+			contextStruct, err := structpb.NewStruct(tt.context)
+			require.NoError(t, err)
+
+			function := checker.checkPublicAssignable(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:bob"),
+				Context:              contextStruct,
+				RequestMetadata:      NewCheckRequestMetadata(20),
+			})
+			result, err := function(ctx)
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }

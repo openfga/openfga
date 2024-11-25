@@ -9,16 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openfga/openfga/pkg/encoder"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/pressly/goose/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -32,8 +32,6 @@ type Config struct {
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
-	// for serializing the read changes token
-	TokenSerializer encoder.ContinuationTokenSerializer
 
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -65,13 +63,6 @@ func WithPassword(password string) DatastoreOption {
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.Logger = l
-	}
-}
-
-// WithContinuationTokenSerializer returns a DatastoreOption that sets the TokenSerializer in the Config.
-func WithContinuationTokenSerializer(tokenSerializer encoder.ContinuationTokenSerializer) DatastoreOption {
-	return func(cfg *Config) {
-		cfg.TokenSerializer = tokenSerializer
 	}
 }
 
@@ -144,10 +135,6 @@ func NewConfig(opts ...DatastoreOption) *Config {
 		cfg.Logger = logger.NewNoopLogger()
 	}
 
-	if cfg.TokenSerializer == nil {
-		cfg.TokenSerializer = NewSQLContinuationTokenSerializer()
-	}
-
 	if cfg.MaxTuplesPerWriteField == 0 {
 		cfg.MaxTuplesPerWriteField = storage.DefaultMaxTuplesPerWrite
 	}
@@ -175,19 +162,6 @@ func NewContToken(ulid, objectType string) *ContToken {
 }
 
 // MarshallContToken takes a ContToken struct and attempts to marshal it into a string.
-func MarshallContToken(from *ContToken) ([]byte, error) {
-	return json.Marshal(from)
-}
-
-// UnmarshallContToken takes a string representation of a continuation
-// token and attempts to unmarshal it into a ContToken struct.
-func UnmarshallContToken(from string) (*ContToken, error) {
-	var token ContToken
-	if err := json.Unmarshal([]byte(from), &token); err != nil {
-		return nil, storage.ErrInvalidContinuationToken
-	}
-	return &token, nil
-}
 
 func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
 	return &SQLContinuationTokenSerializer{}
@@ -196,13 +170,16 @@ func NewSQLContinuationTokenSerializer() encoder.ContinuationTokenSerializer {
 type SQLContinuationTokenSerializer struct{}
 
 func (s *SQLContinuationTokenSerializer) Serialize(ulid string, objType string) ([]byte, error) {
-	return MarshallContToken(NewContToken(ulid, objType))
+	if ulid == "" {
+		return nil, errors.New("empty ulid provided for continuation token")
+	}
+	return json.Marshal(NewContToken(ulid, objType))
 }
 
 func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (ulid string, objType string, err error) {
-	token, err := UnmarshallContToken(continuationToken)
-	if err != nil {
-		return "", "", err
+	var token ContToken
+	if err := json.Unmarshal([]byte(continuationToken), &token); err != nil {
+		return "", "", storage.ErrInvalidContinuationToken
 	}
 	return token.Ulid, token.ObjectType, nil
 }
@@ -353,15 +330,15 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 // If the continuation token exists it is the ulid of the last element of the returned array.
 func (t *SQLTupleIterator) ToArray(
 	opts storage.PaginationOptions,
-) ([]*openfgav1.Tuple, []byte, error) {
+) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.ErrIteratorDone {
-				return res, nil, nil
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return res, "", nil
 			}
-			return nil, nil, err
+			return nil, "", err
 		}
 		res = append(res, tupleRecord.AsTuple())
 	}
@@ -372,17 +349,12 @@ func (t *SQLTupleIterator) ToArray(
 	tupleRecord, err := t.next()
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
-			return res, nil, nil
+			return res, "", nil
 		}
-		return nil, nil, err
+		return nil, "", err
 	}
 
-	contToken, err := json.Marshal(NewContToken(tupleRecord.Ulid, ""))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return res, contToken, nil
+	return res, tupleRecord.Ulid, nil
 }
 
 // Next will return the next available item.

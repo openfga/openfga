@@ -7,10 +7,11 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
@@ -477,6 +478,18 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
+	if c.optimizationsEnabled {
+		hasPath, err := typesys.PathExists(tupleKey.GetUser(), relation, objectType)
+		if err != nil {
+			return nil, err
+		}
+		if !hasPath {
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+	}
+
 	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -675,7 +688,7 @@ ConsumerLoop:
 	return finalResult, nil
 }
 
-// checkUsersetSlowPath will check userset or public wildcard path.
+// checkUsersetSlowPath will check userset path.
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
@@ -1258,11 +1271,66 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 	return wrapIterator(mapping.kind, filteredIter), nil
 }
 
+func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+	storeID := req.GetStoreID()
+	reqTupleKey := req.GetTupleKey()
+	userType := tuple.GetType(reqTupleKey.GetUser())
+	wildcardRelationReference := typesystem.WildcardRelationReference(userType)
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkPublicAssignable")
+		defer span.End()
+
+		response := &ResolveCheckResponse{
+			Allowed: false,
+		}
+
+		opts := storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+
+		// We want to query via ReadUsersetTuples instead of ReadUserTuple tuples to take
+		// advantage of the storage wrapper cache
+		// (https://github.com/openfga/openfga/blob/af054d9693bd7ebd0420456b144c2fb6888aaf87/internal/graph/storagewrapper.go#L139).
+		// In the future, if storage wrapper cache is available for ReadUserTuple, we can switch it to ReadUserTuple.
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:                      reqTupleKey.GetObject(),
+			Relation:                    reqTupleKey.GetRelation(),
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{wildcardRelationReference},
+		}, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(iter),
+				validation.FilterInvalidTuples(typesys),
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+		)
+		defer filteredIter.Stop()
+
+		_, err = filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				return response, nil
+			}
+			return nil, err
+		}
+		// when we get to here, it means there is public wild card assigned
+		span.SetAttributes(attribute.Bool("allowed", true))
+		response.Allowed = true
+		return response, nil
+	}
+}
+
 func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1274,12 +1342,14 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 			Allowed: false,
 		}
 
+		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+		storeID := req.GetStoreID()
+
 		opts := storage.ReadUserTupleOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: req.GetConsistency(),
 			},
 		}
-
 		t, err := ds.ReadUserTuple(ctx, storeID, reqTupleKey, opts)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -1309,9 +1379,39 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 	}
 }
 
-// checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
+// helper function to return whether checkDirectUserTuple should run.
+func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	relation := reqTupleKey.GetRelation()
+
+	isDirectlyRelated, _ := typesys.IsDirectlyRelated(
+		typesystem.DirectRelationReference(objectType, relation),                                                           // target
+		typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
+	)
+
+	return isDirectlyRelated
+}
+
+// helper function to return whether checkPublicAssignable should run.
+func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	objectType := tuple.GetType(reqTupleKey.GetObject())
+	relation := reqTupleKey.GetRelation()
+
+	isPubliclyAssignable, _ := typesys.IsPubliclyAssignable(
+		typesystem.DirectRelationReference(objectType, relation), // target
+		tuple.GetType(reqTupleKey.GetUser()),
+	)
+	return isPubliclyAssignable
+}
+
+// checkDirect composes three CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
-// while the second handler looks up relationships between the target 'object#relation' and any usersets
+// the second handler looks up wildcard matches on the provided 'object#relation@user:*',
+// while the third handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1331,10 +1431,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
 
-		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
+		// directlyRelatedUsersetTypes could be "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-
-		checkDirectUserTuple := c.checkDirectUserTuple(parentctx, req)
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1386,13 +1484,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		var checkFuncs []CheckHandlerFunc
 
-		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                                           // target
-			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
-		)
+		if shouldCheckDirectTuple(ctx, req.GetTupleKey()) {
+			checkFuncs = []CheckHandlerFunc{c.checkDirectUserTuple(parentctx, req)}
+		}
 
-		if shouldCheckDirectTuple {
-			checkFuncs = []CheckHandlerFunc{checkDirectUserTuple}
+		if shouldCheckPublicAssignable(ctx, reqTupleKey) {
+			checkFuncs = append(checkFuncs, c.checkPublicAssignable(parentctx, req))
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {

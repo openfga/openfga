@@ -6,22 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
-	"github.com/openfga/openfga/pkg/logger"
-
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -34,7 +32,7 @@ func TestMySQLDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	test.RunAllTests(t, ds, sqlcommon.NewSQLContinuationTokenSerializer())
+	test.RunAllTests(t, ds)
 }
 
 func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
@@ -584,12 +582,11 @@ func TestNew(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "TokenSerializer_nil",
+			name: "bad_uri",
 			args: args{
 				uri: "my;uri?bad=true",
 				cfg: &sqlcommon.Config{
-					Logger:          logger.NewNoopLogger(),
-					TokenSerializer: nil,
+					Logger: logger.NewNoopLogger(),
 				},
 			},
 			want:    nil,

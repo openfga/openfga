@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/internal/condition"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openfga/openfga/pkg/testutils"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
+	"github.com/openfga/openfga/internal/condition"
 	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -226,7 +225,7 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 	}{
 		`1`: {
 			inputError:    graph.ErrResolutionDepthExceeded,
-			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
+			expectedError: serverErrors.ErrAuthorizationModelResolutionTooComplex,
 		},
 		`2`: {
 			inputError:    condition.ErrEvaluationFailed,
@@ -234,11 +233,11 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 		},
 		`3`: {
 			inputError:    &ThrottledError{},
-			expectedError: serverErrors.ThrottledTimeout,
+			expectedError: serverErrors.ErrThrottledTimeout,
 		},
 		`4`: {
 			inputError:    context.DeadlineExceeded,
-			expectedError: serverErrors.RequestDeadlineExceeded,
+			expectedError: serverErrors.ErrRequestDeadlineExceeded,
 		},
 		`5`: {
 			inputError: &InvalidTupleError{Cause: errors.New("oh no")},

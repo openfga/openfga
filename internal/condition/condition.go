@@ -10,10 +10,11 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
 	celtypes "github.com/google/cel-go/common/types"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition/metrics"
 	"github.com/openfga/openfga/internal/condition/types"

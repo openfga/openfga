@@ -22,6 +22,7 @@ import (
 type MockTupleBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTupleBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockTupleBackendMockRecorder is the mock recorder for MockTupleBackend.
@@ -71,11 +72,11 @@ func (mr *MockTupleBackendMockRecorder) Read(ctx, store, tupleKey, options any) 
 }
 
 // ReadPage mocks base method.
-func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -149,6 +150,7 @@ func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w any) *gomock.Call
 type MockRelationshipTupleReader struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleReaderMockRecorder
+	isgomock struct{}
 }
 
 // MockRelationshipTupleReaderMockRecorder is the mock recorder for MockRelationshipTupleReader.
@@ -184,11 +186,11 @@ func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, tupleKey, op
 }
 
 // ReadPage mocks base method.
-func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -248,6 +250,7 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store,
 type MockRelationshipTupleWriter struct {
 	ctrl     *gomock.Controller
 	recorder *MockRelationshipTupleWriterMockRecorder
+	isgomock struct{}
 }
 
 // MockRelationshipTupleWriterMockRecorder is the mock recorder for MockRelationshipTupleWriter.
@@ -299,6 +302,7 @@ func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w any) *
 type MockAuthorizationModelReadBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelReadBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockAuthorizationModelReadBackendMockRecorder is the mock recorder for MockAuthorizationModelReadBackend.
@@ -349,11 +353,11 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -368,6 +372,7 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels
 type MockTypeDefinitionWriteBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockTypeDefinitionWriteBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockTypeDefinitionWriteBackendMockRecorder is the mock recorder for MockTypeDefinitionWriteBackend.
@@ -419,6 +424,7 @@ func (mr *MockTypeDefinitionWriteBackendMockRecorder) WriteAuthorizationModel(ct
 type MockAuthorizationModelBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAuthorizationModelBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockAuthorizationModelBackendMockRecorder is the mock recorder for MockAuthorizationModelBackend.
@@ -483,11 +489,11 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModel(ctx,
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -516,6 +522,7 @@ func (mr *MockAuthorizationModelBackendMockRecorder) WriteAuthorizationModel(ctx
 type MockStoresBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockStoresBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockStoresBackendMockRecorder is the mock recorder for MockStoresBackend.
@@ -580,11 +587,11 @@ func (mr *MockStoresBackendMockRecorder) GetStore(ctx, id any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockStoresBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MockStoresBackend) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -599,6 +606,7 @@ func (mr *MockStoresBackendMockRecorder) ListStores(ctx, options any) *gomock.Ca
 type MockAssertionsBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockAssertionsBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockAssertionsBackendMockRecorder is the mock recorder for MockAssertionsBackend.
@@ -651,6 +659,7 @@ func (mr *MockAssertionsBackendMockRecorder) WriteAssertions(ctx, store, modelID
 type MockChangelogBackend struct {
 	ctrl     *gomock.Controller
 	recorder *MockChangelogBackendMockRecorder
+	isgomock struct{}
 }
 
 // MockChangelogBackendMockRecorder is the mock recorder for MockChangelogBackend.
@@ -671,11 +680,11 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 }
 
 // ReadChanges mocks base method.
-func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, filter, options)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -690,6 +699,7 @@ func (mr *MockChangelogBackendMockRecorder) ReadChanges(ctx, store, filter, opti
 type MockOpenFGADatastore struct {
 	ctrl     *gomock.Controller
 	recorder *MockOpenFGADatastoreMockRecorder
+	isgomock struct{}
 }
 
 // MockOpenFGADatastoreMockRecorder is the mock recorder for MockOpenFGADatastore.
@@ -796,11 +806,11 @@ func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx any) *gomock.Call {
 }
 
 // ListStores mocks base method.
-func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, []byte, error) {
+func (m *MockOpenFGADatastore) ListStores(ctx context.Context, options storage.ListStoresOptions) ([]*openfgav1.Store, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, options)
 	ret0, _ := ret[0].([]*openfgav1.Store)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -885,11 +895,11 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModel(ctx, store, i
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
+func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
 	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -901,11 +911,11 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, 
 }
 
 // ReadChanges mocks base method.
-func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, []byte, error) {
+func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store string, filter storage.ReadChangesFilter, options storage.ReadChangesOptions) ([]*openfgav1.TupleChange, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, filter, options)
 	ret0, _ := ret[0].([]*openfgav1.TupleChange)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -917,11 +927,11 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, filter, opti
 }
 
 // ReadPage mocks base method.
-func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
+	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }

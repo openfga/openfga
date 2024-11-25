@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/karlseguin/ccache/v3"
 )
 
@@ -73,7 +71,7 @@ func (i InMemoryLRUCache[T]) Get(key string) T {
 		return zero
 	}
 
-	if value, expired := item.Value(), item.Expired(); !reflect.ValueOf(value).IsZero() && !expired {
+	if value, expired := item.Value(), item.Expired(); !expired && !reflect.ValueOf(value).IsZero() {
 		return value
 	}
 
@@ -123,7 +121,7 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 }
 
 type TupleIteratorCacheEntry struct {
-	Tuples       []*openfgav1.Tuple
+	Tuples       []*TupleRecord
 	LastModified time.Time
 }
 

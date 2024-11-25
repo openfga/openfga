@@ -4,19 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/encoder"
-
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/protoadapt"
 	"google.golang.org/protobuf/testing/protocmp"
 
-	"github.com/openfga/openfga/pkg/tuple"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
@@ -28,7 +26,7 @@ var (
 	}
 )
 
-func RunAllTests(t *testing.T, ds storage.OpenFGADatastore, tokenSerializer encoder.ContinuationTokenSerializer) {
+func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestDatastoreIsReady", func(t *testing.T) {
 		status, err := ds.IsReady(context.Background())
 		require.NoError(t, err)
@@ -37,7 +35,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore, tokenSerializer enco
 
 	// Tuples.
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
-	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds, tokenSerializer) })
+	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 	t.Run("TestReadAndReadPages", func(t *testing.T) { ReadAndReadPageTest(t, ds) })
 

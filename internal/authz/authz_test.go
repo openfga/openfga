@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -37,6 +38,7 @@ func TestGetRelation(t *testing.T) {
 		{name: "ListObjects", expectedResult: CanCallListObjects},
 		{name: "StreamedListObjects", expectedResult: CanCallListObjects},
 		{name: "Check", expectedResult: CanCallCheck},
+		{name: "BatchCheck", expectedResult: CanCallCheck},
 		{name: "ListUsers", expectedResult: CanCallListUsers},
 		{name: "WriteAssertions", expectedResult: CanCallWriteAssertions},
 		{name: "ReadAssertions", expectedResult: CanCallReadAssertions},
@@ -61,6 +63,27 @@ func TestGetRelation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetStoreID(t *testing.T) {
+	t.Run("has_store_ID", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockServer := mocks.NewMockServerInterface(mockController)
+
+		authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
+		require.Equal(t, "test-store", authorizer.AccessControlStoreID())
+	})
+	t.Run("no_config", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockServer := mocks.NewMockServerInterface(mockController)
+
+		authorizer := NewAuthorizer(nil, mockServer, logger.NewNoopLogger())
+		require.Equal(t, "", authorizer.AccessControlStoreID())
+	})
 }
 
 func TestAuthorizeCreateStore(t *testing.T) {
