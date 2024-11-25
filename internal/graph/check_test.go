@@ -1722,12 +1722,12 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 		request       *openfgav1.TupleKey
 		expectAllowed bool
 	}{
-		// first folder so the source is forced to abort iteration early
+		// first folder so the producer is forced to abort iteration early
 		`first_folder`: {
 			request:       tuple.NewTupleKey("doc:1", "viewer", "user:a"),
 			expectAllowed: true,
 		},
-		// last folder so the source has to read the entire iterator
+		// last folder so the producer has to read the entire iterator
 		`last_folder`: {
 			request:       tuple.NewTupleKey("doc:1", "viewer", "user:b"),
 			expectAllowed: true,

@@ -361,7 +361,7 @@ type cachedIterator struct {
 	relation   string
 	userType   string
 
-	// tuples is used to buffer tuples as they are read from `buffer`.
+	// tuples is used to buffer tuples as they are read from `iter`.
 	tuples []*openfgav1.Tuple
 
 	// records is used to buffer tuples that might end up in cache.
