@@ -35,7 +35,7 @@ type InMemoryCache[T any] interface {
 type InMemoryLRUCache[T any] struct {
 	client      *theine.Cache[string, T]
 	maxElements int64
-	closeOnce   *sync.Once
+	stopOnce    *sync.Once
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -51,7 +51,7 @@ var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
-		closeOnce:   &sync.Once{},
+		stopOnce:    &sync.Once{},
 	}
 
 	for _, opt := range opts {
@@ -77,7 +77,8 @@ func (i InMemoryLRUCache[T]) Get(key string) T {
 }
 
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
-	i.client.SetWithTTL(key, value, 0, ttl)
+	// negative ttl are noop
+	i.client.SetWithTTL(key, value, 1, ttl)
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
@@ -85,7 +86,7 @@ func (i InMemoryLRUCache[T]) Delete(key string) {
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
-	i.closeOnce.Do(func() {
+	i.stopOnce.Do(func() {
 		i.client.Close()
 	})
 }

@@ -809,6 +809,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
+	s.checkResolverCloser()
+	s.typesystemResolverStop()
+
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
 	}
@@ -816,14 +819,10 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.checkResolverCloser()
-
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
 	s.datastore.Close()
-
-	s.typesystemResolverStop()
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
