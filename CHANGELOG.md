@@ -12,7 +12,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
 
-
 ### Removed
 - Begin deprecation process for flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT`, in favor of `OPENFGA_CHECK_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name. [#2083](https://github.com/openfga/openfga/pull/2083)
