@@ -16,6 +16,7 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -117,7 +118,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// re-evaluate at a later time.
 	changes, _, err := c.findChanges(ctx, storeID)
 	if err != nil {
-		span.RecordError(err)
+		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
 		c.invalidateIteratorCache(storeID)
 		return time.Time{}, err
