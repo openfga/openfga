@@ -14,9 +14,9 @@ import (
 
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -224,45 +224,49 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 		expectedOutput *openfgav1.CheckError
 	}{
 		`test_invalid_relation_error`: {
-			inputError: &commands.InvalidRelationError{Cause: errors.New(errMsg)},
+			inputError: serverErrors.ValidationError(&commands.InvalidRelationError{Cause: errors.New(errMsg)}),
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
 				Message: errMsg,
 			},
 		},
 		`test_invalid_tuple_error`: {
-			inputError: &commands.InvalidTupleError{Cause: errors.New(errMsg)},
+			inputError: serverErrors.HandleTupleValidateError(
+				&tuple.InvalidTupleError{
+					Cause: &commands.InvalidTupleError{Cause: errors.New(errMsg)},
+				},
+			),
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple},
-				Message: errMsg,
+				Message: "Invalid tuple '%!s(<nil>)'. Reason: oh_no",
 			},
 		},
 		`test_resolution_depth_error`: {
-			inputError: graph.ErrResolutionDepthExceeded,
+			inputError: serverErrors.ErrAuthorizationModelResolutionTooComplex,
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex},
-				Message: graph.ErrResolutionDepthExceeded.Error(),
+				Message: "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting",
 			},
 		},
 		`test_condition_error`: {
-			inputError: condition.ErrEvaluationFailed,
+			inputError: serverErrors.ValidationError(condition.ErrEvaluationFailed),
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
 				Message: condition.ErrEvaluationFailed.Error(),
 			},
 		},
 		`test_throttled_error`: {
-			inputError: &commands.ThrottledError{Cause: errors.New(errMsg)},
+			inputError: serverErrors.ErrThrottledTimeout,
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error},
-				Message: errMsg,
+				Message: "timeout due to throttling on complex request",
 			},
 		},
 		`test_deadline_exceeded`: {
-			inputError: context.DeadlineExceeded,
+			inputError: serverErrors.ErrRequestDeadlineExceeded,
 			expectedOutput: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded},
-				Message: context.DeadlineExceeded.Error(),
+				Message: "Request Deadline Exceeded",
 			},
 		},
 		`test_generic_error`: {
@@ -294,11 +298,11 @@ func TestTransformCheckResultToProto(t *testing.T) {
 	// These two make 100% coverage
 	id1 := commands.CorrelationID("abc123")
 	outcomes[id1] = &commands.BatchCheckOutcome{
-		CheckResponse: &graph.ResolveCheckResponse{Allowed: true},
+		CheckResponse: &openfgav1.CheckResponse{Allowed: true},
 	}
 
 	id2 := commands.CorrelationID("def456")
-	outcomes[id2] = &commands.BatchCheckOutcome{Err: graph.ErrResolutionDepthExceeded}
+	outcomes[id2] = &commands.BatchCheckOutcome{Err: serverErrors.ErrAuthorizationModelResolutionTooComplex}
 
 	// format the expected final output of the transform function
 	expectedResult[string(id1)] = &openfgav1.BatchCheckSingleResult{
@@ -309,7 +313,7 @@ func TestTransformCheckResultToProto(t *testing.T) {
 		CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 			Error: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex},
-				Message: graph.ErrResolutionDepthExceeded.Error(),
+				Message: "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting",
 			},
 		},
 	}
@@ -326,12 +330,12 @@ func TestTransformCheckResultToProto(t *testing.T) {
 func BenchmarkTransformCheckResultToProto(b *testing.B) {
 	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{
 		"abc123": {
-			CheckResponse: &graph.ResolveCheckResponse{
+			CheckResponse: &openfgav1.CheckResponse{
 				Allowed: true,
 			},
 		},
 		"def456": {
-			Err: graph.ErrResolutionDepthExceeded,
+			Err: serverErrors.ErrAuthorizationModelResolutionTooComplex,
 		},
 	}
 

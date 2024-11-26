@@ -9,14 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
-	"github.com/openfga/openfga/internal/graph"
-	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -26,29 +25,15 @@ func TestBatchCheckCommand(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	maxChecks := uint32(50)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-	ds := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockClient := mocks.NewMockOpenFGAServiceClient(mockController)
 
-	mockCheckResolver := graph.NewMockCheckResolver(mockController)
-	model := testutils.MustTransformDSLToProtoWithID(`
-		model
-			schema 1.1
-		type user
-		type doc
-			relations
-				define viewer: [user]
-	`)
-	ts, err := typesystem.NewAndValidate(context.Background(), model)
-	require.NoError(t, err)
+	maxChecks := uint32(50)
 
 	cmd := NewBatchCheckCommand(
-		ds,
-		mockCheckResolver,
-		ts,
+		mockClient,
 		WithBatchCheckMaxChecksPerBatch(maxChecks),
-		WithBatchCheckCommandCacheController(cachecontroller.NewNoopCacheController()),
 	)
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
@@ -65,12 +50,12 @@ func TestBatchCheckCommand(t *testing.T) {
 			}
 		}
 
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+		mockClient.EXPECT().Check(gomock.Any(), gomock.Any()).
 			Times(numChecks).
 			Return(nil, nil)
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -101,12 +86,12 @@ func TestBatchCheckCommand(t *testing.T) {
 			}
 		}
 
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+		mockClient.EXPECT().Check(gomock.Any(), gomock.Any()).
 			Times(numChecks).
 			Return(nil, nil)
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -139,7 +124,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -152,7 +137,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               []*openfgav1.BatchCheckItem{},
 			StoreID:              ulid.Make().String(),
 		}
@@ -178,7 +163,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -205,7 +190,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -232,7 +217,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			AuthorizationModelID: "1234",
 			Checks:               checks,
 			StoreID:              ulid.Make().String(),
 		}
@@ -256,8 +241,18 @@ func TestBatchCheckCommand(t *testing.T) {
 	})
 }
 
+// TODO: in order to do this we'd need to spin up a whole gRPC server.
+// Should we do benchmarks elsewhere?
 func BenchmarkBatchCheckCommand(b *testing.B) {
-	ds := memory.New()
+	conn, err := grpc.NewClient(
+		"0.0.0.0:8081",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(b, err)
+
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
@@ -268,14 +263,10 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	`)
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(b, err)
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
-	b.Cleanup(checkResolverCloser)
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
 	cmd := NewBatchCheckCommand(
-		ds,
-		checkResolver,
-		ts,
+		client,
 		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
 	)
 

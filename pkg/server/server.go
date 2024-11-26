@@ -13,10 +13,13 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -46,6 +49,7 @@ const (
 	ExperimentalCheckOptimizations  ExperimentalFeatureFlag = "enable-check-optimizations"
 	ExperimentalAccessControlParams ExperimentalFeatureFlag = "enable-access-control"
 	allowedLabel                                            = "allowed"
+	errorLabel                                              = "error"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -201,6 +205,11 @@ type Server struct {
 
 	ctx                           context.Context
 	contextPropagationToDatastore bool
+
+	gRPCAddr string
+
+	grpcConn *grpc.ClientConn
+	client   openfgav1.OpenFGAServiceClient
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -640,6 +649,14 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithgRPCAddress defines the address to be used when calling the gRPC server internally.
+// This is currently only used in BatchCheck to call Check.
+func WithgRPCAddress(addr string) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.gRPCAddr = addr
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -804,6 +821,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.authorizer = authz.NewAuthorizerNoop(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
 	}
 
+	conn, err := grpc.NewClient(
+		s.gRPCAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	)
+	if err != nil {
+		return nil, err
+	}
+	s.grpcConn = conn
+
+	s.client = openfgav1.NewOpenFGAServiceClient(s.grpcConn)
+
 	return s, nil
 }
 
@@ -814,6 +843,10 @@ func (s *Server) Close() {
 	}
 	if s.listUsersDispatchThrottler != nil {
 		s.listUsersDispatchThrottler.Close()
+	}
+
+	if s.grpcConn != nil {
+		s.grpcConn.Close()
 	}
 
 	s.checkResolverCloser()

@@ -7,23 +7,16 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type BatchCheckQuery struct {
-	cacheController     cachecontroller.CacheController
-	checkResolver       graph.CheckResolver
-	datastore           storage.RelationshipTupleReader
 	logger              logger.Logger
 	maxChecksAllowed    uint32
 	maxConcurrentChecks uint32
-	typesys             *typesystem.TypeSystem
+	client              openfgav1.OpenFGAServiceClient
 }
 
 type BatchCheckCommandParams struct {
@@ -34,7 +27,7 @@ type BatchCheckCommandParams struct {
 }
 
 type BatchCheckOutcome struct {
-	CheckResponse *graph.ResolveCheckResponse
+	CheckResponse *openfgav1.CheckResponse
 	Err           error
 }
 
@@ -54,12 +47,6 @@ type CorrelationID string
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
-	return func(bq *BatchCheckQuery) {
-		bq.cacheController = cc
-	}
-}
-
 func WithBatchCheckCommandLogger(l logger.Logger) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
 		bq.logger = l
@@ -78,13 +65,10 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(client openfgav1.OpenFGAServiceClient, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
-		datastore:           datastore,
-		cacheController:     cachecontroller.NewNoopCacheController(),
-		checkResolver:       checkResolver,
-		typesys:             typesys,
+		client:              client,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 	}
@@ -126,26 +110,17 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			default:
 			}
 
-			checkQuery := NewCheckCommand(
-				bq.datastore,
-				bq.checkResolver,
-				bq.typesys,
-				WithCheckCommandLogger(bq.logger),
-				WithCacheController(bq.cacheController),
-			)
-
-			checkParams := &CheckCommandParams{
-				StoreID:          params.StoreID,
-				TupleKey:         check.GetTupleKey(),
-				ContextualTuples: check.GetContextualTuples(),
-				Context:          check.GetContext(),
-				Consistency:      params.Consistency,
-			}
-
-			response, _, err := checkQuery.Execute(ctx, checkParams)
+			resp, err := bq.client.Check(ctx, &openfgav1.CheckRequest{
+				StoreId:              params.StoreID,
+				TupleKey:             check.GetTupleKey(),
+				AuthorizationModelId: params.AuthorizationModelID,
+				ContextualTuples:     check.GetContextualTuples(),
+				Context:              check.GetContext(),
+				Consistency:          params.Consistency,
+			})
 
 			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
-				CheckResponse: response,
+				CheckResponse: resp,
 				Err:           err,
 			})
 
@@ -163,7 +138,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		outcome := v.(*BatchCheckOutcome)
 		results[CorrelationID(k.(string))] = outcome
 
-		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
+		// TODO: does the overall query count within the BatchCheck matter or are we ok with the tracking
+		// we now get from the individual Check calls?
+		// totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
 		return true
 	})
 

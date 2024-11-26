@@ -652,6 +652,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithExperimentals(experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),
+		server.WithgRPCAddress(config.GRPC.Addr),
 	)
 
 	s.Logger.Info(

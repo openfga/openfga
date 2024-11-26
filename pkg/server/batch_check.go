@@ -13,8 +13,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -45,28 +43,18 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		Method:  authz.BatchCheck,
 	})
 
-	storeID := req.GetStoreId()
-
-	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
 	cmd := commands.NewBatchCheckCommand(
-		s.checkDatastore,
-		s.checkResolver,
-		typesys,
-		commands.WithBatchCheckCommandCacheController(s.cacheController),
+		s.client,
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
-		AuthorizationModelID: typesys.GetAuthorizationModelID(),
+		AuthorizationModelID: req.GetAuthorizationModelId(),
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
-		StoreID:              storeID,
+		StoreID:              req.GetStoreId(),
 	})
 
 	if err != nil {
@@ -105,7 +93,7 @@ func transformCheckResultToProto(checkResults map[commands.CorrelationID]*comman
 			}
 		} else {
 			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
-				Allowed: v.CheckResponse.Allowed,
+				Allowed: v.CheckResponse.GetAllowed(),
 			}
 		}
 
@@ -116,28 +104,38 @@ func transformCheckResultToProto(checkResults map[commands.CorrelationID]*comman
 }
 
 func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckError {
-	var invalidRelationError *commands.InvalidRelationError
-	var invalidTupleError *commands.InvalidTupleError
-	var throttledError *commands.ThrottledError
-
 	err := &openfgav1.CheckError{Message: cmdErr.Error()}
+	var internalError *serverErrors.InternalError
 
-	// switch to map the possible errors to their specific GRPC codes in the proto definition
-	switch {
-	case errors.As(cmdErr, &invalidRelationError):
-		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	case errors.As(cmdErr, &invalidTupleError):
-		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
-	case errors.Is(cmdErr, graph.ErrResolutionDepthExceeded):
-		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
-	case errors.Is(cmdErr, condition.ErrEvaluationFailed):
-		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	case errors.As(cmdErr, &throttledError):
-		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
-	case errors.Is(cmdErr, context.DeadlineExceeded):
-		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
-	default:
-		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
+	// map the possible errors to their specific GRPC codes in the proto definition
+	if statusErr := status.Convert(cmdErr); statusErr != nil {
+		err.Message = statusErr.Message()
+		switch {
+		case statusErr.Code() == codes.Code(openfgav1.ErrorCode_validation_error):
+			err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
+		case statusErr.Code() == codes.Code(openfgav1.ErrorCode_invalid_tuple):
+			err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
+		case errors.Is(statusErr.Err(), serverErrors.ErrThrottledTimeout):
+			err.Code = &openfgav1.CheckError_InputError{
+				InputError: openfgav1.ErrorCode_validation_error,
+			}
+		case errors.Is(statusErr.Err(), serverErrors.ErrAuthorizationModelResolutionTooComplex):
+			err.Code = &openfgav1.CheckError_InputError{
+				InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex,
+			}
+		case errors.Is(statusErr.Err(), serverErrors.ErrRequestDeadlineExceeded):
+			err.Code = &openfgav1.CheckError_InternalError{
+				InternalError: openfgav1.InternalErrorCode(statusErr.Code()),
+			}
+		default:
+			err.Code = &openfgav1.CheckError_InternalError{
+				InternalError: openfgav1.InternalErrorCode_internal_error,
+			}
+		}
+	} else if ok := errors.As(cmdErr, &internalError); ok {
+		err.Code = &openfgav1.CheckError_InternalError{
+			InternalError: err.GetInternalError(),
+		}
 	}
 
 	return err
