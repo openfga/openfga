@@ -44,7 +44,6 @@ type combinedIterator[T any] struct {
 	mu      *sync.Mutex
 	once    *sync.Once
 	pending []Iterator[T]
-	done    []Iterator[T]
 }
 
 // Next see [Iterator.Next].
@@ -61,7 +60,7 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
-			c.done = append(c.done, iter)
+			iter.Stop() // clean up before dropping the reference
 			c.mu.Unlock()
 			return c.Next(ctx)
 		}
@@ -77,9 +76,6 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 func (c *combinedIterator[T]) Stop() {
 	c.once.Do(func() {
 		c.mu.Lock()
-		for _, iter := range c.done {
-			iter.Stop()
-		}
 		for _, iter := range c.pending {
 			iter.Stop()
 		}
@@ -101,7 +97,7 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 	if err != nil {
 		if errors.Is(err, ErrIteratorDone) {
 			c.pending = c.pending[1:]
-			c.done = append(c.done, iter)
+			iter.Stop()
 			c.mu.Unlock()
 			return c.Head(ctx)
 		}
@@ -122,12 +118,12 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 			pending = append(pending, iter)
 		}
 	}
-	return &combinedIterator[T]{pending: pending, done: make([]Iterator[T], 0, len(pending)), once: &sync.Once{}, mu: &sync.Mutex{}}
+	return &combinedIterator[T]{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}}
 }
 
 // NewStaticTupleIterator returns a [TupleIterator] that iterates over the provided slice.
 func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
-	iter := &staticIterator[*openfgav1.Tuple]{
+	iter := &StaticIterator[*openfgav1.Tuple]{
 		items: tuples,
 	}
 
@@ -136,7 +132,7 @@ func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 
 // NewStaticTupleKeyIterator returns a [TupleKeyIterator] that iterates over the provided slice.
 func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
-	iter := &staticIterator[*openfgav1.TupleKey]{
+	iter := &StaticIterator[*openfgav1.TupleKey]{
 		items: tupleKeys,
 	}
 
@@ -181,12 +177,12 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 	return &tupleKeyIterator{iter, &sync.Once{}}
 }
 
-type staticIterator[T any] struct {
+type StaticIterator[T any] struct {
 	items []T
 }
 
 // Next see [Iterator.Next].
-func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
+func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
 
 	if ctx.Err() != nil {
@@ -204,10 +200,10 @@ func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 // Stop see [Iterator.Stop].
-func (s *staticIterator[T]) Stop() {}
+func (s *StaticIterator[T]) Stop() {}
 
 // Head see [Iterator.Head].
-func (s *staticIterator[T]) Head(ctx context.Context) (T, error) {
+func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 	var val T
 
 	if ctx.Err() != nil {
@@ -219,6 +215,10 @@ func (s *staticIterator[T]) Head(ctx context.Context) (T, error) {
 	}
 
 	return s.items[0], nil
+}
+
+func NewStaticIterator[T any](items []T) Iterator[T] {
+	return &StaticIterator[T]{items: items}
 }
 
 // TupleKeyFilterFunc is a filter function that is used to filter out

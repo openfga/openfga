@@ -753,3 +753,79 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 		})
 	}
 }
+
+func TestReverseExpandHonorsConsistency(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	store := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
+
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	ctx := context.Background()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	// run once with no consistency specified
+	unspecifiedConsistency := storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
+	}
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), unspecifiedConsistency).
+		Times(1)
+
+	request := &ReverseExpandRequest{
+		StoreID:    store,
+		ObjectType: "document",
+		Relation:   "viewer",
+		User: &UserRefObject{
+			Object: &openfgav1.Object{
+				Type: "user",
+				Id:   "maria",
+			},
+		},
+		ContextualTuples: []*openfgav1.TupleKey{},
+	}
+
+	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+	resultChan := make(chan *ReverseExpandResult)
+
+	err = reverseExpandQuery.Execute(ctx, request, resultChan, NewResolutionMetadata())
+	require.NoError(t, err)
+
+	// now do it again with specified consistency
+	highConsistency := storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY},
+	}
+
+	request.Consistency = openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), highConsistency).
+		Times(1)
+
+	resultChanTwo := make(chan *ReverseExpandResult)
+	err = reverseExpandQuery.Execute(ctx, request, resultChanTwo, NewResolutionMetadata())
+	require.NoError(t, err)
+
+	// Make sure we didn't leave channels open
+	select {
+	case _, open := <-resultChan:
+		if open {
+			require.FailNow(t, "results channels should be closed")
+		}
+	case _, open := <-resultChanTwo:
+		if open {
+			require.FailNow(t, "results channels should be closed")
+		}
+	}
+}

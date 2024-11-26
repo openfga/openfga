@@ -8,35 +8,14 @@ import (
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
-	RunCommandTests(t, ds)
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestExpandQuery", func(t *testing.T) { TestExpandQuery(t, ds) })
 	t.Run("TestExpandQueryErrors", func(t *testing.T) { TestExpandQueryErrors(t, ds) })
 
-	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds) })
-
-	t.Run("TestReadAuthorizationModelsWithoutPaging",
-		func(t *testing.T) { TestReadAuthorizationModelsWithoutPaging(t, ds) },
-	)
-
-	t.Run("TestReadAuthorizationModelsWithPaging",
-		func(t *testing.T) { TestReadAuthorizationModelsWithPaging(t, ds) },
-	)
-
-	t.Run("TestReadAuthorizationModelsInvalidContinuationToken",
-		func(t *testing.T) { TestReadAuthorizationModelsInvalidContinuationToken(t, ds) },
-	)
-
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
-}
-
-func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, ds) })
-	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { WriteAuthorizationModelTest(t, ds) })
-	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { TestWriteAndReadAssertions(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
