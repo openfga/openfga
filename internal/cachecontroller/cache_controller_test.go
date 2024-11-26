@@ -48,7 +48,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(nil),
-			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return([]*openfgav1.TupleChange{
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), gomock.Any()).AnyTimes().Return([]*openfgav1.TupleChange{
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(changelogTimestamp),
@@ -58,10 +58,10 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
-			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
-		require.Equal(t, changelogTimestamp, invalidationTime)
+		require.Greater(t, invalidationTime, time.Now())
 	})
 }
 
@@ -254,7 +254,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				iteratorCacheTTL: 10 * time.Second,
 				sf:               &singleflight.Group{},
 			}
-			_, err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
+			err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
 			if test.expectedError != nil {
 				require.ErrorIs(t, err, test.expectedError)
 				return

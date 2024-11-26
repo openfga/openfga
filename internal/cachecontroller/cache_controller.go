@@ -36,6 +36,8 @@ var (
 	})
 )
 
+const futureCacheInvalidationTime = time.Hour
+
 type CacheController interface {
 	DetermineInvalidation(ctx context.Context, storeID string) time.Time
 }
@@ -88,15 +90,20 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	lastModified, err, _ := c.sf.Do(storeID, func() (interface{}, error) {
-		return c.findChangesAndInvalidate(ctx, storeID)
-	})
+	go func() {
+		// if the cache cannot be found, we want to invalidate entries in the background
+		// so that it does not block the answer path.
+		_, _, _ = c.sf.Do(storeID, func() (interface{}, error) {
+			// Note that when a duplicate (i.e., same storeID) comes in, the duplicate caller waits
+			// for the original to complete and receives the same results.
+			_ = c.findChangesAndInvalidate(ctx, storeID)
+			return nil, nil
+		})
+	}()
 
-	if err != nil {
-		return time.Time{}
-	}
-
-	return lastModified.(time.Time)
+	// we want to return a time in the future so that all entries for the
+	// store will be considered as expired.
+	return time.Now().Add(futureCacheInvalidationTime)
 }
 
 func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
@@ -109,7 +116,7 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) (time.Time, error) {
+func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) error {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Bool("invalidations", true))
 	cacheKey := storage.GetChangelogCacheKey(storeID)
@@ -121,7 +128,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
 		c.invalidateIteratorCache(storeID)
-		return time.Time{}, err
+		return err
 	}
 
 	entry := &storage.ChangelogCacheEntry{
@@ -137,7 +144,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(lastVerified) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
-		return entry.LastModified, nil
+		return nil
 	}
 
 	// need to consider there might just be 1 change
@@ -161,7 +168,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		}
 	}
 
-	return entry.LastModified, nil
+	return nil
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
