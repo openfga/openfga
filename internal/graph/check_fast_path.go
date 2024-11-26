@@ -683,6 +683,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iteratorMsg) chan 
 	}
 
 	go func() {
+		// NOTE: the consumer of this channel will block waiting for it to close
 		_ = pool.Wait()
 		close(out)
 	}()
