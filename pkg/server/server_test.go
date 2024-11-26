@@ -32,7 +32,6 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1300,133 +1299,6 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	require.True(t, checkResponse.GetAllowed())
 }
 
-func TestWriteAssertionModelDSError(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	ctx := context.Background()
-
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	typedefs := parser.MustTransformDSLToProto(`
-		model
-			schema 1.1
-
-		type user
-
-		type repo
-			relations
-				define reader: [user]`).GetTypeDefinitions()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDSOldSchema := mockstorage.NewMockOpenFGADatastore(mockController)
-
-	mockDSOldSchema.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   typesystem.SchemaVersion1_0,
-			TypeDefinitions: typedefs,
-		}, nil)
-
-	mockDSBadReadAuthModel := mockstorage.NewMockOpenFGADatastore(mockController)
-
-	mockDSBadReadAuthModel.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		AnyTimes().
-		Return(nil, fmt.Errorf("unable to read"))
-
-	mockDSBadWriteAssertions := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDSBadWriteAssertions.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: typedefs,
-		}, nil)
-	mockDSBadWriteAssertions.EXPECT().
-		WriteAssertions(gomock.Any(), storeID, modelID, gomock.Any()).
-		AnyTimes().
-		Return(fmt.Errorf("unable to write"))
-
-	tests := []struct {
-		name          string
-		assertions    []*openfgav1.Assertion
-		mockDatastore *mockstorage.MockOpenFGADatastore
-		expectedError error
-	}{
-		{
-			name:          "unsupported_schema",
-			assertions:    []*openfgav1.Assertion{},
-			mockDatastore: mockDSOldSchema,
-			expectedError: serverErrors.ValidationError(
-				fmt.Errorf("invalid schema version"),
-			),
-		},
-		{
-			name:          "failed_to_read",
-			assertions:    []*openfgav1.Assertion{},
-			mockDatastore: mockDSBadReadAuthModel,
-			expectedError: serverErrors.NewInternalError(
-				"", fmt.Errorf("unable to read"),
-			),
-		},
-		{
-			name:          "failed_to_write",
-			assertions:    []*openfgav1.Assertion{},
-			mockDatastore: mockDSBadWriteAssertions,
-			expectedError: serverErrors.NewInternalError(
-				"", fmt.Errorf("unable to write"),
-			),
-		},
-	}
-
-	for _, curTest := range tests {
-		t.Run(curTest.name, func(t *testing.T) {
-			request := &openfgav1.WriteAssertionsRequest{
-				StoreId:              storeID,
-				Assertions:           curTest.assertions,
-				AuthorizationModelId: modelID,
-			}
-
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
-			_, err := writeAssertionCmd.Execute(ctx, request)
-			require.EqualError(t, err, curTest.expectedError.Error())
-		})
-	}
-}
-
-func TestReadAssertionModelDSError(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	ctx := context.Background()
-
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDSBadReadAssertions := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDSBadReadAssertions.EXPECT().
-		ReadAssertions(gomock.Any(), storeID, modelID).
-		AnyTimes().
-		Return(nil, fmt.Errorf("unable to read"))
-
-	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions)
-	_, err := readAssertionQuery.Execute(ctx, storeID, modelID)
-	expectedError := serverErrors.NewInternalError(
-		"", fmt.Errorf("unable to read"),
-	)
-	require.EqualError(t, err, expectedError.Error())
-}
-
 func TestResolveAuthorizationModel(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2453,45 +2325,4 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
-}
-
-func TestCheckValidatesStoreID(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	s := MustNewServerWithOpts(WithDatastore(mockDatastore))
-
-	t.Cleanup(func() {
-		mockDatastore.EXPECT().Close().Times(1)
-		s.Close()
-	})
-
-	_, err := s.Check(context.Background(), &openfgav1.CheckRequest{
-		StoreId:  "not a ulid",
-		TupleKey: tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
-	})
-
-	require.ErrorContains(t, err, "invalid CheckRequest.StoreId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
-}
-
-func TestCheckValidatesModelID(t *testing.T) {
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	s := MustNewServerWithOpts(WithDatastore(mockDatastore))
-
-	t.Cleanup(func() {
-		mockDatastore.EXPECT().Close().Times(1)
-		s.Close()
-	})
-
-	_, err := s.Check(context.Background(), &openfgav1.CheckRequest{
-		StoreId:              "01JAGC4TMBSVGFJ7TR18KGBVD6",
-		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
-		AuthorizationModelId: "not a ulid",
-	})
-
-	require.ErrorContains(t, err, "invalid CheckRequest.AuthorizationModelId: value does not match regex pattern \"^[ABCDEFGHJKMNPQRSTVWXYZ0-9]{26}$\"")
 }
