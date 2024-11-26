@@ -48,7 +48,7 @@ func WithMaxCacheSize[T any](maxElements int64) InMemoryLRUCacheOpt[T] {
 
 var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
-func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
+func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCache[T], error) {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
 		stopOnce:    &sync.Once{},
@@ -61,9 +61,10 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCach
 	var err error
 	t.client, err = theine.NewBuilder[string, T](t.maxElements).Build()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return t
+
+	return t, nil
 }
 
 func (i InMemoryLRUCache[T]) Get(key string) T {

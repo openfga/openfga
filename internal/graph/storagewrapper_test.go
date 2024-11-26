@@ -856,9 +856,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -877,7 +878,7 @@ func TestCachedIterator(t *testing.T) {
 			userType:          "",
 		}
 
-		_, err := iter.Next(ctx)
+		_, err = iter.Next(ctx)
 		require.NoError(t, err)
 
 		_, err = iter.Next(ctx)
@@ -893,9 +894,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -914,7 +916,7 @@ func TestCachedIterator(t *testing.T) {
 			userType:          "",
 		}
 
-		_, err := iter.Next(ctx)
+		_, err = iter.Next(ctx)
 		require.NoError(t, err)
 
 		require.Nil(t, iter.tuples)
@@ -924,9 +926,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -977,9 +980,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -1011,9 +1015,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -1070,9 +1075,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -1110,9 +1116,10 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
@@ -1134,8 +1141,7 @@ func TestCachedIterator(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := iter.Next(cancelledCtx)
-
+		_, err = iter.Next(cancelledCtx)
 		require.ErrorIs(t, err, context.Canceled)
 
 		iter.Stop()

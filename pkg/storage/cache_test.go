@@ -10,7 +10,8 @@ import (
 
 func TestInMemoryCache(t *testing.T) {
 	t.Run("set_and_get", func(t *testing.T) {
-		cache := NewInMemoryLRUCache[string]()
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
@@ -21,7 +22,8 @@ func TestInMemoryCache(t *testing.T) {
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {
-		cache := NewInMemoryLRUCache[string]()
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
