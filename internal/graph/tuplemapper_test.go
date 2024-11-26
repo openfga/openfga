@@ -59,7 +59,7 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := wrapIterator(NestedTTUKind, innerIter)
+	mapper := wrapIterator(TTUKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 

@@ -30,7 +30,8 @@ var tracer = otel.Tracer("internal/graph/check")
 type setOperatorType int
 
 var (
-	ErrShortCircuit = errors.New("short circuit")
+	ErrShortCircuit       = errors.New("short circuit")
+	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
 )
 
 const (
@@ -1090,7 +1091,7 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
@@ -1101,7 +1102,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, tupleMapper TupleMap
 		}()
 
 		for {
-			res, err := tupleMapper.Next(ctx)
+			res, err := iter.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
 					return
@@ -1219,7 +1220,7 @@ func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckR
 	defer span.End()
 
 	return c.nestedFastPath(ctx, req, iter, &nestedMapping{
-		kind:             NestedTTUKind,
+		kind:             TTUKind,
 		tuplesetRelation: rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
 	})
 }
@@ -1252,7 +1253,7 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 			Relation:                    req.GetTupleKey().GetRelation(),
 			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
-	case NestedTTUKind:
+	case TTUKind:
 		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
 			storage.ReadOptions{Consistency: consistencyOpts})
 	default:
@@ -1686,8 +1687,15 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				resolver = c.checkTTUFastPath
 			}
 		}
-		if c.optimizationsEnabled && typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-			resolver = c.nestedTTUFastPath
+
+		if c.optimizationsEnabled {
+			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+				resolver = c.nestedTTUFastPath
+			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				// TODO: Add support for contextual tuples - since these are injected without order
+				// TODO: Add support for wildcard - we are doing exact matches
+				resolver = c.checkTTUFastPathV2
+			}
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
@@ -1722,7 +1730,7 @@ func (c *LocalChecker) checkSetOperation(
 		}
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
-			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+			return nil, ErrUnknownSetOperator
 		}
 	}
 
@@ -1762,7 +1770,7 @@ func (c *LocalChecker) checkRewrite(
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
-			return nil, fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+			return nil, ErrUnknownSetOperator
 		}
 	}
 }
