@@ -556,14 +556,19 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	rightSet := hashset.New()
 	leftSet := hashset.New()
 
-	r, ok := <-rightChan
-	if !ok {
-		return res, nil
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r, ok := <-rightChan:
+		if !ok {
+			return res, nil
+		}
+		if r.err != nil {
+			return nil, r.err
+		}
+		rightSet.Add(r.userset)
 	}
-	if r.err != nil {
-		return nil, r.err
-	}
-	rightSet.Add(r.userset)
+
 	for leftOpen || rightOpen {
 		select {
 		case <-ctx.Done():
