@@ -582,7 +582,10 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	if len(node.GetWildcards()) != 0 {
 		return false
 	}
-
+	// node.weight(userType) is the maximum weight to get to "userType".
+	// if the weight is exactly 2 (and all TTUs are a minimum of 2), exit early.
+	// if the weight is > 2:
+	//	it is possible that the node has multiple paths to arrive to "userType", but the TTU rewrite being evaluated could actually have weight == 2, in which case return true.
 	w, ok := node.GetWeight(userType)
 	if !ok {
 		return false
@@ -599,7 +602,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	ttuEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 
 	// find all TTU edges with valid weight
-	// but exit immediately if there is any above level
+	// but exit immediately if there is any above weight 2
 	for len(ttuEdges) == 0 {
 		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 		for _, edge := range edges {
@@ -613,7 +616,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 			}
 
 			// a TuplesetRelation may have multiple parents and these need to be visited to ensure their weight does not
-			// exceed "level"
+			// exceed weight 2
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), fmt.Sprintf("#%s", computedRelation)) {

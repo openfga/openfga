@@ -4789,6 +4789,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 								define viewer: member from parent
 					`,
 			objectType:        "folder",
+			relation:          "viewer",
 			tuplesetRelation:  "parent",
 			computedRelation:  "member",
 			expectCanFastPath: false,
@@ -4898,7 +4899,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 						condition x_condition(x: int) {x > 1}
 					`,
 			objectType:        "license",
-			relation:          "viewer",
+			relation:          "holder_member",
 			tuplesetRelation:  "owner",
 			computedRelation:  "member",
 			expectCanFastPath: false,
