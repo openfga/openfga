@@ -5,6 +5,7 @@ package storage
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Yiling-J/theine-go"
@@ -28,6 +29,8 @@ type InMemoryCache[T any] interface {
 
 	// Stop cleans resources.
 	Stop()
+
+	IsReady() bool
 }
 
 // Specific implementation
@@ -36,6 +39,7 @@ type InMemoryLRUCache[T any] struct {
 	client      *theine.Cache[string, T]
 	maxElements int64
 	stopOnce    *sync.Once
+	stopping    *atomic.Bool
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -52,6 +56,7 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
 		stopOnce:    &sync.Once{},
+		stopping:    &atomic.Bool{},
 	}
 
 	for _, opt := range opts {
@@ -87,9 +92,18 @@ func (i InMemoryLRUCache[T]) Delete(key string) {
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
+	swapped := i.stopping.CompareAndSwap(false, true)
+	if !swapped {
+		return
+	}
+
 	i.stopOnce.Do(func() {
 		i.client.Close()
 	})
+}
+
+func (i InMemoryLRUCache[T]) IsReady() bool {
+	return !i.stopping.Load()
 }
 
 type ChangelogCacheEntry struct {

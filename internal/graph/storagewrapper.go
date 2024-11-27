@@ -560,9 +560,11 @@ func (c *cachedIterator) flush() {
 	c.tuples = nil
 	c.records = nil
 
-	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, c.ttl)
-	for _, k := range c.invalidEntityKeys {
-		c.cache.Delete(k)
+	if c.cache.IsReady() {
+		c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, c.ttl)
+		for _, k := range c.invalidEntityKeys {
+			c.cache.Delete(k)
+		}
+		tuplesCacheSizeHistogram.WithLabelValues(c.operation).Observe(float64(len(records)))
 	}
-	tuplesCacheSizeHistogram.WithLabelValues(c.operation).Observe(float64(len(records)))
 }
