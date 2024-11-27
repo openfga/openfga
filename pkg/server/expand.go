@@ -50,7 +50,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
+	q := commands.NewExpandQuery(s.datastore, req.GetContextualTuples().GetTupleKeys(), commands.WithExpandQueryLogger(s.logger))
 	return q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		&openfgav1.ExpandRequest{

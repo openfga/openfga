@@ -12,7 +12,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
@@ -43,13 +42,8 @@ func TestBatchCheckCommand(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	cmd := NewBatchCheckCommand(
-		ds,
-		mockCheckResolver,
-		ts,
-		WithBatchCheckMaxChecksPerBatch(maxChecks),
-		WithBatchCheckCommandCacheController(cachecontroller.NewNoopCacheController()),
-	)
+	cmd := NewBatchCheckCommand(ds, mockCheckResolver,
+		WithBatchCheckMaxChecksPerBatch(maxChecks))
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
 		numChecks := int(maxChecks)
@@ -70,9 +64,9 @@ func TestBatchCheckCommand(t *testing.T) {
 			Return(nil, nil)
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		result, meta, err := cmd.Execute(context.Background(), params)
@@ -106,9 +100,9 @@ func TestBatchCheckCommand(t *testing.T) {
 			Return(nil, nil)
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		result, _, err := cmd.Execute(context.Background(), params)
@@ -139,9 +133,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
@@ -152,9 +146,9 @@ func TestBatchCheckCommand(t *testing.T) {
 
 	t.Run("fails_with_validation_error_if_no_tuples", func(t *testing.T) {
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               []*openfgav1.BatchCheckItem{},
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  []*openfgav1.BatchCheckItem{},
+			StoreID: ulid.Make().String(),
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
@@ -178,9 +172,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
@@ -205,9 +199,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		_, _, err := cmd.Execute(context.Background(), params)
@@ -232,9 +226,9 @@ func TestBatchCheckCommand(t *testing.T) {
 		}
 
 		params := &BatchCheckCommandParams{
-			AuthorizationModelID: ts.GetAuthorizationModelID(),
-			Checks:               checks,
-			StoreID:              ulid.Make().String(),
+			Typesys: ts,
+			Checks:  checks,
+			StoreID: ulid.Make().String(),
 		}
 
 		// create context and cancel immediately
@@ -272,12 +266,7 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	b.Cleanup(checkResolverCloser)
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
-	cmd := NewBatchCheckCommand(
-		ds,
-		checkResolver,
-		ts,
-		WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)),
-	)
+	cmd := NewBatchCheckCommand(ds, checkResolver, WithBatchCheckMaxChecksPerBatch(uint32(maxChecks)))
 
 	checks := make([]*openfgav1.BatchCheckItem, maxChecks)
 	for i := 0; i < maxChecks; i++ {
@@ -293,9 +282,9 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	}
 
 	params := &BatchCheckCommandParams{
-		AuthorizationModelID: ts.GetAuthorizationModelID(),
-		Checks:               checks,
-		StoreID:              ulid.Make().String(),
+		Typesys: ts,
+		Checks:  checks,
+		StoreID: ulid.Make().String(),
 	}
 
 	b.Run("benchmark_batch_check_with_max_checks", func(b *testing.B) {

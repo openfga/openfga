@@ -37,7 +37,8 @@ func TestFindInCache(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	sf := &singleflight.Group{}
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 	key := "key"
@@ -118,7 +119,8 @@ func TestReadStartingWithUser(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	sf := &singleflight.Group{}
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -329,7 +331,8 @@ func TestReadUsersetTuples(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	sf := &singleflight.Group{}
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -369,11 +372,6 @@ func TestReadUsersetTuples(t *testing.T) {
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
-
-	mockDatastore.EXPECT().
-		Write(gomock.Any(), storeID, nil, tks).Return(nil)
-	err := ds.Write(ctx, storeID, nil, tks)
-	require.NoError(t, err)
 
 	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
@@ -540,7 +538,8 @@ func TestRead(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	sf := &singleflight.Group{}
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -563,12 +562,6 @@ func TestRead(t *testing.T) {
 	}
 
 	tk := tuple.NewTupleKey("license:1", "owner", "")
-
-	mockDatastore.EXPECT().
-		Write(gomock.Any(), storeID, nil, tks).Return(nil)
-
-	err := ds.Write(ctx, storeID, nil, tks)
-	require.NoError(t, err)
 
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
@@ -761,24 +754,6 @@ func TestRead(t *testing.T) {
 	})
 }
 
-func TestCloseDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockCache := mocks.NewMockInMemoryCache[any](mockController)
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-	mockDatastore.EXPECT().Close().Times(1).Return()
-
-	maxSize := 10
-	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
-	ds.Close()
-}
-
 func TestDatastoreIteratorError(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
@@ -792,7 +767,8 @@ func TestDatastoreIteratorError(t *testing.T) {
 
 	maxSize := 10
 	ttl := 5 * time.Hour
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl)
+	sf := &singleflight.Group{}
+	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 

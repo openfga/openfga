@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -131,7 +132,6 @@ type Server struct {
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
-	checkDatastore                   storage.OpenFGADatastore
 	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
@@ -201,6 +201,9 @@ type Server struct {
 
 	ctx                           context.Context
 	contextPropagationToDatastore bool
+
+	// singleflightGroup can be shared across caches, deduplicators, etc.
+	singleflightGroup *singleflight.Group
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -698,6 +701,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 
 		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
+
+		singleflightGroup: &singleflight.Group{},
 	}
 
 	for _, opt := range opts {
@@ -788,12 +793,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.listUsersDispatchThrottlingEnabled {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
-	}
-
-	s.checkDatastore = s.datastore
-
-	if s.checkCache != nil && s.checkIteratorCacheEnabled {
-		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.checkCache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -963,4 +962,8 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 	}
 
 	return nil
+}
+
+func shouldCacheIterators(s *Server) bool {
+	return s.checkCache != nil && s.checkIteratorCacheEnabled
 }

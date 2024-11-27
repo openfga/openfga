@@ -2100,7 +2100,6 @@ func TestServerCheckCache(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.NotNil(t, s.checkCache)
-		require.NotEqual(t, s.datastore, s.checkDatastore)
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
@@ -2115,7 +2114,6 @@ func TestServerCheckCache(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.NotNil(t, s.checkCache)
-		require.NotEqual(t, s.datastore, s.checkDatastore)
 	})
 
 	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2130,7 +2128,6 @@ func TestServerCheckCache(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.NotNil(t, s.checkCache)
-		require.Equal(t, s.datastore, s.checkDatastore)
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2145,7 +2142,6 @@ func TestServerCheckCache(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.Nil(t, s.checkCache)
-		require.Equal(t, s.datastore, s.checkDatastore)
 	})
 }
 

@@ -267,20 +267,14 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(q.datastore)
-		ds := storagewrappers.NewCombinedTupleReader(
-			storagewrappers.NewBoundedConcurrencyTupleReader(
-				metricsDs, q.maxConcurrentReads),
-			req.GetContextualTuples().GetTupleKeys(),
-		)
+		ds := storagewrappers.NewStorageWrapperForListAPI(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			reverseexpand.WithLogger(q.logger),
-		)
+			reverseexpand.WithLogger(q.logger))
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
 		cancelCtx, cancel := context.WithCancel(ctx)
@@ -342,9 +336,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-					ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
+					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver,
 						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
@@ -355,6 +347,7 @@ func (q *ListObjectsQuery) evaluate(
 							ContextualTuples: req.GetContextualTuples(),
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
+							Typesys:          typesys,
 						})
 					if err != nil {
 						return err
@@ -380,7 +373,7 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
-		resolutionMetadata.DatastoreQueryCount.Add(metricsDs.GetMetrics().DatastoreQueryCount)
+		resolutionMetadata.DatastoreQueryCount.Add(ds.GetMetrics().DatastoreQueryCount)
 	}
 
 	go handler()

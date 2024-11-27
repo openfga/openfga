@@ -60,13 +60,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	checkQuery := commands.NewCheckCommand(
-		s.checkDatastore,
+		s.datastore,
 		s.checkResolver,
-		typesys,
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithCacheController(s.cacheController),
+		commands.WithCheckCommandCache(s.cacheController, shouldCacheIterators(s), s.singleflightGroup, s.checkCache, s.checkIteratorCacheMaxResults, s.checkQueryCacheTTL),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
@@ -75,6 +74,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		ContextualTuples: req.GetContextualTuples(),
 		Context:          req.GetContext(),
 		Consistency:      req.GetConsistency(),
+		Typesys:          typesys,
 	})
 
 	const methodName = "check"

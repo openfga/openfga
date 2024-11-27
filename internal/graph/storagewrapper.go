@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	// Ensures that Datastore implements the OpenFGADatastore interface.
-	_ storage.OpenFGADatastore = (*CachedDatastore)(nil)
+	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
 	tuplesCacheTotalCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
@@ -62,7 +61,7 @@ var (
 type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
 
 type CachedDatastore struct {
-	storage.OpenFGADatastore
+	storage.RelationshipTupleReader
 
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
@@ -75,17 +74,18 @@ type CachedDatastore struct {
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
 func NewCachedDatastore(
-	inner storage.OpenFGADatastore,
+	inner storage.RelationshipTupleReader,
 	cache storage.InMemoryCache[any],
 	maxSize int,
 	ttl time.Duration,
+	sf *singleflight.Group,
 ) *CachedDatastore {
 	return &CachedDatastore{
-		OpenFGADatastore: inner,
-		cache:            cache,
-		maxResultSize:    maxSize,
-		ttl:              ttl,
-		sf:               &singleflight.Group{},
+		RelationshipTupleReader: inner,
+		cache:                   cache,
+		maxResultSize:           maxSize,
+		ttl:                     ttl,
+		sf:                      sf,
 	}
 }
 
@@ -103,7 +103,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
-		return c.OpenFGADatastore.ReadStartingWithUser(ctx, store, filter, options)
+		return c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
@@ -153,7 +153,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
-		return c.OpenFGADatastore.ReadUsersetTuples(ctx, store, filter, options)
+		return c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
@@ -204,7 +204,7 @@ func (c *CachedDatastore) Read(
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
-		return c.OpenFGADatastore.Read(ctx, store, tupleKey, options)
+		return c.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
 	// this instance of Read is only called from TTU resolution path which always includes Object/Relation
@@ -341,11 +341,6 @@ func (c *CachedDatastore) newCachedIterator(
 		relation:          relation,
 		userType:          userType,
 	}, nil
-}
-
-// Close closes the datastore and cleans up any residual resources.
-func (c *CachedDatastore) Close() {
-	c.OpenFGADatastore.Close()
 }
 
 type cachedIterator struct {
