@@ -2,13 +2,13 @@ package cachecontroller
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -61,7 +61,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
-		require.Greater(t, invalidationTime, time.Now())
+		require.Equal(t, time.Time{}, invalidationTime)
 	})
 }
 
@@ -252,7 +252,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				cache:            cache,
 				ttl:              10 * time.Second,
 				iteratorCacheTTL: 10 * time.Second,
-				sf:               &singleflight.Group{},
+				mutexMap:         make(map[string]*sync.Mutex),
 			}
 			err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
 			if test.expectedError != nil {

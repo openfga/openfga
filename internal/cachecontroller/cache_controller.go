@@ -3,6 +3,7 @@ package cachecontroller
 import (
 	"context"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,7 +11,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -36,8 +36,6 @@ var (
 	})
 )
 
-const futureCacheInvalidationTime = time.Hour
-
 type CacheController interface {
 	DetermineInvalidation(ctx context.Context, storeID string) time.Time
 }
@@ -58,7 +56,7 @@ type InMemoryCacheController struct {
 	ttl              time.Duration
 	iteratorCacheTTL time.Duration
 
-	sf *singleflight.Group
+	mutexMap map[string]*sync.Mutex
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
@@ -67,7 +65,7 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		cache:            cache,
 		ttl:              ttl,
 		iteratorCacheTTL: iteratorCacheTTL,
-		sf:               &singleflight.Group{},
+		mutexMap:         make(map[string]*sync.Mutex),
 	}
 
 	return c
@@ -90,20 +88,23 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	go func() {
+	_, present := c.mutexMap[storeID]
+	if !present {
+		c.mutexMap[storeID] = &sync.Mutex{}
+	}
+	hasLock := c.mutexMap[storeID].TryLock()
+	if hasLock {
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
-		_, _, _ = c.sf.Do(storeID, func() (interface{}, error) {
-			// Note that when a duplicate (i.e., same storeID) comes in, the duplicate caller waits
-			// for the original to complete and receives the same results.
+		go func() {
+			defer c.mutexMap[storeID].Unlock()
 			_ = c.findChangesAndInvalidate(ctx, storeID)
-			return nil, nil
-		})
-	}()
+		}()
+	}
+	// if we cannot get lock, there is already invalidation going on.  As such,
+	// we don't want to spin a new go routine to do invalidation.
 
-	// we want to return a time in the future so that all entries for the
-	// store will be considered as expired.
-	return time.Now().Add(futureCacheInvalidationTime)
+	return time.Time{}
 }
 
 func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {

@@ -225,6 +225,8 @@ func (c *CachedDatastore) Read(
 
 func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
+
+	// The iterator cache has a TTL and will eventually consistent.
 	if res := c.cache.Get(key); res != nil {
 		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
