@@ -171,6 +171,7 @@ func TestReadStartingWithUser(t *testing.T) {
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -245,6 +246,7 @@ func TestReadStartingWithUser(t *testing.T) {
 				ReadStartingWithUser(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -382,6 +384,7 @@ func TestReadUsersetTuples(t *testing.T) {
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -456,6 +459,7 @@ func TestReadUsersetTuples(t *testing.T) {
 				ReadUsersetTuples(gomock.Any(), storeID, filter, options).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -582,6 +586,7 @@ func TestRead(t *testing.T) {
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				if diff := cmp.Diff(cachedTuples, entry.Tuples, cmpOpts...); diff != "" {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
@@ -656,6 +661,7 @@ func TestRead(t *testing.T) {
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(gomock.Any()),
+			mockCache.EXPECT().IsReady().Return(true),
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
@@ -1217,6 +1223,7 @@ func TestCachedIterator(t *testing.T) {
 			mockCache := mocks.NewMockInMemoryCache[any](mockController)
 
 			mockCache.EXPECT().Get(cacheKey).AnyTimes().Return(nil)
+			mockCache.EXPECT().IsReady().AnyTimes().Return(true)
 			mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).AnyTimes()
 			mockCache.EXPECT().Delete(gomock.Any()).AnyTimes()
 

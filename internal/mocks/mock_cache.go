@@ -66,6 +66,20 @@ func (mr *MockInMemoryCacheMockRecorder[T]) Get(key any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockInMemoryCache[T])(nil).Get), key)
 }
 
+// IsReady mocks base method.
+func (m *MockInMemoryCache[T]) IsReady() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsReady")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsReady indicates an expected call of IsReady.
+func (mr *MockInMemoryCacheMockRecorder[T]) IsReady() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsReady", reflect.TypeOf((*MockInMemoryCache[T])(nil).IsReady))
+}
+
 // Set mocks base method.
 func (m *MockInMemoryCache[T]) Set(key string, value T, ttl time.Duration) {
 	m.ctrl.T.Helper()
