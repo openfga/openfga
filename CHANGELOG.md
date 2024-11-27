@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
+- Support for disabling OpenTelemetry GRPC exporter when tracing is enabled [#2122](https://github.com/openfga/openfga/pull/2122)
 
 ### Removed
 - Begin deprecation process for flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT`, in favor of `OPENFGA_CHECK_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
