@@ -86,7 +86,8 @@ type ReadAuthorizationModelsOptions struct {
 // be used with the ListStores method.
 type ListStoresOptions struct {
 	// IDs is a list of store IDs to filter the results.
-	IDs        []string
+	IDs []string
+	// Name is used to filter the results. If left empty no filter is applied.
 	Name       string
 	Pagination PaginationOptions
 }
