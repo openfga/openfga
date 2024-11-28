@@ -339,6 +339,7 @@ LoopOnEdges:
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
 			edge:             innerLoopEdge,
+			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
@@ -566,6 +567,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
+				Consistency:      req.Consistency,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
