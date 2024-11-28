@@ -111,12 +111,11 @@ type AuthorizerInterface interface {
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
 	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 	AccessControlStoreID() string
-	IsNoop() bool
 }
 
 type NoopAuthorizer struct{}
 
-func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
+func NewAuthorizerNoop() *NoopAuthorizer {
 	return &NoopAuthorizer{}
 }
 
@@ -142,10 +141,6 @@ func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, 
 
 func (a *NoopAuthorizer) AccessControlStoreID() string {
 	return ""
-}
-
-func (a *NoopAuthorizer) IsNoop() bool {
-	return true
 }
 
 type Authorizer struct {
@@ -216,10 +211,6 @@ func (a *Authorizer) AccessControlStoreID() string {
 		return a.config.StoreID
 	}
 	return ""
-}
-
-func (a *Authorizer) IsNoop() bool {
-	return false
 }
 
 // Authorize checks if the user has access to the resource.
