@@ -962,11 +962,5 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 		return authz.ErrUnauthorizedResponse
 	}
 
-	err = s.authorizer.Authorize(ctx, req.GetStoreId(), authz.Write, modules...)
-	if err != nil {
-		s.logger.Error("authorization failed", zap.Error(err))
-		return authz.ErrUnauthorizedResponse
-	}
-
-	return nil
+	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
 }
