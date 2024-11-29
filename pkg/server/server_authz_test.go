@@ -580,7 +580,7 @@ func TestWrite(t *testing.T) {
 				},
 			})
 
-			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuples)), err)
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 
 			tuplesInDelete := []*openfgav1.TupleKeyWithoutCondition{}
 			for _, tuple := range tuples {
@@ -599,7 +599,7 @@ func TestWrite(t *testing.T) {
 				},
 			})
 
-			require.Equal(t, err, fmt.Errorf("%v (modules in request: %v)", authz.ErrBadRequestMaxModulesInRequestExceeded, len(tuplesInDelete)), err)
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("success_when_sending_more_than_max_modules_with_store_level_write_permission", func(t *testing.T) {
@@ -683,14 +683,14 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkCreateStoreAuthz(context.Background())
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkCreateStoreAuthz(ctx)
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
@@ -750,21 +750,21 @@ func TestCheckAuthz(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_when_authorized_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "ID"})
 			err := openfga.checkAuthz(ctx, settings.testData.id, "invalid api method")
 
-			require.ErrorIs(t, err, authz.ErrUnknownAPIMethod)
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
@@ -822,14 +822,14 @@ func TestGetAccessibleStores(t *testing.T) {
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
 			_, err := openfga.getAccessibleStores(context.Background())
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
 			_, err := openfga.getAccessibleStores(ctx)
 
-			require.EqualError(t, err, errInvalidClientID.Error())
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
