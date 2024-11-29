@@ -99,10 +99,12 @@ func (c *LocalChecker) fastPathDirect(ctx context.Context,
 		return nil, err
 	}
 	iterChan := make(chan *iteratorMsg, 1)
+	defer close(iterChan)
 	if !concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: i}, iterChan) {
 		i.Stop() // will not be received to be cleaned up
+		return nil, ctx.Err()
 	}
-	close(iterChan)
+
 	return iterChan, nil
 }
 
