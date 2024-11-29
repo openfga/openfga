@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -22,8 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
-
-var errInvalidClientID = errors.New("rpc error: code = InvalidArgument desc = client ID not found in context")
 
 type storeAndModel struct {
 	id      string
