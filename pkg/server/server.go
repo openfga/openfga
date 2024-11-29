@@ -42,6 +42,7 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
+	accessControlKey           = "access_control"
 
 	ExperimentalCheckOptimizations  ExperimentalFeatureFlag = "enable-check-optimizations"
 	ExperimentalAccessControlParams ExperimentalFeatureFlag = "enable-access-control"
@@ -904,6 +905,8 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 		return nil
 	}
 
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, "checkAuthz")
+
 	return s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
 }
 
@@ -912,6 +915,8 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 	if authclaims.SkipAuthzCheckFromContext(ctx) {
 		return nil
 	}
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, "checkCreateStoreAuthz")
 
 	return s.authorizer.AuthorizeCreateStore(ctx)
 }
@@ -922,6 +927,8 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 	if authclaims.SkipAuthzCheckFromContext(ctx) {
 		return nil, nil
 	}
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, "getAccessibleStores")
 
 	err := s.authorizer.AuthorizeListStores(ctx)
 	if err != nil {
@@ -936,6 +943,8 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 	if authclaims.SkipAuthzCheckFromContext(ctx) {
 		return nil
 	}
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, "checkWriteAuthz")
 
 	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
 	if err != nil {
