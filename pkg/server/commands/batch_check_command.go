@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"google.golang.org/grpc/metadata"
 )
 
 type BatchCheckQuery struct {
@@ -17,6 +18,7 @@ type BatchCheckQuery struct {
 	maxChecksAllowed    uint32
 	maxConcurrentChecks uint32
 	client              openfgav1.OpenFGAServiceClient
+	metadata            metadata.MD
 }
 
 type BatchCheckCommandParams struct {
@@ -65,6 +67,12 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
+func WithBatchCheckRequestMetadata(md metadata.MD) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.metadata = md
+	}
+}
+
 func NewBatchCheckCommand(client openfgav1.OpenFGAServiceClient, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
@@ -109,6 +117,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				return nil
 			default:
 			}
+
+			ctx = metadata.NewOutgoingContext(ctx, bq.metadata)
 
 			resp, err := bq.client.Check(ctx, &openfgav1.CheckRequest{
 				StoreId:              params.StoreID,

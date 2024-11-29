@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -206,10 +207,10 @@ type Server struct {
 	ctx                           context.Context
 	contextPropagationToDatastore bool
 
-	gRPCAddr string
-
-	grpcConn *grpc.ClientConn
-	client   openfgav1.OpenFGAServiceClient
+	gRPCAddr     string
+	gRPCMetadata metadata.MD
+	grpcConn     *grpc.ClientConn
+	client       openfgav1.OpenFGAServiceClient
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -654,6 +655,12 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 func WithgRPCAddress(addr string) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.gRPCAddr = addr
+	}
+}
+
+func WithBatchCheckRequestMetadata(md metadata.MD) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.gRPCMetadata = md
 	}
 }
 
