@@ -804,7 +804,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkDatastore = s.datastore
 
 	if s.checkCache != nil && s.checkIteratorCacheEnabled {
-		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.checkCache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
+		s.checkDatastore = graph.NewCachedDatastore(s.ctx, s.datastore, s.checkCache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
 	}
 
 	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
