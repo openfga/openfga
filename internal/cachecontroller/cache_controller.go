@@ -124,8 +124,8 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 }
 
 func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) error {
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("invalidations", true))
+	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
+	defer span.End()
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
