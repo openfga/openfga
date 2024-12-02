@@ -4,13 +4,18 @@ import (
 	"context"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -146,5 +151,60 @@ func TestExpand(t *testing.T) {
 
 		finalUsers := root.GetLeaf().GetUsers().GetUsers()
 		require.ElementsMatch(t, finalUsers, []string{"user:bob", "user:alice"})
+	})
+
+	t.Run("respects_consistency_preference", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		ctx := context.Background()
+
+		// arrange: write model
+		model := testutils.MustTransformDSLToProtoWithID(modelStr)
+
+		typesys, err := typesystem.NewAndValidate(ctx, model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		query := NewExpandQuery(mockDatastore)
+
+		// No Consistency Specified in this request
+		expandRequest := &openfgav1.ExpandRequest{
+			StoreId: ulid.Make().String(),
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Object: "document:1", Relation: "viewer",
+			},
+		}
+		unspecified := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+		}
+
+		// expect to receive UNSPECIFIED
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), unspecified).Times(1)
+		_, err = query.Execute(ctx, expandRequest)
+		require.NoError(t, err)
+
+		// Now run it again with HIGHER_CONSISTENCY
+		expandRequest.Consistency = openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+		higherConsistency := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}
+
+		// expect to receive HIGHER_CONSISTENCY
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), higherConsistency).Times(1)
+		_, err = query.Execute(ctx, &openfgav1.ExpandRequest{
+			StoreId: ulid.Make().String(),
+			TupleKey: &openfgav1.ExpandRequestTupleKey{
+				Object: "document:1", Relation: "viewer",
+			},
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.NoError(t, err)
 	})
 }

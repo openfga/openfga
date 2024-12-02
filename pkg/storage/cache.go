@@ -141,7 +141,7 @@ func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) s
 }
 
 func GetReadCacheKey(store, tuple string) string {
-	return fmt.Sprintf("%sr%s/%s", iteratorCachePrefix, store, tuple)
+	return fmt.Sprintf("%sr/%s/%s", iteratorCachePrefix, store, tuple)
 }
 
 // CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.

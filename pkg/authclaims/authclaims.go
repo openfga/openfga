@@ -19,7 +19,7 @@ type AuthClaims struct {
 	ClientID string
 }
 
-// ContextWithAuthClaims injects the provided AuthClaims into the parent context.
+// ContextWithAuthClaims creates a copy of the parent context with the provided AuthClaims.
 func ContextWithAuthClaims(parent context.Context, claims *AuthClaims) context.Context {
 	return context.WithValue(parent, authClaimsContextKey, claims)
 }
@@ -34,7 +34,7 @@ func AuthClaimsFromContext(ctx context.Context) (*AuthClaims, bool) {
 	return claims, true
 }
 
-// ContextWithSkipAuthzCheck attaches whether to skip authz check to the parent context.
+// ContextWithSkipAuthzCheck creates a copy of the parent context and attaches whether to skip authz check to.
 func ContextWithSkipAuthzCheck(parent context.Context, skipAuthzCheck bool) context.Context {
 	return context.WithValue(parent, skipAuthz, skipAuthzCheck)
 }

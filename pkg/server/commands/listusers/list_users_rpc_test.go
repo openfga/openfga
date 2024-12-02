@@ -3955,3 +3955,68 @@ func TestListUsers_CorrectContext(t *testing.T) {
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 }
+
+func TestListUsersRespectsConsistency(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	modelStr := `
+		model
+			schema 1.1
+		type user
+		type document
+			relations
+				define viewer: [user]`
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	ctx := context.Background()
+
+	// arrange: write model
+	model := testutils.MustTransformDSLToProtoWithID(modelStr)
+
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	require.NoError(t, err)
+
+	query := NewListUsersQuery(mockDatastore)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	t.Run("uses_passed_consistency_preference", func(t *testing.T) {
+		higherConsistency := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		}
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), higherConsistency).Times(1)
+
+		_, err = query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			StoreId:     ulid.Make().String(),
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("unspecified_consistency_if_user_didnt_specify", func(t *testing.T) {
+		unspecified := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+		}
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), unspecified).Times(1)
+
+		_, err = query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+			Object:      &openfgav1.Object{Type: "document", Id: "1"},
+			Relation:    "viewer",
+			StoreId:     ulid.Make().String(),
+		})
+		require.NoError(t, err)
+	})
+}
