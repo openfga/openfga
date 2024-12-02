@@ -937,7 +937,7 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 		return nil
 	}
 
-	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
+	modules, err := s.authorizer.GetModulesForWriteRequest(ctx, req, typesys)
 	if err != nil {
 		return err
 	}

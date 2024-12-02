@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -24,6 +25,8 @@ import (
 )
 
 const (
+	accessControlKey = "access_control"
+
 	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
 	MaxModulesInRequest = 1
 
@@ -109,7 +112,7 @@ type AuthorizerInterface interface {
 	AuthorizeCreateStore(ctx context.Context) error
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
-	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
+	GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 	AccessControlStoreID() string
 }
 
@@ -135,7 +138,7 @@ func (a *NoopAuthorizer) ListAuthorizedStores(ctx context.Context) ([]string, er
 	return nil, nil
 }
 
-func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+func (a *NoopAuthorizer) GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	return nil, nil
 }
 
@@ -215,12 +218,15 @@ func (a *Authorizer) AccessControlStoreID() string {
 
 // Authorize checks if the user has access to the resource.
 func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	ctx, span := tracer.Start(ctx, "Authorize", trace.WithAttributes(
+	methodName := "Authorize"
+	ctx, span := tracer.Start(ctx, methodName, trace.WithAttributes(
 		attribute.String("storeID", storeID),
 		attribute.String("apiMethod", apiMethod),
 		attribute.String("modules", strings.Join(modules, ",")),
 	))
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -260,8 +266,11 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 // AuthorizeCreateStore checks if the user has access to create a store.
 func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "AuthorizeCreateStore")
+	methodName := "AuthorizeCreateStore"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -278,8 +287,11 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 
 // AuthorizeListStores checks if the user has access to list stores.
 func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "AuthorizeListStores")
+	methodName := "AuthorizeListStores"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -296,8 +308,11 @@ func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
 
 // ListAuthorizedStores returns the list of store IDs that the user has access to.
 func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "ListAuthorizedStores")
+	methodName := "ListAuthorizedStores"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -331,7 +346,13 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 // GetModulesForWriteRequest returns the modules that should be checked for the write request.
 // If we encounter a type with no attached module, we should break and return no modules so that the authz check will be against the store
 // Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
-func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+func (a *Authorizer) GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+	methodName := "GetModulesForWriteRequest"
+	ctx, span := tracer.Start(ctx, methodName)
+	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
+
 	tuples := make([]TupleKeyInterface, len(req.GetWrites().GetTupleKeys())+len(req.GetDeletes().GetTupleKeys()))
 	var index int
 	for _, tuple := range req.GetWrites().GetTupleKeys() {
