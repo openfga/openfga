@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -16,6 +17,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -807,7 +809,11 @@ func TestGetAccessibleStores(t *testing.T) {
 		clientID := "validclientid"
 		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
 
-		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockServer := mocks.NewMockServerInterface(mockController)
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, mockServer, openfga.logger)
 
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
 			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
@@ -831,13 +837,28 @@ func TestGetAccessibleStores(t *testing.T) {
 
 		t.Run("error_when_AuthorizeListStores_errors", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			errorMessage := fmt.Errorf("error")
+			mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
+
 			_, err := openfga.getAccessibleStores(ctx)
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
+		t.Run("error_when_ListAuthorizedStores_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil).AnyTimes()
+			errorMessage := fmt.Errorf("error")
+			mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(nil, errorMessage)
+
+			_, err := openfga.getAccessibleStores(ctx)
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
+
 		t.Run("authz_is_valid", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil).AnyTimes()
+			mockServer.EXPECT().ListObjects(gomock.Any(), gomock.Any()).Return(nil, nil)
 			_, err := settings.openfga.Write(ctx, &openfgav1.WriteRequest{
 				StoreId:              settings.rootData.id,
 				AuthorizationModelId: settings.rootData.modelID,
