@@ -62,6 +62,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	checkQuery := commands.NewCheckCommand(
 		s.datastore,
 		s.checkResolver,
+		typesys,
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
@@ -74,7 +75,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		ContextualTuples: req.GetContextualTuples(),
 		Context:          req.GetContext(),
 		Consistency:      req.GetConsistency(),
-		Typesys:          typesys,
 	})
 
 	const methodName = "check"

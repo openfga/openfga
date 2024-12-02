@@ -26,10 +26,10 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
-// shared across requests.
 type CheckQuery struct {
 	logger                 logger.Logger
 	checkResolver          graph.CheckResolver
+	typesys                *typesystem.TypeSystem
 	datastore              storage.RelationshipTupleReader
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
@@ -41,10 +41,8 @@ type CheckQuery struct {
 	shouldCache            bool
 }
 
-// request-specific.
 type CheckCommandParams struct {
 	StoreID          string
-	Typesys          *typesystem.TypeSystem
 	TupleKey         *openfgav1.CheckRequestTupleKey
 	ContextualTuples *openfgav1.ContextualTupleKeys
 	Context          *structpb.Struct
@@ -84,11 +82,12 @@ func WithCheckCommandCache(ctrl cachecontroller.CacheController, shouldCache boo
 }
 
 // TODO accept CheckCommandParams so we can build the datastore object right away.
-func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, opts ...CheckQueryOption) *CheckQuery {
+func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
 		datastore:          datastore,
 		checkResolver:      checkResolver,
+		typesys:            typesys,
 		cacheController:    cachecontroller.NewNoopCacheController(),
 		resolveNodeLimit:   defaultResolveNodeLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
@@ -102,7 +101,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 }
 
 func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(params.Typesys, params.TupleKey, params.ContextualTuples)
+	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -115,7 +114,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
 		StoreID:              params.StoreID,
-		AuthorizationModelID: params.Typesys.GetAuthorizationModelID(), // the resolved model ID
+		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
 		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
 		Context:              params.Context,
@@ -128,7 +127,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	requestDatastore := storagewrappers.NewStorageWrapperForCheck(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCache, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, params.Typesys)
+	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
 
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)

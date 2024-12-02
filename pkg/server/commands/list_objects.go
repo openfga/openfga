@@ -336,7 +336,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver,
+					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
@@ -347,7 +347,6 @@ func (q *ListObjectsQuery) evaluate(
 							ContextualTuples: req.GetContextualTuples(),
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
-							Typesys:          typesys,
 						})
 					if err != nil {
 						return err

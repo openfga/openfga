@@ -19,7 +19,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// shared across requests.
 type BatchCheckQuery struct {
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
@@ -32,14 +31,14 @@ type BatchCheckQuery struct {
 	logger                 logger.Logger
 	maxChecksAllowed       uint32
 	maxConcurrentChecks    uint32
+	typesys                *typesystem.TypeSystem
 }
 
-// request-specific.
 type BatchCheckCommandParams struct {
-	Checks      []*openfgav1.BatchCheckItem
-	Consistency openfgav1.ConsistencyPreference
-	StoreID     string
-	Typesys     *typesystem.TypeSystem
+	AuthorizationModelID string
+	Checks               []*openfgav1.BatchCheckItem
+	Consistency          openfgav1.ConsistencyPreference
+	StoreID              string
 }
 
 type BatchCheckOutcome struct {
@@ -92,12 +91,13 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
 		cacheController:     cachecontroller.NewNoopCacheController(),
 		checkResolver:       checkResolver,
+		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 		shouldCache:         false,
@@ -143,6 +143,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			checkQuery := NewCheckCommand(
 				bq.datastore,
 				bq.checkResolver,
+				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
 				WithCheckCommandCache(bq.cacheController, bq.shouldCache, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
 			)
@@ -153,7 +154,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				ContextualTuples: check.GetContextualTuples(),
 				Context:          check.GetContext(),
 				Consistency:      params.Consistency,
-				Typesys:          params.Typesys,
 			}
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
