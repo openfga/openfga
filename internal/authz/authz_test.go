@@ -610,6 +610,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 
 	t.Run("error_when_write_tuples_errors", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
+			context.Background(),
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
 				Writes: &openfgav1.WriteRequestWrites{
@@ -626,6 +627,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 
 	t.Run("error_when_delete_tuples_errors", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
+			context.Background(),
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
 				Deletes: &openfgav1.WriteRequestDeletes{
@@ -642,6 +644,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 
 	t.Run("return_empty_when_a_write_tuple_has_no_modules", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
+			context.Background(),
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
 				Writes: &openfgav1.WriteRequestWrites{
@@ -659,6 +662,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 
 	t.Run("return_empty_when_a_delete_tuple_has_no_modules", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
+			context.Background(),
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
 				Deletes: &openfgav1.WriteRequestDeletes{
@@ -676,6 +680,7 @@ func TestGetModulesForWriteRequest(t *testing.T) {
 
 	t.Run("return_modules", func(t *testing.T) {
 		modules, err := authorizer.GetModulesForWriteRequest(
+			context.Background(),
 			&openfgav1.WriteRequest{
 				StoreId: "store-id",
 				Writes: &openfgav1.WriteRequestWrites{
