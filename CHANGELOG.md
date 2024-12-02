@@ -16,7 +16,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - OIDC token validation will now exclusively throw error code 1004 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
 
-
 ### Removed
 - Begin deprecation process for flag `OPENFGA_CHECK_QUERY_CACHE_LIMIT`, in favor of `OPENFGA_CHECK_CACHE_LIMIT`. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Removed flags with the `OPENFGA_DISPATCH_THROTTLING_*` name. [#2083](https://github.com/openfga/openfga/pull/2083)
