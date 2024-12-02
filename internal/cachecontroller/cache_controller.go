@@ -96,7 +96,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		c.currentInvalidationMap[storeID] = struct{}{}
 	}
 	c.currentInvalidationMutext.Unlock()
-	if present {
+	if !present {
 		span.SetAttributes(attribute.Bool("checkInvalidation", true))
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
