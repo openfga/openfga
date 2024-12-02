@@ -49,7 +49,7 @@ func IsSchemaVersionSupported(version string) bool {
 	}
 }
 
-// ContextWithTypesystem attaches the provided TypeSystem to the parent context.
+// ContextWithTypesystem creates a copy of the parent context with the provided TypeSystem.
 func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
 	return context.WithValue(parent, typesystemCtxKey, typesys)
 }
