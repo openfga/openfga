@@ -561,7 +561,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		return nil, ctx.Err()
 	case r, ok := <-rightChan:
 		if !ok {
-			return res, nil
+			return res, ctx.Err()
 		}
 		if r.err != nil {
 			return nil, r.err
@@ -577,7 +577,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			if !ok {
 				leftOpen = false
 				if leftSet.Size() == 0 {
-					return res, nil
+					return res, ctx.Err()
 				}
 				break
 			}
@@ -596,7 +596,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
 					msg.iter.Stop()
 					res.Allowed = true
-					return res, nil
+					return res, ctx.Err()
 				}
 			}
 		case msg, ok := <-rightChan:
@@ -613,7 +613,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			}
 		}
 	}
-	return res, nil
+	return res, ctx.Err()
 }
 
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
