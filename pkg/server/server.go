@@ -116,7 +116,7 @@ var (
 	writeDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            writeDurationHistogramName,
-		Help:                            "The request duration (in ms) for write duration labeled by whether an authorizer check is required or not.",
+		Help:                            "The request duration (in ms) for write API labeled by whether an authorizer check is required or not.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -698,6 +698,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 
 		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
+		authorizer:      authz.NewAuthorizerNoop(),
 	}
 
 	for _, opt := range opts {
@@ -814,8 +815,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
-	} else {
-		s.authorizer = authz.NewAuthorizerNoop(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
 	}
 
 	return s, nil
@@ -918,12 +917,7 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 		return nil
 	}
 
-	err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
@@ -932,11 +926,7 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 		return nil
 	}
 
-	err := s.authorizer.AuthorizeCreateStore(ctx)
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.authorizer.AuthorizeCreateStore(ctx)
 }
 
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
@@ -951,12 +941,7 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	list, err := s.authorizer.ListAuthorizedStores(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return list, nil
+	return s.authorizer.ListAuthorizedStores(ctx)
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
@@ -965,15 +950,10 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 		return nil
 	}
 
-	modules, err := s.authorizer.GetModulesForWriteRequest(req, typesys)
+	modules, err := s.authorizer.GetModulesForWriteRequest(ctx, req, typesys)
 	if err != nil {
 		return err
 	}
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
 }

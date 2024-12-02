@@ -40,13 +40,8 @@ type RemoteOidcAuthenticator struct {
 var (
 	jwkRefreshInterval = 48 * time.Hour
 
-	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
-	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
-	errInvalidIssuer   = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
-	errInvalidSubject  = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
-	errInvalidToken    = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
-
-	fetchJWKs = fetchJWK
+	errInvalidClaims = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
+	fetchJWKs        = fetchJWK
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
@@ -90,13 +85,14 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
+		jwt.WithAudience(oidc.Audience),
 	)
 
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
 	if err != nil || !token.Valid {
-		return nil, errInvalidToken
+		return nil, errInvalidClaims
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
@@ -116,11 +112,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	})
 
 	if !ok {
-		return nil, errInvalidIssuer
-	}
-
-	if err := jwt.NewValidator(jwt.WithAudience(oidc.Audience)).Validate(claims); err != nil {
-		return nil, errInvalidAudience
+		return nil, errInvalidClaims
 	}
 
 	if len(oidc.Subjects) > 0 {
@@ -130,7 +122,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 			return err == nil
 		})
 		if !ok {
-			return nil, errInvalidSubject
+			return nil, errInvalidClaims
 		}
 	}
 
@@ -138,7 +130,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
-			return nil, errInvalidSubject
+			return nil, errInvalidClaims
 		}
 	}
 
