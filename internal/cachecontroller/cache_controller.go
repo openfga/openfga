@@ -56,16 +56,18 @@ type InMemoryCacheController struct {
 	ttl              time.Duration
 	iteratorCacheTTL time.Duration
 
-	mutexMap map[string]*sync.Mutex
+	currentInvalidationMutext sync.Mutex
+	currentInvalidationMap    map[string]struct{}
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
 	c := &InMemoryCacheController{
-		ds:               ds,
-		cache:            cache,
-		ttl:              ttl,
-		iteratorCacheTTL: iteratorCacheTTL,
-		mutexMap:         make(map[string]*sync.Mutex),
+		ds:                        ds,
+		cache:                     cache,
+		ttl:                       ttl,
+		iteratorCacheTTL:          iteratorCacheTTL,
+		currentInvalidationMutext: sync.Mutex{},
+		currentInvalidationMap:    make(map[string]struct{}),
 	}
 
 	return c
@@ -88,17 +90,21 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	_, present := c.mutexMap[storeID]
+	c.currentInvalidationMutext.Lock()
+	_, present := c.currentInvalidationMap[storeID]
 	if !present {
-		c.mutexMap[storeID] = &sync.Mutex{}
+		c.currentInvalidationMap[storeID] = struct{}{}
 	}
-	hasLock := c.mutexMap[storeID].TryLock()
-	if hasLock {
+	c.currentInvalidationMutext.Unlock()
+	if present {
+		span.SetAttributes(attribute.Bool("checkInvalidation", true))
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
-			defer c.mutexMap[storeID].Unlock()
 			_ = c.findChangesAndInvalidate(ctx, storeID)
+			c.currentInvalidationMutext.Lock()
+			delete(c.currentInvalidationMap, storeID)
+			c.currentInvalidationMutext.Unlock()
 		}()
 	}
 	// if we cannot get lock, there is already invalidation going on.  As such,
