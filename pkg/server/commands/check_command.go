@@ -125,7 +125,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	requestDatastore := storagewrappers.NewStorageWrapperForCheck(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCache, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
+	requestDatastore := storagewrappers.NewStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCache, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)

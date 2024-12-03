@@ -267,14 +267,15 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		ds := storagewrappers.NewStorageWrapperForListAPI(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
+		ds := storagewrappers.NewStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			reverseexpand.WithLogger(q.logger))
+			reverseexpand.WithLogger(q.logger),
+		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
 		cancelCtx, cancel := context.WithCancel(ctx)

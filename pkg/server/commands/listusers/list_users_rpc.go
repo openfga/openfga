@@ -35,7 +35,7 @@ var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 
 type listUsersQuery struct {
 	logger                  logger.Logger
-	datastore               *storagewrappers.FinalStorageWrapper
+	datastore               *storagewrappers.RequestStorageWrapper
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
 	maxResults              uint32
@@ -162,7 +162,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		opt(l)
 	}
 
-	l.datastore = storagewrappers.NewStorageWrapperForListAPI(ds, contextualTuples, l.maxConcurrentReads)
+	l.datastore = storagewrappers.NewStorageWrapperForListAPIs(ds, contextualTuples, l.maxConcurrentReads)
 
 	return l
 }

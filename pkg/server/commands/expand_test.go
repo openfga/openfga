@@ -66,7 +66,7 @@ func TestExpand(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		require.NoError(t, err)
 
-		expandQuery := NewExpandQuery(ds, contextualTuples)
+		expandQuery := NewExpandQuery(ds)
 
 		_, err = expandQuery.Execute(ctx, &openfgav1.ExpandRequest{
 			StoreId:  storeID,
@@ -95,7 +95,7 @@ func TestExpand(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		require.NoError(t, err)
 
-		expandQuery := NewExpandQuery(ds, contextualTuples)
+		expandQuery := NewExpandQuery(ds)
 
 		resp, err := expandQuery.Execute(ctx, &openfgav1.ExpandRequest{
 			StoreId:  storeID,
@@ -134,7 +134,7 @@ func TestExpand(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		require.NoError(t, err)
 
-		expandQuery := NewExpandQuery(ds, contextualTuples)
+		expandQuery := NewExpandQuery(ds)
 
 		resp, err := expandQuery.Execute(ctx, &openfgav1.ExpandRequest{
 			StoreId:  storeID,
@@ -168,7 +168,7 @@ func TestExpand(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		query := NewExpandQuery(mockDatastore, nil)
+		query := NewExpandQuery(mockDatastore)
 
 		// No Consistency Specified in this request
 		expandRequest := &openfgav1.ExpandRequest{

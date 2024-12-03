@@ -902,7 +902,13 @@ func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modu
 		return nil
 	}
 
-	return s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
+	err := s.authorizer.Authorize(ctx, storeID, apiMethod, modules...)
+	if err != nil {
+		s.logger.Info("authorization failed", zap.Error(err))
+		return authz.ErrUnauthorizedResponse
+	}
+
+	return nil
 }
 
 // checkCreateStoreAuthz checks the authorization for creating a store.
@@ -911,7 +917,13 @@ func (s *Server) checkCreateStoreAuthz(ctx context.Context) error {
 		return nil
 	}
 
-	return s.authorizer.AuthorizeCreateStore(ctx)
+	err := s.authorizer.AuthorizeCreateStore(ctx)
+	if err != nil {
+		s.logger.Info("authorization failed", zap.Error(err))
+		return authz.ErrUnauthorizedResponse
+	}
+
+	return nil
 }
 
 // getAccessibleStores checks whether the caller has permission to list stores and if so,
@@ -923,10 +935,17 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 
 	err := s.authorizer.AuthorizeListStores(ctx)
 	if err != nil {
-		return nil, err
+		s.logger.Info("authorization failed", zap.Error(err))
+		return nil, authz.ErrUnauthorizedResponse
 	}
 
-	return s.authorizer.ListAuthorizedStores(ctx)
+	stores, err := s.authorizer.ListAuthorizedStores(ctx)
+	if err != nil {
+		s.logger.Info("authorization failed", zap.Error(err))
+		return nil, authz.ErrUnauthorizedResponse
+	}
+
+	return stores, nil
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.
@@ -937,7 +956,8 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 
 	modules, err := s.authorizer.GetModulesForWriteRequest(ctx, req, typesys)
 	if err != nil {
-		return err
+		s.logger.Info("authorization failed", zap.Error(err))
+		return authz.ErrUnauthorizedResponse
 	}
 
 	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)

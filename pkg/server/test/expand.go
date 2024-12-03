@@ -807,7 +807,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
-			query := commands.NewExpandQuery(datastore, test.request.GetContextualTuples().GetTupleKeys())
+			query := commands.NewExpandQuery(datastore)
 			got, err := query.Execute(ctx, test.request)
 			require.NoError(t, err)
 
@@ -973,7 +973,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.GetId()
 
 			// act
-			query := commands.NewExpandQuery(datastore, test.request.GetContextualTuples().GetTupleKeys())
+			query := commands.NewExpandQuery(datastore)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert

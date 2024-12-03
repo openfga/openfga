@@ -42,10 +42,12 @@ func TestBatchCheckCommand(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	cmd := NewBatchCheckCommand(ds,
+	cmd := NewBatchCheckCommand(
+		ds,
 		mockCheckResolver,
 		ts,
-		WithBatchCheckMaxChecksPerBatch(maxChecks))
+		WithBatchCheckMaxChecksPerBatch(maxChecks),
+	)
 
 	t.Run("calls_check_once_for_each_tuple_in_batch", func(t *testing.T) {
 		numChecks := int(maxChecks)

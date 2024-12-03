@@ -22,7 +22,7 @@ import (
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
 	logger    logger.Logger
-	datastore *storagewrappers.FinalStorageWrapper
+	datastore storage.RelationshipTupleReader
 }
 
 type ExpandQueryOption func(*ExpandQuery)
@@ -33,18 +33,16 @@ func WithExpandQueryLogger(l logger.Logger) ExpandQueryOption {
 	}
 }
 
-// TODO accept ExpandRequest instead of contextualTuples.
-func NewExpandQuery(datastore storage.OpenFGADatastore, contextualTuples []*openfgav1.TupleKey, opts ...ExpandQueryOption) *ExpandQuery {
+// NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
+func NewExpandQuery(datastore storage.OpenFGADatastore, opts ...ExpandQueryOption) *ExpandQuery {
 	eq := &ExpandQuery{
-		logger: logger.NewNoopLogger(),
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
 	}
 
 	for _, opt := range opts {
 		opt(eq)
 	}
-
-	eq.datastore = storagewrappers.NewStorageWrapperForExpand(datastore, contextualTuples)
-
 	return eq
 }
 
@@ -80,6 +78,11 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 	if err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
+
+	q.datastore = storagewrappers.NewCombinedTupleReader(
+		q.datastore,
+		req.GetContextualTuples().GetTupleKeys(),
+	)
 
 	objectType := tupleUtils.GetType(object)
 	rel, err := typesys.GetRelation(objectType, relation)

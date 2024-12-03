@@ -11,58 +11,48 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-type FinalStorageWrapper struct {
+// RequestStorageWrapper uses the decorator pattern to wrap a RelationshipTupleReader with various functionalities.
+type RequestStorageWrapper struct {
 	storage.RelationshipTupleReader
 	metrics *InstrumentedOpenFGAStorage // keep a reference so the caller can access final metrics
 }
 
-var _ InstrumentedStorage = (*FinalStorageWrapper)(nil)
+var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
-func NewStorageWrapperForCheck(innermost storage.RelationshipTupleReader,
+func NewStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader,
 	requestContextualTuples []*openfgav1.TupleKey,
 	maxConcurrentReads uint32,
 	shouldCache bool,
 	singleflightGroup *singleflight.Group,
 	checkCache storage.InMemoryCache[any],
 	maxCheckCacheSize uint32,
-	checkCacheTTL time.Duration) *FinalStorageWrapper {
-	iw := NewInstrumentedOpenFGAStorage(innermost)                 // to capture metrics
-	br := NewBoundedConcurrencyTupleReader(iw, maxConcurrentReads) // to rate-limit
-	var temp storage.RelationshipTupleReader
-	temp = br
+	checkCacheTTL time.Duration) *RequestStorageWrapper {
+	var br storage.RelationshipTupleReader
+	br = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	if shouldCache {
-		temp = graph.NewCachedDatastore(br, checkCache, int(maxCheckCacheSize), checkCacheTTL, singleflightGroup) // to read tuples from cache
+		br = graph.NewCachedDatastore(br, checkCache, int(maxCheckCacheSize), checkCacheTTL, singleflightGroup) // to read tuples from cache
 	}
-	cr := NewCombinedTupleReader(temp, requestContextualTuples) // to read the contextual tuples
-
-	return &FinalStorageWrapper{
-		RelationshipTupleReader: cr,
-		metrics:                 iw,
-	}
-}
-
-// NewStorageWrapperForListAPI can be used for ListObjects or ListUsers.
-func NewStorageWrapperForListAPI(innermost storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32) *FinalStorageWrapper {
-	iw := NewInstrumentedOpenFGAStorage(innermost)                 // to capture metrics
-	br := NewBoundedConcurrencyTupleReader(iw, maxConcurrentReads) // to rate-limit
-	cr := NewCombinedTupleReader(br, requestContextualTuples)      // to read the contextual tuples
-
-	return &FinalStorageWrapper{
-		RelationshipTupleReader: cr,
-		metrics:                 iw,
-	}
-}
-
-func NewStorageWrapperForExpand(innermost storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey) *FinalStorageWrapper {
-	iw := NewInstrumentedOpenFGAStorage(innermost)            // to capture metrics
+	iw := NewInstrumentedOpenFGAStorage(br)                   // to capture metrics
 	cr := NewCombinedTupleReader(iw, requestContextualTuples) // to read the contextual tuples
 
-	return &FinalStorageWrapper{
+	return &RequestStorageWrapper{
 		RelationshipTupleReader: cr,
 		metrics:                 iw,
 	}
 }
 
-func (s *FinalStorageWrapper) GetMetrics() Metrics {
+// NewStorageWrapperForListAPIs can be used for ListObjects or ListUsers.
+func NewStorageWrapperForListAPIs(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32) *RequestStorageWrapper {
+	br := NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
+	iw := NewInstrumentedOpenFGAStorage(br)                        // to capture metrics
+	cr := NewCombinedTupleReader(iw, requestContextualTuples)      // to read the contextual tuples
+
+	return &RequestStorageWrapper{
+		RelationshipTupleReader: cr,
+		metrics:                 iw,
+	}
+}
+
+func (s *RequestStorageWrapper) GetMetrics() Metrics {
 	return s.metrics.GetMetrics()
 }
