@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+
+	"github.com/openfga/openfga/internal/concurrency"
 )
 
 func TestInMemoryCache(t *testing.T) {
@@ -30,5 +33,25 @@ func TestInMemoryCache(t *testing.T) {
 
 		cache.Stop()
 		cache.Stop()
+	})
+
+	t.Run("stop_concurrently", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+
+		pool := concurrency.NewPool(context.Background(), 2)
+		pool.Go(func(ctx context.Context) error {
+			cache.Stop()
+			return nil
+		})
+		pool.Go(func(ctx context.Context) error {
+			cache.Stop()
+			return nil
+		})
+		err = pool.Wait()
+		require.NoError(t, err)
 	})
 }
