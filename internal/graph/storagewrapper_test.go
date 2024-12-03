@@ -868,6 +868,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mocks.NewErrorTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -906,6 +907,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -938,6 +940,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -992,6 +995,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mocks.NewErrorTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1027,6 +1031,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1087,6 +1092,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1128,6 +1134,7 @@ func TestCachedIterator(t *testing.T) {
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1181,6 +1188,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mockedIter,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1205,6 +1213,7 @@ func TestCachedIterator(t *testing.T) {
 		}()
 
 		wg.Wait()
+		iter.wg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
@@ -1234,6 +1243,7 @@ func TestCachedIterator(t *testing.T) {
 			}
 
 			iter1 := &cachedIterator{
+				ctx:               ctx,
 				iter:              mockedIter1,
 				operation:         "operation",
 				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1254,6 +1264,7 @@ func TestCachedIterator(t *testing.T) {
 			}
 
 			iter2 := &cachedIterator{
+				ctx:               ctx,
 				iter:              mockedIter2,
 				operation:         "operation",
 				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
