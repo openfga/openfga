@@ -42,9 +42,9 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		c, ok := b.RelationshipTupleReader.(*graph.CachedDatastore)
 		// require.Equal(t, mockCache, c.cache)
-		//require.Equal(t, sf, c.sf)
-		//require.Equal(t, 1000, c.maxResultSize)
-		//require.Equal(t, 10*time.Second, c.ttl)
+		// require.Equal(t, sf, c.sf)
+		// require.Equal(t, 1000, c.maxResultSize)
+		// require.Equal(t, 10*time.Second, c.ttl)
 		require.True(t, ok)
 
 		d, ok := c.RelationshipTupleReader.(*BoundedConcurrencyTupleReader)

@@ -15,7 +15,7 @@ import (
 // which includes exposing metrics.
 type RequestStorageWrapper struct {
 	storage.RelationshipTupleReader
-	metrics *InstrumentedOpenFGAStorage // keep a reference so the caller can access final metrics
+	InstrumentedStorage
 }
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
@@ -38,7 +38,7 @@ func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader,
 
 	return &RequestStorageWrapper{
 		RelationshipTupleReader: c,
-		metrics:                 b,
+		InstrumentedStorage:     b,
 	}
 }
 
@@ -50,10 +50,10 @@ func NewRequestStorageWrapperForListAPIs(ds storage.RelationshipTupleReader, req
 
 	return &RequestStorageWrapper{
 		RelationshipTupleReader: c,
-		metrics:                 b,
+		InstrumentedStorage:     b,
 	}
 }
 
 func (s *RequestStorageWrapper) GetMetrics() Metrics {
-	return s.metrics.GetMetrics()
+	return s.InstrumentedStorage.GetMetrics()
 }
