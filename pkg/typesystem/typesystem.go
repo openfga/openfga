@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/emirpasic/gods/sets/hashset"
 	"maps"
 	"reflect"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
 	"gonum.org/v1/gonum/graph/topo"
 
@@ -634,7 +634,6 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 			}
 		}
 		if len(innerEdges) == 0 {
-			edges = make([]*graph.WeightedAuthorizationModelEdge, 0)
 			break
 		}
 		edges = innerEdges
