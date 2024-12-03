@@ -1152,14 +1152,18 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 
 	// check to see if there are any nested userset assigned. If not,
 	// we don't even need to check the terminal type side.
-	objectToUsersetMessage, ok := <-objectToUsersetMessageChan
-	if !ok {
-		return res, nil
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+		if !ok {
+			return res, ctx.Err()
+		}
+		if objectToUsersetMessage.err != nil {
+			return nil, objectToUsersetMessage.err
+		}
+		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
-	if objectToUsersetMessage.err != nil {
-		return nil, objectToUsersetMessage.err
-	}
-	usersetFromObject.Add(objectToUsersetMessage.userset)
 
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
@@ -1184,7 +1188,7 @@ func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequ
 			if !ok {
 				userToUsersetDone = true
 				if usersetFromUser.Size() == 0 {
-					return res, nil
+					return res, ctx.Err()
 				}
 				break
 			}
