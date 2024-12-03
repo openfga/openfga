@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -34,8 +35,10 @@ type BatchCheckCommandParams struct {
 }
 
 type BatchCheckOutcome struct {
-	CheckResponse *graph.ResolveCheckResponse
-	Err           error
+	CheckResponse       *graph.ResolveCheckResponse
+	Err                 error
+	Duration            time.Duration
+	DatastoreQueryCount uint32
 }
 
 type BatchCheckMetadata struct {
@@ -117,10 +120,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for _, check := range params.Checks {
 		pool.Go(func(ctx context.Context) error {
+			start := time.Now()
 			select {
 			case <-ctx.Done():
 				resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
-					Err: ctx.Err(),
+					Err:      ctx.Err(),
+					Duration: time.Since(start),
 				})
 				return nil
 			default:
@@ -147,6 +152,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
 				CheckResponse: response,
 				Err:           err,
+				Duration:      time.Since(start),
 			})
 
 			return nil
@@ -161,9 +167,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	resultMap.Range(func(k, v interface{}) bool {
 		// Convert types since sync.Map is `any`
 		outcome := v.(*BatchCheckOutcome)
+		queryCount := outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
+		outcome.DatastoreQueryCount = queryCount
 		results[CorrelationID(k.(string))] = outcome
 
-		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
+		totalQueryCount += queryCount
 		return true
 	})
 

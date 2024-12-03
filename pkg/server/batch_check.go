@@ -3,8 +3,13 @@ package server
 import (
 	"context"
 	"errors"
+	"time"
+
+	"github.com/openfga/openfga/internal/utils"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -13,12 +18,45 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
+)
+
+var (
+	batchSizeHistogramName = "batch_check_batch_size"
+	batchSizeHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            batchSizeHistogramName,
+		Help:                            "number of checks received in a batch check request",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{})
+
+	checkDurationHistogramName       = "batch_check_check_duration_ms"
+	batchCheckCheckDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            checkDurationHistogramName,
+		Help:                            "duration of checks within batch check (ms)",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"datastore_query_count", "consistency"})
+
+	batchCheckCountName     = "batch_check_count"
+	batchCheckResultCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      batchCheckCountName,
+		Help:      "The total number of checks received by batch, and whether they triggered server errors",
+	}, []string{"error"})
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
@@ -39,6 +77,9 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	if err != nil {
 		return nil, err
 	}
+
+	// No label values for now
+	batchSizeHistogram.WithLabelValues().Observe(float64(len(req.GetChecks())))
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
@@ -86,6 +127,21 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.serviceName,
 		methodName,
 	).Observe(queryCount)
+
+	for _, item := range result {
+		batchCheckCheckDurationHistogram.WithLabelValues(
+			utils.Bucketize(uint(item.DatastoreQueryCount), []uint{5, 10, 20, 50, 100}), // TODO bucketize
+			req.GetConsistency().String(),
+		).Observe(float64(item.Duration.Milliseconds()))
+
+		hadError := "false"
+		if item.Err != nil {
+			hadError = "true"
+		}
+
+		// TODO make this specifically 500s, not other errors
+		batchCheckResultCounter.WithLabelValues(hadError).Inc()
+	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
 
