@@ -38,7 +38,7 @@ type CheckQuery struct {
 	maxCheckCacheSize      uint32
 	resolveNodeLimit       uint32
 	maxConcurrentReads     uint32
-	shouldCache            bool
+	shouldCacheIterators   bool
 }
 
 type CheckCommandParams struct {
@@ -73,7 +73,7 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 func WithCheckCommandCache(ctrl cachecontroller.CacheController, shouldCache bool, sf *singleflight.Group, cc storage.InMemoryCache[any], m uint32, ttl time.Duration) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.cacheController = ctrl
-		c.shouldCache = shouldCache
+		c.shouldCacheIterators = shouldCache
 		c.cacheSingleflightGroup = sf
 		c.checkCache = cc
 		c.maxCheckCacheSize = m
@@ -84,14 +84,14 @@ func WithCheckCommandCache(ctrl cachecontroller.CacheController, shouldCache boo
 // TODO accept CheckCommandParams so we can build the datastore object right away.
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
-		logger:             logger.NewNoopLogger(),
-		datastore:          datastore,
-		checkResolver:      checkResolver,
-		typesys:            typesys,
-		cacheController:    cachecontroller.NewNoopCacheController(),
-		resolveNodeLimit:   defaultResolveNodeLimit,
-		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
-		shouldCache:        false,
+		logger:               logger.NewNoopLogger(),
+		datastore:            datastore,
+		checkResolver:        checkResolver,
+		typesys:              typesys,
+		cacheController:      cachecontroller.NewNoopCacheController(),
+		resolveNodeLimit:     defaultResolveNodeLimit,
+		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
+		shouldCacheIterators: false,
 	}
 
 	for _, opt := range opts {
@@ -125,7 +125,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	requestDatastore := storagewrappers.NewStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCache, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCacheIterators, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)

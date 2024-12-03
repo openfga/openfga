@@ -267,7 +267,7 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		ds := storagewrappers.NewStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
+		ds := storagewrappers.NewRequestStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,

@@ -22,7 +22,7 @@ import (
 type BatchCheckQuery struct {
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
-	shouldCache            bool
+	shouldCacheIterators   bool
 	checkCache             storage.InMemoryCache[any]
 	maxCheckCacheSize      uint32
 	checkCacheTTL          time.Duration
@@ -65,7 +65,7 @@ type BatchCheckQueryOption func(*BatchCheckQuery)
 func WithBatchCheckCacheOptions(ctrl cachecontroller.CacheController, shouldCache bool, sf *singleflight.Group, cc storage.InMemoryCache[any], m uint32, ttl time.Duration) BatchCheckQueryOption {
 	return func(c *BatchCheckQuery) {
 		c.cacheController = ctrl
-		c.shouldCache = shouldCache
+		c.shouldCacheIterators = shouldCache
 		c.cacheSingleflightGroup = sf
 		c.checkCache = cc
 		c.maxCheckCacheSize = m
@@ -100,7 +100,6 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
-		shouldCache:         false,
 	}
 
 	for _, opt := range opts {
@@ -145,7 +144,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.cacheController, bq.shouldCache, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
+				WithCheckCommandCache(bq.cacheController, bq.shouldCacheIterators, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
 			)
 
 			checkParams := &CheckCommandParams{
