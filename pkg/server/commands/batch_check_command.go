@@ -132,6 +132,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
 				WithCacheController(bq.cacheController),
+				WithParentMethodName("batch_check"),
 			)
 
 			checkParams := &CheckCommandParams{

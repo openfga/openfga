@@ -6,12 +6,16 @@ import (
 	"math"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -23,6 +27,20 @@ import (
 const (
 	defaultResolveNodeLimit           = 25
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
+	defaultParentMethodName           = "check"
+)
+
+var (
+	checkDurationHistogramName = "check_duration_ms"
+	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            checkDurationHistogramName,
+		Help:                            "The duration of check command resolution, labeled by parent_method and datastore_query_count (in buckets)",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"datastore_query_count", "parent_method"})
 )
 
 type CheckQuery struct {
@@ -34,6 +52,7 @@ type CheckQuery struct {
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
+	parentMethodName   string
 }
 
 type CheckCommandParams struct {
@@ -70,6 +89,12 @@ func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption 
 	}
 }
 
+func WithParentMethodName(methodName string) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.parentMethodName = methodName
+	}
+}
+
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:             logger.NewNoopLogger(),
@@ -79,6 +104,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		cacheController:    cachecontroller.NewNoopCacheController(),
 		resolveNodeLimit:   defaultResolveNodeLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
+		parentMethodName:   defaultParentMethodName,
 	}
 
 	for _, opt := range opts {
@@ -92,6 +118,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	if err != nil {
 		return nil, nil, err
 	}
+
+	start := time.Now()
 
 	cacheInvalidationTime := time.Time{}
 
@@ -122,9 +150,18 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 		return nil, nil, err
 	}
+
+	var datastoreQueryCount uint32
 	if resp != nil {
-		resp.ResolutionMetadata.DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
+		datastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
+		resp.ResolutionMetadata.DatastoreQueryCount = datastoreQueryCount
 	}
+
+	checkDurationHistogram.WithLabelValues(
+		utils.Bucketize(uint(datastoreQueryCount), []uint{50, 200}),
+		c.parentMethodName,
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
