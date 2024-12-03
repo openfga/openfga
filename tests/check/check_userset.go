@@ -47,6 +47,62 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 	},
 	{
+		Name: "usersets_userset_alg",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "directs-user:userset_1_alg#alg_combined"},
+
+			{Object: "directs-user:userset_1_alg", Relation: "direct_cond", User: "user:alg_valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+
+			{Object: "directs-user:userset_1_alg", Relation: "direct_cond", User: "user:alg_excluded_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "directs-user:userset_1_alg", Relation: "direct", User: "user:alg_excluded_1"},
+
+			{Object: "directs-user:userset_1_alg", Relation: "direct_cond", User: "user:alg_excluded_2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "directs-user:userset_1_alg", Relation: "direct_and_direct_cond", User: "user:alg_excluded_2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+
+			{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "directs-employee:userset_1_alg#alg_combined"},
+
+			{Object: "directs-employee:userset_1_alg", Relation: "direct", User: "employee:alg_valid"},
+			{Object: "directs-employee:userset_1_alg", Relation: "direct_cond", User: "employee:alg_valid", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+
+			{Object: "directs-employee:userset_1_alg", Relation: "direct", User: "employee:alg_excluded_1"},
+			{Object: "directs-employee:userset_1_alg", Relation: "direct_cond", User: "employee:alg_excluded_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "directs-employee:userset_1_alg", Relation: "direct_2", User: "employee:alg_excluded_1"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "user_valid",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "user:alg_valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "employee_valid",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "employee:alg_valid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "user_excluded_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "user:alg_excluded_1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:    "user_excluded_2",
+				Tuple:   &openfgav1.TupleKey{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "user:alg_excluded_2"},
+				Context: &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+
+				Expectation: false,
+			},
+			{
+				Name:        "employee_excluded_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_1_alg", Relation: "userset_alg", User: "employee:alg_excluded_1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+		},
+	},
+	{
 		Name: "usersets_userset_to_computed",
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "directs-user:utc_1", Relation: "direct", User: "user:utc_valid"},

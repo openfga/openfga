@@ -616,6 +616,47 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	return res, nil
 }
 
+func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetFastPathV2")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
+
+	leftChans := make([]chan *iteratorMsg, 0)
+	for _, parentType := range directlyRelatedUsersetTypes {
+		r := req.clone()
+		r.TupleKey = &openfgav1.TupleKey{
+			Object:   tuple.BuildObject(parentType.GetType(), "ignore"),
+			Relation: parentType.GetRelation(),
+			User:     r.GetTupleKey().GetUser(),
+		}
+		rel, err := typesys.GetRelation(parentType.GetType(), parentType.GetRelation())
+		if err != nil {
+			// NOTE: is there a better way to check and filter rather than skipping?
+			// other paths can be reachable
+			continue
+		}
+		leftChan, err := c.fastPathRewrite(cancellableCtx, r, rel.GetRewrite())
+		if err != nil {
+			return nil, err
+		}
+		leftChans = append(leftChans, leftChan)
+	}
+
+	if len(leftChans) == 0 {
+		return &ResolveCheckResponse{
+			Allowed: false,
+		}, nil
+	}
+
+	return c.resolveFastPath(ctx, leftChans, wrapIterator(UsersetKind, iter))
+}
+
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPathV2")
 	defer span.End()
@@ -654,7 +695,6 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	}
 
 	if len(leftChans) == 0 {
-		// NOTE: this should be an error right?
 		return &ResolveCheckResponse{
 			Allowed: false,
 		}, nil
