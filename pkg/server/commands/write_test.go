@@ -10,9 +10,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -20,11 +17,9 @@ import (
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestWriteCommand(t *testing.T) {
@@ -37,9 +32,9 @@ func TestWriteCommand(t *testing.T) {
 	items := make([]*openfgav1.TupleKeyWithoutCondition, maxTuplesInWriteOperation+1)
 	for i := 0; i < maxTuplesInWriteOperation+1; i++ {
 		items[i] = &openfgav1.TupleKeyWithoutCondition{
-			Object:   "document:" + testutils.CreateRandomString(4),
+			Object:   fmt.Sprintf("document:%d", i),
 			Relation: "viewer",
-			User:     "user:" + testutils.CreateRandomString(4),
+			User:     fmt.Sprintf("user:%d", i),
 		}
 	}
 	model := parser.MustTransformDSLToProto(`
@@ -81,7 +76,7 @@ func TestWriteCommand(t *testing.T) {
 		setMock          func(*mockstorage.MockOpenFGADatastore)
 		deletes          *openfgav1.WriteRequestDeletes
 		writes           *openfgav1.WriteRequestWrites
-		expectedError    error
+		expectedError    string
 		expectedResponse *openfgav1.WriteResponse
 	}{
 		{
@@ -89,7 +84,7 @@ func TestWriteCommand(t *testing.T) {
 			setMock:       func(mockDatastore *mockstorage.MockOpenFGADatastore) {},
 			deletes:       nil,
 			writes:        nil,
-			expectedError: serverErrors.ErrInvalidWriteInput,
+			expectedError: "rpc error: code = Code(2003) desc = Invalid input. Make sure you provide at least one write, or at least one delete",
 		},
 		{
 			name:    "empty_deletes_and_writes",
@@ -100,7 +95,7 @@ func TestWriteCommand(t *testing.T) {
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{},
 			},
-			expectedError: serverErrors.ErrInvalidWriteInput,
+			expectedError: "rpc error: code = Code(2003) desc = Invalid input. Make sure you provide at least one write, or at least one delete",
 		},
 		{
 			name:    "duplicate_deletes",
@@ -108,7 +103,7 @@ func TestWriteCommand(t *testing.T) {
 			deletes: &openfgav1.WriteRequestDeletes{
 				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{items[0], items[1], items[0]},
 			},
-			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
+			expectedError: "rpc error: code = Code(2004) desc = duplicate tuple in write: user: 'user:0', relation: 'viewer', object: 'document:0'",
 		},
 		{
 			name: "duplicate_writes",
@@ -122,7 +117,7 @@ func TestWriteCommand(t *testing.T) {
 					tuple.TupleKeyWithoutConditionToTupleKey(items[0]),
 				},
 			},
-			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
+			expectedError: "rpc error: code = Code(2004) desc = duplicate tuple in write: user: 'user:0', relation: 'viewer', object: 'document:0'",
 		},
 		{
 			name: "same_item_appeared_in_writes_and_deletes",
@@ -138,7 +133,7 @@ func TestWriteCommand(t *testing.T) {
 					tuple.TupleKeyWithoutConditionToTupleKey(items[1]),
 				},
 			},
-			expectedError: serverErrors.DuplicateTupleInWrite(items[1]),
+			expectedError: "rpc error: code = Code(2004) desc = duplicate tuple in write: user: 'user:1', relation: 'viewer', object: 'document:1'",
 		},
 		{
 			name: "too_many_items_writes_and_deletes",
@@ -151,7 +146,7 @@ func TestWriteCommand(t *testing.T) {
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: tuple.TupleKeysWithoutConditionToTupleKeys(items[5:]...),
 			},
-			expectedError: serverErrors.ExceededEntityLimit("write operations", maxTuplesInWriteOperation),
+			expectedError: "rpc error: code = Code(2053) desc = The number of write operations exceeds the allowed limit of 10",
 		},
 		{
 			name: "write_failure_with_type_in_object_not_found",
@@ -165,16 +160,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: &tuple.TypeNotFoundError{TypeName: "unknown"},
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "unknown:1",
-						Relation: "viewer",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'unknown:1#viewer@user:maria'. Reason: type 'unknown' not found",
 		},
 		{
 			name: "write_failure_with_type_in_user_not_found",
@@ -188,16 +174,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "group:eng#member",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: &tuple.TypeNotFoundError{TypeName: "group"},
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "group:eng#member",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@group:eng#member'. Reason: type 'group' not found",
 		},
 		{
 			name: "write_failure_with_relation_in_user_not_found",
@@ -211,19 +188,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria#member",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: &tuple.RelationNotFoundError{
-						TypeName: "user",
-						Relation: "member",
-					},
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "user:maria#member",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@user:maria#member'. Reason: relation 'user#member' not found",
 		},
 		{
 			name: "write_failure_with_missing_relation",
@@ -237,16 +202,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("the 'relation' field is malformed"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#@user:maria'. Reason: the 'relation' field is malformed",
 		},
 		{
 			name: "write_failure_with_relation_not_found",
@@ -260,16 +216,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: &tuple.RelationNotFoundError{TypeName: "document", Relation: "unknown"},
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "unknown",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#unknown@user:maria'. Reason: relation 'document#unknown' not found",
 		},
 		{
 			name: "write_failure_with_invalid_user",
@@ -283,16 +230,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@'. Reason: the 'user' field is malformed",
 		},
 		{
 			name: "write_failure_with_invalid_user_wildcard",
@@ -306,16 +244,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:*",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("the typed wildcard 'user:*' is not an allowed type restriction for 'document#writer'"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "writer",
-						User:     "user:*",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#writer@user:*'. Reason: the typed wildcard 'user:*' is not an allowed type restriction for 'document#writer'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_union",
@@ -329,16 +258,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'user' is not an allowed type restriction for 'document#union"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "union",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#union@user:maria'. Reason: type 'user' is not an allowed type restriction for 'document#union'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_intersection",
@@ -352,16 +272,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'user' is not an allowed type restriction for 'document#intersection"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "intersection",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#intersection@user:maria'. Reason: type 'user' is not an allowed type restriction for 'document#intersection'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_difference",
@@ -375,16 +286,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'user' is not an allowed type restriction for 'document#difference"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "difference",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#difference@user:maria'. Reason: type 'user' is not an allowed type restriction for 'document#difference'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_computed",
@@ -398,16 +300,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'user' is not an allowed type restriction for 'document#computed"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "computed",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#computed@user:maria'. Reason: type 'user' is not an allowed type restriction for 'document#computed'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_incorrect_type_restriction",
@@ -421,16 +314,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "org:fga",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'org' is not an allowed type restriction for 'document#viewer"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "org:fga",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@org:fga'. Reason: type 'org' is not an allowed type restriction for 'document#viewer'",
 		},
 		{
 			name: "write_failure_with_attempt_to_write_ttu",
@@ -444,16 +328,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("type 'user' is not an allowed type restriction for 'document#ttu"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "ttu",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#ttu@user:maria'. Reason: type 'user' is not an allowed type restriction for 'document#ttu'",
 		},
 		{
 			name: "write_failure_with_missing_object",
@@ -467,16 +342,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("invalid 'object' field format"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "",
-						Relation: "viewer",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple '#viewer@user:maria'. Reason: invalid 'object' field format",
 		},
 		{
 			name: "write_failure_with_invalid_object",
@@ -490,16 +356,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("invalid 'object' field format"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "invalid",
-						Relation: "viewer",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'invalid#viewer@user:maria'. Reason: invalid 'object' field format",
 		},
 		{
 			name: "write_of_implicit_tuple_should_fail",
@@ -513,12 +370,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "document:1#implicit",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause:    fmt.Errorf("cannot write a tuple that is implicit"),
-					TupleKey: tuple.NewTupleKey("document:1", "implicit", "document:1#implicit"),
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#implicit@document:1#implicit'. Reason: cannot write a tuple that is implicit",
 		},
 		{
 			name: "delete_of_tuple_with_object_type_not_in_model_should_succeed",
@@ -586,16 +438,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@'. Reason: the 'user' field is malformed",
 		},
 		{
 			name: "good_deletes_and_writes",
@@ -679,16 +522,7 @@ func TestWriteCommand(t *testing.T) {
 					User:     "user:maria",
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("condition is missing"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "require_condition",
-						User:     "user:maria",
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#require_condition@user:maria'. Reason: condition is missing",
 		},
 		{
 			name: "invalid_condition",
@@ -706,20 +540,7 @@ func TestWriteCommand(t *testing.T) {
 					},
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("invalid condition for type restriction"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:2",
-						Relation: "writer",
-						User:     "user:jon",
-						Condition: &openfgav1.RelationshipCondition{
-							Name:    "condition1",
-							Context: contextStructGood,
-						},
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:2#writer@user:jon (condition condition1)'. Reason: invalid condition for type restriction",
 		},
 		{
 			name: "invalid_condition_parameters",
@@ -737,20 +558,7 @@ func TestWriteCommand(t *testing.T) {
 					},
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("found invalid context parameter: param2"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:2",
-						Relation: "viewer",
-						User:     "user:*",
-						Condition: &openfgav1.RelationshipCondition{
-							Name:    "condition1",
-							Context: contextStructBad,
-						},
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:2#viewer@user:* (condition condition1)'. Reason: found invalid context parameter: param2",
 		},
 		{
 			name: "undefined_condition",
@@ -768,20 +576,7 @@ func TestWriteCommand(t *testing.T) {
 					},
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("undefined condition"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "user:*",
-						Condition: &openfgav1.RelationshipCondition{
-							Name:    "condition2",
-							Context: contextStructGood,
-						},
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@user:* (condition condition2)'. Reason: undefined condition",
 		},
 		{
 			name: "condition_context_exceeds_limit",
@@ -799,20 +594,7 @@ func TestWriteCommand(t *testing.T) {
 					},
 				}},
 			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", proto.Size(contextStructExceedsLimit), config.DefaultWriteContextByteLimit),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:1",
-						Relation: "viewer",
-						User:     "user:*",
-						Condition: &openfgav1.RelationshipCondition{
-							Name:    "condition1",
-							Context: contextStructExceedsLimit,
-						},
-					},
-				},
-			),
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@user:*'. Reason: condition context size limit exceeded: 32789 bytes exceeds 32768 bytes",
 		},
 		{
 			name: "error_model_schema_not_supported_when_writing",
@@ -830,7 +612,7 @@ func TestWriteCommand(t *testing.T) {
 					type user`)
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model10, nil)
 			},
-			expectedError: serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion),
+			expectedError: "rpc error: code = Code(2000) desc = invalid schema version",
 		},
 		{
 			name: "error_model_not_found",
@@ -844,7 +626,7 @@ func TestWriteCommand(t *testing.T) {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, storage.ErrNotFound)
 			},
-			expectedError: serverErrors.AuthorizationModelNotFound(modelID),
+			expectedError: "rpc error: code = Code(2001) desc = Authorization Model '01JCC8ZD4X84K2W0H0ZA5AQ947' not found",
 		},
 		{
 			name: "error_from_database_when_reading_model",
@@ -858,7 +640,7 @@ func TestWriteCommand(t *testing.T) {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(nil, errors.New("error"))
 			},
-			expectedError: serverErrors.NewInternalError("", fmt.Errorf("error")),
+			expectedError: "rpc error: code = Code(4000) desc = Internal Server Error",
 		},
 		{
 			name: "error_transactional_write_failed_from_database_when_writing",
@@ -873,7 +655,7 @@ func TestWriteCommand(t *testing.T) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
 				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrTransactionalWriteFailed)
 			},
-			expectedError: status.Error(codes.Aborted, storage.ErrTransactionalWriteFailed.Error()),
+			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
 		},
 		{
 			name: "error_invalid_write_input_from_database_when_writing",
@@ -886,9 +668,25 @@ func TestWriteCommand(t *testing.T) {
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
-				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrInvalidWriteInput)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+					Return(storage.InvalidWriteInputError(tuple.NewTupleKey("document:1", "viewer", "user:maria"), openfgav1.TupleOperation_TUPLE_OPERATION_WRITE))
 			},
-			expectedError: serverErrors.WriteFailedDueToInvalidInput(storage.ErrInvalidWriteInput),
+			expectedError: "rpc error: code = Code(2017) desc = cannot write a tuple which already exists: user: 'user:maria', relation: 'viewer', object: 'document:1': tuple to be written already existed or the tuple to be deleted did not exist",
+		},
+		{
+			name: "error_invalid_write_input_from_database_when_deleting",
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+			},
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+					Return(storage.InvalidWriteInputError(tuple.NewTupleKey("document:1", "viewer", "user:maria"), openfgav1.TupleOperation_TUPLE_OPERATION_DELETE))
+			},
+			expectedError: "rpc error: code = Code(2017) desc = cannot delete a tuple which does not exist: user: 'user:maria', relation: 'viewer', object: 'document:1': tuple to be written already existed or the tuple to be deleted did not exist",
 		},
 	}
 
@@ -906,10 +704,10 @@ func TestWriteCommand(t *testing.T) {
 				Writes:               test.writes,
 				Deletes:              test.deletes,
 			})
-			if test.expectedError != nil {
+			if test.expectedError != "" {
 				require.Nil(t, resp)
 				require.Error(t, err)
-				require.ErrorContains(t, err, test.expectedError.Error())
+				require.ErrorContains(t, err, test.expectedError)
 				return
 			}
 			require.NoError(t, err)
