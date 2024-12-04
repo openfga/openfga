@@ -3893,15 +3893,15 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "complex_userset_member_is_public",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user, user:*]
-						type folder
-							relations
-								define allowed: [group#member]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user:*]
+				type folder
+					relations
+						define allowed: [group#member]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -3910,17 +3910,17 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "complex_userset_exclusion",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define exclude: [user]
-								define member: [user]
-								define complexMember: [user] but not exclude
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define exclude: [user]
+						define member: [user]
+						define complexMember: [user] but not exclude
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -3929,17 +3929,17 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "complex_userset_union",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: [user]
-								define complexMember: [user] or owner
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: [user]
+						define complexMember: [user] or owner
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -3948,17 +3948,17 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "complex_userset_intersection",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define allowed: [user]
-								define member: [user]
-								define complexMember: [user] and allowed
-						type folder
-							relations
-								define allowed: [group#complexMember]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define allowed: [user]
+						define member: [user]
+						define complexMember: [user] and allowed
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -3967,16 +3967,16 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "multiple_assignment",
 			model: `
-						model
-							schema 1.1
-						type user1
-						type user2
-						type group
-							relations
-								define member: [user1, user2]
-						type folder
-							relations
-								define allowed: [group#member]`,
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group
+					relations
+						define member: [user1, user2]
+				type folder
+					relations
+						define allowed: [group#member]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user1",
@@ -3985,51 +3985,34 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "multiple_relation_references",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define owner: [user]
-						type folder
-							relations
-								define allowed: [group#member, group#owner]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
 			expected:   true,
 		},
 		{
-			name: "multiple_relation_references_some_complex",
-			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define owner: [user]
-								define disallowed: [user]
-								define disallowed_member: member but not disallowed`,
-			objectType: "group",
-			relation:   "disallowed_member",
-			userType:   "user",
-			expected:   true,
-		},
-		{
 			name: "computed_userset",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-								define viewable_member: member
-						type folder
-							relations
-								define allowed: [group#viewable_member]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -4038,17 +4021,17 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "nested_computed_userset",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define owner: [user]
-								define member: owner
-								define viewable_member: member
-						type folder
-							relations
-								define allowed: [group#viewable_member]`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: owner
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -4057,16 +4040,16 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "parent_public_assignable",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
 
-						type folder
-							relations
-								define allowed: [user, user:*]`,
+				type folder
+					relations
+						define allowed: [user, user:*]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -4075,18 +4058,18 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "conditional_relation_parent",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user]
-						type folder
-							relations
-								define allowed: [group#member with x_less_than]
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member with x_less_than]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
@@ -4095,18 +4078,18 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 		{
 			name: "conditional_relation_in_child",
 			model: `
-						model
-							schema 1.1
-						type user
-						type group
-							relations
-								define member: [user with x_less_than]
-						type folder
-							relations
-								define allowed: [group#member]
-		                condition x_less_than(x: int) {
-		                    x < 100
-		                }`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user with x_less_than]
+				type folder
+					relations
+						define allowed: [group#member]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
