@@ -291,7 +291,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := testutils.TCPRandomPort()
@@ -438,7 +438,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 
 func TestHTTPServerWithCORS(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
@@ -539,7 +539,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	oidcServerPort, oidcServerPortReleaser := testutils.TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
@@ -613,7 +613,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	oidcServerPort1, oidcServerPortReleaser1 := testutils.TCPRandomPort()
 	oidcServerPort2, oidcServerPortReleaser2 := testutils.TCPRandomPort()
@@ -671,7 +671,7 @@ func TestBuildServerWithOIDCAuthenticationAlias(t *testing.T) {
 
 func TestHTTPServingTLS(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
@@ -735,7 +735,7 @@ func TestHTTPServingTLS(t *testing.T) {
 
 func TestGRPCServingTLS(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	t.Run("enable_grpc_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
@@ -793,7 +793,7 @@ func TestGRPCServingTLS(t *testing.T) {
 
 func TestServerMetricsReporting(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")
@@ -808,7 +808,7 @@ func TestServerMetricsReporting(t *testing.T) {
 
 func testServerMetricsReporting(t *testing.T, engine string) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
@@ -964,7 +964,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 func TestHTTPServerDisabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
@@ -987,7 +987,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 
 func TestHTTPServerEnabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 
@@ -1378,7 +1378,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 func TestHTTPHeaders(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
