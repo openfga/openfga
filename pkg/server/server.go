@@ -133,7 +133,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"datastore_query_count", "parent_method"})
+	}, []string{"datastore_query_count", "caller"})
 )
 
 // A Server implements the OpenFGA service backend as both
