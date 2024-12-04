@@ -107,17 +107,22 @@ func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore
 	}
 
 	if initRequired {
-		db2, err := goose.OpenDBWithDriver("sqlite", uri)
+		db, err = goose.OpenDBWithDriver("sqlite", uri)
 		if err != nil {
 			return nil, fmt.Errorf("goose initialization: %w", err)
 		}
-		defer db2.Close()
 
 		goose.SetBaseFS(assets.EmbedMigrations)
-		err = goose.Up(db2, assets.SqliteMigrationDir)
+		err = goose.Up(db, assets.SqliteMigrationDir)
 		if err != nil {
 			return nil, fmt.Errorf("goose up: %w", err)
 		}
+
+		ver, err := goose.GetDBVersion(db)
+		if err != nil {
+			return nil, fmt.Errorf("goose get db version: %w", err)
+		}
+		fmt.Println("DB version", ver)
 	}
 
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
