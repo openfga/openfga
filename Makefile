@@ -27,7 +27,7 @@ help: ## Show this help
 
 clean: ## Clean project files
 	${call print, "Removing ${BUILD_DIR}/${BINARY_NAME}"}
-	@rm "${BUILD_DIR}/${BINARY_NAME}"
+	@rm "${BUILD_DIR}/${BINARY_NAME}" || true
 	@go clean -x -r -i
 
 #-----------------------------------------------------------------------------------------------------------------------

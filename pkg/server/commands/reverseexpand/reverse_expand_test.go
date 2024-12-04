@@ -18,7 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -329,7 +329,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
+	mockDatastore := mocks.NewMockSlowDataStorage(sqlite.MustNewInMemory(), 1*time.Second)
 
 	for i := 0; i < 50; i++ {
 		t.Logf("iteration %d", i)
@@ -600,7 +600,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 }
 
 func TestReverseExpandDispatchCount(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	tests := []struct {
 		name                    string

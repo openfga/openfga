@@ -390,7 +390,7 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		datastore, err = sqlite.NewInMemory()
+		datastore, err = sqlite.NewInMemoryWithConfig(dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}

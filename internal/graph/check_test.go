@@ -27,7 +27,7 @@ import (
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -764,7 +764,8 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 	t.Cleanup(checkResolverCloser)
 
 	t.Run("example_1", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
+		t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -806,7 +807,8 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 	})
 
 	t.Run("example_2", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
+		t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -857,7 +859,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
 		t.Parallel()
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
+		t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -920,7 +923,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	t.Run("exclusion_resolves_deterministically_1", func(t *testing.T) {
 		t.Parallel()
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
+		t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -957,7 +961,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		for i := 0; i < 2000; i++ {
 			// subtract branch resolves to {allowed: true} even though the base branch
-			// results in an error. Outcome should be falsey, not an error.
+			// results in an error. Outcome should be falsy, not an error.
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:         storeID,
 				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
@@ -971,7 +975,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	t.Run("exclusion_resolves_deterministically_2", func(t *testing.T) {
 		t.Parallel()
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
+		t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -1021,8 +1026,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	const concurrencyLimit = 1
-	ds := memory.New()
-	defer ds.Close()
+	ds := sqlite.MustNewInMemory()
+	t.Cleanup(ds.Close)
 
 	storeID := ulid.Make().String()
 
@@ -1073,7 +1078,8 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 }
 
 func TestCheckConditions(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
+	t.Cleanup(ds.Close)
 
 	storeID := ulid.Make().String()
 
@@ -1167,7 +1173,8 @@ func TestCheckConditions(t *testing.T) {
 }
 
 func TestCheckDispatchCount(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
+	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
 	t.Run("dispatch_count_ttu", func(t *testing.T) {
@@ -1668,7 +1675,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	usersetBatchSize := uint32(10)
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	storeID := ulid.Make().String()
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -1774,7 +1781,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 }
 
 func TestCycleDetection(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	checker := NewLocalChecker()

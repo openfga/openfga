@@ -35,7 +35,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -58,7 +57,7 @@ func init() {
 }
 
 func ExampleNewServerWithOpts() {
-	datastore := memory.New() // other supported datastores include Postgres, MySQL and SQLite
+	datastore := sqlite.MustNewInMemory() // other supported datastores include Postgres, MySQL and SQLite
 	defer datastore.Close()
 
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
@@ -831,7 +830,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
 	})
@@ -1541,7 +1540,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithResolveNodeLimit(2),
 		)
 		t.Cleanup(s.Close)
@@ -1732,7 +1731,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListUsers)
 
 	s := MustNewServerWithOpts(
-		WithDatastore(memory.New()),
+		WithDatastore(sqlite.MustNewInMemory()),
 	)
 	t.Cleanup(s.Close)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
@@ -1751,7 +1750,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, cfg.ListUsersDispatchThrottling.Enabled)
 		require.False(t, cfg.CheckQueryCache.Enabled)
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -1771,7 +1770,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 
 	t.Run("dispatch_throttling_check_resolver_enabled", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		const dispatchThreshold = 50
 		s := MustNewServerWithOpts(
@@ -1799,7 +1798,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 
 	t.Run("dispatch_throttling_check_resolver_enabled_zero_max_threshold", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		const dispatchThreshold = 50
 		s := MustNewServerWithOpts(
@@ -1828,7 +1827,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 
 	t.Run("dispatch_throttling_check_resolver_enabled_non_zero_max_threshold", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		const dispatchThreshold = 50
 		const maxDispatchThreshold = 60
@@ -1858,7 +1857,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 
 	t.Run("cache_check_resolver_enabled", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -1882,7 +1881,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 
 	t.Run("both_dispatch_throttling_and_cache_check_resolver_enabled", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
@@ -1917,7 +1916,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := memory.New() // Datastore required for server instantiation
+	ds := sqlite.MustNewInMemory() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
 	t.Cleanup(ds.Close)
 
@@ -1959,7 +1958,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := memory.New() // Datastore required for server instantiation
+	ds := sqlite.MustNewInMemory() // Datastore required for server instantiation
 	t.Cleanup(ds.Close)
 
 	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
@@ -1997,7 +1996,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	modelStr := `
@@ -2090,7 +2089,7 @@ func TestServerCheckCache(t *testing.T) {
 
 	t.Run("query_cache_enabled_iterator_cache_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithCheckQueryCacheEnabled(true),
 			WithCheckQueryCacheTTL(1*time.Minute),
 			WithCheckCacheLimit(10),
@@ -2105,7 +2104,7 @@ func TestServerCheckCache(t *testing.T) {
 
 	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithCheckQueryCacheEnabled(false),
 			WithCheckQueryCacheTTL(1*time.Minute),
 			WithCheckCacheLimit(10),
@@ -2120,7 +2119,7 @@ func TestServerCheckCache(t *testing.T) {
 
 	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithCheckQueryCacheEnabled(true),
 			WithCheckQueryCacheTTL(1*time.Minute),
 			WithCheckCacheLimit(10),
@@ -2135,7 +2134,7 @@ func TestServerCheckCache(t *testing.T) {
 
 	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithCheckQueryCacheEnabled(false),
 			WithCheckQueryCacheTTL(1*time.Minute),
 			WithCheckCacheLimit(10),

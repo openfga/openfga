@@ -13,7 +13,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -55,7 +55,7 @@ func TestExpand(t *testing.T) {
 			},
 		)
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, tuples)
 		ctx := context.Background()
@@ -84,7 +84,7 @@ func TestExpand(t *testing.T) {
 			Object: "document:1", Relation: "viewer",
 		}
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, tuples)
 		ctx := context.Background()
@@ -123,7 +123,7 @@ func TestExpand(t *testing.T) {
 			Relation: "viewer",
 		}
 
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelStr, tuples)
 		ctx := context.Background()

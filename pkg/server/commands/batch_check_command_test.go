@@ -16,7 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -257,7 +257,7 @@ func TestBatchCheckCommand(t *testing.T) {
 }
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1

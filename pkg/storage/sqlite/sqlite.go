@@ -1,13 +1,12 @@
 package sqlite
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -113,6 +112,11 @@ func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore
 		}
 	}
 
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
 		collector = collectors.NewDBStatsCollector(db, "openfga")
@@ -139,63 +143,37 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 }
 
 func NewInMemory() (*Datastore, error) {
-	dsCfg := &sqlcommon.Config{}
-	dsCfg.MaxIdleConns = 1000
-	dsCfg.ConnMaxIdleTime = 0
-	dsCfg.MaxTypesPerModelField = 100
-	dsCfg.MaxTuplesPerWriteField = 100
-	return newSQLite("file::memory:?cache=shared", dsCfg, true)
+	dsCfg := sqlcommon.NewConfig(
+		sqlcommon.WithMaxIdleConns(1),
+		sqlcommon.WithConnMaxIdleTime(0),
+	)
+	return NewInMemoryWithConfig(dsCfg)
 }
 
-func readInitSchemas(file string) ([]string, error) {
-	f, err := os.Open(file)
+func NewInMemoryWithConfig(cfg *sqlcommon.Config) (*Datastore, error) {
+	if cfg.MaxIdleConns == 0 {
+		cfg.MaxIdleConns = 1
+	}
+	if cfg.ConnMaxIdleTime != 0 {
+		cfg.ConnMaxIdleTime = 0
+	}
+	return newSQLite("file::memory:?cache=shared", cfg, true)
+}
+
+func MustNewInMemory() *Datastore {
+	memory, err := NewInMemory()
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
-	defer func() {
-		_ = f.Close()
-	}()
-
-	scanner := bufio.NewScanner(f)
-	// optionally, resize scanner's capacity for lines over 64K, see next example
-	var currentLines []string
-	currentLine := ""
-	for scanner.Scan() {
-		switch scanner.Text() {
-		case "-- +goose Up":
-		// do nothing
-		case "":
-			// do nothing
-		case "-- +goose Down":
-			return currentLines, nil
-
-		default:
-			if strings.Contains(scanner.Text(), ";") {
-				currentLine += scanner.Text()
-				currentLines = append(currentLines, currentLine)
-				currentLine = ""
-			} else {
-				currentLine += scanner.Text()
-			}
-		}
-	}
-	return nil, nil
+	return memory
 }
+
+//go:embed 005_initialize_schema.sql
+var schema string
 
 func initializeTables(db *sql.DB) error {
-
-	lines, err := readInitSchemas("assets/migrations/sqlite/005_initialize_schema.sql")
-	if err != nil {
-		return err
-	}
-	for _, line := range lines {
-		_, err = db.Exec(line)
-		fmt.Println("initialize with line", line)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := db.Exec(schema)
+	return err
 }
 
 // Close see [storage.OpenFGADatastore].Close.
@@ -203,7 +181,10 @@ func (s *Datastore) Close() {
 	if s.dbStatsCollector != nil {
 		prometheus.Unregister(s.dbStatsCollector)
 	}
-	s.db.Close()
+	err := s.db.Close()
+	if err != nil {
+		return
+	}
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
