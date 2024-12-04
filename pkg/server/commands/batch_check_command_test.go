@@ -67,7 +67,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			Return(&graph.ResolveCheckResponse{}, nil)
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -103,7 +103,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			Return(&graph.ResolveCheckResponse{}, nil)
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
