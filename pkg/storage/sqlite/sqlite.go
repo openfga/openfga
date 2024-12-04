@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,6 +11,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
+	"github.com/pressly/goose/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
@@ -24,6 +24,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -106,9 +107,16 @@ func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore
 	}
 
 	if initRequired {
-		err = initializeTables(db)
+		db2, err := goose.OpenDBWithDriver("sqlite", uri)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("goose initialization: %w", err)
+		}
+		defer db2.Close()
+
+		goose.SetBaseFS(assets.EmbedMigrations)
+		err = goose.Up(db2, assets.SqliteMigrationDir)
+		if err != nil {
+			return nil, fmt.Errorf("goose up: %w", err)
 		}
 	}
 
@@ -168,14 +176,6 @@ func MustNewInMemory() *Datastore {
 		panic(err)
 	}
 	return memory
-}
-
-//go:embed 005_initialize_schema.sql
-var schema string
-
-func initializeTables(db *sql.DB) error {
-	_, err := db.Exec(schema)
-	return err
 }
 
 // Close see [storage.OpenFGADatastore].Close.
