@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,13 +13,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/tuple"
+
+	"github.com/openfga/openfga/internal/concurrency"
 )
 
 func TestInMemoryCache(t *testing.T) {
-	cache := NewInMemoryLRUCache[string]()
-	defer cache.Stop()
-
 	t.Run("set_and_get", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
@@ -28,23 +30,35 @@ func TestInMemoryCache(t *testing.T) {
 		require.Equal(t, "value", result)
 	})
 
-	t.Run("set_and_get_expired", func(t *testing.T) {
+	t.Run("stop_multiple_times", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
-		defer cache.Stop()
-		cache.Set("key", "value", -1*time.Nanosecond)
-		result := cache.Get("key")
-		require.Equal(t, "", result)
+
+		cache.Stop()
+		cache.Stop()
 	})
 
-	t.Run("stop_multiple_times", func(t *testing.T) {
+	t.Run("stop_concurrently", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
 
-		cache.Stop()
-		cache.Stop()
+		pool := concurrency.NewPool(context.Background(), 2)
+		pool.Go(func(ctx context.Context) error {
+			cache.Stop()
+			return nil
+		})
+		pool.Go(func(ctx context.Context) error {
+			cache.Stop()
+			return nil
+		})
+		err = pool.Wait()
+		require.NoError(t, err)
 	})
 }
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {

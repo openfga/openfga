@@ -325,7 +325,8 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	`)
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(b, err)
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
