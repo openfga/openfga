@@ -142,6 +142,8 @@ func NewInMemory() (*Datastore, error) {
 	dsCfg := &sqlcommon.Config{}
 	dsCfg.MaxIdleConns = 1000
 	dsCfg.ConnMaxIdleTime = 0
+	dsCfg.MaxTypesPerModelField = 100
+	dsCfg.MaxTuplesPerWriteField = 100
 	return newSQLite("file::memory:?cache=shared", dsCfg, true)
 }
 
