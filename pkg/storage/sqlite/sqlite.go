@@ -93,9 +93,12 @@ func PrepareDSN(uri string) (string, error) {
 }
 
 func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore, error) {
-	uri, err := PrepareDSN(uri)
-	if err != nil {
-		return nil, err
+	var err error
+	if !initRequired {
+		uri, err = PrepareDSN(uri)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	db, err := sql.Open("sqlite", uri)
@@ -137,7 +140,9 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 
 func NewInMemory() (*Datastore, error) {
 	dsCfg := &sqlcommon.Config{}
-	return newSQLite(":memory:", dsCfg, true)
+	dsCfg.MaxIdleConns = 1000
+	dsCfg.ConnMaxIdleTime = 0
+	return newSQLite("file::memory:?cache=shared", dsCfg, true)
 }
 
 func readInitSchemas(file string) ([]string, error) {
