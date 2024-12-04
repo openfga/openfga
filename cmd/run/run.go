@@ -63,7 +63,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -391,13 +390,21 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		// override for "memory" datastore
-		tokenSerializer = encoder.NewStringContinuationTokenSerializer()
-		opts := []memory.StorageOption{
-			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		/*
+			// override for "memory" datastore
+			tokenSerializer = encoder.NewStringContinuationTokenSerializer()
+			opts := []memory.StorageOption{
+				memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+				memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+			}
+			datastore = memory.New(opts...)
+
+		*/
+		datastore, err = sqlite.New(":memory:", dsCfg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
-		datastore = memory.New(opts...)
+		// sqlite initialization in setting up tables etc.
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
