@@ -146,19 +146,23 @@ func NewInMemory() (*Datastore, error) {
 	dsCfg := sqlcommon.NewConfig(
 		sqlcommon.WithMaxIdleConns(1),
 		sqlcommon.WithConnMaxIdleTime(0),
+		sqlcommon.WithConnMaxLifetime(0),
 	)
 	return NewInMemoryWithConfig(dsCfg)
 }
 
 func NewInMemoryWithConfig(cfg *sqlcommon.Config) (*Datastore, error) {
+	// when last connection is closed - the database is deleted, so we need to keep at least one connection open
 	if cfg.MaxIdleConns == 0 {
 		cfg.MaxIdleConns = 1
 	}
+	// set to infinity to prevent idle connections from being closed.
 	if cfg.ConnMaxIdleTime != 0 {
 		cfg.ConnMaxIdleTime = 0
 	}
+	// set to random DB name to prevent collisions
 	rnd := ulid.Make()
-	uri := fmt.Sprintf("file::db_%s:?mode=memory&cache=shared", rnd)
+	uri := fmt.Sprintf("file::sqlite-%s:?mode=memory&cache=shared", rnd)
 	return newSQLite(uri, cfg, true)
 }
 
@@ -1108,6 +1112,9 @@ func HandleSQLError(err error, args ...interface{}) error {
 				}
 			}
 			return storage.ErrCollision
+		}
+		if sqliteErr.Code()&0xFF == sqlite3.SQLITE_INTERRUPT {
+			return context.DeadlineExceeded
 		}
 	}
 

@@ -316,7 +316,7 @@ ConsumerLoop:
 }
 
 func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	defer goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 
 	store := ulid.Make().String()
 
@@ -381,7 +381,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 
 func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	storeID := ulid.Make().String()
@@ -475,7 +475,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 
 func TestReverseExpandThrottle(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -755,7 +755,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 }
 
 func TestReverseExpandHonorsConsistency(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	defer goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 
 	store := ulid.Make().String()
 

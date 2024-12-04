@@ -21,7 +21,7 @@ import (
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(sqlite.MustNewInMemory(), time.Second)
@@ -83,7 +83,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)

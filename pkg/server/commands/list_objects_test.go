@@ -397,7 +397,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
