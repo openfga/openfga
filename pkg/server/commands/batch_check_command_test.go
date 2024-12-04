@@ -311,6 +311,37 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.Len(t, result, len(checks))
 		require.Equal(t, 2, meta.DuplicateCheckCount)
 	})
+
+	t.Run("handles_check_failures_gracefully", func(t *testing.T) {
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+		cmd := NewBatchCheckCommand(ds, mockCheckResolver, ts)
+
+		justinTuple := &openfgav1.CheckRequestTupleKey{
+			Object:   "doc:doc1",
+			Relation: "viewer",
+			User:     "user:justin",
+		}
+
+		// return error
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			Return(nil, fmt.Errorf("some error"))
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               []*openfgav1.BatchCheckItem{{TupleKey: justinTuple, CorrelationId: "qwe"}},
+			StoreID:              ulid.Make().String(),
+		}
+
+		result, meta, err := cmd.Execute(context.Background(), params)
+
+		// The check errored, this should be 0
+		require.EqualValues(t, 0, meta.DatastoreQueryCount)
+
+		// but BatchCheck as a whole did not error
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+	})
 }
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
