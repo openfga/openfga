@@ -362,7 +362,7 @@ func TestExtractModulesFromTuples(t *testing.T) {
 		modules, err := extractModulesFromTuples(tuples, ts)
 		require.Empty(t, modules)
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(2021) desc = type 'unknown' not found", err.Error())
+		require.Equal(t, "type 'unknown' not found", err.Error())
 	})
 
 	t.Run("return_error_when_GetModuleForObjectTypeRelation_errors", func(t *testing.T) {

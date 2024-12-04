@@ -19,7 +19,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -386,7 +385,7 @@ func extractModulesFromTuples[T TupleKeyInterface](tupleKeys []T, typesys *types
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)
 		if !ok {
-			return nil, serverErrors.TypeNotFound(objType)
+			return nil, &authorizationError{Cause: fmt.Sprintf("type '%s' not found", objType)}
 		}
 		module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
 		if err != nil {
