@@ -390,21 +390,10 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		/*
-			// override for "memory" datastore
-			tokenSerializer = encoder.NewStringContinuationTokenSerializer()
-			opts := []memory.StorageOption{
-				memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-				memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			}
-			datastore = memory.New(opts...)
-
-		*/
-		datastore, err = sqlite.New(":memory:", dsCfg)
+		datastore, err = sqlite.NewInMemory()
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}
-		// sqlite initialization in setting up tables etc.
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {

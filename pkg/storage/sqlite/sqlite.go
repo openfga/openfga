@@ -1,11 +1,13 @@
 package sqlite
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -90,8 +92,7 @@ func PrepareDSN(uri string) (string, error) {
 	return uri, nil
 }
 
-// New creates a new [Datastore] storage.
-func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
+func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore, error) {
 	uri, err := PrepareDSN(uri)
 	if err != nil {
 		return nil, err
@@ -100,6 +101,13 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	db, err := sql.Open("sqlite", uri)
 	if err != nil {
 		return nil, fmt.Errorf("initialize sqlite connection: %w", err)
+	}
+
+	if initRequired {
+		err = initializeTables(db)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var collector prometheus.Collector
@@ -120,6 +128,67 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 	}, nil
+}
+
+// New creates a new [Datastore] storage.
+func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
+	return newSQLite(uri, cfg, false)
+}
+
+func NewInMemory() (*Datastore, error) {
+	dsCfg := &sqlcommon.Config{}
+	return newSQLite(":memory:", dsCfg, true)
+}
+
+func readInitSchemas(file string) ([]string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+
+	scanner := bufio.NewScanner(f)
+	// optionally, resize scanner's capacity for lines over 64K, see next example
+	var currentLines []string
+	currentLine := ""
+	for scanner.Scan() {
+		switch scanner.Text() {
+		case "-- +goose Up":
+		// do nothing
+		case "":
+			// do nothing
+		case "-- +goose Down":
+			return currentLines, nil
+
+		default:
+			if strings.Contains(scanner.Text(), ";") {
+				currentLine += scanner.Text()
+				currentLines = append(currentLines, currentLine)
+				currentLine = ""
+			} else {
+				currentLine += scanner.Text()
+			}
+		}
+	}
+	return nil, nil
+}
+
+func initializeTables(db *sql.DB) error {
+
+	lines, err := readInitSchemas("assets/migrations/sqlite/005_initialize_schema.sql")
+	if err != nil {
+		return err
+	}
+	for _, line := range lines {
+		_, err = db.Exec(line)
+		fmt.Println("initialize with line", line)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Close see [storage.OpenFGADatastore].Close.
