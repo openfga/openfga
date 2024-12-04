@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/utils"
 	"slices"
 	"sort"
 	"time"
@@ -122,6 +123,17 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"require_authorize_check"})
+
+	checkDurationHistogramName = "check_duration_ms"
+	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            checkDurationHistogramName,
+		Help:                            "The duration of check command resolution, labeled by parent_method and datastore_query_count (in buckets)",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"datastore_query_count", "parent_method"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -963,4 +975,11 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 	}
 
 	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
+}
+
+func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckResponseMetadata, caller string) {
+	checkDurationHistogram.WithLabelValues(
+		utils.Bucketize(uint(checkMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		caller,
+	).Observe(float64(checkMetadata.Duration.Milliseconds()))
 }
