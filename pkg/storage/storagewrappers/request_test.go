@@ -1,6 +1,7 @@
 package storagewrappers
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 func TestRequestStorageWrapper(t *testing.T) {
 	sf := &singleflight.Group{}
 	const maxConcurrentReads = 1000
+	serverCtx := context.Background()
 
 	t.Run("check_api_with_caching_on", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -29,7 +31,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, true, sf, mockCache, 1000, 10*time.Second)
+		br := NewRequestStorageWrapperForCheckAPI(serverCtx, mockDatastore, requestContextualTuples, maxConcurrentReads, true, sf, mockCache, 1000, 10*time.Second)
 		require.NotNil(t, br)
 
 		// assert on the chain
@@ -61,7 +63,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, false, nil, nil, 0, 0)
+		br := NewRequestStorageWrapperForCheckAPI(serverCtx, mockDatastore, requestContextualTuples, maxConcurrentReads, false, nil, nil, 0, 0)
 		require.NotNil(t, br)
 
 		// assert on the chain

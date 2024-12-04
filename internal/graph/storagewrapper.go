@@ -63,6 +63,7 @@ type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
+	ctx           context.Context
 	cache         storage.InMemoryCache[any]
 	maxResultSize int
 	ttl           time.Duration
@@ -74,6 +75,7 @@ type CachedDatastore struct {
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
 func NewCachedDatastore(
+	ctx context.Context,
 	inner storage.RelationshipTupleReader,
 	cache storage.InMemoryCache[any],
 	maxSize int,
@@ -81,6 +83,7 @@ func NewCachedDatastore(
 	sf *singleflight.Group,
 ) *CachedDatastore {
 	return &CachedDatastore{
+		ctx:                     ctx,
 		RelationshipTupleReader: inner,
 		cache:                   cache,
 		maxResultSize:           maxSize,
@@ -326,6 +329,7 @@ func (c *CachedDatastore) newCachedIterator(
 	}
 
 	return &cachedIterator{
+		ctx:       c.ctx,
 		iter:      iter,
 		operation: operation,
 		// set an initial fraction capacity to balance constant reallocation and memory usage
@@ -344,6 +348,7 @@ func (c *CachedDatastore) newCachedIterator(
 }
 
 type cachedIterator struct {
+	ctx               context.Context
 	iter              storage.TupleIterator
 	operation         string
 	cacheKey          string
@@ -424,15 +429,8 @@ func (c *cachedIterator) Stop() {
 		return
 	}
 
-	if c.tuples == nil {
+	if c.tuples == nil || c.ctx.Err() != nil {
 		c.iter.Stop()
-		return
-	}
-
-	// if cache is already set, we don't need to drain the iterator
-	if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
-		c.iter.Stop()
-		c.tuples = nil
 		return
 	}
 
@@ -441,6 +439,13 @@ func (c *cachedIterator) Stop() {
 		defer c.wg.Done()
 		defer c.iter.Stop()
 
+		// if cache is already set, we don't need to drain the iterator
+		if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
+			c.iter.Stop()
+			c.tuples = nil
+			return
+		}
+
 		c.records = make([]*storage.TupleRecord, 0, len(c.tuples))
 
 		for _, t := range c.tuples {
@@ -448,8 +453,7 @@ func (c *cachedIterator) Stop() {
 		}
 
 		// prevent goroutine if iterator was already consumed
-		ctx := context.Background()
-		if _, err := c.iter.Head(ctx); errors.Is(err, storage.ErrIteratorDone) {
+		if _, err := c.iter.Head(c.ctx); errors.Is(err, storage.ErrIteratorDone) {
 			c.flush()
 			return
 		}
@@ -458,7 +462,7 @@ func (c *cachedIterator) Stop() {
 		_, _, _ = c.sf.Do(c.cacheKey, func() (interface{}, error) {
 			for {
 				// attempt to drain the iterator to have it ready for subsequent calls
-				t, err := c.iter.Next(ctx)
+				t, err := c.iter.Next(c.ctx)
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
 						c.flush()
@@ -544,7 +548,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 
 // flush will store copy of buffered tuples into cache.
 func (c *cachedIterator) flush() {
-	if c.tuples == nil {
+	if c.tuples == nil || c.ctx.Err() != nil {
 		return
 	}
 

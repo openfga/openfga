@@ -757,12 +757,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		// a new background context with the current trace context.
 		s.datastore = storagewrappers.NewContextWrapper(s.datastore)
 	}
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
+
+	s.datastore, err = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
+	if err != nil {
+		return nil, err
+	}
 
 	if s.checkCacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
-		s.checkCache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		var err error
+		s.checkCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.checkCacheLimit)),
 		}...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if s.checkCache != nil && s.cacheControllerEnabled {
@@ -778,7 +786,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
@@ -786,6 +794,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
+	if err != nil {
+		return nil, err
+	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
@@ -795,7 +806,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	if err != nil {
+		return nil, err
+	}
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
@@ -806,6 +820,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
+	s.checkResolverCloser()
+	s.typesystemResolverStop()
+
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
 	}
@@ -813,14 +830,10 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.checkResolverCloser()
-
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
 	s.datastore.Close()
-
-	s.typesystemResolverStop()
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]

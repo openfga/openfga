@@ -1,6 +1,7 @@
 package storagewrappers
 
 import (
+	"context"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -20,7 +21,9 @@ type RequestStorageWrapper struct {
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
-func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader,
+func NewRequestStorageWrapperForCheckAPI(
+	serverCtx context.Context,
+	ds storage.RelationshipTupleReader,
 	requestContextualTuples []*openfgav1.TupleKey,
 	maxConcurrentReads uint32,
 	shouldCacheIterators bool,
@@ -31,7 +34,7 @@ func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader,
 	var a storage.RelationshipTupleReader
 	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	if shouldCacheIterators {
-		a = graph.NewCachedDatastore(a, checkCache, int(maxCheckCacheSize), checkCacheTTL, singleflightGroup) // to read tuples from cache
+		a = graph.NewCachedDatastore(serverCtx, a, checkCache, int(maxCheckCacheSize), checkCacheTTL, singleflightGroup) // to read tuples from cache
 	}
 	b := NewInstrumentedOpenFGAStorage(a)                   // to capture metrics
 	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples

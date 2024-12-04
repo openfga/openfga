@@ -2278,6 +2278,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 		}), nil)
 
 	s := MustNewServerWithOpts(
+		WithContext(ctx),
 		WithDatastore(mockDatastore),
 		WithCheckCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),

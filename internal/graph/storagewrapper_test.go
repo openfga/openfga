@@ -26,9 +26,12 @@ import (
 )
 
 func TestFindInCache(t *testing.T) {
+	ctx := context.Background()
+
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -38,7 +41,7 @@ func TestFindInCache(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 	key := "key"
@@ -111,6 +114,7 @@ func TestReadStartingWithUser(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -120,7 +124,7 @@ func TestReadStartingWithUser(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -332,7 +336,7 @@ func TestReadUsersetTuples(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -539,7 +543,7 @@ func TestRead(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -768,7 +772,7 @@ func TestDatastoreIteratorError(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(mockDatastore, mockCache, maxSize, ttl, sf)
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
 
 	storeID := ulid.Make().String()
 
@@ -832,12 +836,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mocks.NewErrorTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -853,7 +859,7 @@ func TestCachedIterator(t *testing.T) {
 			userType:          "",
 		}
 
-		_, err := iter.Next(ctx)
+		_, err = iter.Next(ctx)
 		require.NoError(t, err)
 
 		_, err = iter.Next(ctx)
@@ -869,12 +875,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -890,7 +898,7 @@ func TestCachedIterator(t *testing.T) {
 			userType:          "",
 		}
 
-		_, err := iter.Next(ctx)
+		_, err = iter.Next(ctx)
 		require.NoError(t, err)
 
 		require.Nil(t, iter.tuples)
@@ -900,12 +908,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -953,12 +963,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 1
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mocks.NewErrorTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -987,12 +999,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1046,12 +1060,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1086,12 +1102,14 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
-		cache := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		cache, err := storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(100)),
 		}...)
+		require.NoError(t, err)
 		defer cache.Stop()
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              storage.NewStaticTupleIterator(tuples),
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1110,8 +1128,7 @@ func TestCachedIterator(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := iter.Next(cancelledCtx)
-
+		_, err = iter.Next(cancelledCtx)
 		require.ErrorIs(t, err, context.Canceled)
 
 		iter.Stop()
@@ -1146,6 +1163,7 @@ func TestCachedIterator(t *testing.T) {
 		}
 
 		iter := &cachedIterator{
+			ctx:               ctx,
 			iter:              mockedIter,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1170,6 +1188,7 @@ func TestCachedIterator(t *testing.T) {
 		}()
 
 		wg.Wait()
+		iter.wg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
@@ -1199,6 +1218,7 @@ func TestCachedIterator(t *testing.T) {
 			}
 
 			iter1 := &cachedIterator{
+				ctx:               ctx,
 				iter:              mockedIter1,
 				operation:         "operation",
 				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
@@ -1219,6 +1239,7 @@ func TestCachedIterator(t *testing.T) {
 			}
 
 			iter2 := &cachedIterator{
+				ctx:               ctx,
 				iter:              mockedIter2,
 				operation:         "operation",
 				tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),

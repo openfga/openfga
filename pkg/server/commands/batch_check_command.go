@@ -22,6 +22,7 @@ import (
 type BatchCheckQuery struct {
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
+	serverCtx              context.Context
 	shouldCacheIterators   bool
 	checkCache             storage.InMemoryCache[any]
 	maxCheckCacheSize      uint32
@@ -144,7 +145,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.cacheController, bq.shouldCacheIterators, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
+				WithCheckCommandCache(bq.serverCtx, bq.cacheController, bq.shouldCacheIterators, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
 			)
 
 			checkParams := &CheckCommandParams{
