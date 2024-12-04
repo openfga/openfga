@@ -175,7 +175,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		}
 	}
 
-	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(time.Since(start).Milliseconds())
+	findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 
 	return entry.LastModified, nil
 }
