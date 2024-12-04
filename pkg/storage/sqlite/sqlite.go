@@ -157,7 +157,9 @@ func NewInMemoryWithConfig(cfg *sqlcommon.Config) (*Datastore, error) {
 	if cfg.ConnMaxIdleTime != 0 {
 		cfg.ConnMaxIdleTime = 0
 	}
-	return newSQLite("file::memory:?cache=shared", cfg, true)
+	rnd := ulid.Make()
+	uri := fmt.Sprintf("file::db_%s:?mode=memory&cache=shared", rnd)
+	return newSQLite(uri, cfg, true)
 }
 
 func MustNewInMemory() *Datastore {
