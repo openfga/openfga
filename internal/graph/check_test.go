@@ -969,7 +969,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			})
-			require.NoError(t, err)
+			require.NoError(t, err, "iteration %d", i)
 			require.False(t, resp.GetAllowed())
 		}
 	})
@@ -1020,7 +1020,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
 			})
-			require.NoError(t, err)
+			require.NoError(t, err, "iteration %d", i)
 			require.False(t, resp.GetAllowed())
 		}
 	})
@@ -1119,7 +1119,7 @@ func TestCheckConditions(t *testing.T) {
 		tuple.NewTupleKeyWithCondition("document:x", "parent", "folder:y", "condition1", nil),
 		tuple.NewTupleKey("folder:y", "viewer", "user:bob"),
 		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("document:2", "viewer", "group:eng#member"),
 		tuple.NewTupleKeyWithCondition("group:eng", "member", "group:fga#member", "condition1", nil),
 		tuple.NewTupleKey("group:fga", "member", "user:jon"),
 	}
@@ -1754,7 +1754,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 					TupleKey:             test.request,
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				})
-				require.NoError(t, err)
+				require.NoError(t, err, "test: %s", testname)
 				require.NotNil(t, resp)
 				require.Equal(t, test.expectAllowed, resp.Allowed)
 			})

@@ -192,7 +192,7 @@ func runServer(ctx context.Context, cfg *serverconfig.Config) error {
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
@@ -204,7 +204,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -229,7 +229,10 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t,
+			// https://github.com/uber-go/goleak/discussions/89
+			goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"),
+		)
 	})
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
