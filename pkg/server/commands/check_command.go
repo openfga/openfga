@@ -34,7 +34,6 @@ type CheckQuery struct {
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
-	caller             string
 }
 
 type CheckCommandParams struct {
