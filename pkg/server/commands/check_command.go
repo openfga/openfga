@@ -27,7 +27,6 @@ import (
 const (
 	defaultResolveNodeLimit           = 25
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
-	defaultParentMethodName           = "check"
 )
 
 var (
@@ -52,7 +51,7 @@ type CheckQuery struct {
 
 	resolveNodeLimit   uint32
 	maxConcurrentReads uint32
-	parentMethodName   string
+	caller             string
 }
 
 type CheckCommandParams struct {
@@ -89,9 +88,9 @@ func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption 
 	}
 }
 
-func WithParentMethodName(methodName string) CheckQueryOption {
+func WithCaller(methodName string) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.parentMethodName = methodName
+		c.caller = methodName
 	}
 }
 
@@ -104,7 +103,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		cacheController:    cachecontroller.NewNoopCacheController(),
 		resolveNodeLimit:   defaultResolveNodeLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
-		parentMethodName:   defaultParentMethodName,
+		caller:             "",
 	}
 
 	for _, opt := range opts {
@@ -159,7 +158,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	checkDurationHistogram.WithLabelValues(
 		utils.Bucketize(uint(datastoreQueryCount), []uint{50, 200}),
-		c.parentMethodName,
+		c.caller,
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil

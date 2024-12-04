@@ -348,7 +348,7 @@ func (q *ListObjectsQuery) evaluate(
 						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithParentMethodName("list_objects"),
+						WithCaller("list_objects"),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
