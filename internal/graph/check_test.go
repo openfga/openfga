@@ -760,7 +760,8 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 }
 
 func TestNonStratifiableCheckQueries(t *testing.T) {
-	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
 	t.Run("example_1", func(t *testing.T) {
@@ -851,7 +852,8 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
-	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
@@ -1037,9 +1039,10 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker, checkResolverCloser := NewOrderedCheckResolvers(
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers(
 		WithLocalCheckerOpts(WithResolveNodeBreadthLimit(concurrencyLimit)),
 	).Build()
+	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -1118,7 +1121,8 @@ func TestCheckConditions(t *testing.T) {
 	err = ds.Write(context.Background(), storeID, nil, tuples)
 	require.NoError(t, err)
 
-	checker, checkResolverCloser := NewOrderedCheckResolvers().Build()
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
 	typesys, err := typesystem.NewAndValidate(

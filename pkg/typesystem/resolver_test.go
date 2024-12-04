@@ -28,12 +28,11 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
-		_, err := resolver(context.Background(), store, invalidModelID)
+		_, err = resolver(context.Background(), store, invalidModelID)
 		require.ErrorIs(t, err, ErrModelNotFound)
 	})
 
@@ -48,12 +47,11 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(nil, storage.ErrNotFound).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
-		_, err := resolver(context.Background(), store, "")
+		_, err = resolver(context.Background(), store, "")
 		require.ErrorIs(t, err, ErrModelNotFound)
 	})
 
@@ -73,9 +71,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
 		typesys, err := resolver(context.Background(), store, "")
@@ -95,11 +92,11 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(nil, storage.ErrNotFound).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
-		_, err := resolver(context.Background(), store, modelID)
+
+		_, err = resolver(context.Background(), store, modelID)
 		require.ErrorIs(t, err, ErrModelNotFound)
 	})
 
@@ -121,9 +118,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 		typesys, err := resolver(context.Background(), store, modelID)
 		require.NoError(t, err)
@@ -151,12 +147,11 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
-		_, err := resolver(context.Background(), store, "")
+		_, err = resolver(context.Background(), store, "")
 		require.ErrorContains(t, err, "invalid authorization model encountered: the relation type 'user_invalid' on 'member' in object type 'group' is not valid")
 	})
 
@@ -178,9 +173,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			).
 			Times(1)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
 		// first call
@@ -210,9 +204,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(model, nil).
 			Times(2)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
 		// first call
@@ -243,9 +236,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockAuthorizationModelReadBackend(mockController)
 
-		resolver, resolverStop := MemoizedTypesystemResolverFunc(
-			mockDatastore,
-		)
+		resolver, resolverStop, err := MemoizedTypesystemResolverFunc(mockDatastore)
+		require.NoError(t, err)
 		defer resolverStop()
 
 		// first read returns modelOne
