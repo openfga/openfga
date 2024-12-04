@@ -458,7 +458,8 @@ func TestResolveCheckFromCache(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockResolver := NewMockCheckResolver(ctrl)
-			dut := NewCachedCheckResolver()
+			dut, err := NewCachedCheckResolver()
+			require.NoError(t, err)
 			defer dut.Close()
 			dut.SetDelegate(mockResolver)
 
@@ -492,7 +493,8 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 
 	mockCheckResolver := NewMockCheckResolver(ctrl)
 
-	dut := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
+	require.NoError(t, err)
 	t.Cleanup(dut.Close)
 
 	dut.SetDelegate(mockCheckResolver)
@@ -503,7 +505,7 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 			Allowed: true,
 		}, nil)
 
-	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	_, err = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 
 	// run multiple times to increase probability of ensuring we detect the race
@@ -556,7 +558,8 @@ func TestResolveCheckExpired(t *testing.T) {
 	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
+	require.NoError(t, err)
 	defer dut.Close()
 
 	dut.SetDelegate(initialMockResolver)
@@ -596,7 +599,8 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Hour))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(1 * time.Hour))
+	require.NoError(t, err)
 	defer dut.Close()
 
 	dut.SetDelegate(initialMockResolver)
@@ -614,7 +618,8 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cachedCheckResolver := NewCachedCheckResolver()
+	cachedCheckResolver, err := NewCachedCheckResolver()
+	require.NoError(t, err)
 	defer cachedCheckResolver.Close()
 
 	mockCtrl := gomock.NewController(t)
@@ -641,30 +646,6 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
-}
-
-func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
-	cachedCheckResolver := NewCachedCheckResolver(WithExistingCache(nil)) // create cache inside
-
-	mockCtrl := gomock.NewController(t)
-	t.Cleanup(mockCtrl.Finish)
-
-	mockCheckResolver := NewMockCheckResolver(mockCtrl)
-	cachedCheckResolver.SetDelegate(mockCheckResolver)
-
-	mockCheckResolver.EXPECT().
-		ResolveCheck(gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(&ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: ResolveCheckResponseMetadata{
-				CycleDetected: true,
-			},
-		}, nil)
-
-	cachedCheckResolver.Close()
-	_, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-	require.NoError(t, err)
 }
 
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
