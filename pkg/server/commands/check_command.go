@@ -150,11 +150,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		return nil, nil, err
 	}
 
-	var datastoreQueryCount uint32
-	if resp != nil {
-		datastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
-		resp.ResolutionMetadata.DatastoreQueryCount = datastoreQueryCount
-	}
+	datastoreQueryCount := c.datastore.GetMetrics().DatastoreQueryCount
+	resp.ResolutionMetadata.DatastoreQueryCount = datastoreQueryCount
 
 	checkDurationHistogram.WithLabelValues(
 		utils.Bucketize(uint(datastoreQueryCount), []uint{50, 200}),
