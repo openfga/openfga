@@ -4,19 +4,17 @@ package storage
 
 import (
 	"fmt"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Yiling-J/theine-go"
 	"github.com/cespare/xxhash/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/keys"
-
-	"github.com/Yiling-J/theine-go"
 )
 
 const (
