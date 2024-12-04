@@ -25,12 +25,15 @@ type cachedOpenFGADatastore struct {
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize
 // [*openfgav1.AuthorizationModel] on every call to storage.ReadAuthorizationModel.
 // It caches with unlimited TTL because models are immutable. It uses LRU for eviction.
-func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
-	cache := storage.NewInMemoryLRUCache[*openfgav1.AuthorizationModel](storage.WithMaxCacheSize[*openfgav1.AuthorizationModel](int64(maxSize)))
+func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) (*cachedOpenFGADatastore, error) {
+	cache, err := storage.NewInMemoryLRUCache[*openfgav1.AuthorizationModel](storage.WithMaxCacheSize[*openfgav1.AuthorizationModel](int64(maxSize)))
+	if err != nil {
+		return nil, err
+	}
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
 		cache:            *cache,
-	}
+	}, nil
 }
 
 // ReadAuthorizationModel reads the model corresponding to store and model ID.

@@ -97,7 +97,7 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
 // NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
-func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
+func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) (*CachedCheckResolver, error) {
 	checker := &CachedCheckResolver{
 		maxCacheSize: defaultMaxCacheSize,
 		cacheTTL:     defaultCacheTTL,
@@ -114,10 +114,15 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 		cacheOptions := []storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](checker.maxCacheSize),
 		}
-		checker.cache = storage.NewInMemoryLRUCache[any](cacheOptions...)
+
+		var err error
+		checker.cache, err = storage.NewInMemoryLRUCache[any](cacheOptions...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return checker
+	return checker, nil
 }
 
 // SetDelegate sets this CachedCheckResolver's dispatch delegate.

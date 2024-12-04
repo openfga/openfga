@@ -23,7 +23,8 @@ import (
 
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
-		checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
 		q, err := NewListObjectsQuery(nil, checkResolver)
 		require.Nil(t, q)
@@ -236,7 +237,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			checker, checkResolverCloser := graph.NewOrderedCheckResolvers(
+			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
 				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
 					graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
 						DefaultThreshold: 0,
@@ -245,6 +246,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					graph.WithThrottler(mockThrottler),
 				}...),
 				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
+			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
@@ -303,7 +305,8 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCache := storage.NewInMemoryLRUCache[any]()
+	checkCache, err := storage.NewInMemoryLRUCache[any]()
+	require.NoError(t, err)
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
@@ -328,11 +331,12 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithCachedCheckResolverOpts(true, []graph.CachedCheckResolverOpt{
 			graph.WithExistingCache(checkCache),
 		}...),
 	}...).Build()
+	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
 	q, _ := NewListObjectsQuery(
