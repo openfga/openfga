@@ -150,7 +150,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(lastVerified) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
-		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(time.Since(start).Seconds())
+		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return entry.LastModified, nil
 	}
 
