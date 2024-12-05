@@ -844,9 +844,14 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
+	if s.checkCache != nil && s.checkIteratorCacheEnabled {
+		s.checkDatastore.Close()
+	}
+
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
+
 	s.datastore.Close()
 }
 

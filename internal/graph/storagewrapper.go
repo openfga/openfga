@@ -72,6 +72,8 @@ type CachedDatastore struct {
 	// sf is used to prevent draining the same iterator
 	// across multiple requests.
 	sf *singleflight.Group
+
+	wg *sync.WaitGroup
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -89,6 +91,7 @@ func NewCachedDatastore(
 		maxResultSize:    maxSize,
 		ttl:              ttl,
 		sf:               &singleflight.Group{},
+		wg:               &sync.WaitGroup{},
 	}
 }
 
@@ -344,12 +347,13 @@ func (c *CachedDatastore) newCachedIterator(
 		objectID:          objectID,
 		relation:          relation,
 		userType:          userType,
+		wg:                c.wg,
 	}, nil
 }
 
 // Close closes the datastore and cleans up any residual resources.
 func (c *CachedDatastore) Close() {
-	c.OpenFGADatastore.Close()
+	c.wg.Wait()
 }
 
 type cachedIterator struct {
@@ -388,7 +392,7 @@ type cachedIterator struct {
 	mu sync.Mutex
 
 	// wg is used purely for testing and is an internal detail.
-	wg sync.WaitGroup
+	wg *sync.WaitGroup
 }
 
 // Next will return the next available tuple from the underlying iterator and

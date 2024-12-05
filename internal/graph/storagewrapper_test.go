@@ -776,12 +776,21 @@ func TestCloseDatastore(t *testing.T) {
 	mockCache := mocks.NewMockInMemoryCache[any](mockController)
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().Close().Times(1).Return()
-
 	maxSize := 10
 	ttl := 5 * time.Hour
 	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl)
 	ds.Close()
+
+	doneCh := make(chan struct{})
+	go func() {
+		ds.wg.Wait()
+		close(doneCh)
+	}()
+	select {
+	case <-doneCh:
+	case <-time.After(1 * time.Millisecond):
+		t.Fatalf("timeout waiting for waitgroup")
+	}
 }
 
 func TestDatastoreIteratorError(t *testing.T) {
@@ -878,6 +887,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -917,6 +927,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -950,6 +961,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1005,6 +1017,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1041,6 +1054,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1102,6 +1116,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1144,6 +1159,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1198,6 +1214,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1253,6 +1270,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
+				wg:                &sync.WaitGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",
@@ -1274,6 +1292,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
+				wg:                &sync.WaitGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",
