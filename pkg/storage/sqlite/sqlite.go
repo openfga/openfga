@@ -166,8 +166,8 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 
 func NewInMemory() (*Datastore, error) {
 	dsCfg := sqlcommon.NewConfig(
-		sqlcommon.WithMaxIdleConns(1),
-		sqlcommon.WithMaxOpenConns(1),
+		sqlcommon.WithMaxIdleConns(2),
+		sqlcommon.WithMaxOpenConns(2),
 		sqlcommon.WithConnMaxIdleTime(0),
 		sqlcommon.WithConnMaxLifetime(0),
 	)
@@ -1129,7 +1129,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 			return storage.ErrCollision
 		}
 		if sqliteErr.Code()&0xFF == sqlite3.SQLITE_INTERRUPT {
-			return context.DeadlineExceeded
+			return context.Canceled
 		}
 	}
 

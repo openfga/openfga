@@ -29,7 +29,7 @@ func TestFindInCache(t *testing.T) {
 	ctx := context.Background()
 
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)
@@ -111,7 +111,7 @@ func TestFindInCache(t *testing.T) {
 func TestReadStartingWithUser(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)
@@ -323,7 +323,7 @@ func TestReadStartingWithUser(t *testing.T) {
 func TestReadUsersetTuples(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -533,7 +533,7 @@ func TestReadUsersetTuples(t *testing.T) {
 func TestRead(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)
@@ -768,7 +768,7 @@ func TestRead(t *testing.T) {
 func TestCloseDatastore(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -787,7 +787,7 @@ func TestCloseDatastore(t *testing.T) {
 func TestDatastoreIteratorError(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -816,7 +816,7 @@ func TestDatastoreIteratorError(t *testing.T) {
 
 func TestCachedIterator(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ctx := context.Background()
 

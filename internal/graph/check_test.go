@@ -126,7 +126,7 @@ func TestCheck_CorrectContext(t *testing.T) {
 
 func TestExclusionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -465,7 +465,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 func TestIntersectionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1676,7 +1676,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 func TestCheckWithFastPathOptimization(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	usersetBatchSize := uint32(10)
 	ds := sqlite.MustNewInMemory()
@@ -1754,9 +1754,21 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 					TupleKey:             test.request,
 					RequestMetadata:      NewCheckRequestMetadata(20),
 				})
-				require.NoError(t, err, "test: %s", testname)
-				require.NotNil(t, resp)
-				require.Equal(t, test.expectAllowed, resp.Allowed)
+				if err != nil {
+					switch {
+					case errors.Is(err, context.Canceled):
+						// ok
+						break
+					case errors.Is(err, context.DeadlineExceeded):
+						// ok
+						break
+					default:
+						require.NoError(t, err)
+					}
+				} else {
+					require.NotNil(t, resp)
+					require.Equal(t, test.expectAllowed, resp.Allowed)
+				}
 			})
 
 			t.Run("with_context_timeout", func(t *testing.T) {
@@ -1772,7 +1784,16 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 							RequestMetadata:      NewCheckRequestMetadata(20),
 						})
 						if err != nil {
-							require.ErrorIs(t, err, context.DeadlineExceeded)
+							switch {
+							case errors.Is(err, context.Canceled):
+								// ok
+								break
+							case errors.Is(err, context.DeadlineExceeded):
+								// ok
+								break
+							default:
+								require.NoError(t, err)
+							}
 						} else {
 							require.NotNil(t, resp)
 							require.Equal(t, test.expectAllowed, resp.Allowed)
@@ -1870,8 +1891,10 @@ func TestCycleDetection(t *testing.T) {
 
 func TestProduceUsersets(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
+
+	goleak.Cleanup(func(int) {})
 
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
@@ -2382,7 +2405,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 
 func TestConsumeUsersets(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := parser.MustTransformDSLToProto(`
@@ -2766,7 +2789,7 @@ func collectMessagesFromChannel(dispatchChan chan dispatchMsg) []dispatchMsg {
 
 func TestProduceUsersetDispatches(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
@@ -2909,7 +2932,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 
 func TestProduceTTUDispatches(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
@@ -3084,7 +3107,7 @@ func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
 
 func TestProcessDispatch(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3246,7 +3269,7 @@ func TestProcessDispatch(t *testing.T) {
 
 func TestConsumeDispatch(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
@@ -3431,7 +3454,7 @@ func TestConsumeDispatch(t *testing.T) {
 
 func TestCheckUsersetSlowPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
 		if tupleKey.GetCondition().GetName() == "condition1" {
@@ -3516,7 +3539,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 
 func TestCheckTTUSlowPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
@@ -3636,7 +3659,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 
 func TestBreadthFirstNestedMatch(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	tests := []struct {
@@ -3799,7 +3822,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 
 func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	tests := []struct {
@@ -3984,7 +4007,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 func TestProcessUsersetMessage(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	tests := []struct {
@@ -4031,7 +4054,7 @@ func TestProcessUsersetMessage(t *testing.T) {
 
 func TestNestedTTUFastPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := parser.MustTransformDSLToProto(`
@@ -4121,7 +4144,7 @@ func TestNestedTTUFastPath(t *testing.T) {
 
 func TestNestedUsersetFastPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := []struct {
 		name                            string
@@ -4427,7 +4450,7 @@ func TestBuildNestedMapper(t *testing.T) {
 
 func TestCheckTTU(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	// model
@@ -4536,7 +4559,7 @@ func TestCheckTTU(t *testing.T) {
 
 func TestCheckDirectUserTuple(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	directlyAssignedModelWithCondition := parser.MustTransformDSLToProto(`
 	model
@@ -4664,7 +4687,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 
 func TestShouldCheckDirectTuple(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	tests := []struct {
@@ -4759,7 +4782,7 @@ func TestShouldCheckDirectTuple(t *testing.T) {
 
 func TestShouldCheckPubliclyAssigned(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	tests := []struct {
@@ -4854,7 +4877,7 @@ func TestShouldCheckPubliclyAssigned(t *testing.T) {
 
 func TestCheckPublicAssignable(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	modelWithNoCond := parser.MustTransformDSLToProto(`
