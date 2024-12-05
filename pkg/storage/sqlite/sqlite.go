@@ -107,6 +107,7 @@ func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore
 	}
 
 	if initRequired {
+
 		db, err = goose.OpenDBWithDriver("sqlite", uri)
 		if err != nil {
 			return nil, fmt.Errorf("goose initialization: %w", err)
@@ -125,10 +126,18 @@ func newSQLite(uri string, cfg *sqlcommon.Config, initRequired bool) (*Datastore
 		fmt.Println("DB version", ver)
 	}
 
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	if cfg.ConnMaxLifetime != 0 {
+		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
+	if cfg.ConnMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	}
+	if cfg.MaxIdleConns != 0 {
+		db.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	if cfg.MaxOpenConns != 0 {
+		db.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
 
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
@@ -158,6 +167,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 func NewInMemory() (*Datastore, error) {
 	dsCfg := sqlcommon.NewConfig(
 		sqlcommon.WithMaxIdleConns(1),
+		sqlcommon.WithMaxOpenConns(1),
 		sqlcommon.WithConnMaxIdleTime(0),
 		sqlcommon.WithConnMaxLifetime(0),
 	)

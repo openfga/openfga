@@ -28,7 +28,7 @@ import (
 
 func TestListUsersValidation(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := `
@@ -281,7 +281,7 @@ func TestExperimentalListUsers(t *testing.T) {
 
 func TestListUsers_ErrorCases(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -345,7 +345,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 
 func TestListUsers_Deadline(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()

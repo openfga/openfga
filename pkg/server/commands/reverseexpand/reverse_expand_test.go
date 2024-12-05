@@ -329,7 +329,9 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	mockDatastore := mocks.NewMockSlowDataStorage(sqlite.MustNewInMemory(), 1*time.Second)
+	ds := sqlite.MustNewInMemory()
+	defer t.Cleanup(ds.Close)
+	mockDatastore := mocks.NewMockSlowDataStorage(ds, 1*time.Second)
 
 	for i := 0; i < 50; i++ {
 		t.Logf("iteration %d", i)

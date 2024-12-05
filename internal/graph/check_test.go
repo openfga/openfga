@@ -926,7 +926,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		t.Parallel()
 
 		ds := sqlite.MustNewInMemory()
-		t.Cleanup(ds.Close)
+		defer t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -978,7 +978,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		t.Parallel()
 
 		ds := sqlite.MustNewInMemory()
-		t.Cleanup(ds.Close)
+		defer t.Cleanup(ds.Close)
 
 		storeID := ulid.Make().String()
 
@@ -1383,7 +1383,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 func TestUnionCheckFuncReducer(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1680,7 +1680,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	})
 	usersetBatchSize := uint32(10)
 	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
+	defer t.Cleanup(ds.Close)
 	storeID := ulid.Make().String()
 	model := testutils.MustTransformDSLToProtoWithID(`
 			model

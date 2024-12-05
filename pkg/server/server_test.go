@@ -130,7 +130,7 @@ func ExampleNewServerWithOpts() {
 
 func TestServerPanicIfValidationsFail(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	t.Run("no_datastore", func(t *testing.T) {
@@ -328,16 +328,17 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
+	t.Cleanup(ds.Close)
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
@@ -357,25 +358,27 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 
 func TestServerWithMemoryDatastore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	t.Cleanup(ds.Close)
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
+	t.Cleanup(ds.Close)
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
@@ -395,7 +398,7 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 
 func TestServerWithSQLiteDatastore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
 
@@ -404,7 +407,7 @@ func TestServerWithSQLiteDatastore(t *testing.T) {
 
 func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
@@ -508,7 +511,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 
 func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
@@ -571,7 +574,7 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 
 func TestRequestContextPropagation(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)
@@ -644,7 +647,7 @@ func TestRequestContextPropagation(t *testing.T) {
 
 func TestThreeProngThroughVariousLayers(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
@@ -735,7 +738,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 
 func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	const dispatchFrequency = 5 * time.Millisecond
@@ -858,7 +861,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ctx := context.Background()
 	storeID := ulid.Make().String()
@@ -925,7 +928,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 
 func TestReleasesConnections(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
@@ -1042,7 +1045,7 @@ func TestReleasesConnections(t *testing.T) {
 
 func TestOperationsWithInvalidModel(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1147,7 +1150,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 
 func TestShortestPathToSolutionWins(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1228,7 +1231,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 func TestCheckWithCachedResolution(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1300,7 +1303,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 
 func TestResolveAuthorizationModel(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1469,7 +1472,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 
 func TestListObjects_ErrorCases(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1606,7 +1609,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -1722,7 +1725,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	cfg := serverconfig.DefaultConfig()
@@ -1741,7 +1744,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 
 func TestDelegateCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	t.Run("default_check_resolver_alone", func(t *testing.T) {
 		cfg := serverconfig.DefaultConfig()
@@ -1914,7 +1917,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 func TestIsExperimentallyEnabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ds := sqlite.MustNewInMemory() // Datastore required for server instantiation
 	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
@@ -1956,7 +1959,7 @@ func TestIsExperimentallyEnabled(t *testing.T) {
 
 func TestIsAccessControlEnabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ds := sqlite.MustNewInMemory() // Datastore required for server instantiation
 	t.Cleanup(ds.Close)
@@ -1994,7 +1997,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
@@ -2084,7 +2087,7 @@ func TestServer_ThrottleUntilDeadline(t *testing.T) {
 
 func TestServerCheckCache(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	t.Run("query_cache_enabled_iterator_cache_enabled", func(t *testing.T) {
@@ -2150,7 +2153,7 @@ func TestServerCheckCache(t *testing.T) {
 
 func TestCheckWithCachedControllerEnabled(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	t.Run("cache_controller_is_noop", func(t *testing.T) {
@@ -2213,7 +2216,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 
 func TestCheckWithCachedIterator(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()

@@ -258,6 +258,7 @@ func TestBatchCheckCommand(t *testing.T) {
 
 func BenchmarkBatchCheckCommand(b *testing.B) {
 	ds := sqlite.MustNewInMemory()
+	defer b.Cleanup(ds.Close)
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1

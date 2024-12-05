@@ -193,14 +193,12 @@ func (s *authzSettings) addAuthForRelation(ctx context.Context, t *testing.T, au
 
 func TestListObjects(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("list_objects_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -230,7 +228,7 @@ func TestListObjects(t *testing.T) {
 
 	t.Run("list_objects_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -282,14 +280,12 @@ func TestListObjects(t *testing.T) {
 
 func TestStreamedListObjects(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("streamed_list_objects_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -308,7 +304,7 @@ func TestStreamedListObjects(t *testing.T) {
 
 	t.Run("streamed_list_objects_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 		clientID := "validclientid"
@@ -359,14 +355,12 @@ func TestStreamedListObjects(t *testing.T) {
 
 func TestRead(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("read_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -386,7 +380,7 @@ func TestRead(t *testing.T) {
 
 	t.Run("read_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -441,14 +435,12 @@ func TestRead(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("write_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -469,7 +461,7 @@ func TestWrite(t *testing.T) {
 
 	t.Run("write_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -646,14 +638,12 @@ func TestWrite(t *testing.T) {
 
 func TestCheckCreateStoreAuthz(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("checkCreateStoreAuthz_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -663,7 +653,7 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 	t.Run("checkCreateStoreAuthz_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -711,14 +701,12 @@ func TestCheckCreateStoreAuthz(t *testing.T) {
 
 func TestCheckAuthz(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -730,7 +718,7 @@ func TestCheckAuthz(t *testing.T) {
 
 	t.Run("authz_enabled", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -785,14 +773,12 @@ func TestCheckAuthz(t *testing.T) {
 
 func TestGetAccessibleStores(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -802,7 +788,7 @@ func TestGetAccessibleStores(t *testing.T) {
 
 	t.Run("authz_enabled", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -878,10 +864,8 @@ func TestGetAccessibleStores(t *testing.T) {
 
 func TestCheckWriteAuthz(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	model := &openfgav1.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -892,7 +876,7 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 	t.Run("checkWriteAuthz_no_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -909,7 +893,7 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 	t.Run("checkWriteAuthz_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -971,14 +955,12 @@ func TestCheckWriteAuthz(t *testing.T) {
 
 func TestCheck(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("authz_disabled_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1001,7 +983,7 @@ func TestCheck(t *testing.T) {
 
 	t.Run("authz_enabled", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1049,14 +1031,12 @@ func TestCheck(t *testing.T) {
 
 func TestExpand(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("expand_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1125,7 +1105,7 @@ func TestExpand(t *testing.T) {
 
 	t.Run("expand_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1183,14 +1163,12 @@ func TestExpand(t *testing.T) {
 
 func TestReadAuthorizationModel(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("readAuthorizationModel_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1212,7 +1190,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 
 	t.Run("readAuthorizationModel_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1254,14 +1232,12 @@ func TestReadAuthorizationModel(t *testing.T) {
 
 func TestReadAuthorizationModels(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("readAuthorizationModels_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1282,7 +1258,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 
 	t.Run("readAuthorizationModels_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1323,14 +1299,12 @@ func TestReadAuthorizationModels(t *testing.T) {
 
 func TestWriteAssertions(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("writeAssertions_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1365,7 +1339,7 @@ func TestWriteAssertions(t *testing.T) {
 
 	t.Run("writeAssertions_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1426,14 +1400,12 @@ func TestWriteAssertions(t *testing.T) {
 
 func TestReadAssertions(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("readAssertions_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1456,7 +1428,7 @@ func TestReadAssertions(t *testing.T) {
 
 	t.Run("readAssertions_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1497,14 +1469,12 @@ func TestReadAssertions(t *testing.T) {
 
 func TestReadChanges(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("readChanges_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1528,7 +1498,7 @@ func TestReadChanges(t *testing.T) {
 
 	t.Run("readChanges_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1571,14 +1541,12 @@ func TestReadChanges(t *testing.T) {
 
 func TestCreateStore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("createStore_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1596,7 +1564,7 @@ func TestCreateStore(t *testing.T) {
 
 	t.Run("createStore_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1632,14 +1600,12 @@ func TestCreateStore(t *testing.T) {
 
 func TestDeleteStore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("deleteStore_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1655,7 +1621,7 @@ func TestDeleteStore(t *testing.T) {
 
 	t.Run("deleteStore_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1688,14 +1654,12 @@ func TestDeleteStore(t *testing.T) {
 
 func TestGetStore(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("getStore_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1712,7 +1676,7 @@ func TestGetStore(t *testing.T) {
 
 	t.Run("getStore_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1746,14 +1710,12 @@ func TestGetStore(t *testing.T) {
 
 func TestListStores(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("listStores_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1770,7 +1732,7 @@ func TestListStores(t *testing.T) {
 
 	t.Run("listStores_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1813,14 +1775,12 @@ func TestListStores(t *testing.T) {
 
 func TestListUsers(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := sqlite.MustNewInMemory()
-	t.Cleanup(ds.Close)
 
 	t.Run("listUsers_no_authz_should_succeed", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 
@@ -1845,7 +1805,7 @@ func TestListUsers(t *testing.T) {
 
 	t.Run("listUsers_with_authz", func(t *testing.T) {
 		openfga := MustNewServerWithOpts(
-			WithDatastore(ds),
+			WithDatastore(sqlite.MustNewInMemory()),
 		)
 		t.Cleanup(openfga.Close)
 

@@ -32,14 +32,18 @@ func TestNewListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery(sqlite.MustNewInMemory(), nil)
+		ds := sqlite.MustNewInMemory()
+		defer t.Cleanup(ds.Close)
+		q, err := NewListObjectsQuery(ds, nil)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(sqlite.MustNewInMemory(), checkResolver)
+		ds := sqlite.MustNewInMemory()
+		defer t.Cleanup(ds.Close)
+		q, err := NewListObjectsQuery(ds, checkResolver)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})

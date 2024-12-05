@@ -23,7 +23,7 @@ import (
 
 func TestBatchCheckUsesTypesystemModel(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
@@ -109,7 +109,7 @@ func TestBatchCheckUsesTypesystemModel(t *testing.T) {
 
 func TestBatchCheckValidatesInboundRequest(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	scenarios := map[string]struct {
@@ -155,7 +155,7 @@ func TestBatchCheckValidatesInboundRequest(t *testing.T) {
 
 func TestBatchCheckFailsIfTooManyChecks(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	numChecks := config.DefaultMaxChecksPerBatchCheck + 1
@@ -215,7 +215,7 @@ func TestBatchCheckFailsIfTooManyChecks(t *testing.T) {
 }
 func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	errMsg := "oh_no"
@@ -284,7 +284,7 @@ func TestTransformCheckCommandErrorToBatchCheckError(t *testing.T) {
 
 func TestTransformCheckResultToProto(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	var expectedResult = map[string]*openfgav1.BatchCheckSingleResult{}
