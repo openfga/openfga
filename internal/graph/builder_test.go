@@ -44,7 +44,8 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
 				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
 			}...)
-			_, checkResolverCloser := builder.Build()
+			_, checkResolverCloser, err := builder.Build()
+			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
 			for i, resolver := range builder.resolvers {
