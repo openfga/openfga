@@ -133,6 +133,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
 
+	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
@@ -141,9 +142,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 		return nil, nil, err
 	}
-	if resp != nil {
-		resp.ResolutionMetadata.DatastoreQueryCount = requestDatastore.GetMetrics().DatastoreQueryCount
-	}
+
+	resp.ResolutionMetadata.Duration = time.Since(startTime)
+	resp.ResolutionMetadata.DatastoreQueryCount = requestDatastore.GetMetrics().DatastoreQueryCount
+
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 

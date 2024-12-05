@@ -113,7 +113,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
-			Return(nil, nil)
+			Return(&graph.ResolveCheckResponse{}, nil)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
@@ -171,7 +171,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Zero(t, req.GetLastCacheInvalidationTime())
-			return nil, nil
+			return &graph.ResolveCheckResponse{}, nil
 		})
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:     ulid.Make().String(),
@@ -188,7 +188,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(context.TODO(), cacheController, false, nil, nil, 0, 0))
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
-			return nil, nil
+			return &graph.ResolveCheckResponse{}, nil
 		})
 		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{

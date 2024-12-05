@@ -62,7 +62,6 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
-		t.Logf("before execute reverse expand")
 		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:    store,
 			ObjectType: "document",
@@ -75,7 +74,6 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
-		t.Logf("after execute reverse expand")
 
 		if err != nil {
 			errChan <- err
@@ -125,7 +123,6 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			// simulate many goroutines trying to write to the results channel
 			iterator := storage.NewStaticTupleIterator(tuples)
-			t.Logf("returning tuple iterator")
 			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -136,7 +133,6 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
-		t.Logf("before execute reverse expand")
 		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:    store,
 			ObjectType: "document",
@@ -149,7 +145,6 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
-		t.Logf("after execute reverse expand")
 
 		if err != nil {
 			errChan <- err
@@ -157,9 +152,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	}()
 	go func() {
 		// simulate max_results=1
-		t.Logf("before receive one result")
 		res := <-resultChan
-		t.Logf("after receive one result")
 
 		// send cancellation to the other goroutine
 		cancelFunc()
@@ -168,7 +161,6 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 		if res.Object == "" {
 			panic("expected object, got nil")
 		}
-		t.Logf("received object %s ", res.Object)
 	}()
 
 	select {
@@ -332,7 +324,6 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
 
 	for i := 0; i < 50; i++ {
-		t.Logf("iteration %d", i)
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
 		t.Cleanup(cancel)
 
@@ -346,7 +337,6 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 				return
 			}
 			reverseExpandQuery := NewReverseExpandQuery(mockDatastore, ts)
-			t.Logf("before produce")
 			err = reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 				StoreID:    store,
 				ObjectType: "document",
@@ -359,7 +349,6 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 				},
 				ContextualTuples: []*openfgav1.TupleKey{},
 			}, resultChan, NewResolutionMetadata())
-			t.Logf("after produce")
 
 			if err != nil {
 				errChan <- err

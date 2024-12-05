@@ -65,7 +65,11 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{}, nil
+			})
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -101,7 +105,11 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{}, nil
+			})
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
