@@ -1319,33 +1319,6 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	return q.Execute(ctx, req)
 }
 
-func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
-	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
-	defer span.End()
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
-	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  "authzen.Evaluation",
-	})
-
-	evalReqCmd := commands.NewEvaluateRequestCommand(req)
-
-	checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
-	if err != nil {
-		return nil, err
-	}
-
-	return &authzenv1.EvaluationResponse{
-		Decision: checkResponse.GetAllowed(),
-	}, nil
-}
-
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
 // for your datastore.
 func (s *Server) IsReady(ctx context.Context) (bool, error) {
@@ -1396,6 +1369,33 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, resolvedModelID)
 
 	return typesys, nil
+}
+
+func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
+	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "authzen.Evaluation",
+	})
+
+	evalReqCmd := commands.NewEvaluateRequestCommand(req)
+
+	checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return &authzenv1.EvaluationResponse{
+		Decision: checkResponse.GetAllowed(),
+	}, nil
 }
 
 func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
