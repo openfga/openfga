@@ -73,6 +73,8 @@ type CachedDatastore struct {
 	// across multiple requests.
 	sf *singleflight.Group
 
+	// wg is used to synchronize inflight goroutines from underlying
+	// cached iterators.
 	wg *sync.WaitGroup
 }
 
@@ -391,7 +393,8 @@ type cachedIterator struct {
 	// mu is used to synchronize access to the iterator.
 	mu sync.Mutex
 
-	// wg is used purely for testing and is an internal detail.
+	// wg is used to synchronize inflight goroutines spawned
+	// when stopping the iterator.
 	wg *sync.WaitGroup
 }
 
