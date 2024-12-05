@@ -1086,7 +1086,7 @@ type directs-user
     define or_computed: computed or computed_cond or direct_wild
     define and_computed: computed_cond and computed_wild
     define butnot_computed: computed_wild_cond but not computed_computed
-	define butnot_computed_cond: computed_cond but not computed_computed
+    define butnot_computed_cond: computed_cond but not computed_computed
 	define alg_combined: butnot_computed_cond but not direct_and_direct_cond
     define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
     define tuple_cycle3: [user, complexity3#cycle_nested]
@@ -1104,11 +1104,11 @@ type directs-employee
 	define direct_cond: [employee with xcond]
     define direct_wild: [employee:*]
     define direct_wild_cond: [employee:* with xcond]
-	define alg_combined: butnot_computed and direct_cond
+    define alg_combined: butnot_computed and direct_cond
 type usersets-user
   relations
     define userset: [directs-user#direct, directs-employee#direct]
-	define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
+    define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
     define userset_to_computed: [directs-user#computed, directs-employee#computed]
     define userset_to_computed_cond: [directs-user#computed_cond, directs-employee#direct_cond]
     define userset_to_computed_wild: [directs-user#computed_wild, directs-employee#direct_wild]
