@@ -34,6 +34,6 @@ func TestEvaluate(t *testing.T) {
 		assert.Equal(t, "user:maria", reqCommand.GetCheckRequest().GetTupleKey().GetUser())
 		assert.Equal(t, "read", reqCommand.GetCheckRequest().GetTupleKey().GetRelation())
 		assert.Equal(t, "repo:fga", reqCommand.GetCheckRequest().GetTupleKey().GetObject())
-		assert.NotEmpty(t, reqCommand.GetCheckRequest().GetContext())
+		assert.Equal(t, true, reqCommand.GetCheckRequest().GetContext().AsMap()["param"])
 	})
 }
