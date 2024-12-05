@@ -4046,7 +4046,6 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 				type group
 					relations
 						define member: [user]
-
 				type folder
 					relations
 						define allowed: [user, user:*]`,
@@ -4102,15 +4101,15 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 				  schema 1.1
 				type user
 				type role
-				  relations
-					define assignee: [user]
+				  	relations
+						define assignee: [user]
 				type permission
-				  relations
-					define assignee: assignee from role
-					define role: [role]
+					relations
+						define assignee: assignee from role
+						define role: [role]
 				type job
-				  relations
-					define can_read: [permission#assignee]`,
+					relations
+						define can_read: [permission#assignee]`,
 			objectType: "job",
 			relation:   "can_read",
 			userType:   "user",
@@ -4120,16 +4119,16 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			name: "nested_userset",
 			model: `
 				model
-				  schema 1.1
+					schema 1.1
 				type user
                 type employee
 				type group
-				  relations
-                    define testers: [employee]
-					define assignee: [user, group#testers]
+					relations
+                    	define testers: [employee]
+						define assignee: [user, group#testers]
 			    type folder
-				  relations
-				    define allowed: [group#assignee]`,
+				  	relations
+				    	define allowed: [group#assignee]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "employee",
@@ -4139,17 +4138,17 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
 			model: `
 				model
-				  schema 1.1
+				  	schema 1.1
                 type user
 				type group
-				  relations
-					define member: [user, user with x_bigger_than]
-					define user_in_context: [user]
-					define reader: member
-					define assignee: reader
+				  	relations
+						define member: [user, user with x_bigger_than]
+						define user_in_context: [user]
+						define reader: member
+						define assignee: reader
 				type tier
-				  relations
-				   define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
+					relations
+						define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
 
 				condition x_bigger_than(x: int) {
 					x > 100
