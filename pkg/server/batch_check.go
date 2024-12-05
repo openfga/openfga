@@ -79,7 +79,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	methodName := "batchCheck"
+	methodName := "batchcheck"
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
@@ -94,7 +94,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
-		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), "batch_check")
+		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
