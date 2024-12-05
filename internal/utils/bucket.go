@@ -1,16 +1,22 @@
 package utils
 
-import "strconv"
+import (
+	"sort"
+	"strconv"
+)
 
-// Bucketize will put the value into the correct bucket.
+// Bucketize will put the value of a metric into the correct bucket, and return the label for it.
 // It is expected that the buckets are already sorted in increasing order and non-empty.
 func Bucketize(value uint, buckets []uint) string {
-	for _, bucketValue := range buckets {
-		if value <= bucketValue {
-			return strconv.Itoa(int(bucketValue))
-		}
+	idx := sort.Search(len(buckets), func(i int) bool {
+		return value <= buckets[i]
+	})
+
+	if idx == len(buckets) {
+		return "+Inf"
 	}
-	return ">" + strconv.Itoa(int(buckets[len(buckets)-1]))
+
+	return strconv.Itoa(int(buckets[idx]))
 }
 
 // LinearBuckets returns an evenly distributed range of buckets in the closed interval
