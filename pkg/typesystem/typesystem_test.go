@@ -4121,10 +4121,10 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 				model
 					schema 1.1
 				type user
-                type employee
+				type employee
 				type group
 					relations
-                    	define testers: [employee]
+						define testers: [employee]
 						define assignee: [user, group#testers]
 			    type folder
 				  	relations
@@ -4139,7 +4139,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			model: `
 				model
 				  	schema 1.1
-                type user
+				type user
 				type group
 				  	relations
 						define member: [user, user with x_bigger_than]
