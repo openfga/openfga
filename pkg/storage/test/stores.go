@@ -99,14 +99,14 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 
 	verifyStore := func(t *testing.T, expected, got *openfgav1.Store) {
-		require.Equal(t, expected.Id, got.Id)
-		require.Equal(t, expected.Name, got.Name)
+		require.Equal(t, expected.GetId(), got.GetId())
+		require.Equal(t, expected.GetName(), got.GetName())
 	}
 
 	t.Run("list_stores_succeeds_with_name_filter_match", func(t *testing.T) {
 		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(10, ""),
-			Name:       stores[1].Name,
+			Name:       stores[1].GetName(),
 		})
 
 		require.NoError(t, err)
@@ -122,7 +122,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		})
 
 		require.NoError(t, err)
-		require.Len(t, gotStores, 0)
+		require.Empty(t, gotStores)
 		require.Empty(t, ct)
 	})
 
@@ -159,7 +159,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(10, ""),
 			Name:       sharedStoreName,
-			IDs:        []string{expected1.Id, expected2.Id},
+			IDs:        []string{expected1.GetId(), expected2.GetId()},
 		})
 
 		require.NoError(t, err)
