@@ -615,7 +615,6 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 			if edge.GetEdgeType() == graph.RewriteEdge {
 				operationalEdges, ok := t.authzWeightedGraph.GetEdgesByNode(edge.GetTo())
 				if !ok {
-					fmt.Println("no edges 2")
 					return false
 				}
 				innerEdges = append(innerEdges, operationalEdges...)
