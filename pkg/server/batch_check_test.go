@@ -287,25 +287,17 @@ func TestTransformCheckResultToProto(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	var expectedResult = map[string]*openfgav1.BatchCheckSingleResult{}
-	outcomes := map[commands.CorrelationID]*commands.BatchCheckOutcome{}
-
 	// Create two fake outcomes, one happy path and one error
 	// These two make 100% coverage
-	id1 := commands.CorrelationID("abc123")
-	outcomes[id1] = &commands.BatchCheckOutcome{
-		CheckResponse: &graph.ResolveCheckResponse{Allowed: true},
-	}
-
-	id2 := commands.CorrelationID("def456")
-	outcomes[id2] = &commands.BatchCheckOutcome{Err: graph.ErrResolutionDepthExceeded}
+	happyOutcome := &commands.BatchCheckOutcome{CheckResponse: &graph.ResolveCheckResponse{Allowed: true}}
+	sadOutcome := &commands.BatchCheckOutcome{Err: graph.ErrResolutionDepthExceeded}
 
 	// format the expected final output of the transform function
-	expectedResult[string(id1)] = &openfgav1.BatchCheckSingleResult{
+	expectedHappyResult := &openfgav1.BatchCheckSingleResult{
 		CheckResult: &openfgav1.BatchCheckSingleResult_Allowed{Allowed: true},
 	}
 
-	expectedResult[string(id2)] = &openfgav1.BatchCheckSingleResult{
+	expectedSadResult := &openfgav1.BatchCheckSingleResult{
 		CheckResult: &openfgav1.BatchCheckSingleResult_Error{
 			Error: &openfgav1.CheckError{
 				Code:    &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex},
@@ -315,8 +307,10 @@ func TestTransformCheckResultToProto(t *testing.T) {
 	}
 
 	t.Run("test_transform_check_result_to_proto", func(t *testing.T) {
-		result := transformCheckResultToProto(outcomes)
-		require.Equal(t, expectedResult, result)
+		resultOne := transformCheckResultToProto(happyOutcome)
+		resultTwo := transformCheckResultToProto(sadOutcome)
+		require.Equal(t, expectedHappyResult, resultOne)
+		require.Equal(t, expectedSadResult, resultTwo)
 	})
 }
 
@@ -337,7 +331,9 @@ func BenchmarkTransformCheckResultToProto(b *testing.B) {
 
 	b.Run("benchmark_transform_check_result_to_proto", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			transformCheckResultToProto(outcomes)
+			for _, v := range outcomes {
+				transformCheckResultToProto(v)
+			}
 		}
 	})
 }

@@ -27,7 +27,8 @@ func TestReadAuthorizationModel(t *testing.T) {
 	mockController.Finish()
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	cachingBackend, err := NewCachedOpenFGADatastore(mockDatastore, 5)
+	require.NoError(t, err)
 	t.Cleanup(cachingBackend.Close)
 	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
@@ -49,7 +50,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 		mockDatastore.EXPECT().Close().Times(1),
 	)
 
-	err := cachingBackend.WriteAuthorizationModel(ctx, storeID, model)
+	err = cachingBackend.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(t, err)
 
 	// Check that first hit to cache -> miss.
@@ -84,7 +85,8 @@ func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 	mockController.Finish()
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	cachingBackend, err := NewCachedOpenFGADatastore(mockDatastore, 5)
+	require.NoError(t, err)
 	t.Cleanup(cachingBackend.Close)
 	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
@@ -121,6 +123,6 @@ func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 			return nil
 		})
 	}
-	err := wg.Wait()
+	err = wg.Wait()
 	require.NoError(t, err)
 }

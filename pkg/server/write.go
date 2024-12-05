@@ -69,7 +69,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	// For now, we only measure the duration if it passes the authz step to make the comparison
 	// apple to apple.
 	writeDurationHistogram.WithLabelValues(
-		strconv.FormatBool(!s.authorizer.IsNoop() && !authclaims.SkipAuthzCheckFromContext(ctx)),
+		strconv.FormatBool(s.IsAccessControlEnabled() && !authclaims.SkipAuthzCheckFromContext(ctx)),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return resp, err

@@ -67,7 +67,11 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{}, nil
+			})
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -103,7 +107,11 @@ func TestBatchCheckCommand(t *testing.T) {
 
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(numChecks).
-			Return(nil, nil)
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{}, nil
+			})
 
 		params := &BatchCheckCommandParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -268,7 +276,8 @@ func BenchmarkBatchCheckCommand(b *testing.B) {
 	`)
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(b, err)
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
 	maxChecks := config.DefaultMaxChecksPerBatchCheck
