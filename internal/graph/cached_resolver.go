@@ -2,11 +2,8 @@ package graph
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,7 +13,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -190,43 +186,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
-// used for Check resolution cache key lookups in a stable way.
-//
-// For one store and model ID, the same tuple provided with the same contextual tuples and context
-// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
-// only the contents are compared.
 func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
-
-	tupleKey := req.GetTupleKey()
-	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		storage.SubproblemCachePrefix,
-		req.GetStoreID(),
-		req.GetAuthorizationModelID(),
-		tupleKey.GetObject(),
-		tupleKey.GetRelation(),
-		tupleKey.GetUser(),
-	)
-
-	if err := hasher.WriteString(key); err != nil {
-		return "", err
+	params := &storage.CheckCacheKeyParams{
+		StoreID:              req.GetStoreID(),
+		AuthorizationModelID: req.GetAuthorizationModelID(),
+		TupleKey:             req.GetTupleKey(),
+		ContextualTuples:     req.GetContextualTuples(),
+		Context:              req.GetContext(),
 	}
 
-	// here, and for context below, avoid hashing if we don't need to
-	contextualTuples := req.GetContextualTuples()
-	if len(contextualTuples) > 0 {
-		if err := keys.NewTupleKeysHasher(contextualTuples...).Append(hasher); err != nil {
-			return "", err
-		}
-	}
-
-	if req.GetContext() != nil {
-		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+	return storage.GetCheckCacheKey(params)
 }
