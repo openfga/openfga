@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add a field in log entries when authz calls were made. [#2130](https://github.com/openfga/openfga/pull/2130)
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
+- Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
 
 ### Changed
 - OIDC token validation will now exclusively throw error code 1004 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
