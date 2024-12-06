@@ -18,7 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -308,7 +308,7 @@ ConsumerLoop:
 }
 
 func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	defer goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 
 	store := ulid.Make().String()
 
@@ -321,7 +321,9 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 			relations
 				define viewer: [user]`)
 
-	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
+	ds := sqlite.MustNewInMemory()
+	defer t.Cleanup(ds.Close)
+	mockDatastore := mocks.NewMockSlowDataStorage(ds, 1*time.Second)
 
 	for i := 0; i < 50; i++ {
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
@@ -370,7 +372,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 
 func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	storeID := ulid.Make().String()
@@ -464,7 +466,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 
 func TestReverseExpandThrottle(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := testutils.MustTransformDSLToProtoWithID(`
@@ -589,7 +591,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 }
 
 func TestReverseExpandDispatchCount(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	tests := []struct {
 		name                    string
@@ -744,7 +746,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 }
 
 func TestReverseExpandHonorsConsistency(t *testing.T) {
-	defer goleak.VerifyNone(t)
+	defer goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 
 	store := ulid.Make().String()
 

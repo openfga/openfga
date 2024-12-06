@@ -21,7 +21,7 @@ import (
 func TestReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	mockController := gomock.NewController(t)
 	mockController.Finish()
@@ -79,7 +79,7 @@ func TestSingleFlightFindLatestAuthorizationModel(t *testing.T) {
 	const numGoroutines = 2
 
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	mockController := gomock.NewController(t)
 	mockController.Finish()

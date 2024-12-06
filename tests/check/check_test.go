@@ -38,7 +38,7 @@ func TestMatrixMemory(t *testing.T) {
 func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
 		t.Cleanup(func() {
-			goleak.VerifyNone(t)
+			goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 		})
 		cfg := config.MustDefaultConfig()
 		if experimental {

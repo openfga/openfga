@@ -16,7 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -32,14 +32,18 @@ func TestNewListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery(memory.New(), nil)
+		ds := sqlite.MustNewInMemory()
+		defer t.Cleanup(ds.Close)
+		q, err := NewListObjectsQuery(ds, nil)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		ds := sqlite.MustNewInMemory()
+		defer t.Cleanup(ds.Close)
+		q, err := NewListObjectsQuery(ds, checkResolver)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
@@ -48,7 +52,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 }
 
 func TestListObjectsDispatchCount(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
@@ -278,7 +282,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 }
 
 func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 	ctrl := gomock.NewController(t)
@@ -401,9 +405,9 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 	modelDsl := `
 		model

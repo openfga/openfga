@@ -15,7 +15,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -166,7 +166,7 @@ func TestReadCommand(t *testing.T) {
 	})
 
 	t.Run("accepts_types_that_are_not_defined_in_current_model", func(t *testing.T) {
-		datastore := memory.New()
+		datastore := sqlite.MustNewInMemory()
 		t.Cleanup(datastore.Close)
 
 		model := `

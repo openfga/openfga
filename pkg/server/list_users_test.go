@@ -19,7 +19,7 @@ import (
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -28,7 +28,7 @@ import (
 
 func TestListUsersValidation(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := `
@@ -149,7 +149,7 @@ func TestListUsersValidation(t *testing.T) {
 
 	storeID := ulid.Make().String()
 	for _, test := range tests {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
@@ -281,7 +281,7 @@ func TestExperimentalListUsers(t *testing.T) {
 
 func TestListUsers_ErrorCases(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
@@ -289,7 +289,7 @@ func TestListUsers_ErrorCases(t *testing.T) {
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
 		s := MustNewServerWithOpts(
-			WithDatastore(memory.New()),
+			WithDatastore(sqlite.MustNewInMemory()),
 			WithResolveNodeLimit(2),
 		)
 		t.Cleanup(s.Close)
@@ -345,13 +345,13 @@ func TestListUsers_ErrorCases(t *testing.T) {
 
 func TestListUsers_Deadline(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	ctx := context.Background()
 
 	t.Run("return_no_error_and_partial_results_at_deadline", func(t *testing.T) {
-		ds := memory.New()
+		var ds storage.OpenFGADatastore = sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 
 		modelStr := `
@@ -402,7 +402,7 @@ func TestListUsers_Deadline(t *testing.T) {
 	})
 
 	t.Run("return_no_error_and_partial_results_if_throttled_until_deadline", func(t *testing.T) {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 
 		modelStr := `

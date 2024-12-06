@@ -14,7 +14,7 @@ import (
 
 func TestDispatchThrottlingCheckResolver(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	t.Run("dispatch_below_threshold_doesnt_call_throttle", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

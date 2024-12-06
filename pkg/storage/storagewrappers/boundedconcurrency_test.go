@@ -15,16 +15,16 @@ import (
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	store := ulid.Make().String()
-	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
+	slowBackend := mocks.NewMockSlowDataStorage(sqlite.MustNewInMemory(), time.Second)
 
 	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
@@ -83,7 +83,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)

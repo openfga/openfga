@@ -19,7 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -40,7 +40,7 @@ const maximumRecursiveDepth = 25
 
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	model := `
 		model
@@ -155,7 +155,7 @@ func TestListUsersDirectRelationship(t *testing.T) {
 
 func TestListUsersComputedRelationship(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -244,7 +244,7 @@ func TestListUsersComputedRelationship(t *testing.T) {
 
 func TestListUsersUsersets(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	model := `
 		model
@@ -574,7 +574,7 @@ func TestListUsersUsersets(t *testing.T) {
 
 func TestListUsersTTU(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	model := `
 		model
@@ -705,7 +705,7 @@ func TestListUsersTTU(t *testing.T) {
 
 func TestListUsersCycles(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -821,7 +821,7 @@ func TestListUsersCycles(t *testing.T) {
 
 func TestListUsersConditions(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	model := `
 		model
@@ -1161,7 +1161,7 @@ func TestListUsersConditions(t *testing.T) {
 
 func TestListUsersIntersection(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -1408,7 +1408,7 @@ func TestListUsersIntersection(t *testing.T) {
 
 func TestListUsersUnion(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -1579,7 +1579,7 @@ func TestListUsersUnion(t *testing.T) {
 
 func TestListUsersExclusion(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -1822,7 +1822,7 @@ func TestListUsersExclusion(t *testing.T) {
 
 func TestListUsersExclusionWildcards(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := `
@@ -1967,7 +1967,7 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 
 func TestListUsersWildcards(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -2114,7 +2114,7 @@ func TestListUsersWildcards(t *testing.T) {
 
 func TestListUsersEdgePruning(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -2255,7 +2255,7 @@ func TestListUsersEdgePruning(t *testing.T) {
 
 func TestListUsersWildcardsAndIntersection(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	tests := ListUsersTests{
 		{
@@ -2534,7 +2534,7 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 
 func TestListUsersCycleDetection(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -2609,7 +2609,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 
 func TestListUsersChainedNegation(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	model := `
@@ -2783,7 +2783,7 @@ func TestListUsersChainedNegation(t *testing.T) {
 
 func TestListUsersDepthExceeded(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	model := `
 		model
@@ -2868,7 +2868,7 @@ func TestListUsersDepthExceeded(t *testing.T) {
 
 func TestListUsersStorageErrors(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 	testCases := map[string]struct {
 		req *openfgav1.ListUsersRequest
@@ -2937,7 +2937,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	for _, test := range testCases {
-		ds := memory.New()
+		ds := sqlite.MustNewInMemory()
 		t.Cleanup(ds.Close)
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
 
@@ -2980,7 +2980,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 
 func TestListUsersReadFails_NoLeaks(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	store := ulid.Make().String()
@@ -3031,7 +3031,7 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 
 func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	store := ulid.Make().String()
@@ -3085,9 +3085,9 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 
 func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	defer ds.Close()
 
 	storeID := ulid.Make().String()
@@ -3371,10 +3371,10 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 
 func TestListUsersConfig_MaxResults(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	testCases := map[string]struct {
@@ -3504,10 +3504,10 @@ func TestListUsersConfig_MaxResults(t *testing.T) {
 
 func TestListUsersConfig_Deadline(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	testCases := map[string]struct {
@@ -3631,10 +3631,10 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 
 func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	testCases := map[string]struct {
@@ -3739,10 +3739,10 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 
 func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	t.Run("avoid_producing_explicitly_negated_subjects", func(t *testing.T) {
@@ -3844,7 +3844,7 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 
 func TestListUsersThrottle(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	mockController := gomock.NewController(t)
@@ -3942,10 +3942,10 @@ func TestListUsersThrottle(t *testing.T) {
 
 func TestListUsers_CorrectContext(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
-	ds := memory.New()
+	ds := sqlite.MustNewInMemory()
 	t.Cleanup(ds.Close)
 
 	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
@@ -3958,7 +3958,7 @@ func TestListUsers_CorrectContext(t *testing.T) {
 
 func TestListUsersRespectsConsistency(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("database/sql.(*DB).connectionOpener"))
 	})
 
 	modelStr := `
