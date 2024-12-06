@@ -24,7 +24,7 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := wrapIterator(NestedUsersetKind, innerIter)
+	mapper := wrapIterator(UsersetKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 

@@ -14,8 +14,8 @@ import (
 type TupleMapperKind int64
 
 const (
-	// NestedUsersetKind is a mapper that returns the userset ID from the tuple's user field.
-	NestedUsersetKind TupleMapperKind = iota
+	// UsersetKind is a mapper that returns the userset ID from the tuple's user field.
+	UsersetKind TupleMapperKind = iota
 	// TTUKind is a mapper that returns the user field of the tuple.
 	TTUKind
 	// ObjectIDKind is mapper that returns the object field of the tuple.
@@ -27,14 +27,14 @@ type TupleMapper interface {
 	storage.Iterator[string]
 }
 
-type NestedUsersetMapper struct {
+type UsersetMapper struct {
 	iter storage.TupleKeyIterator
 	once *sync.Once
 }
 
-var _ TupleMapper = (*NestedUsersetMapper)(nil)
+var _ TupleMapper = (*UsersetMapper)(nil)
 
-func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
+func (n UsersetMapper) Next(ctx context.Context) (string, error) {
 	tupleRes, err := n.iter.Next(ctx)
 	if err != nil {
 		return "", err
@@ -42,13 +42,13 @@ func (n NestedUsersetMapper) Next(ctx context.Context) (string, error) {
 	return n.doMap(tupleRes)
 }
 
-func (n NestedUsersetMapper) Stop() {
+func (n UsersetMapper) Stop() {
 	n.once.Do(func() {
 		n.iter.Stop()
 	})
 }
 
-func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
+func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 	tupleRes, err := n.iter.Head(ctx)
 	if err != nil {
 		return "", err
@@ -56,7 +56,7 @@ func (n NestedUsersetMapper) Head(ctx context.Context) (string, error) {
 	return n.doMap(tupleRes)
 }
 
-func (n NestedUsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
+func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
 	if relation == "" {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.
@@ -133,8 +133,8 @@ func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 
 func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
 	switch kind {
-	case NestedUsersetKind:
-		return &NestedUsersetMapper{iter: iter, once: &sync.Once{}}
+	case UsersetKind:
+		return &UsersetMapper{iter: iter, once: &sync.Once{}}
 	case TTUKind:
 		return &TTUMapper{iter: iter, once: &sync.Once{}}
 	case ObjectIDKind:

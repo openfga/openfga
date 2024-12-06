@@ -1237,7 +1237,7 @@ func (c *LocalChecker) nestedUsersetFastPath(ctx context.Context, req *ResolveCh
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.nestedFastPath(ctx, req, iter, &nestedMapping{
-		kind:                        NestedUsersetKind,
+		kind:                        UsersetKind,
 		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 	})
 }
@@ -1251,7 +1251,7 @@ func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckR
 		Preference: req.GetConsistency(),
 	}
 	switch mapping.kind {
-	case NestedUsersetKind:
+	case UsersetKind:
 		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
@@ -1459,10 +1459,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
-				} else if c.optimizationsEnabled && typesys.RecursiveUsersetCanFastPath(
-					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()),
-					tuple.GetType(reqTupleKey.GetUser())) {
-					resolver = c.nestedUsersetFastPath
+				} else if c.optimizationsEnabled {
+					userType := tuple.GetType(reqTupleKey.GetUser())
+					if typesys.RecursiveUsersetCanFastPath(
+						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
+						resolver = c.nestedUsersetFastPath
+					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+						// TODO: Add support for contextual tuples - since these are injected without order
+						// TODO: Add support for wildcard - we are doing exact matches
+						resolver = c.checkUsersetFastPathV2
+					}
 				}
 			}
 
