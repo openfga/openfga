@@ -56,18 +56,18 @@ type InMemoryCacheController struct {
 	ttl              time.Duration
 	iteratorCacheTTL time.Duration
 
-	currentInvalidationMutext sync.Mutex
-	currentInvalidationMap    map[string]struct{}
+	mu                    sync.Mutex
+	inflightInvalidations map[string]struct{}
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
 	c := &InMemoryCacheController{
-		ds:                        ds,
-		cache:                     cache,
-		ttl:                       ttl,
-		iteratorCacheTTL:          iteratorCacheTTL,
-		currentInvalidationMutext: sync.Mutex{},
-		currentInvalidationMap:    make(map[string]struct{}),
+		ds:                    ds,
+		cache:                 cache,
+		ttl:                   ttl,
+		iteratorCacheTTL:      iteratorCacheTTL,
+		mu:                    sync.Mutex{},
+		inflightInvalidations: make(map[string]struct{}),
 	}
 
 	return c
@@ -90,21 +90,22 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	c.currentInvalidationMutext.Lock()
-	_, present := c.currentInvalidationMap[storeID]
+	c.mu.Lock()
+	_, present := c.inflightInvalidations[storeID]
 	if !present {
-		c.currentInvalidationMap[storeID] = struct{}{}
+		c.inflightInvalidations[storeID] = struct{}{}
 	}
-	c.currentInvalidationMutext.Unlock()
+	c.mu.Unlock()
 	if !present {
 		span.SetAttributes(attribute.Bool("checkInvalidation", true))
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
-			_ = c.findChangesAndInvalidate(ctx, storeID)
-			c.currentInvalidationMutext.Lock()
-			delete(c.currentInvalidationMap, storeID)
-			c.currentInvalidationMutext.Unlock()
+			// Need to use a new context to avoid cancelling invalidation.
+			_ = c.findChangesAndInvalidate(context.Background(), storeID)
+			c.mu.Lock()
+			delete(c.inflightInvalidations, storeID)
+			c.mu.Unlock()
 		}()
 	}
 	// if we cannot get lock, there is already invalidation going on.  As such,

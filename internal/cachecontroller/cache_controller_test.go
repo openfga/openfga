@@ -248,12 +248,12 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
 			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
 			cacheController := &InMemoryCacheController{
-				ds:                        datastore,
-				cache:                     cache,
-				ttl:                       10 * time.Second,
-				iteratorCacheTTL:          10 * time.Second,
-				currentInvalidationMutext: sync.Mutex{},
-				currentInvalidationMap:    make(map[string]struct{}),
+				ds:                    datastore,
+				cache:                 cache,
+				ttl:                   10 * time.Second,
+				iteratorCacheTTL:      10 * time.Second,
+				mu:                    sync.Mutex{},
+				inflightInvalidations: make(map[string]struct{}),
 			}
 			err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
 			if test.expectedError != nil {
