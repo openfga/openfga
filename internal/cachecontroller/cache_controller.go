@@ -15,6 +15,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -34,6 +35,16 @@ var (
 		Name:      "cachecontroller_cache_hit_count",
 		Help:      "The total number of cache hits from cachecontroller requests.",
 	})
+
+	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            "cachecontroller_find_changes_and_invalidate_histogram",
+		Help:                            "The duration (in ms) required for cache controller to find changes and invalidate labeled by whether invalidation is required and buckets of changes size.",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"invalidation_required", "changes_size"})
 )
 
 type CacheController interface {
@@ -55,6 +66,7 @@ type InMemoryCacheController struct {
 	cache            storage.InMemoryCache[any]
 	ttl              time.Duration
 	iteratorCacheTTL time.Duration
+	changelogBuckets []uint
 
 	mu                    sync.Mutex
 	inflightInvalidations map[string]struct{}
@@ -66,6 +78,7 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		cache:                 cache,
 		ttl:                   ttl,
 		iteratorCacheTTL:      iteratorCacheTTL,
+		changelogBuckets:      []uint{0, 25, 50, 75, 100},
 		mu:                    sync.Mutex{},
 		inflightInvalidations: make(map[string]struct{}),
 	}
@@ -125,8 +138,10 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 }
 
 func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) error {
+	start := time.Now()
 	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
 	defer span.End()
+
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
@@ -152,6 +167,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(lastVerified) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
+		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return nil
 	}
 
@@ -175,7 +191,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
-
+	findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 	return nil
 }
 
