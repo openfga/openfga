@@ -96,7 +96,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 		continuationToken  string
 		readChangesResults *readChangesResponse
 		setCacheKeys       []string
-		expectedError      error
 	}{
 		{
 			name:               "empty_changelog",
@@ -104,7 +103,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			readChangesResults: &readChangesResponse{err: storage.ErrNotFound},
 			setCacheKeys: []string{
 				storage.GetInvalidIteratorCacheKey("1")},
-			expectedError: storage.ErrNotFound,
 		},
 		{
 			name:               "hard_error",
@@ -113,7 +111,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			setCacheKeys: []string{
 				storage.GetInvalidIteratorCacheKey("2"),
 			},
-			expectedError: storage.ErrCollision,
 		},
 		{
 			name:    "first_change_from_empty_store",
@@ -256,11 +253,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				mu:                    sync.Mutex{},
 				inflightInvalidations: make(map[string]struct{}),
 			}
-			err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
-			if test.expectedError != nil {
-				require.ErrorIs(t, err, test.expectedError)
-				return
-			}
+			cacheController.findChangesAndInvalidate(ctx, test.storeID)
 		})
 	}
 }

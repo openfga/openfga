@@ -9,7 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
-- Improve `Check` performance when cache controller is enabled by invalidating asynchronously.  [#2124](https://github.com/openfga/openfga/pull/2124)
+- Improve `Check` performance when cache controller is enabled by invalidating iterator and sub-problem cache asynchronously when read changes API indicates there are recent writes/deletes for the store.  [#2124](https://github.com/openfga/openfga/pull/2124)
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)

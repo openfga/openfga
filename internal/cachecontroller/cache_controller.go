@@ -110,13 +110,13 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	}
 	c.mu.Unlock()
 	if !present {
-		span.SetAttributes(attribute.Bool("checkInvalidation", true))
+		span.SetAttributes(attribute.Bool("check_invalidation", true))
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
-			// important to propagate the cancel without cancel to avoid
+			// important to propagate the context without cancel to avoid
 			// cancelling the invalidation when parent request is complete.
-			_ = c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
+			c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
 			c.mu.Lock()
 			delete(c.inflightInvalidations, storeID)
 			c.mu.Unlock()
@@ -138,7 +138,7 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) error {
+func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
 	defer span.End()
@@ -152,7 +152,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
 		c.invalidateIteratorCache(storeID)
-		return err
+		return
 	}
 
 	entry := &storage.ChangelogCacheEntry{
@@ -169,7 +169,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
-		return nil
+		return
 	}
 
 	// need to consider there might just be 1 change
@@ -194,7 +194,6 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	}
 	span.SetAttributes(attribute.Bool("invalidations", true))
 	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
-	return nil
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
