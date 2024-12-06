@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
+- Support for disabling OpenTelemetry GRPC exporter when tracing is enabled. [#2122](https://github.com/openfga/openfga/pull/2122)
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
@@ -20,7 +21,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
-- Support for disabling OpenTelemetry GRPC exporter when tracing is enabled. [#2122](https://github.com/openfga/openfga/pull/2122)
 - Add a field in log entries when authz calls were made. [#2130](https://github.com/openfga/openfga/pull/2130)
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
