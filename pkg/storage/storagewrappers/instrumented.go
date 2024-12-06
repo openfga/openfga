@@ -10,10 +10,15 @@ import (
 )
 
 var _ storage.RelationshipTupleReader = (*InstrumentedOpenFGAStorage)(nil)
+var _ InstrumentedStorage = (*InstrumentedOpenFGAStorage)(nil)
 
 type InstrumentedOpenFGAStorage struct {
 	storage.RelationshipTupleReader
 	countReads atomic.Uint32
+}
+
+type InstrumentedStorage interface {
+	GetMetrics() Metrics
 }
 
 // NewInstrumentedOpenFGAStorage creates a new instance of InstrumentedOpenFGAStorage that wraps the specified datastore and maintains metrics per request.

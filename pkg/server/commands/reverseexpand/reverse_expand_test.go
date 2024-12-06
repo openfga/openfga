@@ -771,7 +771,8 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 	}
 	mockDatastore.EXPECT().
 		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), unspecifiedConsistency).
-		Times(1)
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
 
 	request := &ReverseExpandRequest{
 		StoreID:    store,
@@ -800,7 +801,8 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 	request.Consistency = openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 	mockDatastore.EXPECT().
 		ReadStartingWithUser(gomock.Any(), store, gomock.Any(), highConsistency).
-		Times(1)
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
 
 	resultChanTwo := make(chan *ReverseExpandResult)
 	err = reverseExpandQuery.Execute(ctx, request, resultChanTwo, NewResolutionMetadata())
