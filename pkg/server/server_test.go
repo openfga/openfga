@@ -1759,7 +1759,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.NotNil(t, s.checkResolver)
 
@@ -1781,7 +1781,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1810,7 +1810,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1841,7 +1841,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1868,7 +1868,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
-		require.True(t, s.checkQueryCacheEnabled)
+		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 		require.NotNil(t, s.checkResolver)
 
 		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
@@ -1900,7 +1900,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
-		require.True(t, s.checkQueryCacheEnabled)
+		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
@@ -2099,7 +2099,9 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedResources.CheckCache)
+		require.True(t, s.cacheSettings.ShouldCacheCheckQueries())
+		require.True(t, s.cacheSettings.ShouldCacheIterators())
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
@@ -2113,7 +2115,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedResources.CheckCache)
 	})
 
 	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2127,7 +2129,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedResources.CheckCache)
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2141,7 +2143,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.Nil(t, s.checkCache)
+		require.Nil(t, s.sharedResources.CheckCache)
 	})
 }
 
@@ -2165,7 +2167,8 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		_, ok := s.cacheController.(*cachecontroller.NoopCacheController)
+		require.NotNil(t, s.sharedResources.CacheController)
+		_, ok := s.sharedResources.CacheController.(*cachecontroller.NoopCacheController)
 		require.True(t, ok)
 	})
 
@@ -2185,7 +2188,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.cacheController)
+		require.NotNil(t, s.sharedResources.CacheController)
 	})
 
 	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
@@ -2204,7 +2207,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.cacheController)
+		require.NotNil(t, s.sharedResources.CacheController)
 	})
 }
 

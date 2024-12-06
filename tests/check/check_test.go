@@ -340,7 +340,7 @@ func testRunAll(t *testing.T, engine string) {
 	// Some tests/stages are sensitive to the cache TTL,
 	// so we set it to a very low value to still exercise
 	// the Check iterator cache.
-	cfg.CheckQueryCache.TTL = 1 * time.Nanosecond
+	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
 
 	tests.StartServer(t, cfg)
 

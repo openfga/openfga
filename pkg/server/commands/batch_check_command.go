@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -16,26 +14,21 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type BatchCheckQuery struct {
-	cacheController        cachecontroller.CacheController
-	cacheSingleflightGroup *singleflight.Group
-	cacheWaitGroup         *sync.WaitGroup
-	serverCtx              context.Context
-	shouldCacheIterators   bool
-	checkCache             storage.InMemoryCache[any]
-	maxCheckCacheSize      uint32
-	checkCacheTTL          time.Duration
-	checkResolver          graph.CheckResolver
-	datastore              storage.RelationshipTupleReader
-	logger                 logger.Logger
-	maxChecksAllowed       uint32
-	maxConcurrentChecks    uint32
-	typesys                *typesystem.TypeSystem
+	sharedResources     *shared.SharedResources
+	cacheSettings       config.CacheSettings
+	checkResolver       graph.CheckResolver
+	datastore           storage.RelationshipTupleReader
+	logger              logger.Logger
+	maxChecksAllowed    uint32
+	maxConcurrentChecks uint32
+	typesys             *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -73,23 +66,10 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCacheOptions(
-	ctrl cachecontroller.CacheController,
-	shouldCache bool,
-	sf *singleflight.Group,
-	cc storage.InMemoryCache[any],
-	wg *sync.WaitGroup,
-	m uint32,
-	ttl time.Duration,
-) BatchCheckQueryOption {
+func WithBatchCheckCacheOptions(sharedResources *shared.SharedResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
 	return func(c *BatchCheckQuery) {
-		c.cacheController = ctrl
-		c.shouldCacheIterators = shouldCache
-		c.cacheSingleflightGroup = sf
-		c.cacheWaitGroup = wg
-		c.checkCache = cc
-		c.maxCheckCacheSize = m
-		c.checkCacheTTL = ttl
+		c.sharedResources = sharedResources
+		c.cacheSettings = cacheSettings
 	}
 }
 
@@ -115,11 +95,14 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
-		cacheController:     cachecontroller.NewNoopCacheController(),
 		checkResolver:       checkResolver,
 		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
+		cacheSettings:       config.NewDefaultCacheSettings(),
+		sharedResources: &shared.SharedResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -186,16 +169,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(
-					bq.serverCtx,
-					bq.cacheController,
-					bq.shouldCacheIterators,
-					bq.cacheSingleflightGroup,
-					bq.checkCache,
-					bq.cacheWaitGroup,
-					bq.maxCheckCacheSize,
-					bq.checkCacheTTL,
-				),
+				WithCheckCommandCache(bq.sharedResources, bq.cacheSettings),
 			)
 
 			checkParams := &CheckCommandParams{
