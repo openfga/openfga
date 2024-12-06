@@ -4,11 +4,17 @@ package storage
 
 import (
 	"fmt"
-	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
+	"github.com/Yiling-J/theine-go"
+	"github.com/cespare/xxhash/v2"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/internal/keys"
 )
 
 const (
@@ -21,7 +27,6 @@ const (
 
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
-
 	// Get If the key exists, returns the value. If the key didn't exist, returns nil.
 	Get(key string) T
 	Set(key string, value T, ttl time.Duration)
@@ -35,9 +40,9 @@ type InMemoryCache[T any] interface {
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
-	ccache      *ccache.Cache[T]
+	client      *theine.Cache[string, T]
 	maxElements int64
-	closeOnce   *sync.Once
+	stopOnce    *sync.Once
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -50,45 +55,47 @@ func WithMaxCacheSize[T any](maxElements int64) InMemoryLRUCacheOpt[T] {
 
 var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
-func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) *InMemoryLRUCache[T] {
+func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCache[T], error) {
 	t := &InMemoryLRUCache[T]{
 		maxElements: defaultMaxCacheSize,
-		closeOnce:   &sync.Once{},
+		stopOnce:    &sync.Once{},
 	}
 
 	for _, opt := range opts {
 		opt(t)
 	}
 
-	t.ccache = ccache.New(ccache.Configure[T]().MaxSize(t.maxElements))
-	return t
+	var err error
+	t.client, err = theine.NewBuilder[string, T](t.maxElements).Build()
+	if err != nil {
+		return nil, err
+	}
+
+	return t, nil
 }
 
 func (i InMemoryLRUCache[T]) Get(key string) T {
 	var zero T
-	item := i.ccache.Get(key)
-	if item == nil {
+	item, ok := i.client.Get(key)
+	if !ok {
 		return zero
 	}
 
-	if value, expired := item.Value(), item.Expired(); !expired && !reflect.ValueOf(value).IsZero() {
-		return value
-	}
-
-	return zero
+	return item
 }
 
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
-	i.ccache.Set(key, value, ttl)
+	// negative ttl are noop
+	i.client.SetWithTTL(key, value, 1, ttl)
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
-	i.ccache.Delete(key)
+	i.client.Delete(key)
 }
 
 func (i InMemoryLRUCache[T]) Stop() {
-	i.closeOnce.Do(func() {
-		i.ccache.Stop()
+	i.stopOnce.Do(func() {
+		i.client.Close()
 	})
 }
 
@@ -135,4 +142,52 @@ func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) s
 
 func GetReadCacheKey(store, tuple string) string {
 	return fmt.Sprintf("%sr/%s/%s", iteratorCachePrefix, store, tuple)
+}
+
+// CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
+type CheckCacheKeyParams struct {
+	StoreID              string
+	AuthorizationModelID string
+	TupleKey             *openfgav1.TupleKey
+	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
+}
+
+// GetCheckCacheKey converts the elements of a Check into a canonical cache key that can be
+// used for Check resolution cache key lookups in a stable way.
+//
+// For one store and model ID, the same tuple provided with the same contextual tuples and context
+// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
+// only the contents are compared.
+func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
+	hasher := keys.NewCacheKeyHasher(xxhash.New())
+
+	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
+		SubproblemCachePrefix,
+		params.StoreID,
+		params.AuthorizationModelID,
+		params.TupleKey.GetObject(),
+		params.TupleKey.GetRelation(),
+		params.TupleKey.GetUser(),
+	)
+
+	if err := hasher.WriteString(key); err != nil {
+		return "", err
+	}
+
+	// here, and for context below, avoid hashing if we don't need to
+	if len(params.ContextualTuples) > 0 {
+		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+			return "", err
+		}
+	}
+
+	if params.Context != nil {
+		err := keys.NewContextHasher(params.Context).Append(hasher)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
 }

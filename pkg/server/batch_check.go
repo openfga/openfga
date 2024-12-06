@@ -79,7 +79,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	methodName := "batchCheck"
+	methodName := "batchcheck"
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
@@ -87,32 +87,37 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(queryCount)
 
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
+	duplicateChecks := "duplicate_checks"
+	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
+	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
 
-	return &openfgav1.BatchCheckResponse{Result: transformCheckResultToProto(result)}, nil
-}
-
-// transformCheckResultToProto transform the internal BatchCheckOutcome into the external-facing
-// BatchCheckSingleResult struct for transmission back via the api.
-func transformCheckResultToProto(checkResults map[commands.CorrelationID]*commands.BatchCheckOutcome) map[string]*openfgav1.BatchCheckSingleResult {
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
-	for k, v := range checkResults {
-		singleResult := &openfgav1.BatchCheckSingleResult{}
-
-		if v.Err != nil {
-			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
-				Error: transformCheckCommandErrorToBatchCheckError(v.Err),
-			}
-		} else {
-			singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
-				Allowed: v.CheckResponse.Allowed,
-			}
-		}
-
-		batchResult[string(k)] = singleResult
+	for correlationID, outcome := range result {
+		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
+		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)
 	}
 
-	return batchResult
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
+
+	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
+}
+
+// transformCheckResultToProto transforms the internal BatchCheckOutcome into the external-facing
+// BatchCheckSingleResult struct for transmission back via the api.
+func transformCheckResultToProto(outcome *commands.BatchCheckOutcome) *openfgav1.BatchCheckSingleResult {
+	singleResult := &openfgav1.BatchCheckSingleResult{}
+
+	if outcome.Err != nil {
+		singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Error{
+			Error: transformCheckCommandErrorToBatchCheckError(outcome.Err),
+		}
+	} else {
+		singleResult.CheckResult = &openfgav1.BatchCheckSingleResult_Allowed{
+			Allowed: outcome.CheckResponse.Allowed,
+		}
+	}
+
+	return singleResult
 }
 
 func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckError {
