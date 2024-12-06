@@ -111,12 +111,7 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(
-	datastore storage.RelationshipTupleReader,
-	checkResolver graph.CheckResolver,
-	typesys *typesystem.TypeSystem,
-	opts ...BatchCheckQueryOption,
-) *BatchCheckQuery {
+func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
@@ -133,17 +128,10 @@ func NewBatchCheckCommand(
 	return cmd
 }
 
-func (bq *BatchCheckQuery) Execute(
-	ctx context.Context,
-	params *BatchCheckCommandParams,
-) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
+func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
 		return nil, nil, &BatchCheckValidationError{
-			Message: fmt.Sprintf(
-				"batchCheck received %d checks, the maximum allowed is %d ",
-				len(params.Checks),
-				bq.maxChecksAllowed,
-			),
+			Message: fmt.Sprintf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
 		}
 	}
 
@@ -161,21 +149,14 @@ func (bq *BatchCheckQuery) Execute(
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
 	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
-		key, err := generateCacheKeyFromCheck(
-			check,
-			params.StoreID,
-			bq.typesys.GetAuthorizationModelID(),
-		)
+		key, err := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
 		if err != nil {
 			bq.logger.Error("batch check cache key computation failed with error", zap.Error(err))
 			return nil, nil, err
 		}
 
 		if item, ok := cacheKeyMap[key]; ok {
-			item.CorrelationIDs = append(
-				item.CorrelationIDs,
-				CorrelationID(check.GetCorrelationId()),
-			)
+			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
 		} else {
 			cacheKeyMap[key] = &checkAndCorrelationIDs{
 				Check:          check,
@@ -265,20 +246,14 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	for _, check := range checks {
 		if check.GetCorrelationId() == "" {
 			return &BatchCheckValidationError{
-				Message: fmt.Sprintf(
-					"received empty correlation id for tuple: %s",
-					check.GetTupleKey(),
-				),
+				Message: fmt.Sprintf("received empty correlation id for tuple: %s", check.GetTupleKey()),
 			}
 		}
 
 		_, ok := seen[check.GetCorrelationId()]
 		if ok {
 			return &BatchCheckValidationError{
-				Message: fmt.Sprintf(
-					"received duplicate correlation id: %s",
-					check.GetCorrelationId(),
-				),
+				Message: fmt.Sprintf("received duplicate correlation id: %s", check.GetCorrelationId()),
 			}
 		}
 
@@ -288,11 +263,7 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	return nil
 }
 
-func generateCacheKeyFromCheck(
-	check *openfgav1.BatchCheckItem,
-	storeID string,
-	authModelID string,
-) (CacheKey, error) {
+func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) (CacheKey, error) {
 	tupleKey := check.GetTupleKey()
 	cacheKeyParams := &storage.CheckCacheKeyParams{
 		StoreID:              storeID,

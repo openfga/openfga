@@ -56,11 +56,7 @@ func NewRequestStorageWrapperForCheckAPI(
 }
 
 // NewRequestStorageWrapperForListAPIs can be used for ListObjects or ListUsers.
-func NewRequestStorageWrapperForListAPIs(
-	ds storage.RelationshipTupleReader,
-	requestContextualTuples []*openfgav1.TupleKey,
-	maxConcurrentReads uint32,
-) *RequestStorageWrapper {
+func NewRequestStorageWrapperForListAPIs(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32) *RequestStorageWrapper {
 	a := NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	b := NewInstrumentedOpenFGAStorage(a)                         // to capture metrics
 	c := NewCombinedTupleReader(b, requestContextualTuples)       // to read the contextual tuples

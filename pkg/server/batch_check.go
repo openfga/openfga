@@ -21,17 +21,11 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-func (s *Server) BatchCheck(
-	ctx context.Context,
-	req *openfgav1.BatchCheckRequest,
-) (*openfgav1.BatchCheckResponse, error) {
+func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, authz.BatchCheck, trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
-		attribute.KeyValue{
-			Key:   "consistency",
-			Value: attribute.StringValue(req.GetConsistency().String()),
-		},
+		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
 	))
 	defer span.End()
 
@@ -118,9 +112,7 @@ func (s *Server) BatchCheck(
 
 // transformCheckResultToProto transforms the internal BatchCheckOutcome into the external-facing
 // BatchCheckSingleResult struct for transmission back via the api.
-func transformCheckResultToProto(
-	outcome *commands.BatchCheckOutcome,
-) *openfgav1.BatchCheckSingleResult {
+func transformCheckResultToProto(outcome *commands.BatchCheckOutcome) *openfgav1.BatchCheckSingleResult {
 	singleResult := &openfgav1.BatchCheckSingleResult{}
 
 	if outcome.Err != nil {
@@ -146,31 +138,19 @@ func transformCheckCommandErrorToBatchCheckError(cmdErr error) *openfgav1.CheckE
 	// switch to map the possible errors to their specific GRPC codes in the proto definition
 	switch {
 	case errors.As(cmdErr, &invalidRelationError):
-		err.Code = &openfgav1.CheckError_InputError{
-			InputError: openfgav1.ErrorCode_validation_error,
-		}
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.As(cmdErr, &invalidTupleError):
 		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_invalid_tuple}
 	case errors.Is(cmdErr, graph.ErrResolutionDepthExceeded):
-		err.Code = &openfgav1.CheckError_InputError{
-			InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex,
-		}
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_authorization_model_resolution_too_complex}
 	case errors.Is(cmdErr, condition.ErrEvaluationFailed):
-		err.Code = &openfgav1.CheckError_InputError{
-			InputError: openfgav1.ErrorCode_validation_error,
-		}
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.As(cmdErr, &throttledError):
-		err.Code = &openfgav1.CheckError_InputError{
-			InputError: openfgav1.ErrorCode_validation_error,
-		}
+		err.Code = &openfgav1.CheckError_InputError{InputError: openfgav1.ErrorCode_validation_error}
 	case errors.Is(cmdErr, context.DeadlineExceeded):
-		err.Code = &openfgav1.CheckError_InternalError{
-			InternalError: openfgav1.InternalErrorCode_deadline_exceeded,
-		}
+		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_deadline_exceeded}
 	default:
-		err.Code = &openfgav1.CheckError_InternalError{
-			InternalError: openfgav1.InternalErrorCode_internal_error,
-		}
+		err.Code = &openfgav1.CheckError_InternalError{InternalError: openfgav1.InternalErrorCode_internal_error}
 	}
 
 	return err

@@ -106,11 +106,7 @@ type doc
 				},
 			},
 		})
-		require.ErrorContains(
-			t,
-			err,
-			"type 'user' is not an allowed type restriction for 'doc#viewer_computed'",
-		)
+		require.ErrorContains(t, err, "type 'user' is not an allowed type restriction for 'doc#viewer_computed'")
 	})
 
 	t.Run("no_validation_error_and_call_to_resolver_goes_through", func(t *testing.T) {
@@ -165,10 +161,7 @@ type doc
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().
-			ResolveCheck(gomock.Any(), gomock.Any()).
-			Times(1).
-			Return(nil, ofga_errors.ErrUnknown)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
@@ -178,13 +171,10 @@ type doc
 
 	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().
-			ResolveCheck(gomock.Any(), gomock.Any()).
-			Times(1).
-			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				require.Zero(t, req.GetLastCacheInvalidationTime())
-				return &graph.ResolveCheckResponse{}, nil
-			})
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Zero(t, req.GetLastCacheInvalidationTime())
+			return &graph.ResolveCheckResponse{}, nil
+		})
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:     ulid.Make().String(),
 			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
@@ -197,22 +187,12 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(
-			mockDatastore,
-			mockCheckResolver,
-			ts,
-			WithCheckCommandCache(context.TODO(), cacheController, false, nil, nil, nil, 0, 0),
-		)
-		mockCheckResolver.EXPECT().
-			ResolveCheck(gomock.Any(), gomock.Any()).
-			Times(1).
-			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
-				return &graph.ResolveCheckResponse{}, nil
-			})
-		cacheController.EXPECT().
-			DetermineInvalidation(gomock.Any(), storeID).
-			Return(invalidationTime)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(context.TODO(), cacheController, false, nil, nil, nil, 0, 0))
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
+			return &graph.ResolveCheckResponse{}, nil
+		})
+		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
@@ -251,10 +231,8 @@ func TestCheckCommandErrorToServerError(t *testing.T) {
 			),
 		},
 		`6`: {
-			inputError: &InvalidRelationError{Cause: errors.New("oh no")},
-			expectedError: serverErrors.ValidationError(
-				&InvalidRelationError{Cause: errors.New("oh no")},
-			),
+			inputError:    &InvalidRelationError{Cause: errors.New("oh no")},
+			expectedError: serverErrors.ValidationError(&InvalidRelationError{Cause: errors.New("oh no")}),
 		},
 		`7`: {
 			inputError:    ofga_errors.ErrUnknown,

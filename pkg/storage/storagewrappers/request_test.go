@@ -112,11 +112,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForListAPIs(
-			mockDatastore,
-			requestContextualTuples,
-			maxConcurrentReads,
-		)
+		br := NewRequestStorageWrapperForListAPIs(mockDatastore, requestContextualTuples, maxConcurrentReads)
 		require.NotNil(t, br)
 
 		// assert on the chain

@@ -96,12 +96,7 @@ func WithCheckCommandCache(
 }
 
 // TODO accept CheckCommandParams so we can build the datastore object right away.
-func NewCheckCommand(
-	datastore storage.RelationshipTupleReader,
-	checkResolver graph.CheckResolver,
-	typesys *typesystem.TypeSystem,
-	opts ...CheckQueryOption,
-) *CheckQuery {
+func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:               logger.NewNoopLogger(),
 		datastore:            datastore,
@@ -120,10 +115,7 @@ func NewCheckCommand(
 	return cmd
 }
 
-func (c *CheckQuery) Execute(
-	ctx context.Context,
-	params *CheckCommandParams,
-) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
 	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
@@ -167,8 +159,7 @@ func (c *CheckQuery) Execute(
 	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) &&
-			resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, nil, &ThrottledError{Cause: err}
 		}
 
@@ -181,11 +172,7 @@ func (c *CheckQuery) Execute(
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
-func validateCheckRequest(
-	typesys *typesystem.TypeSystem,
-	tupleKey *openfgav1.CheckRequestTupleKey,
-	contextualTuples *openfgav1.ContextualTupleKeys,
-) error {
+func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return &InvalidRelationError{Cause: err}
