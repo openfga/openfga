@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -20,13 +22,19 @@ import (
 )
 
 type BatchCheckQuery struct {
-	cacheController     cachecontroller.CacheController
-	checkResolver       graph.CheckResolver
-	datastore           storage.RelationshipTupleReader
-	logger              logger.Logger
-	maxChecksAllowed    uint32
-	maxConcurrentChecks uint32
-	typesys             *typesystem.TypeSystem
+	cacheController        cachecontroller.CacheController
+	cacheSingleflightGroup *singleflight.Group
+	serverCtx              context.Context
+	shouldCacheIterators   bool
+	checkCache             storage.InMemoryCache[any]
+	maxCheckCacheSize      uint32
+	checkCacheTTL          time.Duration
+	checkResolver          graph.CheckResolver
+	datastore              storage.RelationshipTupleReader
+	logger                 logger.Logger
+	maxChecksAllowed       uint32
+	maxConcurrentChecks    uint32
+	typesys                *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -64,9 +72,14 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
-	return func(bq *BatchCheckQuery) {
-		bq.cacheController = cc
+func WithBatchCheckCacheOptions(ctrl cachecontroller.CacheController, shouldCache bool, sf *singleflight.Group, cc storage.InMemoryCache[any], m uint32, ttl time.Duration) BatchCheckQueryOption {
+	return func(c *BatchCheckQuery) {
+		c.cacheController = ctrl
+		c.shouldCacheIterators = shouldCache
+		c.cacheSingleflightGroup = sf
+		c.checkCache = cc
+		c.maxCheckCacheSize = m
+		c.checkCacheTTL = ttl
 	}
 }
 
@@ -163,7 +176,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCacheController(bq.cacheController),
+				WithCheckCommandCache(bq.serverCtx, bq.cacheController, bq.shouldCacheIterators, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
 			)
 
 			checkParams := &CheckCommandParams{
