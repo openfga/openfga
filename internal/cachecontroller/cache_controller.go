@@ -114,8 +114,9 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
-			// Need to use a new context to avoid cancelling invalidation.
-			_ = c.findChangesAndInvalidate(context.Background(), storeID)
+			// important to propagate the cancel without cancel to avoid
+			// cancelling the invalidation when parent request is complete.
+			_ = c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
 			c.mu.Lock()
 			delete(c.inflightInvalidations, storeID)
 			c.mu.Unlock()
