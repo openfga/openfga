@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
@@ -122,6 +124,17 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"require_authorize_check"})
+
+	checkDurationHistogramName = "check_duration_ms"
+	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            checkDurationHistogramName,
+		Help:                            "The duration of check command resolution, labeled by parent_method and datastore_query_count (in buckets)",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"datastore_query_count", "caller"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -131,7 +144,6 @@ type Server struct {
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
-	checkDatastore                   storage.OpenFGADatastore
 	tokenSerializer                  encoder.ContinuationTokenSerializer
 	encoder                          encoder.Encoder
 	transport                        gateway.Transport
@@ -201,6 +213,9 @@ type Server struct {
 
 	ctx                           context.Context
 	contextPropagationToDatastore bool
+
+	// singleflightGroup can be shared across caches, deduplicators, etc.
+	singleflightGroup *singleflight.Group
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -697,8 +712,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listUsersDispatchDefaultThreshold:       serverconfig.DefaultListUsersDispatchThrottlingDefaultThreshold,
 		listUsersDispatchThrottlingMaxThreshold: serverconfig.DefaultListUsersDispatchThrottlingMaxThreshold,
 
-		tokenSerializer: encoder.NewStringContinuationTokenSerializer(),
-		authorizer:      authz.NewAuthorizerNoop(),
+		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
+		singleflightGroup: &singleflight.Group{},
+		authorizer:        authz.NewAuthorizerNoop(),
 	}
 
 	for _, opt := range opts {
@@ -753,12 +769,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		// a new background context with the current trace context.
 		s.datastore = storagewrappers.NewContextWrapper(s.datastore)
 	}
-	s.datastore = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
+
+	s.datastore, err = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
+	if err != nil {
+		return nil, err
+	}
 
 	if s.checkCacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
-		s.checkCache = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		var err error
+		s.checkCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(s.checkCacheLimit)),
 		}...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if s.checkCache != nil && s.cacheControllerEnabled {
@@ -774,7 +798,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	s.checkResolver, s.checkResolverCloser = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
@@ -782,6 +806,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
+	if err != nil {
+		return nil, err
+	}
 
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
@@ -791,13 +818,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.listUsersDispatchThrottler = throttler.NewConstantRateThrottler(s.listUsersDispatchThrottlingFrequency, "list_users_dispatch_throttle")
 	}
 
-	s.checkDatastore = s.datastore
-
-	if s.checkCache != nil && s.checkIteratorCacheEnabled {
-		s.checkDatastore = graph.NewCachedDatastore(s.datastore, s.checkCache, int(s.checkIteratorCacheMaxResults), s.checkQueryCacheTTL)
+	s.typesystemResolver, s.typesystemResolverStop, err = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	if err != nil {
+		return nil, err
 	}
-
-	s.typesystemResolver, s.typesystemResolverStop = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
 	if s.IsAccessControlEnabled() {
 		s.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: s.AccessControl.StoreID, ModelID: s.AccessControl.ModelID}, s, s.logger)
@@ -808,6 +832,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
+	s.checkResolverCloser()
+	s.typesystemResolverStop()
+
 	if s.listObjectsDispatchThrottler != nil {
 		s.listObjectsDispatchThrottler.Close()
 	}
@@ -815,14 +842,10 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.checkResolverCloser()
-
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
 	s.datastore.Close()
-
-	s.typesystemResolverStop()
 }
 
 // IsReady reports whether the datastore is ready. Please see the implementation of [[storage.OpenFGADatastore.IsReady]]
@@ -963,4 +986,15 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 	}
 
 	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
+}
+
+func (s *Server) shouldCacheIterators() bool {
+	return s.checkCache != nil && s.checkIteratorCacheEnabled
+}
+
+func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckResponseMetadata, caller string) {
+	checkDurationHistogram.WithLabelValues(
+		utils.Bucketize(uint(checkMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
+		caller,
+	).Observe(float64(checkMetadata.Duration.Milliseconds()))
 }
