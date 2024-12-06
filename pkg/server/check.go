@@ -23,7 +23,10 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
-func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+func (s *Server) Check(
+	ctx context.Context,
+	req *openfgav1.CheckRequest,
+) (*openfgav1.CheckResponse, error) {
 	start := time.Now()
 
 	tk := req.GetTupleKey()
@@ -32,7 +35,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
-		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
+		attribute.KeyValue{
+			Key:   "consistency",
+			Value: attribute.StringValue(req.GetConsistency().String()),
+		},
 	))
 	defer span.End()
 
@@ -60,13 +66,22 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	checkQuery := commands.NewCheckCommand(
-		s.checkDatastore,
+		s.datastore,
 		s.checkResolver,
 		typesys,
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithCacheController(s.cacheController),
+		commands.WithCheckCommandCache(
+			s.ctx,
+			s.cacheController,
+			s.shouldCacheIterators(),
+			s.singleflightGroup,
+			s.checkCache,
+			s.checkIteratorCacheWaitGroup,
+			s.checkIteratorCacheMaxResults,
+			s.checkQueryCacheTTL,
+		),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
@@ -116,7 +131,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Allowed: resp.Allowed,
 	}
 
-	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
+	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).
+		Inc()
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
@@ -129,7 +145,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
 		accessControlStoreCheckDurationHistogram.WithLabelValues(
 			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+			utils.Bucketize(
+				uint(rawDispatchCount),
+				s.requestDurationByDispatchCountHistogramBuckets,
+			),
 			req.GetConsistency().String(),
 		).Observe(float64(time.Since(start).Milliseconds()))
 	}

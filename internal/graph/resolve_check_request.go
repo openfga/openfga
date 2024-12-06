@@ -13,7 +13,7 @@ import (
 
 type ResolveCheckRequest struct {
 	StoreID                   string
-	AuthorizationModelID      string
+	AuthorizationModelID      string // TODO replace with typesystem
 	TupleKey                  *openfgav1.TupleKey
 	ContextualTuples          []*openfgav1.TupleKey
 	Context                   *structpb.Struct

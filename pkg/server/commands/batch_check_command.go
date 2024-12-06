@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -20,13 +22,20 @@ import (
 )
 
 type BatchCheckQuery struct {
-	cacheController     cachecontroller.CacheController
-	checkResolver       graph.CheckResolver
-	datastore           storage.RelationshipTupleReader
-	logger              logger.Logger
-	maxChecksAllowed    uint32
-	maxConcurrentChecks uint32
-	typesys             *typesystem.TypeSystem
+	cacheController        cachecontroller.CacheController
+	cacheSingleflightGroup *singleflight.Group
+	cacheWaitGroup         *sync.WaitGroup
+	serverCtx              context.Context
+	shouldCacheIterators   bool
+	checkCache             storage.InMemoryCache[any]
+	maxCheckCacheSize      uint32
+	checkCacheTTL          time.Duration
+	checkResolver          graph.CheckResolver
+	datastore              storage.RelationshipTupleReader
+	logger                 logger.Logger
+	maxChecksAllowed       uint32
+	maxConcurrentChecks    uint32
+	typesys                *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -64,9 +73,23 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
-	return func(bq *BatchCheckQuery) {
-		bq.cacheController = cc
+func WithBatchCheckCacheOptions(
+	ctrl cachecontroller.CacheController,
+	shouldCache bool,
+	sf *singleflight.Group,
+	cc storage.InMemoryCache[any],
+	wg *sync.WaitGroup,
+	m uint32,
+	ttl time.Duration,
+) BatchCheckQueryOption {
+	return func(c *BatchCheckQuery) {
+		c.cacheController = ctrl
+		c.shouldCacheIterators = shouldCache
+		c.cacheSingleflightGroup = sf
+		c.cacheWaitGroup = wg
+		c.checkCache = cc
+		c.maxCheckCacheSize = m
+		c.checkCacheTTL = ttl
 	}
 }
 
@@ -88,7 +111,12 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(
+	datastore storage.RelationshipTupleReader,
+	checkResolver graph.CheckResolver,
+	typesys *typesystem.TypeSystem,
+	opts ...BatchCheckQueryOption,
+) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
@@ -105,10 +133,17 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	return cmd
 }
 
-func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
+func (bq *BatchCheckQuery) Execute(
+	ctx context.Context,
+	params *BatchCheckCommandParams,
+) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
 		return nil, nil, &BatchCheckValidationError{
-			Message: fmt.Sprintf("batchCheck received %d checks, the maximum allowed is %d ", len(params.Checks), bq.maxChecksAllowed),
+			Message: fmt.Sprintf(
+				"batchCheck received %d checks, the maximum allowed is %d ",
+				len(params.Checks),
+				bq.maxChecksAllowed,
+			),
 		}
 	}
 
@@ -126,14 +161,21 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
 	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
-		key, err := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+		key, err := generateCacheKeyFromCheck(
+			check,
+			params.StoreID,
+			bq.typesys.GetAuthorizationModelID(),
+		)
 		if err != nil {
 			bq.logger.Error("batch check cache key computation failed with error", zap.Error(err))
 			return nil, nil, err
 		}
 
 		if item, ok := cacheKeyMap[key]; ok {
-			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
+			item.CorrelationIDs = append(
+				item.CorrelationIDs,
+				CorrelationID(check.GetCorrelationId()),
+			)
 		} else {
 			cacheKeyMap[key] = &checkAndCorrelationIDs{
 				Check:          check,
@@ -163,7 +205,16 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCacheController(bq.cacheController),
+				WithCheckCommandCache(
+					bq.serverCtx,
+					bq.cacheController,
+					bq.shouldCacheIterators,
+					bq.cacheSingleflightGroup,
+					bq.checkCache,
+					bq.cacheWaitGroup,
+					bq.maxCheckCacheSize,
+					bq.checkCacheTTL,
+				),
 			)
 
 			checkParams := &CheckCommandParams{
@@ -214,14 +265,20 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	for _, check := range checks {
 		if check.GetCorrelationId() == "" {
 			return &BatchCheckValidationError{
-				Message: fmt.Sprintf("received empty correlation id for tuple: %s", check.GetTupleKey()),
+				Message: fmt.Sprintf(
+					"received empty correlation id for tuple: %s",
+					check.GetTupleKey(),
+				),
 			}
 		}
 
 		_, ok := seen[check.GetCorrelationId()]
 		if ok {
 			return &BatchCheckValidationError{
-				Message: fmt.Sprintf("received duplicate correlation id: %s", check.GetCorrelationId()),
+				Message: fmt.Sprintf(
+					"received duplicate correlation id: %s",
+					check.GetCorrelationId(),
+				),
 			}
 		}
 
@@ -231,7 +288,11 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	return nil
 }
 
-func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) (CacheKey, error) {
+func generateCacheKeyFromCheck(
+	check *openfgav1.BatchCheckItem,
+	storeID string,
+	authModelID string,
+) (CacheKey, error) {
 	tupleKey := check.GetTupleKey()
 	cacheKeyParams := &storage.CheckCacheKeyParams{
 		StoreID:              storeID,

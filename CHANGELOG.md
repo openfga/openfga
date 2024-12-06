@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
+
+### Fixed
+- Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
@@ -32,6 +37,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fix regression introduced in #2091: error message for invalid Writes. [#2110](https://github.com/openfga/openfga/pull/2110)
 - Ensure `/read` and `/list-objects` respect the received `Consistency` values [#2113](https://github.com/openfga/openfga/pull/2113)
 - Fix `access-control` to always return unauthorized errors, and add logging for authorization failures [2129](https://github.com/openfga/openfga/pull/2129)
+- Fix composition of database decorators to fix some performance issues. [#2126](https://github.com/openfga/openfga/pull/2126)
 
 ## [1.8.0] - 2024-11-08
 [Full changelog](https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0)
