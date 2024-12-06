@@ -192,7 +192,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
-	findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
+	span.SetAttributes(attribute.Bool("invalidations", true))
+	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 	return nil
 }
 
