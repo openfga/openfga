@@ -141,15 +141,17 @@ type doc
 
 	t.Run("sets_context", func(t *testing.T) {
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-			tsFromContext, ok := typesystem.TypesystemFromContext(ctx)
-			require.True(t, ok)
-			require.Equal(t, ts, tsFromContext)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				tsFromContext, ok := typesystem.TypesystemFromContext(ctx)
+				require.True(t, ok)
+				require.Equal(t, ts, tsFromContext)
 
-			_, ok = storage.RelationshipTupleReaderFromContext(ctx)
-			require.True(t, ok)
-			return nil, nil
-		})
+				_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+				require.True(t, ok)
+				return &graph.ResolveCheckResponse{}, nil
+			})
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
