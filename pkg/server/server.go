@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -184,6 +185,7 @@ type Server struct {
 	checkIteratorCacheEnabled    bool
 	checkIteratorCacheMaxResults uint32
 	checkIteratorCacheTTL        time.Duration
+	checkIteratorCacheWaitGroup  *sync.WaitGroup
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
@@ -691,6 +693,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
 		checkIteratorCacheMaxResults: serverconfig.DefaultCheckIteratorCacheMaxResults,
 		checkIteratorCacheTTL:        serverconfig.DefaultCheckIteratorCacheTTL,
+		checkIteratorCacheWaitGroup:  &sync.WaitGroup{},
 
 		checkResolver: nil,
 
@@ -842,9 +845,14 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
+	// wait for any cached iterator goroutines still in flight before
+	// closing the cache instance to avoid data races
+	s.checkIteratorCacheWaitGroup.Wait()
+
 	if s.checkCache != nil {
 		s.checkCache.Stop()
 	}
+
 	s.datastore.Close()
 }
 

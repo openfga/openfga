@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
+- Prevent possible data races by waiting for in-flight cached iterator goroutines during server shutdown [#2145](https://github.com/openfga/openfga/pull/2145)
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)

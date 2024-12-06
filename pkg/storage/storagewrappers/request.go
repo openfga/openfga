@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -28,13 +29,22 @@ func NewRequestStorageWrapperForCheckAPI(
 	maxConcurrentReads uint32,
 	shouldCacheIterators bool,
 	singleflightGroup *singleflight.Group,
+	waitGroup *sync.WaitGroup,
 	checkCache storage.InMemoryCache[any],
 	maxCheckCacheSize uint32,
 	checkCacheTTL time.Duration) *RequestStorageWrapper {
 	var a storage.RelationshipTupleReader
 	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	if shouldCacheIterators {
-		a = graph.NewCachedDatastore(serverCtx, a, checkCache, int(maxCheckCacheSize), checkCacheTTL, singleflightGroup) // to read tuples from cache
+		a = graph.NewCachedDatastore(
+			serverCtx,
+			a,
+			checkCache,
+			int(maxCheckCacheSize),
+			checkCacheTTL,
+			singleflightGroup,
+			waitGroup,
+		) // to read tuples from cache
 	}
 	b := NewInstrumentedOpenFGAStorage(a)                   // to capture metrics
 	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples
