@@ -8,6 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
+
+### Fixed
+- Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
+
+## [1.8.1] - 2024-12-05
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
+
+### Added
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
@@ -1148,7 +1157,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/openfga/openfga/compare/v1.6.2...v1.7.0
 [1.6.2]: https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2
