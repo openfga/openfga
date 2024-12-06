@@ -3,6 +3,7 @@ package cachecontroller
 import (
 	"context"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,13 +11,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -67,17 +68,19 @@ type InMemoryCacheController struct {
 	iteratorCacheTTL time.Duration
 	changelogBuckets []uint
 
-	sf *singleflight.Group
+	mu                    sync.Mutex
+	inflightInvalidations map[string]struct{}
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
 	c := &InMemoryCacheController{
-		ds:               ds,
-		cache:            cache,
-		ttl:              ttl,
-		iteratorCacheTTL: iteratorCacheTTL,
-		changelogBuckets: []uint{0, 25, 50, 75, 100},
-		sf:               &singleflight.Group{},
+		ds:                    ds,
+		cache:                 cache,
+		ttl:                   ttl,
+		iteratorCacheTTL:      iteratorCacheTTL,
+		changelogBuckets:      []uint{0, 25, 50, 75, 100},
+		mu:                    sync.Mutex{},
+		inflightInvalidations: make(map[string]struct{}),
 	}
 
 	return c
@@ -100,15 +103,29 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	lastModified, err, _ := c.sf.Do(storeID, func() (interface{}, error) {
-		return c.findChangesAndInvalidate(ctx, storeID)
-	})
-
-	if err != nil {
-		return time.Time{}
+	c.mu.Lock()
+	_, present := c.inflightInvalidations[storeID]
+	if !present {
+		c.inflightInvalidations[storeID] = struct{}{}
 	}
+	c.mu.Unlock()
+	if !present {
+		span.SetAttributes(attribute.Bool("check_invalidation", true))
+		// if the cache cannot be found, we want to invalidate entries in the background
+		// so that it does not block the answer path.
+		go func() {
+			// important to propagate the context without cancel to avoid
+			// cancelling the invalidation when parent request is complete.
+			c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
+			c.mu.Lock()
+			delete(c.inflightInvalidations, storeID)
+			c.mu.Unlock()
+		}()
+	}
+	// if we cannot get lock, there is already invalidation going on.  As such,
+	// we don't want to spin a new go routine to do invalidation.
 
-	return lastModified.(time.Time)
+	return time.Time{}
 }
 
 func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
@@ -121,20 +138,21 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) (time.Time, error) {
+func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) {
 	start := time.Now()
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Bool("invalidations", true))
+	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
+	defer span.End()
+
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
 	// re-evaluate at a later time.
 	changes, _, err := c.findChanges(ctx, storeID)
 	if err != nil {
-		span.RecordError(err)
+		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
 		c.invalidateIteratorCache(storeID)
-		return time.Time{}, err
+		return
 	}
 
 	entry := &storage.ChangelogCacheEntry{
@@ -151,7 +169,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
-		return entry.LastModified, nil
+		return
 	}
 
 	// need to consider there might just be 1 change
@@ -174,10 +192,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
-
-	findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
-
-	return entry.LastModified, nil
+	span.SetAttributes(attribute.Bool("invalidations", true))
+	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
