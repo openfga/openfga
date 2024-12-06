@@ -845,9 +845,9 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	if s.checkIteratorCacheWaitGroup != nil {
-		s.checkIteratorCacheWaitGroup.Wait()
-	}
+	// wait for any cached iterator goroutines still in flight before
+	// closing the cache instance to avoid data races
+	s.checkIteratorCacheWaitGroup.Wait()
 
 	if s.checkCache != nil {
 		s.checkCache.Stop()
