@@ -2,29 +2,37 @@ package storagewrappers
 
 import (
 	"context"
-	"slices"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"slices"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 // NewCombinedTupleReader returns a [storage.RelationshipTupleReader] that reads from
-// a persistent datastore and from the contextual tuples specified in the request.
+// a persistent datastore and from the contextual tuples specified in the request
+// and returns them in sorted order.
 func NewCombinedTupleReader(
 	ds storage.RelationshipTupleReader,
 	contextualTuples []*openfgav1.TupleKey,
 ) storage.RelationshipTupleReader {
-	return &CombinedTupleReader{
-		RelationshipTupleReader: ds,
-		contextualTuples:        contextualTuples,
+	ctr := &CombinedTupleReader{
+		RelationshipTupleReader:         ds,
+		contextualTuplesOrderedByUser:   contextualTuples,
+		contextualTuplesOrderedByObject: contextualTuples,
 	}
+
+	slices.SortFunc(ctr.contextualTuplesOrderedByUser, storage.AscendingUserFunc())
+
+	slices.SortFunc(ctr.contextualTuplesOrderedByObject, storage.AscendingObjectFunc())
+
+	return ctr
 }
 
 type CombinedTupleReader struct {
 	storage.RelationshipTupleReader
-	contextualTuples []*openfgav1.TupleKey
+	contextualTuplesOrderedByUser   []*openfgav1.TupleKey
+	contextualTuplesOrderedByObject []*openfgav1.TupleKey
 }
 
 var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
@@ -55,14 +63,15 @@ func (c *CombinedTupleReader) Read(
 	tk *openfgav1.TupleKey,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
-	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation(), []string{}))
+	filteredTuples := filterTuples(c.contextualTuplesOrderedByUser, tk.GetObject(), tk.GetRelation(), []string{})
+	iter1 := storage.NewStaticTupleIterator(filteredTuples)
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk, options)
 	if err != nil {
 		return nil, err
 	}
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
@@ -79,7 +88,7 @@ func (c *CombinedTupleReader) ReadUserTuple(
 	options storage.ReadUserTupleOptions,
 ) (*openfgav1.Tuple, error) {
 	targetUsers := []string{tk.GetUser()}
-	filteredContextualTuples := filterTuples(c.contextualTuples, tk.GetObject(), tk.GetRelation(), targetUsers)
+	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByUser, tk.GetObject(), tk.GetRelation(), targetUsers)
 
 	for _, t := range filteredContextualTuples {
 		if t.GetKey().GetUser() == tk.GetUser() {
@@ -99,7 +108,7 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 ) (storage.TupleIterator, error) {
 	var usersetTuples []*openfgav1.Tuple
 
-	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation, []string{}) {
+	for _, t := range filterTuples(c.contextualTuplesOrderedByUser, filter.Object, filter.Relation, []string{}) {
 		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
 			usersetTuples = append(usersetTuples, t)
 		}
@@ -112,7 +121,7 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 		return nil, err
 	}
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader.ReadStartingWithUser].
@@ -131,8 +140,8 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		userFilters = append(userFilters, uf)
 	}
 
-	filteredTuples := make([]*openfgav1.Tuple, 0, len(c.contextualTuples))
-	for _, t := range filterTuples(c.contextualTuples, "", filter.Relation, userFilters) {
+	filteredTuples := make([]*openfgav1.Tuple, 0, len(c.contextualTuplesOrderedByObject))
+	for _, t := range filterTuples(c.contextualTuplesOrderedByObject, "", filter.Relation, userFilters) {
 		if tuple.GetType(t.GetKey().GetObject()) != filter.ObjectType {
 			continue
 		}
@@ -146,5 +155,5 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		return nil, err
 	}
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingObjectFunc(), iter1, iter2), nil
 }

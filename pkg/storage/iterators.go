@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -45,6 +46,8 @@ type combinedIterator[T any] struct {
 	once    *sync.Once
 	pending []Iterator[T]
 }
+
+var _ Iterator[any] = (*combinedIterator[any])(nil)
 
 // Next see [Iterator.Next].
 func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
@@ -396,4 +399,101 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
 func IterIsDoneOrCancelled(err error) bool {
 	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+type OrderedCombinedIterator struct {
+	mu       *sync.Mutex
+	once     *sync.Once
+	pending  []TupleIterator
+	next     TupleIterator
+	sortFunc TupleOrderFunc
+}
+
+var _ TupleIterator = (*OrderedCombinedIterator)(nil)
+
+type TupleOrderFunc func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int
+
+func AscendingUserFunc() TupleOrderFunc {
+	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+		return strings.Compare(a.GetUser(), b.GetUser())
+	}
+}
+
+func AscendingObjectFunc() TupleOrderFunc {
+	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+		return strings.Compare(a.GetObject(), b.GetObject())
+	}
+}
+
+// NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
+// All the iterators must be individually ordered.
+func NewOrderedCombinedIterator(sortFunc TupleOrderFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+	pending := make([]TupleIterator, 0, len(sortedIters))
+	for _, iter := range sortedIters {
+		if iter != nil {
+			pending = append(pending, iter)
+		}
+	}
+	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, sortFunc: sortFunc}
+}
+
+func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	val, err := c.Head(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// move the iter that we just peeked
+	_, _ = c.next.Next(ctx)
+
+	return val, nil
+}
+
+// Head sets the value of c.next.
+func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	if len(c.pending) == 0 {
+		return nil, ErrIteratorDone
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.next = c.pending[0]
+
+	// TODO
+	//result = nil
+	//moveIterators[]
+	//iterators = [iterWild, iterNotWild, iterContextual]
+	//FOR EACH iterator in iterators THEN
+	//IF iterator hasn't reached the end THEN
+	//IF result is nil THEN
+	//result = iterator.Top().GetObject()
+	//moveIterators.add(iterator)
+	//ELSE IF result > iterator.Top().GetObject() THEN
+	//result = iterator.Top().GetObject()
+	//moveIterators.clear()
+	//moveIterators.add(iterator)
+	//ELSE IF result == iterator.Top().GetObject() THEN
+	//moveIterators.add(iterator)
+	//END
+	//END
+	//END
+	//FOR EACH iterator in moveIterators THEN
+	//iterator.next()
+	//END
+	//return result
+	return nil, nil
+}
+
+func (c *OrderedCombinedIterator) Stop() {
+	c.once.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		for _, iter := range c.pending {
+			iter.Stop()
+		}
+	})
 }
