@@ -62,14 +62,12 @@ func NewNoopCacheController() CacheController {
 }
 
 type InMemoryCacheController struct {
-	ds               storage.OpenFGADatastore
-	cache            storage.InMemoryCache[any]
-	ttl              time.Duration
-	iteratorCacheTTL time.Duration
-	changelogBuckets []uint
-
-	mu                    sync.Mutex
-	inflightInvalidations map[string]struct{}
+	ds                    storage.OpenFGADatastore
+	cache                 storage.InMemoryCache[any]
+	ttl                   time.Duration
+	iteratorCacheTTL      time.Duration
+	changelogBuckets      []uint
+	inflightInvalidations sync.Map
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
@@ -79,8 +77,7 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		ttl:                   ttl,
 		iteratorCacheTTL:      iteratorCacheTTL,
 		changelogBuckets:      []uint{0, 25, 50, 75, 100},
-		mu:                    sync.Mutex{},
-		inflightInvalidations: make(map[string]struct{}),
+		inflightInvalidations: sync.Map{},
 	}
 
 	return c
@@ -103,12 +100,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
-	c.mu.Lock()
-	_, present := c.inflightInvalidations[storeID]
-	if !present {
-		c.inflightInvalidations[storeID] = struct{}{}
-	}
-	c.mu.Unlock()
+	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
 		span.SetAttributes(attribute.Bool("check_invalidation", true))
 		// if the cache cannot be found, we want to invalidate entries in the background
@@ -117,9 +109,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 			// important to propagate the context without cancel to avoid
 			// cancelling the invalidation when parent request is complete.
 			c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
-			c.mu.Lock()
-			delete(c.inflightInvalidations, storeID)
-			c.mu.Unlock()
+			c.inflightInvalidations.Delete(storeID)
 		}()
 	}
 	// if we cannot get lock, there is already invalidation going on.  As such,

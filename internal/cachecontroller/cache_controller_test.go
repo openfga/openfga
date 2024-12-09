@@ -250,8 +250,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				ttl:                   10 * time.Second,
 				iteratorCacheTTL:      10 * time.Second,
 				changelogBuckets:      []uint{0, 25, 50, 75, 100},
-				mu:                    sync.Mutex{},
-				inflightInvalidations: make(map[string]struct{}),
+				inflightInvalidations: sync.Map{},
 			}
 			cacheController.findChangesAndInvalidate(ctx, test.storeID)
 		})
