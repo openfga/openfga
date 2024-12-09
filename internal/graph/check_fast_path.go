@@ -627,7 +627,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans := make([]chan *iteratorMsg, 0)
+	leftChans := make([]chan *iteratorMsg, 0, len(directlyRelatedUsersetTypes))
 	for _, parentType := range directlyRelatedUsersetTypes {
 		r := req.clone()
 		r.TupleKey = &openfgav1.TupleKey{
@@ -673,7 +673,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans := make([]chan *iteratorMsg, 0)
+	leftChans := make([]chan *iteratorMsg, 0, len(possibleParents))
 	for _, parentType := range possibleParents {
 		r := req.clone()
 		r.TupleKey = &openfgav1.TupleKey{
