@@ -36,6 +36,18 @@
             "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_USERS"
         },
+        "maxConcurrentChecksPerBatchCheck": {
+            "description": "The maximum number of checks that can be processed concurrently in a batch check request.",
+            "type": "integer",
+            "default": 50,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_CHECKS_PER_BATCH_CHECK"
+        },
+        "maxChecksPerBatchCheck": {
+            "description": "The maximum number of tuples allowed in a BatchCheck request.",
+            "type": "integer",
+            "default": 50,
+            "x-env-variable": "OPENFGA_MAX_CHECKS_PER_BATCH_CHECK"
+        },
         "maxConditionEvaluationCost": {
             "description": "The maximum cost for CEL condition evaluation before a request returns an error (default is 100).",
             "type": "integer",
