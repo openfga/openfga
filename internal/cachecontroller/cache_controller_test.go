@@ -2,13 +2,13 @@ package cachecontroller
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -48,7 +48,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).Return(nil),
-			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return([]*openfgav1.TupleChange{
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), gomock.Any()).AnyTimes().Return([]*openfgav1.TupleChange{
 				{
 					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 					Timestamp: timestamppb.New(changelogTimestamp),
@@ -58,10 +58,10 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
-			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
-		require.Equal(t, changelogTimestamp, invalidationTime)
+		require.Equal(t, time.Time{}, invalidationTime)
 	})
 }
 
@@ -96,7 +96,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 		continuationToken  string
 		readChangesResults *readChangesResponse
 		setCacheKeys       []string
-		expectedError      error
 	}{
 		{
 			name:               "empty_changelog",
@@ -104,7 +103,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			readChangesResults: &readChangesResponse{err: storage.ErrNotFound},
 			setCacheKeys: []string{
 				storage.GetInvalidIteratorCacheKey("1")},
-			expectedError: storage.ErrNotFound,
 		},
 		{
 			name:               "hard_error",
@@ -113,7 +111,6 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			setCacheKeys: []string{
 				storage.GetInvalidIteratorCacheKey("2"),
 			},
-			expectedError: storage.ErrCollision,
 		},
 		{
 			name:    "first_change_from_empty_store",
@@ -236,7 +233,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			ctx := context.Background()
+			_, span := tracer.Start(context.Background(), "cachecontroller_test")
+			defer span.End()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -248,18 +246,14 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
 			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
 			cacheController := &InMemoryCacheController{
-				ds:               datastore,
-				cache:            cache,
-				ttl:              10 * time.Second,
-				iteratorCacheTTL: 10 * time.Second,
-				changelogBuckets: []uint{0, 25, 50, 75, 100},
-				sf:               &singleflight.Group{},
+				ds:                    datastore,
+				cache:                 cache,
+				ttl:                   10 * time.Second,
+				iteratorCacheTTL:      10 * time.Second,
+				changelogBuckets:      []uint{0, 25, 50, 75, 100},
+				inflightInvalidations: sync.Map{},
 			}
-			_, err := cacheController.findChangesAndInvalidate(ctx, test.storeID)
-			if test.expectedError != nil {
-				require.ErrorIs(t, err, test.expectedError)
-				return
-			}
+			cacheController.findChangesAndInvalidate(context.Background(), test.storeID, span)
 		})
 	}
 }
