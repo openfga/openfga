@@ -523,6 +523,24 @@
                 }
             }
         },
+        "cacheController": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
+                },
+                "ttl": {
+                    "description": "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_CACHE_CONTROLLER_TTL"
+                }
+            }
+        },
         "checkDispatchThrottling": {
             "type": "object",
             "properties": {
