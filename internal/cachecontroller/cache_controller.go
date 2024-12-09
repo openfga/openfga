@@ -87,7 +87,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
+	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
@@ -106,9 +106,9 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
-			// important to propagate the context without cancel to avoid
-			// cancelling the invalidation when parent request is complete.
-			c.findChangesAndInvalidate(context.WithoutCancel(ctx), storeID)
+			// we do not want to propagate context to avoid early cancellation
+			// and pollute span.
+			c.findChangesAndInvalidate(context.Background(), storeID, span)
 			c.inflightInvalidations.Delete(storeID)
 		}()
 	}
@@ -128,10 +128,13 @@ func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID strin
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string) {
+func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string, parentSpan trace.Span) {
 	start := time.Now()
 	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
 	defer span.End()
+
+	link := trace.LinkFromContext(ctx)
+	parentSpan.AddLink(link)
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return

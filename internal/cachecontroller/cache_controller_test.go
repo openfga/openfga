@@ -233,7 +233,8 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			ctx := context.Background()
+			_, span := tracer.Start(context.Background(), "cachecontroller_test")
+			defer span.End()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
@@ -252,7 +253,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				changelogBuckets:      []uint{0, 25, 50, 75, 100},
 				inflightInvalidations: sync.Map{},
 			}
-			cacheController.findChangesAndInvalidate(ctx, test.storeID)
+			cacheController.findChangesAndInvalidate(context.Background(), test.storeID, span)
 		})
 	}
 }
