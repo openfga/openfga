@@ -1088,6 +1088,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
 
+	val = res.Get("properties.maxConcurrentChecksPerBatchCheck.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentChecksPerBatchCheck)
+
+	val = res.Get("properties.maxChecksPerBatchCheck.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxChecksPerBatchCheck)
+
 	val = res.Get("properties.maxConditionEvaluationCost.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Uint(), cfg.MaxConditionEvaluationCost)
