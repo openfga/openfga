@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
 	"gonum.org/v1/gonum/graph/topo"
 
@@ -566,6 +567,77 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 		}
 	}
 	return false, nil
+}
+
+func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return false
+	}
+	if len(node.GetWildcards()) != 0 {
+		return false
+	}
+
+	w, ok := node.GetWeight(userType)
+	if !ok {
+		return false
+	}
+
+	if w == 2 {
+		return true
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesByNode(node)
+	if !ok {
+		return false
+	}
+
+	usersetEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+	allowed := hashset.New()
+
+	for _, u := range allowedUsersets {
+		allowed.Add(tuple.ToObjectRelationString(u.GetType(), u.GetRelation()))
+	}
+
+	totalAllowed := allowed.Size()
+
+	// find all userset edges with valid weight
+	// but exit immediately if there is any above weight
+	for len(usersetEdges) != totalAllowed && len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+		for _, edge := range edges {
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				operationalEdges, ok := t.authzWeightedGraph.GetEdgesByNode(edge.GetTo())
+				if !ok {
+					return false
+				}
+				innerEdges = append(innerEdges, operationalEdges...)
+			}
+
+			// each edge must belong to one of the directly assignable userset types AND each one of them
+			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
+			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
+				if len(edge.GetWildcards()) != 0 {
+					return false
+				}
+				if w, ok := edge.GetWeight(userType); ok && w > 2 {
+					return false
+				}
+				usersetEdges = append(usersetEdges, edge)
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+	return len(usersetEdges) == totalAllowed
 }
 
 func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
