@@ -41,11 +41,10 @@ var (
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
-	delegate     CheckResolver
-	cache        storage.InMemoryCache[any]
-	maxCacheSize int64
-	cacheTTL     time.Duration
-	logger       logger.Logger
+	delegate CheckResolver
+	cache    storage.InMemoryCache[any]
+	cacheTTL time.Duration
+	logger   logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
 	allocatedCache bool
@@ -56,14 +55,6 @@ var _ CheckResolver = (*CachedCheckResolver)(nil)
 // CachedCheckResolverOpt defines an option that can be used to change the behavior of cachedCheckResolver
 // instance.
 type CachedCheckResolverOpt func(*CachedCheckResolver)
-
-// WithMaxCacheSize sets the maximum size of the Check resolution cache. After this
-// maximum size is met, then cache keys will start being evicted with an LRU policy.
-func WithMaxCacheSize(size int64) CachedCheckResolverOpt {
-	return func(ccr *CachedCheckResolver) {
-		ccr.maxCacheSize = size
-	}
-}
 
 // WithCacheTTL sets the TTL (as a duration) for any single Check cache key value.
 func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
@@ -95,9 +86,8 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
 func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) (*CachedCheckResolver, error) {
 	checker := &CachedCheckResolver{
-		maxCacheSize: defaultMaxCacheSize,
-		cacheTTL:     defaultCacheTTL,
-		logger:       logger.NewNoopLogger(),
+		cacheTTL: defaultCacheTTL,
+		logger:   logger.NewNoopLogger(),
 	}
 	checker.delegate = checker
 
@@ -108,7 +98,7 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) (*CachedCheckResolve
 	if checker.cache == nil {
 		checker.allocatedCache = true
 		cacheOptions := []storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](checker.maxCacheSize),
+			storage.WithMaxCacheSize[any](defaultMaxCacheSize),
 		}
 
 		var err error

@@ -511,7 +511,6 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				graph.WithMaxConcurrentReads(30),
 			}
 			cacheOpts := []graph.CachedCheckResolverOpt{
-				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
 			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
