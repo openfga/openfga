@@ -3869,7 +3869,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 						define member: [user]
 				type folder
 					relations
-                        define member: [user]
+						define member: [user]
 						define allowed: [group#member, folder#member]`,
 			objectType: "folder",
 			relation:   "allowed",
@@ -4128,7 +4128,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 						define assignee: [user, group#testers]
 			    type folder
 				  	relations
-				    	define allowed: [group#assignee]`,
+						define allowed: [group#assignee]`,
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "employee",
