@@ -45,8 +45,10 @@ func NewSharedResources(sharedCtx context.Context, sharedSf *singleflight.Group,
 }
 
 func (s *SharedResources) Close() {
+	// wait for any goroutines still in flight before
+	// closing the cache instance to avoid data races
+	s.WaitGroup.Wait()
 	if s.CheckCache != nil {
 		s.CheckCache.Stop()
 	}
-	s.WaitGroup.Wait()
 }
