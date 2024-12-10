@@ -66,7 +66,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
-		commands.WithCheckCommandCache(s.sharedResources, s.cacheSettings),
+		commands.WithCheckCommandCache(s.sharedCheckResources, s.cacheSettings),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{

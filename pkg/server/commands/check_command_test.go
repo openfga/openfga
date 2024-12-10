@@ -189,7 +189,7 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedResources{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedCheckResources{
 			CacheController: cacheController,
 		}, config.CacheSettings{}))
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {

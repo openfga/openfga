@@ -29,7 +29,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 		}
 
 		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads,
-			&shared.SharedResources{
+			&shared.SharedCheckResources{
 				CheckCache: mockCache,
 			}, config.CacheSettings{
 				CheckIteratorCacheEnabled: true,
@@ -66,7 +66,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, &shared.SharedResources{}, config.CacheSettings{})
+		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, &shared.SharedCheckResources{}, config.CacheSettings{})
 		require.NotNil(t, br)
 
 		// assert on the chain

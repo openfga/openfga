@@ -24,7 +24,7 @@ func TestCacheSettings(t *testing.T) {
 				name: "not_when_limit_is_zero_and_query_cache_enabled",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit:        0,
-					CheckQueryCacheEnabled: false,
+					CheckQueryCacheEnabled: true,
 				},
 				expectedCreateNewCache: false,
 			},
@@ -32,7 +32,7 @@ func TestCacheSettings(t *testing.T) {
 				name: "not_when_limit_is_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit:           0,
-					CheckIteratorCacheEnabled: false,
+					CheckIteratorCacheEnabled: true,
 				},
 				expectedCreateNewCache: false,
 			},

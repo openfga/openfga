@@ -21,14 +21,14 @@ import (
 )
 
 type BatchCheckQuery struct {
-	sharedResources     *shared.SharedResources
-	cacheSettings       config.CacheSettings
-	checkResolver       graph.CheckResolver
-	datastore           storage.RelationshipTupleReader
-	logger              logger.Logger
-	maxChecksAllowed    uint32
-	maxConcurrentChecks uint32
-	typesys             *typesystem.TypeSystem
+	sharedCheckResources *shared.SharedCheckResources
+	cacheSettings        config.CacheSettings
+	checkResolver        graph.CheckResolver
+	datastore            storage.RelationshipTupleReader
+	logger               logger.Logger
+	maxChecksAllowed     uint32
+	maxConcurrentChecks  uint32
+	typesys              *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -66,9 +66,9 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCacheOptions(sharedResources *shared.SharedResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
+func WithBatchCheckCacheOptions(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
 	return func(c *BatchCheckQuery) {
-		c.sharedResources = sharedResources
+		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
 	}
 }
@@ -100,7 +100,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 		cacheSettings:       config.NewDefaultCacheSettings(),
-		sharedResources: &shared.SharedResources{
+		sharedCheckResources: &shared.SharedCheckResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 	}
@@ -169,7 +169,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.sharedResources, bq.cacheSettings),
+				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
 			)
 
 			checkParams := &CheckCommandParams{

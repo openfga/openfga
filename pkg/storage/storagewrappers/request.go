@@ -19,7 +19,7 @@ type RequestStorageWrapper struct {
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
 func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32,
-	resources *shared.SharedResources,
+	resources *shared.SharedCheckResources,
 	cacheSettings config.CacheSettings) *RequestStorageWrapper {
 	var a storage.RelationshipTupleReader
 	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads

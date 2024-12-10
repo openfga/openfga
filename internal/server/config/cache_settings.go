@@ -27,7 +27,7 @@ func NewDefaultCacheSettings() CacheSettings {
 }
 
 func (c CacheSettings) ShouldCreateNewCache() bool {
-	return c.CheckCacheLimit > 0 && (c.CheckQueryCacheEnabled || c.CheckIteratorCacheEnabled)
+	return c.ShouldCacheCheckQueries() || c.ShouldCacheIterators()
 }
 
 func (c CacheSettings) ShouldCreateCacheController() bool {

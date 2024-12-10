@@ -11,7 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-type SharedResources struct {
+// SharedCheckResources contains resources that can be shared across Check requests.
+type SharedCheckResources struct {
 	SingleflightGroup *singleflight.Group
 	WaitGroup         *sync.WaitGroup
 	ServerCtx         context.Context
@@ -19,8 +20,8 @@ type SharedResources struct {
 	CacheController   cachecontroller.CacheController
 }
 
-func NewSharedResources(sharedCtx context.Context, sharedSf *singleflight.Group, ds storage.OpenFGADatastore, settings serverconfig.CacheSettings) (*SharedResources, error) {
-	s := &SharedResources{
+func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.Group, ds storage.OpenFGADatastore, settings serverconfig.CacheSettings) (*SharedCheckResources, error) {
+	s := &SharedCheckResources{
 		WaitGroup:         &sync.WaitGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
@@ -44,7 +45,7 @@ func NewSharedResources(sharedCtx context.Context, sharedSf *singleflight.Group,
 	return s, nil
 }
 
-func (s *SharedResources) Close() {
+func (s *SharedCheckResources) Close() {
 	// wait for any goroutines still in flight before
 	// closing the cache instance to avoid data races
 	s.WaitGroup.Wait()

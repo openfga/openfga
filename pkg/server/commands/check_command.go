@@ -32,7 +32,7 @@ type CheckQuery struct {
 	checkResolver        graph.CheckResolver
 	typesys              *typesystem.TypeSystem
 	datastore            storage.RelationshipTupleReader
-	sharedResources      *shared.SharedResources
+	sharedCheckResources *shared.SharedCheckResources
 	cacheSettings        config.CacheSettings
 	resolveNodeLimit     uint32
 	maxConcurrentReads   uint32
@@ -67,9 +67,9 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
-func WithCheckCommandCache(sharedResources *shared.SharedResources, cacheSettings config.CacheSettings) CheckQueryOption {
+func WithCheckCommandCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.sharedResources = sharedResources
+		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
 	}
 }
@@ -85,7 +85,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
-		sharedResources: &shared.SharedResources{
+		sharedCheckResources: &shared.SharedCheckResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 	}
@@ -105,7 +105,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
@@ -121,7 +121,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedResources, c.cacheSettings)
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
