@@ -316,7 +316,6 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			tmpKey := t.GetObject()
 			for tmpKey < maxObject {
 				_, _ = stream.buffer.Next(ctx)
-
 				t, err := stream.buffer.Head(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
