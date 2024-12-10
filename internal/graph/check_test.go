@@ -3954,7 +3954,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 			checker := NewLocalChecker()
 			mapper, err := checker.buildNestedMapper(ctx, req, &nestedMapping{
-				kind:                        NestedUsersetKind,
+				kind:                        UsersetKind,
 				allowedUserTypeRestrictions: restrictions,
 			})
 			if tt.readUsersetTuplesError != nil {
@@ -4379,7 +4379,7 @@ func TestBuildNestedMapper(t *testing.T) {
 		}).Times(1)
 
 		mapping := &nestedMapping{
-			kind: NestedUsersetKind,
+			kind: UsersetKind,
 			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
@@ -4391,7 +4391,7 @@ func TestBuildNestedMapper(t *testing.T) {
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*NestedUsersetMapper)
+		_, ok := res.(*UsersetMapper)
 		require.True(t, ok)
 	})
 
