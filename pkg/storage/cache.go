@@ -4,10 +4,17 @@ package storage
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/Yiling-J/theine-go"
+	"github.com/cespare/xxhash/v2"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/internal/keys"
 )
 
 const (
@@ -135,4 +142,52 @@ func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) s
 
 func GetReadCacheKey(store, tuple string) string {
 	return fmt.Sprintf("%sr/%s/%s", iteratorCachePrefix, store, tuple)
+}
+
+// CheckCacheKeyParams is all the necessary pieces to create a unique-per-check cache key.
+type CheckCacheKeyParams struct {
+	StoreID              string
+	AuthorizationModelID string
+	TupleKey             *openfgav1.TupleKey
+	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
+}
+
+// GetCheckCacheKey converts the elements of a Check into a canonical cache key that can be
+// used for Check resolution cache key lookups in a stable way.
+//
+// For one store and model ID, the same tuple provided with the same contextual tuples and context
+// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
+// only the contents are compared.
+func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
+	hasher := keys.NewCacheKeyHasher(xxhash.New())
+
+	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
+		SubproblemCachePrefix,
+		params.StoreID,
+		params.AuthorizationModelID,
+		params.TupleKey.GetObject(),
+		params.TupleKey.GetRelation(),
+		params.TupleKey.GetUser(),
+	)
+
+	if err := hasher.WriteString(key); err != nil {
+		return "", err
+	}
+
+	// here, and for context below, avoid hashing if we don't need to
+	if len(params.ContextualTuples) > 0 {
+		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+			return "", err
+		}
+	}
+
+	if params.Context != nil {
+		err := keys.NewContextHasher(params.Context).Append(hasher)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
 }

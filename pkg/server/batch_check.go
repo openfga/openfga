@@ -53,10 +53,18 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	cmd := commands.NewBatchCheckCommand(
-		s.checkDatastore,
+		s.datastore,
 		s.checkResolver,
 		typesys,
-		commands.WithBatchCheckCommandCacheController(s.cacheController),
+		commands.WithBatchCheckCacheOptions(
+			s.cacheController,
+			s.shouldCacheIterators(),
+			s.singleflightGroup,
+			s.checkCache,
+			s.checkIteratorCacheWaitGroup,
+			s.checkIteratorCacheMaxResults,
+			s.checkIteratorCacheTTL,
+		),
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
@@ -79,7 +87,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	methodName := "batchCheck"
+	methodName := "batchcheck"
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
@@ -87,10 +95,14 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(queryCount)
 
+	duplicateChecks := "duplicate_checks"
+	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
+	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
+
 	var batchResult = map[string]*openfgav1.BatchCheckSingleResult{}
 	for correlationID, outcome := range result {
 		batchResult[string(correlationID)] = transformCheckResultToProto(outcome)
-		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), "batch_check")
+		s.emitCheckDurationMetric(outcome.CheckResponse.GetResolutionMetadata(), methodName)
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)

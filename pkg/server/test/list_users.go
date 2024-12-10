@@ -183,6 +183,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				resp, err := listusers.NewListUsersQuery(ds,
+					bm.inputRequest.GetContextualTuples(),
 					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults),
 					listusers.WithListUsersMaxConcurrentReads(50)).
 					ListUsers(ctx, bm.inputRequest)
