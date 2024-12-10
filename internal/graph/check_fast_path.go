@@ -315,7 +315,9 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			}
 			tmpKey := t.GetObject()
 			for tmpKey < maxObject {
-				t, err := stream.buffer.Next(ctx)
+				_, _ = stream.buffer.Next(ctx)
+
+				t, err := stream.buffer.Head(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						stream.buffer.Stop()
@@ -425,7 +427,9 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 
 		// diff < base, then move the diff to catch up with base
 		for diff < base {
-			t, err := iterStreams[DifferenceIndex].buffer.Next(ctx)
+			_, _ = iterStreams[DifferenceIndex].buffer.Next(ctx)
+			t, err := iterStreams[DifferenceIndex].buffer.Head(ctx)
+
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
 					iterStreams[DifferenceIndex].buffer.Stop()
