@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
 - Prevent possible data races by waiting for in-flight cached iterator goroutines during server shutdown [#2145](https://github.com/openfga/openfga/pull/2145)
 - Correct incorrect check result returned when using experimental flag `enable-check-optimizations` and model has intersection or exclusion within a TTU or Userset. [#2157](https://github.com/openfga/openfga/pull/2157)
+- Ensure Check Cache Key considers `contextual_tuple` conditions and their contexts [#2160](https://github.com/openfga/openfga/pull/2160).
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
