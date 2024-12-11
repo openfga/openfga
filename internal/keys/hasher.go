@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -68,9 +69,24 @@ func (t tupleKeysHasher) Append(h hasher) error {
 
 	n := 0
 	for _, tupleKey := range sortedTupleKeys {
-		key := fmt.Sprintf("%s#%s@%s", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())
+		key := strings.Builder{}
+		key.WriteString(tupleKey.GetObject())
+		key.WriteString("#")
+		key.WriteString(tupleKey.GetRelation())
+		key.WriteString("@")
+		key.WriteString(tupleKey.GetUser())
 
-		if err := h.WriteString(key); err != nil {
+		cond := tupleKey.GetCondition()
+		if cond != nil {
+			key.WriteString(cond.GetName())
+
+			// now consider condition context
+			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
+				return err
+			}
+		}
+
+		if err := h.WriteString(key.String()); err != nil {
 			return err
 		}
 

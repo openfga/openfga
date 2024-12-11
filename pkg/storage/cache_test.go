@@ -137,20 +137,16 @@ func TestCheckCacheKeyContextualTuplesOrdering(t *testing.T) {
 	require.Equal(t, key1, key2)
 }
 
-func TestCheckCacheKeyContextualTuplesWithConditionsOrdering(t *testing.T) {
+func TestCheckCacheKeyConsidersCondition(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
 	tuples1 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
 	}
 
 	tuples2 := []*openfgav1.TupleKey{
 		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
 	}
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
@@ -171,7 +167,38 @@ func TestCheckCacheKeyContextualTuplesWithConditionsOrdering(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.Equal(t, key1, key2)
+	require.NotEqual(t, key1, key2)
+}
+
+func TestCheckCacheKeyContextualTuplesConditionOrderMatters(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	anne := tuple.NewTupleKey("document:1", "viewer", "user:anne")
+	jonCondOne := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil)
+	jonCondTwo := tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil)
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{anne, jonCondOne, jonCondTwo},
+	})
+	require.NoError(t, err)
+
+	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+
+		// same tuples, conditions are in different order
+		ContextualTuples: []*openfgav1.TupleKey{anne, jonCondTwo, jonCondOne},
+	})
+	require.NoError(t, err)
+
+	require.NotEqual(t, key1, key2)
 }
 
 func TestCheckCacheKeyWithContext(t *testing.T) {
