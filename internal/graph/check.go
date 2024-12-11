@@ -106,6 +106,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
+		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
