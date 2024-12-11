@@ -8,7 +8,7 @@ require (
 	github.com/Yiling-J/theine-go v0.6.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/docker/docker v27.3.1+incompatible
+	github.com/docker/docker v27.4.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/go-sql-driver/mysql v1.8.1
