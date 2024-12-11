@@ -65,7 +65,9 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			return true
 		} else if cond1.GetName() != cond2.GetName() {
 			return cond1.GetName() < cond2.GetName()
-		} // TODO: if names are equal you have to sort based on the context structs
+		}
+		// Note: conditions also optionally have context structs, but our contextHasher below
+		// already handles those properly, we don't have to sort any further here.
 
 		return true
 	})

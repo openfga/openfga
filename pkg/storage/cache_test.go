@@ -260,7 +260,7 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
-		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne, jonContextTwo},
 	})
 	require.NoError(t, err)
 
@@ -268,14 +268,14 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
-		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo, jonContextOne},
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, key1, key2)
 }
 
-func TestCheckCacheKeyContextualTuplesConditionOrderMatters(t *testing.T) {
+func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
