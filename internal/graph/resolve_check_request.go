@@ -26,7 +26,7 @@ type ResolveCheckRequest struct {
 type ResolveCheckRequestMetadata struct {
 	// Thinking of a Check as a tree of evaluations,
 	// Depth is the current level in the tree in the current path that we are exploring.
-	// When we jump one level, we decrement 1. If it hits 0, we throw ErrResolutionDepthExceeded.
+	// When we jump one level, we increment it by 1. If it hits maxResolutionDepth (resolveNodeLimit), we throw ErrResolutionDepthExceeded.
 	Depth uint32
 
 	// DispatchCounter is the address to a shared counter that keeps track of how many calls to ResolveCheck we had to do
