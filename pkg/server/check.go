@@ -65,7 +65,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		typesys,
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-		commands.WithCheckCommandResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithCheckCommandCache(
 			s.ctx,
 			s.cacheController,

@@ -39,9 +39,8 @@ type ResolveCheckRequestMetadata struct {
 	WasThrottled *atomic.Bool
 }
 
-func NewCheckRequestMetadata(maxDepth uint32) *ResolveCheckRequestMetadata {
+func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
-		Depth:           maxDepth,
 		DispatchCounter: new(atomic.Uint32),
 		WasThrottled:    new(atomic.Bool),
 	}
