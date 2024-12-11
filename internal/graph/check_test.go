@@ -2735,12 +2735,11 @@ func TestDispatch(t *testing.T) {
 	}
 	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
 
-	expectedMetadata := NewCheckRequestMetadata()
-	expectedMetadata.Depth--
 	expectedReq := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil),
-		RequestMetadata: expectedMetadata,
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
+	expectedReq.GetRequestMetadata().Depth++
 
 	var req *ResolveCheckRequest
 	mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.AssignableToTypeOf(req)).DoAndReturn(
