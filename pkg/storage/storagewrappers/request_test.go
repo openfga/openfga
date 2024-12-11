@@ -48,7 +48,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 		require.NotNil(t, br)
 
 		// assert on the chain
-		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		a, ok := br.TupleEvaluator.(*CombinedTupleReader)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
@@ -90,7 +90,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 		require.NotNil(t, br)
 
 		// assert on the chain
-		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		a, ok := br.TupleEvaluator.(*CombinedTupleReader)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
@@ -114,7 +114,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 		require.NotNil(t, br)
 
 		// assert on the chain
-		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		a, ok := br.TupleEvaluator.(*CombinedTupleReader)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)

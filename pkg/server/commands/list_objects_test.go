@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"testing"
 	"time"
 
@@ -50,7 +51,8 @@ func TestNewListObjectsQuery(t *testing.T) {
 func TestListObjectsDispatchCount(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	tupleEval := storagewrappers.NewRequestStorageWrapper(ds)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), tupleEval)
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	mockThrottler := mocks.NewMockThrottler(ctrl)
@@ -280,7 +282,8 @@ func TestListObjectsDispatchCount(t *testing.T) {
 func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	tupleEval := storagewrappers.NewRequestStorageWrapper(ds)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), tupleEval)
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	modelDsl := `model

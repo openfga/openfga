@@ -223,27 +223,6 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 	}
 }
 
-func Test_combinedTupleReader_ReadPage(t *testing.T) {
-	mockCtl, mockRelationshipTupleReader := makeMocks(t)
-	defer mockCtl.Finish()
-
-	c := NewCombinedTupleReader(mockRelationshipTupleReader, tuple.MustParseTupleStrings(
-		"group:1#member@user:11",
-		"group:1#member@user:12",
-	))
-
-	mockRelationshipTupleReader.EXPECT().
-		ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{}).
-		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
-
-	got, _, err := c.ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{})
-	require.NoError(t, err)
-
-	if !reflect.DeepEqual(got, []*openfgav1.Tuple{testTuples["group:1#member@user:11"]}) {
-		t.Errorf("ReadPage() got = %v", got)
-	}
-}
-
 func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 	mockCtl, mockRelationshipTupleReader := makeMocks(t)
 	defer mockCtl.Finish()

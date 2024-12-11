@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -410,20 +409,6 @@ type OrderedCombinedIterator struct {
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
-
-type TupleOrderFunc func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int
-
-func AscendingUserFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetUser(), b.GetUser())
-	}
-}
-
-func AscendingObjectFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetObject(), b.GetObject())
-	}
-}
 
 // NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
 // All the iterators must be individually ordered.

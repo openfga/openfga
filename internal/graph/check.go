@@ -1465,7 +1465,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.nestedUsersetFastPath
 					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						// TODO: Add support for contextual tuples - since these are injected without order
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 					}
@@ -1476,7 +1475,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			}, opts)
+			}, opts, storage.AscendingObjectFunc()) // TODO depending on the resolver used, pass this or not.
 			if err != nil {
 				return nil, err
 			}
@@ -1671,6 +1670,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			storeID,
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
 			opts,
+			storage.AscendingUserFunc(), // TODO depending on the resolver used, pass this or not.
 		)
 		if err != nil {
 			return nil, err
