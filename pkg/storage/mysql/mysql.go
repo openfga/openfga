@@ -362,7 +362,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		})
+		}).OrderBy("object_id")
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})

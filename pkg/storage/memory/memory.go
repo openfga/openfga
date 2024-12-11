@@ -545,6 +545,10 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			matches = append(matches, t)
 		}
 	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].ObjectID < matches[j].ObjectID
+	})
+
 	return &staticIterator{records: matches}, nil
 }
 
