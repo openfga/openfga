@@ -170,6 +170,111 @@ func TestCheckCacheKeyConsidersCondition(t *testing.T) {
 	require.NotEqual(t, key1, key2)
 }
 
+func TestCheckCacheKeyConsidersConditionContext(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	struct1, err := structpb.NewStruct(map[string]interface{}{
+		"key1": "foo",
+		"key2": "bar",
+	})
+	require.NoError(t, err)
+
+	struct2, err := structpb.NewStruct(map[string]interface{}{
+		"key1": "foo",
+		"key3": "baz",
+	})
+	require.NoError(t, err)
+
+	jonContextOne := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct1,
+	)
+	jonContextTwo := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct2,
+	)
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
+	})
+	require.NoError(t, err)
+
+	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
+	})
+	require.NoError(t, err)
+
+	require.NotEqual(t, key1, key2)
+}
+
+func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	struct1, err := structpb.NewStruct(map[string]interface{}{
+		"key1": "foo",
+		"key2": "bar",
+	})
+	require.NoError(t, err)
+
+	// same object, keys in different order
+	struct2, err := structpb.NewStruct(map[string]interface{}{
+		"key2": "bar",
+		"key1": "foo",
+	})
+	require.NoError(t, err)
+
+	jonContextOne := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct1,
+	)
+	jonContextTwo := tuple.NewTupleKeyWithCondition(
+		"document:2",
+		"admin",
+		"user:jon",
+		"some_condition",
+		struct2,
+	)
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
+	})
+	require.NoError(t, err)
+
+	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, key1, key2)
+}
+
 func TestCheckCacheKeyContextualTuplesConditionOrderMatters(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
