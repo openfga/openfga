@@ -137,3 +137,5 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
+
+replace github.com/openfga/api/proto => github.com/grafana/openfga-api/proto v0.0.0-20241128083119-17be390de60f
