@@ -46,6 +46,9 @@ const (
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
 
+	DefaultCacheControllerConfigEnabled = false
+	DefaultCacheControllerConfigTTL     = 10 * time.Second
+
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
@@ -224,6 +227,13 @@ type CheckIteratorCacheConfig struct {
 	TTL        time.Duration
 }
 
+// CacheControllerConfig defines configuration to manage cache invalidation dynamically by observing whether
+// there are recent tuple changes to specified store.
+type CacheControllerConfig struct {
+	Enabled bool
+	TTL     time.Duration
+}
+
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
 type DispatchThrottlingConfig struct {
 	Enabled      bool
@@ -335,6 +345,7 @@ type Config struct {
 	CheckCache                    CheckCacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
+	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -351,37 +362,20 @@ func (cfg *Config) Verify() error {
 }
 
 func (cfg *Config) VerifyServerSettings() error {
-	configuredTimeout := DefaultContextTimeout(cfg)
-
-	if cfg.ListObjectsDeadline > configuredTimeout {
-		return fmt.Errorf(
-			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			configuredTimeout,
-			cfg.ListObjectsDeadline,
-		)
-	}
-	if cfg.ListUsersDeadline > configuredTimeout {
-		return fmt.Errorf(
-			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
-			configuredTimeout,
-			cfg.ListUsersDeadline,
-		)
+	if err := cfg.verifyDeadline(); err != nil {
+		return err
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
-	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
-		return errors.New("request duration datastore query count buckets must not be empty")
+	if err := cfg.verifyRequestDurationDatastoreQueryCountBuckets(); err != nil {
+		return err
 	}
-	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration datastore query count bucket items must be non-negative integer",
-			)
-		}
+
+	if err := cfg.verifyCacheConfig(); err != nil {
+		return err
 	}
 
 	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
@@ -548,6 +542,59 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	return nil
 }
 
+func (cfg *Config) verifyDeadline() error {
+	configuredTimeout := DefaultContextTimeout(cfg)
+
+	if cfg.ListObjectsDeadline > configuredTimeout {
+		return fmt.Errorf(
+			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			configuredTimeout,
+			cfg.ListObjectsDeadline,
+		)
+	}
+	if cfg.ListUsersDeadline > configuredTimeout {
+		return fmt.Errorf(
+			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
+			configuredTimeout,
+			cfg.ListUsersDeadline,
+		)
+	}
+	return nil
+}
+
+func (cfg *Config) verifyRequestDurationDatastoreQueryCountBuckets() error {
+	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
+		return errors.New("request duration datastore query count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration datastore query count bucket items must be non-negative integer",
+			)
+		}
+	}
+	return nil
+}
+
+func (cfg *Config) verifyCacheConfig() error {
+	if cfg.CheckQueryCache.Enabled && cfg.CheckQueryCache.TTL <= 0 {
+		return errors.New("'checkQueryCache.ttl' must be greater than zero")
+	}
+	if cfg.CheckIteratorCache.Enabled {
+		if cfg.CheckIteratorCache.TTL <= 0 {
+			return errors.New("'checkIteratorCache.ttl' must be greater than zero")
+		}
+		if cfg.CheckIteratorCache.MaxResults <= 0 {
+			return errors.New("'checkIteratorCache.maxResults' must be greater than zero")
+		}
+	}
+	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
+		return errors.New("'cacheController.ttl' must be greater than zero")
+	}
+	return nil
+}
+
 // MaxConditionEvaluationCost ensures a safe value for CEL evaluation cost.
 func MaxConditionEvaluationCost() uint64 {
 	return max(DefaultMaxConditionEvaluationCost, viper.GetUint64("maxConditionEvaluationCost"))
@@ -639,6 +686,10 @@ func DefaultConfig() *Config {
 		},
 		CheckCache: CheckCacheConfig{
 			Limit: DefaultCheckCacheLimit,
+		},
+		CacheController: CacheControllerConfig{
+			Enabled: DefaultCacheControllerConfigEnabled,
+			TTL:     DefaultCacheControllerConfigTTL,
 		},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,

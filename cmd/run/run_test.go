@@ -1192,6 +1192,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckIteratorCache.TTL.String())
 
+	val = res.Get("properties.cacheController.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CacheController.Enabled)
+
+	val = res.Get("properties.cacheController.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CacheController.TTL.String())
+
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
 	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
@@ -1340,6 +1348,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
 	t.Setenv("OPENFGA_CHECK_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
+	t.Setenv("OPENFGA_CACHE_CONTROLLER_ENABLED", "true")
+	t.Setenv("OPENFGA_CACHE_CONTROLLER_TTL", "4s")
 	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_ENABLED", "true")
 	t.Setenv("OPENFGA_DISPATCH_THROTTLING_FREQUENCY", "1ms")
@@ -1359,6 +1369,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("check-query-cache-enabled"))
 		require.Equal(t, uint32(33), viper.GetUint32("check-cache-limit"))
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
+		require.True(t, viper.GetBool("cache-controller-enabled"))
+		require.Equal(t, 4*time.Second, viper.GetDuration("cache-controller-ttl"))
 
 		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
 		require.True(t, viper.GetBool("dispatch-throttling-enabled"))
