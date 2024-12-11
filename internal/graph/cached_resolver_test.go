@@ -26,7 +26,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		StoreID:              "12",
 		AuthorizationModelID: "33",
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
+		RequestMetadata:      NewCheckRequestMetadata(),
 	}
 	result := &ResolveCheckResponse{Allowed: true}
 
@@ -44,7 +44,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -59,7 +59,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -75,7 +75,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -91,7 +91,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -107,14 +107,14 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -130,7 +130,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -145,7 +145,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -160,7 +160,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -175,7 +175,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -190,7 +190,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -212,7 +212,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -227,7 +227,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
@@ -254,7 +254,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -272,7 +272,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -299,7 +299,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -317,7 +317,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -339,7 +339,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -352,7 +352,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -379,7 +379,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
@@ -402,7 +402,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -429,14 +429,14 @@ func TestResolveCheckFromCache(t *testing.T) {
 						User:     "user:XYZ",
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			},
 			subsequentReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				ContextualTuples:     []*openfgav1.TupleKey{},
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -548,7 +548,7 @@ func TestResolveCheckExpired(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 
 	result := &ResolveCheckResponse{Allowed: true}
@@ -588,7 +588,7 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
-		RequestMetadata:           NewCheckRequestMetadata(20),
+		RequestMetadata:           NewCheckRequestMetadata(),
 		LastCacheInvalidationTime: time.Now().Add(5 * time.Minute),
 	}
 

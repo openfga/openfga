@@ -25,7 +25,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			ContextualTuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")},
 			Context:              contextStruct,
-			RequestMetadata:      NewCheckRequestMetadata(20),
+			RequestMetadata:      NewCheckRequestMetadata(),
 			VisitedPaths: map[string]struct{}{
 				"abc": {},
 			},
@@ -44,7 +44,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", orig.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", orig.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, orig.GetContext())
-		require.Equal(t, uint32(20), orig.GetRequestMetadata().Depth)
+		require.Equal(t, uint32(0), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(2), orig.GetRequestMetadata().DispatchCounter.Load())
 		require.False(t, orig.GetRequestMetadata().WasThrottled.Load())
 		require.Equal(t, map[string]struct{}{
@@ -71,7 +71,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", orig.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", orig.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, orig.GetContext())
-		require.Equal(t, uint32(20), orig.GetRequestMetadata().Depth)
+		require.Equal(t, uint32(0), orig.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), orig.GetRequestMetadata().DispatchCounter.Load())
 		require.True(t, orig.GetRequestMetadata().WasThrottled.Load())
 		require.Equal(t, map[string]struct{}{
@@ -89,7 +89,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		require.Equal(t, "writer", cloned.GetContextualTuples()[0].GetRelation())
 		require.Equal(t, "document:def", cloned.GetContextualTuples()[0].GetObject())
 		require.Equal(t, contextStruct, cloned.GetContext())
-		require.Equal(t, uint32(20), cloned.GetRequestMetadata().Depth)
+		require.Equal(t, uint32(0), cloned.GetRequestMetadata().Depth)
 		require.Equal(t, uint32(7), cloned.GetRequestMetadata().DispatchCounter.Load()) // note that it is intended to have the request metadata share the same dispatch counter
 		require.True(t, cloned.GetRequestMetadata().WasThrottled.Load())                // it is intended to share the same was throttled state
 		require.Equal(t, map[string]struct{}{
@@ -122,7 +122,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			ContextualTuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")},
 			Context:              contextStruct,
-			RequestMetadata:      NewCheckRequestMetadata(20),
+			RequestMetadata:      NewCheckRequestMetadata(),
 			VisitedPaths: map[string]struct{}{
 				"abc": {},
 			},
@@ -159,7 +159,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			require.Equal(t, "writer", cloned.GetContextualTuples()[0].GetRelation())
 			require.Equal(t, "document:def", cloned.GetContextualTuples()[0].GetObject())
 			require.Equal(t, contextStruct, cloned.GetContext())
-			require.Equal(t, uint32(20), cloned.GetRequestMetadata().Depth)
+			require.Equal(t, uint32(0), cloned.GetRequestMetadata().Depth)
 			require.False(t, cloned.GetRequestMetadata().WasThrottled.Load())
 			require.Equal(t, map[string]struct{}{
 				"abc": {},
