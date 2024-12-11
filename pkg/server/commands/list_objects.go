@@ -338,7 +338,6 @@ func (q *ListObjectsQuery) evaluate(
 
 				pool.Go(func(ctx context.Context) error {
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
-						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 					).

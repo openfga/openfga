@@ -97,7 +97,7 @@ func TestCheck_CorrectContext(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: ulid.Make().String(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(20),
+			RequestMetadata:      NewCheckRequestMetadata(),
 		})
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
@@ -118,7 +118,7 @@ func TestCheck_CorrectContext(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 			AuthorizationModelID: model.GetId(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(20),
+			RequestMetadata:      NewCheckRequestMetadata(),
 		})
 		require.ErrorContains(t, err, "relationship tuple reader datastore missing in context")
 	})
@@ -760,7 +760,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 }
 
 func TestNonStratifiableCheckQueries(t *testing.T) {
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers(WithLocalCheckerOpts(WithMaxResolutionDepth(10))).Build()
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
@@ -800,7 +800,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
 			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata: NewCheckRequestMetadata(10),
+			RequestMetadata: NewCheckRequestMetadata(),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
@@ -844,7 +844,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
 			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata: NewCheckRequestMetadata(10),
+			RequestMetadata: NewCheckRequestMetadata(),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.GetAllowed())
@@ -852,7 +852,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 }
 
 func TestResolveCheckDeterministic(t *testing.T) {
-	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
+	checker, checkResolverCloser, err := NewOrderedCheckResolvers(WithLocalCheckerOpts(WithMaxResolutionDepth(2))).Build()
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
@@ -905,7 +905,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
 			TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata: NewCheckRequestMetadata(2),
+			RequestMetadata: NewCheckRequestMetadata(),
 		})
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
@@ -913,7 +913,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
 			TupleKey:        tuple.NewTupleKey("document:2", "editor", "user:x"),
-			RequestMetadata: NewCheckRequestMetadata(2),
+			RequestMetadata: NewCheckRequestMetadata(),
 		})
 		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 		require.Nil(t, resp)
@@ -963,7 +963,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:         storeID,
 				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
-				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+				RequestMetadata: NewCheckRequestMetadata(),
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -1013,7 +1013,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:         storeID,
 				TupleKey:        tuple.NewTupleKey("document:budget", "viewer", "user:maria"),
-				RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+				RequestMetadata: NewCheckRequestMetadata(),
 			})
 			require.NoError(t, err)
 			require.False(t, resp.GetAllowed())
@@ -1040,7 +1040,10 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	require.NoError(t, err)
 
 	checker, checkResolverCloser, err := NewOrderedCheckResolvers(
-		WithLocalCheckerOpts(WithResolveNodeBreadthLimit(concurrencyLimit)),
+		WithLocalCheckerOpts(
+			WithResolveNodeBreadthLimit(concurrencyLimit),
+			WithMaxResolutionDepth(25),
+		),
 	).Build()
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
@@ -1069,7 +1072,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:         storeID,
 		TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		RequestMetadata: NewCheckRequestMetadata(25),
+		RequestMetadata: NewCheckRequestMetadata(),
 	})
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
@@ -1143,7 +1146,7 @@ func TestCheckConditions(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:x", "parent", "folder:x"),
-		RequestMetadata:      NewCheckRequestMetadata(1),
+		RequestMetadata:      NewCheckRequestMetadata(),
 		Context:              conditionContext,
 	})
 	require.NoError(t, err)
@@ -1153,7 +1156,7 @@ func TestCheckConditions(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		RequestMetadata:      NewCheckRequestMetadata(defaultResolveNodeLimit),
+		RequestMetadata:      NewCheckRequestMetadata(),
 		Context:              conditionContext,
 	})
 	require.NoError(t, err)
@@ -1163,7 +1166,7 @@ func TestCheckConditions(t *testing.T) {
 		StoreID:              storeID,
 		AuthorizationModelID: model.GetId(),
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:bob"),
-		RequestMetadata:      NewCheckRequestMetadata(defaultResolveNodeLimit),
+		RequestMetadata:      NewCheckRequestMetadata(),
 		Context:              conditionContext,
 	})
 	require.NoError(t, err)
@@ -1202,7 +1205,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithMaxResolutionDepth(5))
 
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
@@ -1212,7 +1215,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		checkRequestMetadata := NewCheckRequestMetadata(5)
+		checkRequestMetadata := NewCheckRequestMetadata()
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1226,7 +1229,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.Equal(t, uint32(3), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
-			checkRequestMetadata := NewCheckRequestMetadata(5)
+			checkRequestMetadata := NewCheckRequestMetadata()
 
 			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
@@ -1269,7 +1272,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithMaxResolutionDepth(5))
 
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
@@ -1278,7 +1281,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		checkRequestMetadata := NewCheckRequestMetadata(5)
+		checkRequestMetadata := NewCheckRequestMetadata()
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1292,7 +1295,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(2))
 		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(4))
 
-		checkRequestMetadata = NewCheckRequestMetadata(5)
+		checkRequestMetadata = NewCheckRequestMetadata()
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1326,7 +1329,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		checker := NewLocalChecker()
+		checker := NewLocalChecker(WithMaxResolutionDepth(5))
 
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
@@ -1335,7 +1338,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		checkRequestMetadata := NewCheckRequestMetadata(5)
+		checkRequestMetadata := NewCheckRequestMetadata()
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
@@ -1347,7 +1350,7 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		require.Zero(t, checkRequestMetadata.DispatchCounter.Load())
 
-		checkRequestMetadata = NewCheckRequestMetadata(5)
+		checkRequestMetadata = NewCheckRequestMetadata()
 
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1361,7 +1364,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
 		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(0))
 
-		checkRequestMetadata = NewCheckRequestMetadata(5)
+		checkRequestMetadata = NewCheckRequestMetadata()
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: model.GetId(),
@@ -1719,7 +1722,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	ctx := typesystem.ContextWithTypesystem(storage.ContextWithRelationshipTupleReader(context.Background(), ds), ts)
 
 	newL, _ := logger.NewLogger(logger.WithFormat("text"), logger.WithLevel("debug"))
-	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL), WithOptimizations(true))
+	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL), WithOptimizations(true), WithMaxResolutionDepth(20))
 	t.Cleanup(checker.Close)
 
 	var testCases = map[string]struct {
@@ -1745,7 +1748,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 					StoreID:              storeID,
 					AuthorizationModelID: model.GetId(),
 					TupleKey:             test.request,
-					RequestMetadata:      NewCheckRequestMetadata(20),
+					RequestMetadata:      NewCheckRequestMetadata(),
 				})
 				require.NoError(t, err)
 				require.NotNil(t, resp)
@@ -1762,7 +1765,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 							StoreID:              storeID,
 							AuthorizationModelID: model.GetId(),
 							TupleKey:             test.request,
-							RequestMetadata:      NewCheckRequestMetadata(20),
+							RequestMetadata:      NewCheckRequestMetadata(),
 						})
 						if err != nil {
 							require.ErrorIs(t, err, context.DeadlineExceeded)
@@ -1799,7 +1802,7 @@ func TestCycleDetection(t *testing.T) {
 		resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
 			StoreID:         ulid.Make().String(),
 			TupleKey:        cyclicalTuple, // here
-			RequestMetadata: NewCheckRequestMetadata(defaultResolveNodeLimit),
+			RequestMetadata: NewCheckRequestMetadata(),
 			VisitedPaths: map[string]struct{}{
 				tuple.TupleKeyToString(cyclicalTuple): {}, // and here
 			},
@@ -1838,7 +1841,7 @@ func TestCycleDetection(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			})
 			require.NoError(t, err)
 			require.NotNil(t, resp)
@@ -1851,7 +1854,7 @@ func TestCycleDetection(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: model.GetId(),
 				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			})
 			require.NoError(t, err)
 			require.NotNil(t, resp)
@@ -2360,7 +2363,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				StoreID:              ulid.Make().String(),
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 				Context:              contextStruct,
 			}, "group#member", objectIDs)
 			if tt.expectedError {
@@ -2705,7 +2708,7 @@ func TestConsumeUsersets(t *testing.T) {
 				StoreID:              ulid.Make().String(),
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			}, usersetChan)
 
 			require.NoError(t, pool.Wait())
@@ -2728,13 +2731,15 @@ func TestDispatch(t *testing.T) {
 
 	parentReq := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 	tk := tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil)
 
+	expectedMetadata := NewCheckRequestMetadata()
+	expectedMetadata.Depth -= 1
 	expectedReq := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("group:1", "member", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(19),
+		RequestMetadata: expectedMetadata,
 	}
 
 	var req *ResolveCheckRequest
@@ -2790,7 +2795,7 @@ func TestProduceUsersetDispatches(t *testing.T) {
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 
 	tests := []struct {
@@ -2937,7 +2942,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 
 	tests := []struct {
@@ -3081,7 +3086,7 @@ func TestProcessDispatch(t *testing.T) {
 	})
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 
 	tests := []struct {
@@ -3243,7 +3248,7 @@ func TestConsumeDispatch(t *testing.T) {
 	})
 	req := &ResolveCheckRequest{
 		TupleKey:        tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "user:maria", "condition1", nil),
-		RequestMetadata: NewCheckRequestMetadata(20),
+		RequestMetadata: NewCheckRequestMetadata(),
 	}
 	tests := []struct {
 		name                   string
@@ -3498,7 +3503,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 
 			req := &ResolveCheckRequest{
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			}
 			resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
 			require.Equal(t, tt.expectedError, err)
@@ -3618,7 +3623,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 
 			req := &ResolveCheckRequest{
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata: NewCheckRequestMetadata(20),
+				RequestMetadata: NewCheckRequestMetadata(),
 			}
 			resp, err := checker.checkTTUSlowPath(ctx, req, tt.rewrite, iter)
 			require.Equal(t, tt.expectedError, err)
@@ -3764,7 +3769,7 @@ func TestBreadthFirstNestedMatch(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
 			ts, err := typesystem.New(model)
@@ -3942,7 +3947,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
 			cancellableCtx, cancelFunc := context.WithCancel(context.Background())
@@ -4098,7 +4103,7 @@ func TestNestedTTUFastPath(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 			ctx := context.Background()
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -4264,7 +4269,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
 			checker := NewLocalChecker()
@@ -4330,7 +4335,7 @@ func TestNestedUsersetFastPath(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ulid.Make().String(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(20),
+			RequestMetadata:      NewCheckRequestMetadata(),
 		}
 
 		checker := NewLocalChecker()
@@ -4499,7 +4504,7 @@ func TestCheckTTU(t *testing.T) {
 		defer mockController.Finish()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-		checker := NewLocalChecker(WithOptimizations(true))
+		checker := NewLocalChecker(WithOptimizations(true), WithMaxResolutionDepth(24))
 		t.Cleanup(checker.Close)
 
 		storeID := ulid.Make().String()
@@ -4507,7 +4512,7 @@ func TestCheckTTU(t *testing.T) {
 		req := &ResolveCheckRequest{
 			StoreID:         storeID,
 			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata: NewCheckRequestMetadata(24),
+			RequestMetadata: NewCheckRequestMetadata(),
 		}
 
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
@@ -4646,7 +4651,7 @@ func TestCheckDirectUserTuple(t *testing.T) {
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tt.reqTupleKey,
 				Context:              contextStruct,
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			})
 			resp, err := function(ctx)
 			require.Equal(t, tt.expectedError, err)
@@ -4976,7 +4981,7 @@ func TestCheckPublicAssignable(t *testing.T) {
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:bob"),
 				Context:              contextStruct,
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				RequestMetadata:      NewCheckRequestMetadata(),
 			})
 			result, err := function(ctx)
 			require.Equal(t, tt.expectedError, err)
