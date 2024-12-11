@@ -310,6 +310,44 @@ func TestCombinedIterator(t *testing.T) {
 	})
 }
 
+func TestOrderedCombinedIterator(t *testing.T) {
+	t.Run("next", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:a")},
+			{Key: tuple.NewTupleKey("document:1", "editor", "user:c")},
+		})
+		iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:b")},
+			{Key: tuple.NewTupleKey("document:1", "editor", "user:d")},
+		})
+		expected := []*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:a")},
+			{Key: tuple.NewTupleKey("document:1", "editor", "user:b")},
+			{Key: tuple.NewTupleKey("document:1", "viewer", "user:c")},
+			{Key: tuple.NewTupleKey("document:1", "editor", "user:d")},
+		}
+
+		iter := NewOrderedCombinedIterator(AscendingUserFunc(), iter1, iter2)
+		defer iter.Stop()
+
+		idx := 0
+		for {
+			got, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			if diff := cmp.Diff(expected[idx], got, protocmp.Transform()); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+			idx++
+		}
+	})
+}
+
 func TestTupleKeyIteratorFromTupleIterator(t *testing.T) {
 	tests := []struct {
 		name  string

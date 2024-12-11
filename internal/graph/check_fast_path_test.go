@@ -87,7 +87,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockTupleEvaluator(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
@@ -136,7 +136,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockTupleEvaluator(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
