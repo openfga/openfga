@@ -303,7 +303,7 @@ func TestCheckCacheKeyContextualTuplesConditionOrderMatters(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NotEqual(t, key1, key2)
+	require.Equal(t, key1, key2)
 }
 
 func TestCheckCacheKeyWithContext(t *testing.T) {

@@ -59,6 +59,14 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			return sortedTupleKeys[i].GetUser() < sortedTupleKeys[j].GetUser()
 		}
 
+		cond1 := sortedTupleKeys[i].GetCondition()
+		cond2 := sortedTupleKeys[j].GetCondition()
+		if cond1 == nil && cond2 == nil {
+			return true
+		} else if cond1.GetName() != cond2.GetName() {
+			return cond1.GetName() < cond2.GetName()
+		} // TODO: if names are equal you have to sort based on the context structs
+
 		return true
 	})
 
