@@ -83,12 +83,13 @@ func (t tupleKeysHasher) Append(h hasher) error {
 		key.WriteString(tupleKey.GetObject())
 		key.WriteString("#")
 		key.WriteString(tupleKey.GetRelation())
-		key.WriteString("@")
-		key.WriteString(tupleKey.GetUser())
 
 		cond := tupleKey.GetCondition()
 		if cond != nil {
-			key.WriteString("#")
+			// " with " is separated by spaces as those are invalid in relation names
+			// and we need to ensure this cache key is unique
+			// resultant cache key format is "object:object_id#relation with {condition}@user:user_id"
+			key.WriteString(" with ")
 			key.WriteString(cond.GetName())
 
 			// now consider condition context
@@ -96,6 +97,9 @@ func (t tupleKeysHasher) Append(h hasher) error {
 				return err
 			}
 		}
+
+		key.WriteString("@")
+		key.WriteString(tupleKey.GetUser())
 
 		if err := h.WriteString(key.String()); err != nil {
 			return err
