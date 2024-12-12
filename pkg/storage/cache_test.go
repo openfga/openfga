@@ -102,6 +102,37 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 	require.NotEqual(t, key1, key3)
 }
 
+func TestCheckCacheKeyConsidersContextualTuples(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	contextualTuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	}
+
+	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
+
+	// has contextual tuples
+	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     contextualTuples,
+	})
+	require.NoError(t, err)
+
+	// does not have contextual tuples
+	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tupleKey,
+		ContextualTuples:     nil,
+	})
+	require.NoError(t, err)
+
+	require.NotEqual(t, key1, key2)
+}
+
 func TestCheckCacheKeyContextualTuplesOrdering(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
