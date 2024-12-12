@@ -5,6 +5,7 @@ package storage
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -162,16 +163,19 @@ type CheckCacheKeyParams struct {
 func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
-	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		SubproblemCachePrefix,
-		params.StoreID,
-		params.AuthorizationModelID,
-		params.TupleKey.GetObject(),
-		params.TupleKey.GetRelation(),
-		params.TupleKey.GetUser(),
-	)
+	key := strings.Builder{}
+	key.WriteString(SubproblemCachePrefix)
+	key.WriteString(params.StoreID)
+	key.WriteString("/")
+	key.WriteString(params.AuthorizationModelID)
+	key.WriteString("/")
+	key.WriteString(params.TupleKey.GetObject())
+	key.WriteString("#")
+	key.WriteString(params.TupleKey.GetRelation())
+	key.WriteString("@")
+	key.WriteString(params.TupleKey.GetUser())
 
-	if err := hasher.WriteString(key); err != nil {
+	if err := hasher.WriteString(key.String()); err != nil {
 		return "", err
 	}
 
