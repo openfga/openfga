@@ -61,7 +61,7 @@ func (t tupleKeysHasher) Append(h hasher) error {
 
 		cond1 := sortedTupleKeys[i].GetCondition()
 		cond2 := sortedTupleKeys[j].GetCondition()
-if (cond1 != nil || cond2 != nil) && cond1.GetName() != cond2.GetName() {
+		if (cond1 != nil || cond2 != nil) && cond1.GetName() != cond2.GetName() {
 			return cond1.GetName() < cond2.GetName()
 		}
 		// Note: conditions also optionally have context structs, but our contextHasher below
