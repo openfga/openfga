@@ -8,6 +8,8 @@ import (
 	"sort"
 	"time"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +19,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -33,6 +37,8 @@ import (
 	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/validator"
+	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -162,6 +168,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgav1.UnimplementedOpenFGAServiceServer
+	authzenv1.UnimplementedAuthZenServiceServer
 
 	logger                           logger.Logger
 	datastore                        storage.OpenFGADatastore
@@ -1149,4 +1156,62 @@ func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckRespons
 		utils.Bucketize(uint(checkMetadata.DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 		caller,
 	).Observe(float64(checkMetadata.Duration.Milliseconds()))
+}
+
+func (s Server) Evaluation(ctx context.Context, req *authzenv1.EvaluationRequest) (*authzenv1.EvaluationResponse, error) {
+	ctx, span := tracer.Start(ctx, "authzen.Evaluation")
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "authzen.Evaluation",
+	})
+
+	evalReqCmd := commands.NewEvaluateRequestCommand(req)
+
+	checkResponse, err := s.Check(ctx, evalReqCmd.GetCheckRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return &authzenv1.EvaluationResponse{
+		Decision: checkResponse.GetAllowed(),
+	}, nil
+}
+
+func (s Server) Evaluations(ctx context.Context, req *authzenv1.EvaluationsRequest) (*authzenv1.EvaluationsResponse, error) {
+	ctx, span := tracer.Start(ctx, "authzen.Evaluations")
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  "authzen.Evaluations",
+	})
+
+	evalReqCmd := commands.NewBatchEvaluateRequestCommand(req)
+
+	batchCheckResponse, err := s.BatchCheck(ctx, evalReqCmd.GetBatchCheckRequests())
+
+	if err != nil {
+		return nil, err
+	}
+
+	evaluationsResponse, err := commands.TransformResponse(batchCheckResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return evaluationsResponse, nil
 }

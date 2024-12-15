@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	authzenv1 "github.com/openfga/api/proto/authzen/v1"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-logr/logr"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
@@ -649,6 +651,9 @@ func (s *ServerContext) runHTTPServer(ctx context.Context, config *serverconfig.
 	if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, grpcConn); err != nil {
 		return nil, err
 	}
+	if err := authzenv1.RegisterAuthZenServiceHandler(ctx, mux, grpcConn); err != nil {
+		return nil, err
+	}
 	handler := http.Handler(mux)
 
 	if config.Trace.Enabled {
@@ -930,6 +935,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
+	authzenv1.RegisterAuthZenServiceServer(grpcServer, svr)
+
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
