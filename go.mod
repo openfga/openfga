@@ -53,6 +53,7 @@ require (
 	modernc.org/sqlite v1.34.1
 	sigs.k8s.io/yaml v1.4.0
 )
+replace github.com/openfga/api/proto => /Users/aaguiar/gh/api/proto
 
 require (
 	cel.dev/expr v0.18.0 // indirect
