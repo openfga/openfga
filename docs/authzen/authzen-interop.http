@@ -1,6 +1,6 @@
 @fga_api_url = http://localhost:8080
 @fga_api_key = key1
-@fga_store_id = 01JF5W1BKQNDR1T40CA26DNA7P
+@fga_store_id = 01JF5XGTC8A8WCC06Q0JXPH979
 
 # GET /users/{userID}
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
@@ -39,7 +39,7 @@ Authorization: bearer {{fga_api_key}}
         "name": "can_read_user"
       },
       "resource": {
-        "type": "user",
+        "type": "ser",
         "id": "rick@the-citadel.com"
       }
     },

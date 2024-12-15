@@ -5,7 +5,6 @@ import (
 
 	authzenv1 "github.com/openfga/api/proto/authzen/v1"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 )
 
 type BatchEvaluateRequestCommand struct {
@@ -74,12 +73,22 @@ func TransformResponse(bcr *openfgav1.BatchCheckResponse) (*authzenv1.Evaluation
 		result := bcr.Result[fmt.Sprintf("%d", i)]
 
 		if errResult, ok := result.CheckResult.(*openfgav1.BatchCheckSingleResult_Error); ok {
-			// Directly check the Error field and return the appropriate error
-			return nil, serverErrors.ValidationError(fmt.Errorf(errResult.Error.Message))
-		}
-
-		evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
-			Decision: result.GetAllowed(),
+			// If there's an error, we return it as part of a single
+			// evaluation response, the rest of the items of the batch
+			// should not include the error
+			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+				Decision: false,
+				Context: &authzenv1.EvaluationResponseContext{
+					Error: &authzenv1.ResponseContextError{
+						Status:  404,
+						Message: errResult.Error.Message,
+					},
+				},
+			}
+		} else {
+			evaluationsResponse.EvaluationResponses[i] = &authzenv1.EvaluationResponse{
+				Decision: result.GetAllowed(),
+			}
 		}
 	}
 
