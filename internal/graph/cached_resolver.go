@@ -19,9 +19,8 @@ import (
 )
 
 const (
-	defaultMaxCacheSize     = 10000
-	defaultCacheTTL         = 10 * time.Second
-	defaultResolveNodeLimit = 25
+	defaultMaxCacheSize = 10000
+	defaultCacheTTL     = 10 * time.Second
 )
 
 var (

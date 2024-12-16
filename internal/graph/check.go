@@ -52,6 +52,7 @@ type LocalChecker struct {
 	usersetBatchSize     int
 	logger               logger.Logger
 	optimizationsEnabled bool
+	maxResolutionDepth   uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -89,6 +90,12 @@ func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	}
 }
 
+func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.maxResolutionDepth = depth
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -99,6 +106,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
+		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
@@ -411,7 +419,7 @@ func (c *LocalChecker) dispatch(_ context.Context, parentReq *ResolveCheckReques
 		parentReq.GetRequestMetadata().DispatchCounter.Add(1)
 		childRequest := parentReq.clone()
 		childRequest.TupleKey = tk
-		childRequest.GetRequestMetadata().Depth--
+		childRequest.GetRequestMetadata().Depth++
 
 		resp, err := c.delegate.ResolveCheck(ctx, childRequest)
 		if err != nil {
@@ -439,7 +447,7 @@ func (c *LocalChecker) ResolveCheck(
 	))
 	defer span.End()
 
-	if req.GetRequestMetadata().Depth == 0 {
+	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
 		return nil, ErrResolutionDepthExceeded
 	}
 
@@ -954,8 +962,8 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
 
 func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
-	req.GetRequestMetadata().Depth--
-	if req.GetRequestMetadata().Depth == 0 {
+	req.GetRequestMetadata().Depth++
+	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
 		close(checkOutcomeChan)
 		return

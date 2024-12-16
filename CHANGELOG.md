@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.8.2] - 2024-12-13
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2)
+
 ### Added
 - Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
+- Improve `Check` performance when cache controller is enabled by invalidating iterator and sub-problem cache asynchronously when read changes API indicates there are recent writes/deletes for the store.  [#2124](https://github.com/openfga/openfga/pull/2124)
+- Improve check cache key generation performance via `strings.Builder` [#2161](https://github.com/openfga/openfga/pull/2161).
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
@@ -1161,7 +1167,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.2...HEAD
+[1.8.2]: https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/openfga/openfga/compare/v1.6.2...v1.7.0
