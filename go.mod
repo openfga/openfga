@@ -139,4 +139,4 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/openfga/api/proto => github.com/grafana/openfga-api/proto v0.0.0-20241128083119-17be390de60f
+replace github.com/openfga/api/proto => github.com/grafana/openfga-api/proto v0.0.0-20241216094218-ecdc5a791b7f
