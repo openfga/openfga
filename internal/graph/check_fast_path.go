@@ -2,11 +2,12 @@ package graph
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"slices"
 
+
 	"github.com/emirpasic/gods/sets/hashset"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
