@@ -86,9 +86,19 @@ func (t tupleKeysHasher) Append(h hasher) error {
 		if cond != nil {
 			// " with " is separated by spaces as those are invalid in relation names
 			// and we need to ensure this cache key is unique
-			// resultant cache key format is "object:object_id#relation with {condition}@user:user_id"
+			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
 			key.WriteString(" with ")
 			key.WriteString(cond.GetName())
+			// as a separator before context, since condition names also don't contain spaces
+			key.WriteString(" ")
+
+			// now write the hash to this point
+			if err := h.WriteString(key.String()); err != nil {
+				return err
+			}
+
+			// Clear the string builder for the next loop
+			key.Reset()
 
 			// now consider condition context
 			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
