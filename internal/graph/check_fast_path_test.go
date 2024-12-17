@@ -1468,7 +1468,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 		require.True(t, ok)
 	})
 
-	t.Run("nested_ttu", func(t *testing.T) {
+	t.Run("recursive_ttu", func(t *testing.T) {
 		mockDatastore.EXPECT().Read(ctx, storeID, tuple.NewTupleKey("document:1", "parent", ""), storage.ReadOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
