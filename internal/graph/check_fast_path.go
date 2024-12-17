@@ -4,7 +4,6 @@ import (
 	"context"
 	"slices"
 
-
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
