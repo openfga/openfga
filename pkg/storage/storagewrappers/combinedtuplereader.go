@@ -9,12 +9,13 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// NewCombinedTupleReader returns a [storage.TupleEvaluator] that reads from
-// a persistent datastore and from the contextual tuples specified in the request.
+// NewCombinedTupleReader returns a [storage.RelationshipTupleReader] that reads from
+// a persistent datastore and from the contextual tuples specified in the request
+// and returns them in sorted order.
 func NewCombinedTupleReader(
 	ds storage.RelationshipTupleReader,
 	contextualTuples []*openfgav1.TupleKey,
-) *CombinedTupleReader {
+) storage.RelationshipTupleReader {
 	ctr := &CombinedTupleReader{
 		RelationshipTupleReader:         ds,
 		contextualTuplesOrderedByUser:   contextualTuples,
@@ -29,12 +30,12 @@ func NewCombinedTupleReader(
 }
 
 type CombinedTupleReader struct {
-	RelationshipTupleReader         storage.RelationshipTupleReader
+	storage.RelationshipTupleReader
 	contextualTuplesOrderedByUser   []*openfgav1.TupleKey
 	contextualTuplesOrderedByObject []*openfgav1.TupleKey
 }
 
-var _ storage.TupleEvaluator = (*CombinedTupleReader)(nil)
+var _ storage.RelationshipTupleReader = (*CombinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object, relation or user provided in the filterKey.
@@ -55,23 +56,37 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 	return filtered
 }
 
-func (c *CombinedTupleReader) Read(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadOptions, tupleOrder ...storage.TupleOrderFunc) (storage.TupleIterator, error) {
+// Read see [storage.RelationshipTupleReader.Read].
+func (c *CombinedTupleReader) Read(
+	ctx context.Context,
+	storeID string,
+	tk *openfgav1.TupleKey,
+	options storage.ReadOptions,
+) (storage.TupleIterator, error) {
 	filteredTuples := filterTuples(c.contextualTuplesOrderedByUser, tk.GetObject(), tk.GetRelation(), []string{})
 	iter1 := storage.NewStaticTupleIterator(filteredTuples)
 
-	iter2, err := c.RelationshipTupleReader.Read(ctx, store, tk, options)
+	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk, options)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(tupleOrder) == 0 {
-		return storage.NewCombinedIterator(iter1, iter2), nil
-	}
-
-	return storage.NewOrderedCombinedIterator(tupleOrder[0], iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
 }
 
-func (c *CombinedTupleReader) ReadUserTuple(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+// ReadPage see [storage.RelationshipTupleReader.ReadPage].
+func (c *CombinedTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+	// No reading from contextual tuples.
+	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, options)
+}
+
+// ReadUserTuple see [storage.RelationshipTupleReader.ReadUserTuple].
+func (c *CombinedTupleReader) ReadUserTuple(
+	ctx context.Context,
+	store string,
+	tk *openfgav1.TupleKey,
+	options storage.ReadUserTupleOptions,
+) (*openfgav1.Tuple, error) {
 	targetUsers := []string{tk.GetUser()}
 	filteredContextualTuples := filterTuples(c.contextualTuplesOrderedByUser, tk.GetObject(), tk.GetRelation(), targetUsers)
 
@@ -84,7 +99,13 @@ func (c *CombinedTupleReader) ReadUserTuple(ctx context.Context, store string, t
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options)
 }
 
-func (c *CombinedTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter, options storage.ReadUsersetTuplesOptions, tupleOrder ...storage.TupleOrderFunc) (storage.TupleIterator, error) {
+// ReadUsersetTuples see [storage.RelationshipTupleReader.ReadUsersetTuples].
+func (c *CombinedTupleReader) ReadUsersetTuples(
+	ctx context.Context,
+	store string,
+	filter storage.ReadUsersetTuplesFilter,
+	options storage.ReadUsersetTuplesOptions,
+) (storage.TupleIterator, error) {
 	var usersetTuples []*openfgav1.Tuple
 
 	for _, t := range filterTuples(c.contextualTuplesOrderedByUser, filter.Object, filter.Relation, []string{}) {
@@ -100,14 +121,16 @@ func (c *CombinedTupleReader) ReadUsersetTuples(ctx context.Context, store strin
 		return nil, err
 	}
 
-	if len(tupleOrder) == 0 {
-		return storage.NewCombinedIterator(iter1, iter2), nil
-	}
-
-	return storage.NewOrderedCombinedIterator(tupleOrder[0], iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
 }
 
-func (c *CombinedTupleReader) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions, tupleOrder ...storage.TupleOrderFunc) (storage.TupleIterator, error) {
+// ReadStartingWithUser see [storage.RelationshipTupleReader.ReadStartingWithUser].
+func (c *CombinedTupleReader) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+	options storage.ReadStartingWithUserOptions,
+) (storage.TupleIterator, error) {
 	var userFilters []string
 	for _, u := range filter.UserFilter {
 		uf := u.GetObject()
@@ -132,9 +155,5 @@ func (c *CombinedTupleReader) ReadStartingWithUser(ctx context.Context, store st
 		return nil, err
 	}
 
-	if len(tupleOrder) == 0 {
-		return storage.NewCombinedIterator(iter1, iter2), nil
-	}
-
-	return storage.NewOrderedCombinedIterator(tupleOrder[0], iter1, iter2), nil
+	return storage.NewOrderedCombinedIterator(storage.AscendingObjectFunc(), iter1, iter2), nil
 }

@@ -88,7 +88,7 @@ type resolveCheckRequest interface {
 // filter.
 func IteratorReadStartingFromUser(ctx context.Context,
 	typesys *typesystem.TypeSystem,
-	ds storage.TupleEvaluator,
+	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	objectRel string,
 	objectIDs storage.SortedSet) (storage.TupleKeyIterator, error) {

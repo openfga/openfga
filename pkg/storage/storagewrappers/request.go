@@ -13,21 +13,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// RequestStorageWrapper uses the decorator pattern to wrap a TupleEvaluator with various functionalities,
+// RequestStorageWrapper uses the decorator pattern to wrap a RelationshipTupleReader with various functionalities,
 // which includes exposing metrics.
 type RequestStorageWrapper struct {
-	storage.TupleEvaluator
+	storage.RelationshipTupleReader
 	InstrumentedStorage
 }
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
-
-func NewRequestStorageWrapper(ds storage.RelationshipTupleReader) *RequestStorageWrapper {
-	return &RequestStorageWrapper{
-		TupleEvaluator:      NewCombinedTupleReader(ds, nil),
-		InstrumentedStorage: nil,
-	}
-}
 
 func NewRequestStorageWrapperForCheckAPI(
 	serverCtx context.Context,
@@ -57,8 +50,8 @@ func NewRequestStorageWrapperForCheckAPI(
 	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples
 
 	return &RequestStorageWrapper{
-		TupleEvaluator:      c,
-		InstrumentedStorage: b,
+		RelationshipTupleReader: c,
+		InstrumentedStorage:     b,
 	}
 }
 
@@ -69,8 +62,8 @@ func NewRequestStorageWrapperForListAPIs(ds storage.RelationshipTupleReader, req
 	c := NewCombinedTupleReader(b, requestContextualTuples)       // to read the contextual tuples
 
 	return &RequestStorageWrapper{
-		TupleEvaluator:      c,
-		InstrumentedStorage: b,
+		RelationshipTupleReader: c,
+		InstrumentedStorage:     b,
 	}
 }
 

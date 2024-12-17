@@ -4,7 +4,6 @@ package storage
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -39,7 +38,7 @@ const (
 // context provided.
 func ContextWithRelationshipTupleReader(
 	parent context.Context,
-	reader TupleEvaluator,
+	reader RelationshipTupleReader,
 ) context.Context {
 	return context.WithValue(parent, relationshipTupleReaderCtxKey, reader)
 }
@@ -47,10 +46,10 @@ func ContextWithRelationshipTupleReader(
 // RelationshipTupleReaderFromContext extracts a [[RelationshipTupleReader]] from the
 // provided context (if any). If no such value is in the context a boolean false is returned,
 // otherwise the RelationshipTupleReader is returned.
-func RelationshipTupleReaderFromContext(ctx context.Context) (TupleEvaluator, bool) {
+func RelationshipTupleReaderFromContext(ctx context.Context) (RelationshipTupleReader, bool) {
 	ctxValue := ctx.Value(relationshipTupleReaderCtxKey)
 
-	reader, ok := ctxValue.(TupleEvaluator)
+	reader, ok := ctxValue.(RelationshipTupleReader)
 	return reader, ok
 }
 
@@ -147,33 +146,8 @@ type TupleBackend interface {
 	RelationshipTupleWriter
 }
 
-type TupleOrderFunc func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int
-
-func AscendingUserFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetUser(), b.GetUser())
-	}
-}
-
-func AscendingObjectFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetObject(), b.GetObject())
-	}
-}
-
-// TupleEvaluator is meant to be used when there is a need to read tuples from the data store and
-// perform extra computations on them (for example, evaluating the Condition on them, or discarding them).
-type TupleEvaluator interface {
-	ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadUserTupleOptions) (*openfgav1.Tuple, error)
-
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, readOptions ReadOptions, tupleOrder ...TupleOrderFunc) (TupleIterator, error)
-	ReadUsersetTuples(ctx context.Context, store string, filter ReadUsersetTuplesFilter, options ReadUsersetTuplesOptions, tupleOrder ...TupleOrderFunc) (TupleIterator, error)
-	ReadStartingWithUser(ctx context.Context, store string, filter ReadStartingWithUserFilter, options ReadStartingWithUserOptions, tupleOrder ...TupleOrderFunc) (TupleIterator, error)
-}
-
 // RelationshipTupleReader is an interface that defines the set of
 // methods required to read relationship tuples from a data store.
-// APIs should not use this directly, they should use TupleEvaluator.
 type RelationshipTupleReader interface {
 	// Read the set of tuples associated with `store` and `tupleKey`, which may be nil or partially filled. If nil,
 	// Read will return an iterator over all the tuples in the given `store`. If the `tupleKey` is partially filled,

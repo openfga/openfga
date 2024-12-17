@@ -22,7 +22,6 @@ import (
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
 	logger    logger.Logger
-	evaluator storage.TupleEvaluator
 	datastore storage.RelationshipTupleReader
 }
 
@@ -35,7 +34,6 @@ func WithExpandQueryLogger(l logger.Logger) ExpandQueryOption {
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-// TODO accept ExpandRequest so we can build the evaluator object right away.
 func NewExpandQuery(datastore storage.OpenFGADatastore, opts ...ExpandQueryOption) *ExpandQuery {
 	eq := &ExpandQuery{
 		datastore: datastore,
@@ -81,7 +79,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 		return nil, serverErrors.ValidationError(err)
 	}
 
-	q.evaluator = storagewrappers.NewCombinedTupleReader(
+	q.datastore = storagewrappers.NewCombinedTupleReader(
 		q.datastore,
 		req.GetContextualTuples().GetTupleKeys(),
 	)
@@ -153,7 +151,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 			Preference: consistency,
 		},
 	}
-	tupleIter, err := q.evaluator.Read(ctx, store, tk, opts)
+	tupleIter, err := q.datastore.Read(ctx, store, tk, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -269,7 +267,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 			Preference: consistency,
 		},
 	}
-	tupleIter, err := q.evaluator.Read(ctx, store, tsKey, opts)
+	tupleIter, err := q.datastore.Read(ctx, store, tsKey, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

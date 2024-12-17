@@ -3,7 +3,6 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"strconv"
 	"testing"
 	"time"
@@ -47,7 +46,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 
 	var tuples []*openfgav1.Tuple
 
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
@@ -118,7 +117,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
 	}
 
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		Times(1).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
@@ -192,7 +191,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		MaxTimes(2) // we expect it to be 0 most of the time
 
@@ -257,7 +256,7 @@ func TestReverseExpandErrorInTuples(t *testing.T) {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
 	}
 
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
 			iterator := mocks.NewErrorTupleIterator(tuples)
@@ -323,7 +322,6 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 				define viewer: [user]`)
 
 	mockDatastore := mocks.NewMockSlowDataStorage(memory.New(), 1*time.Second)
-	ds := storagewrappers.NewRequestStorageWrapper(mockDatastore)
 
 	for i := 0; i < 50; i++ {
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Nanosecond))
@@ -338,7 +336,7 @@ func TestReverseExpandSendsAllErrorsThroughChannel(t *testing.T) {
 				t.Error("unexpected error creating model", err)
 				return
 			}
-			reverseExpandQuery := NewReverseExpandQuery(ds, ts)
+			reverseExpandQuery := NewReverseExpandQuery(mockDatastore, ts)
 			err = reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 				StoreID:    store,
 				ObjectType: "document",
@@ -391,7 +389,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 		mockController.Finish()
 	})
 
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InAnyOrder([]*gomock.Call{
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
@@ -480,7 +478,7 @@ func TestReverseExpandThrottle(t *testing.T) {
 				define viewer: [user]`)
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	ctx := context.Background()
 	typesys, err := typesystem.NewAndValidate(ctx, model)
@@ -692,7 +690,6 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 				model,
 			)
 			require.NoError(t, err)
-			ds := storagewrappers.NewRequestStorageWrapper(ds)
 			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 			ctrl := gomock.NewController(t)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -766,7 +763,7 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 	defer mockController.Finish()
 
 	ctx := context.Background()
-	mockDatastore := mocks.NewMockTupleEvaluator(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	// run once with no consistency specified
 	unspecifiedConsistency := storage.ReadStartingWithUserOptions{

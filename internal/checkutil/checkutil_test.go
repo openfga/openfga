@@ -372,7 +372,7 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 					Preference: req.GetConsistency(),
 				},
 			}
-			ds := mocks.NewMockTupleEvaluator(ctrl)
+			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, expectedFilter, expectedOpts).Times(1).Return(nil, nil)
 			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
 			require.NoError(t, err)
