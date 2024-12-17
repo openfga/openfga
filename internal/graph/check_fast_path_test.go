@@ -1438,7 +1438,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 	checker := NewLocalChecker()
 
-	t.Run("nested_userset", func(t *testing.T) {
+	t.Run("recursive_userset", func(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "document:1",
 			Relation: "viewer",
