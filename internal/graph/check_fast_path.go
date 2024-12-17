@@ -534,6 +534,7 @@ func (c *LocalChecker) fastPathRewrite(
 func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Int("sources", len(leftChans)),
+		attribute.Bool("allowed", false),
 	))
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
@@ -604,6 +605,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
 					msg.iter.Stop()
 					res.Allowed = true
+					span.SetAttributes(attribute.Bool("allowed", true))
 					return res, ctx.Err()
 				}
 			}
@@ -617,6 +619,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			}
 			if processUsersetMessage(msg.userset, rightSet, leftSet) {
 				res.Allowed = true
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return res, nil
 			}
 		}
