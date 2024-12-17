@@ -535,12 +535,16 @@ func (c *LocalChecker) fastPathRewrite(
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
 func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
-	rightOpen := true
-	leftOpen := true
-
+	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
+		attribute.Int("sources", len(leftChans)),
+		attribute.Bool("allowed", false),
+	))
+	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
+	rightOpen := true
+	leftOpen := true
 
 	defer func() {
 		cancel()
@@ -604,6 +608,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
 					msg.iter.Stop()
 					res.Allowed = true
+					span.SetAttributes(attribute.Bool("allowed", true))
 					return res, ctx.Err()
 				}
 			}
@@ -617,6 +622,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			}
 			if processUsersetMessage(msg.userset, rightSet, leftSet) {
 				res.Allowed = true
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return res, nil
 			}
 		}
@@ -627,7 +633,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 func (c *LocalChecker) constructLeftChannels(ctx context.Context,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
-	channelRelationFunc checkutil.V2LeftChannelRelationFunc) ([]chan *iteratorMsg, error) {
+	relationFunc checkutil.V2RelationFunc) ([]chan *iteratorMsg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	leftChans := make([]chan *iteratorMsg, 0, len(relationReferences))
@@ -635,11 +641,11 @@ func (c *LocalChecker) constructLeftChannels(ctx context.Context,
 		r := req.clone()
 		r.TupleKey = &openfgav1.TupleKey{
 			Object: tuple.BuildObject(parentType.GetType(), "ignore"),
-			// depending on channelRelationFunc, it may either return the parentType's relation (in case of userset) or computedRelation (in case of TTU)
-			Relation: channelRelationFunc(parentType),
+			// depending on relationFunc, it will return the parentType's relation (userset) or computedRelation (TTU)
+			Relation: relationFunc(parentType),
 			User:     r.GetTupleKey().GetUser(),
 		}
-		rel, err := typesys.GetRelation(parentType.GetType(), channelRelationFunc(parentType))
+		rel, err := typesys.GetRelation(parentType.GetType(), relationFunc(parentType))
 		if err != nil {
 			// NOTE: is there a better way to check and filter rather than skipping?
 			// other paths can be reachable
@@ -665,8 +671,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2LeftChannelRelationFunc())
-
+	leftChans, err := c.constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -696,8 +701,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2LeftChannelRelationFunc(computedRelation))
-
+	leftChans, err := c.constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 	if err != nil {
 		return nil, err
 	}
