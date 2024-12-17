@@ -175,9 +175,8 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	key.WriteString("@")
 	key.WriteString(params.TupleKey.GetUser())
 
-	if err := hasher.WriteString(key.String()); err != nil {
-		return "", err
-	}
+	// this always returns a nil error
+	_ = hasher.WriteString(key.String())
 
 	// here, and for context below, avoid hashing if we don't need to
 	if len(params.ContextualTuples) > 0 {
