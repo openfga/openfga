@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -58,6 +59,14 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			return sortedTupleKeys[i].GetUser() < sortedTupleKeys[j].GetUser()
 		}
 
+		cond1 := sortedTupleKeys[i].GetCondition()
+		cond2 := sortedTupleKeys[j].GetCondition()
+		if (cond1 != nil || cond2 != nil) && cond1.GetName() != cond2.GetName() {
+			return cond1.GetName() < cond2.GetName()
+		}
+		// Note: conditions also optionally have context structs, but our contextHasher below
+		// already handles those properly, we don't have to sort any further here.
+
 		return true
 	})
 
@@ -68,9 +77,29 @@ func (t tupleKeysHasher) Append(h hasher) error {
 
 	n := 0
 	for _, tupleKey := range sortedTupleKeys {
-		key := fmt.Sprintf("%s#%s@%s", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())
+		key := strings.Builder{}
+		key.WriteString(tupleKey.GetObject())
+		key.WriteString("#")
+		key.WriteString(tupleKey.GetRelation())
 
-		if err := h.WriteString(key); err != nil {
+		cond := tupleKey.GetCondition()
+		if cond != nil {
+			// " with " is separated by spaces as those are invalid in relation names
+			// and we need to ensure this cache key is unique
+			// resultant cache key format is "object:object_id#relation with {condition}@user:user_id"
+			key.WriteString(" with ")
+			key.WriteString(cond.GetName())
+
+			// now consider condition context
+			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
+				return err
+			}
+		}
+
+		key.WriteString("@")
+		key.WriteString(tupleKey.GetUser())
+
+		if err := h.WriteString(key.String()); err != nil {
 			return err
 		}
 

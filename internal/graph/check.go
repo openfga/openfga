@@ -947,151 +947,6 @@ func trySendUsersetsAndDeleteFromMap(ctx context.Context, usersetsMap usersetsMa
 	}
 }
 
-// Note that visited does not necessary means that there are cycles.  For the following model,
-// type user
-// type group
-//
-//	relations
-//	  define member: [user, group#member]
-//
-// We have something like
-// group:1#member@group:2#member
-// group:1#member@group:3#member
-// group:2#member@group:a#member
-// group:3#member@group:a#member
-// Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-
-func (c *LocalChecker) breadthFirstNestedMatch(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
-	req.GetRequestMetadata().Depth++
-	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
-		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
-		close(checkOutcomeChan)
-		return
-	}
-	if currentUsersetLevel.Size() == 0 || ctx.Err() != nil {
-		// nothing else to search for or upstream cancellation
-		close(checkOutcomeChan)
-		return
-	}
-
-	pool := concurrency.NewPool(ctx, int(c.concurrencyLimit))
-
-	mu := &sync.Mutex{}
-	nextUsersetLevel := hashset.New()
-
-	relation := req.GetTupleKey().GetRelation()
-	user := req.GetTupleKey().GetUser()
-
-	for _, usersetInterface := range currentUsersetLevel.Values() {
-		userset := usersetInterface.(string)
-		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
-		if visited {
-			continue
-		}
-		newReq := req.clone()
-		newReq.TupleKey = tuple.NewTupleKey(userset, relation, user)
-		mapper, err := c.buildNestedMapper(ctx, newReq, mapping)
-
-		if err != nil {
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
-			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
-			continue
-		}
-		// if the pool is short-circuited, the iterator should be stopped
-		defer mapper.Stop()
-		pool.Go(func(ctx context.Context) error {
-			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
-			for usersetMsg := range objectToUsersetMessageChan {
-				if usersetMsg.err != nil {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
-					return nil
-				}
-				userset := usersetMsg.userset
-				if usersetFromUser.Contains(userset) {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-						Allowed: true,
-					}}, checkOutcomeChan)
-					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
-				}
-				mu.Lock()
-				nextUsersetLevel.Add(userset)
-				mu.Unlock()
-			}
-			return nil
-		})
-	}
-	// wait for all checks to wrap up
-	// if a match was found, clean up
-	if err := pool.Wait(); err != nil && errors.Is(err, ErrShortCircuit) {
-		close(checkOutcomeChan)
-		return
-	}
-
-	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-		Allowed: false,
-	}}, checkOutcomeChan)
-	c.breadthFirstNestedMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
-}
-
-func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
-		attribute.Int("first_level_size", currentLevelFromObject.Size()),
-		attribute.Int("terminal_type_size", usersetFromUser.Size()),
-	))
-	defer span.End()
-	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, 1)
-	defer func() {
-		cancel()
-		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
-	}()
-	pool.Go(func(ctx context.Context) error {
-		c.breadthFirstNestedMatch(ctx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
-		return nil
-	})
-
-	var finalErr error
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-ConsumerLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-checkOutcomeChan:
-			if !ok {
-				break ConsumerLoop
-			}
-			if outcome.err != nil {
-				finalErr = outcome.err
-				break // continue
-			}
-
-			if outcome.resp.Allowed {
-				finalErr = nil
-				finalResult = outcome.resp
-				break ConsumerLoop
-			}
-		}
-	}
-	cancel() // prevent further processing of other checks
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
-
-	if finalErr != nil {
-		return nil, finalErr
-	}
-
-	return finalResult, nil
-}
-
 type usersetMessage struct {
 	userset string
 	err     error
@@ -1133,155 +988,6 @@ func processUsersetMessage(userset string,
 	secondarySet *hashset.Set) bool {
 	primarySet.Add(userset)
 	return secondarySet.Contains(userset)
-}
-
-type nestedMapping struct {
-	kind                        TupleMapperKind
-	tuplesetRelation            string
-	allowedUserTypeRestrictions []*openfgav1.RelationReference
-}
-
-func (c *LocalChecker) nestedFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *nestedMapping) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-
-	usersetFromUser := hashset.New()
-	usersetFromObject := hashset.New()
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	objectToUsersetIter := wrapIterator(mapping.kind, iter)
-	defer objectToUsersetIter.Stop()
-	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
-
-	res := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-	// check to see if there are any nested userset assigned. If not,
-	// we don't even need to check the terminal type side.
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
-		if !ok {
-			return res, ctx.Err()
-		}
-		if objectToUsersetMessage.err != nil {
-			return nil, objectToUsersetMessage.err
-		}
-		usersetFromObject.Add(objectToUsersetMessage.userset)
-	}
-
-	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
-		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
-		nil)
-	if err != nil {
-		return nil, err
-	}
-	usersetFromUserIter := wrapIterator(ObjectIDKind, userIter)
-	defer usersetFromUserIter.Stop()
-	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
-
-	userToUsersetDone := false
-	objectToUsersetDone := false
-
-	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
-	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
-	for !userToUsersetDone || !objectToUsersetDone {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
-			if !ok {
-				userToUsersetDone = true
-				if usersetFromUser.Size() == 0 {
-					return res, ctx.Err()
-				}
-				break
-			}
-			if userToUsersetMessage.err != nil {
-				return nil, userToUsersetMessage.err
-			}
-			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) {
-				res.Allowed = true
-				return res, nil
-			}
-		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
-			if !ok {
-				// usersetFromObject must not be empty because we would have caught it earlier.
-				objectToUsersetDone = true
-				break
-			}
-			if objectToUsersetMessage.err != nil {
-				return nil, objectToUsersetMessage.err
-			}
-			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) {
-				res.Allowed = true
-				return res, nil
-			}
-		}
-	}
-
-	newReq := req.clone()
-	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
-}
-
-func (c *LocalChecker) nestedTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "nestedTTUFastPath")
-	defer span.End()
-
-	return c.nestedFastPath(ctx, req, iter, &nestedMapping{
-		kind:             TTUKind,
-		tuplesetRelation: rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
-	})
-}
-
-func (c *LocalChecker) nestedUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "nestedUsersetFastPath")
-	defer span.End()
-
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	return c.nestedFastPath(ctx, req, iter, &nestedMapping{
-		kind:                        UsersetKind,
-		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-	})
-}
-
-func (c *LocalChecker) buildNestedMapper(ctx context.Context, req *ResolveCheckRequest, mapping *nestedMapping) (TupleMapper, error) {
-	var iter storage.TupleIterator
-	var err error
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	consistencyOpts := storage.ConsistencyOptions{
-		Preference: req.GetConsistency(),
-	}
-	switch mapping.kind {
-	case UsersetKind:
-		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-			Object:                      req.GetTupleKey().GetObject(),
-			Relation:                    req.GetTupleKey().GetRelation(),
-			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
-		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
-	case TTUKind:
-		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
-			storage.ReadOptions{Consistency: consistencyOpts})
-	default:
-		return nil, errors.New("unsupported mapper kind")
-	}
-	if err != nil {
-		return nil, err
-	}
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	)
-	return wrapIterator(mapping.kind, filteredIter), nil
 }
 
 func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
@@ -1449,7 +1155,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
+				attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
+				attribute.String("resolver", "slow"),
+			))
 			defer span.End()
 
 			if ctx.Err() != nil {
@@ -1467,15 +1176,18 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
+					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 				} else if c.optimizationsEnabled {
 					userType := tuple.GetType(reqTupleKey.GetUser())
 					if typesys.RecursiveUsersetCanFastPath(
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
-						resolver = c.nestedUsersetFastPath
+						resolver = c.recursiveUsersetFastPath
+						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for contextual tuples - since these are injected without order
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
+						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 					}
 				}
 			}
@@ -1637,7 +1349,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU")
+		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "slow")))
 		defer span.End()
 
 		if ctx.Err() != nil {
@@ -1703,16 +1415,19 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if canFastPath := typesys.TTUCanFastPath(
 				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 				resolver = c.checkTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 			}
 		}
 
 		if c.optimizationsEnabled {
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-				resolver = c.nestedTTUFastPath
+				resolver = c.recursiveTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for contextual tuples - since these are injected without order
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 			}
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
