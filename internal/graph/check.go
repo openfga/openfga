@@ -1155,7 +1155,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		// TODO(jpadilla): can we lift this function up?
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation()))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
+				attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
+				attribute.String("resolver", "slow"),
+			))
 			defer span.End()
 
 			if ctx.Err() != nil {
@@ -1173,15 +1176,18 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
+					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 				} else if c.optimizationsEnabled {
 					userType := tuple.GetType(reqTupleKey.GetUser())
 					if typesys.RecursiveUsersetCanFastPath(
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
+						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for contextual tuples - since these are injected without order
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
+						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 					}
 				}
 			}
@@ -1343,7 +1349,7 @@ func (c *LocalChecker) checkTTUFastPath(ctx context.Context, req *ResolveCheckRe
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU")
+		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "slow")))
 		defer span.End()
 
 		if ctx.Err() != nil {
@@ -1409,16 +1415,19 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if canFastPath := typesys.TTUCanFastPath(
 				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 				resolver = c.checkTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 			}
 		}
 
 		if c.optimizationsEnabled {
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for contextual tuples - since these are injected without order
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 			}
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
