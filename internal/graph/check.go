@@ -1451,7 +1451,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
 				attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
-				attribute.String("resolver", "default"),
+				attribute.String("resolver", "slow"),
 			))
 			defer span.End()
 
