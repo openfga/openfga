@@ -23,7 +23,6 @@ import (
 )
 
 const (
-	defaultResolveNodeLimit           = 25
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
@@ -34,7 +33,6 @@ type CheckQuery struct {
 	datastore            storage.RelationshipTupleReader
 	sharedCheckResources *shared.SharedCheckResources
 	cacheSettings        config.CacheSettings
-	resolveNodeLimit     uint32
 	maxConcurrentReads   uint32
 	shouldCacheIterators bool
 }
@@ -48,12 +46,6 @@ type CheckCommandParams struct {
 }
 
 type CheckQueryOption func(*CheckQuery)
-
-func WithCheckCommandResolveNodeLimit(nl uint32) CheckQueryOption {
-	return func(c *CheckQuery) {
-		c.resolveNodeLimit = nl
-	}
-}
 
 func WithCheckCommandMaxConcurrentReads(m uint32) CheckQueryOption {
 	return func(c *CheckQuery) {
@@ -81,7 +73,6 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		datastore:            datastore,
 		checkResolver:        checkResolver,
 		typesys:              typesys,
-		resolveNodeLimit:     defaultResolveNodeLimit,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
@@ -115,7 +106,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
+		RequestMetadata:      graph.NewCheckRequestMetadata(),
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: cacheInvalidationTime,

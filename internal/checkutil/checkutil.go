@@ -137,6 +137,22 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation st
 	return tuple.ToObjectRelationString(objectType, cr), nil
 }
 
+type V2LeftChannelRelationFunc func(*openfgav1.RelationReference) string
+
+// BuildUsersetV2LeftChannelRelationFunc returns the reference's relation.
+func BuildUsersetV2LeftChannelRelationFunc() V2LeftChannelRelationFunc {
+	return func(ref *openfgav1.RelationReference) string {
+		return ref.GetRelation()
+	}
+}
+
+// BuildTTUV2LeftChannelRelationFunc will always return the computedRelation regardless of the reference.
+func BuildTTUV2LeftChannelRelationFunc(computedRelation string) V2LeftChannelRelationFunc {
+	return func(_ *openfgav1.RelationReference) string {
+		return computedRelation
+	}
+}
+
 type UsersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
 
 // BuildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.

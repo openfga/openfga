@@ -201,7 +201,7 @@ type RelationshipTupleReader interface {
 	// ReadStartingWithUser for ['user:jon', 'group:eng#member'] filtered by 'document#viewer'
 	// and 'document:doc1, document:doc2' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
-	// There is NO guarantee on the order returned on the iterator.
+	// The result is sorted by object ID.
 	ReadStartingWithUser(
 		ctx context.Context,
 		store string,
