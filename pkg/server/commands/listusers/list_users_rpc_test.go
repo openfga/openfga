@@ -20,7 +20,6 @@ import (
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -37,6 +36,8 @@ type ListUsersTests []struct {
 }
 
 const maximumRecursiveDepth = 25
+
+var emptyContextualTuples []*openfgav1.TupleKey
 
 func TestListUsersDirectRelationship(t *testing.T) {
 	t.Cleanup(func() {
@@ -2547,7 +2548,7 @@ func TestListUsersCycleDetection(t *testing.T) {
 	// Times(0) ensures that we exit quickly
 	mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	l := NewListUsersQuery(mockDatastore, WithResolveNodeLimit(maximumRecursiveDepth))
+	l := NewListUsersQuery(mockDatastore, emptyContextualTuples, WithResolveNodeLimit(maximumRecursiveDepth))
 	channelDone := make(chan struct{})
 	channelWithResults := make(chan foundUser)
 	channelWithError := make(chan error, 1)
@@ -2923,7 +2924,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 			typesys, err := typesystem.New(model)
 			require.NoError(t, err)
 
-			l := NewListUsersQuery(mockDatastore)
+			l := NewListUsersQuery(mockDatastore, emptyContextualTuples)
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 			resp, err := l.ListUsers(ctx, test.req)
@@ -2953,7 +2954,7 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+			l := NewListUsersQuery(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
@@ -3018,7 +3019,7 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 	typesys, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples).ListUsers(ctx, &openfgav1.ListUsersRequest{
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
@@ -3072,7 +3073,7 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 	typesys, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-	resp, err := NewListUsersQuery(mockDatastore).ListUsers(ctx, &openfgav1.ListUsersRequest{
+	resp, err := NewListUsersQuery(mockDatastore, emptyContextualTuples).ListUsers(ctx, &openfgav1.ListUsersRequest{
 		StoreId:     store,
 		Object:      &openfgav1.Object{Type: "document", Id: "1"},
 		Relation:    "viewer",
@@ -3346,15 +3347,7 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 		for _, test := range tests {
 			test := test
 			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
-				ctx := storage.ContextWithRelationshipTupleReader(
-					ctx,
-					storagewrappers.NewCombinedTupleReader(
-						ds,
-						test.contextualTuples,
-					),
-				)
-
-				l := NewListUsersQuery(ds)
+				l := NewListUsersQuery(ds, emptyContextualTuples)
 				resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
 					Relation:         test.relation,
 					Object:           test.object,
@@ -3487,6 +3480,7 @@ func TestListUsersConfig_MaxResults(t *testing.T) {
 			// assertions
 			test.inputRequest.StoreId = storeID
 			res, err := NewListUsersQuery(ds,
+				test.inputRequest.GetContextualTuples(),
 				WithListUsersMaxResults(test.inputConfigMaxResults),
 				WithListUsersDeadline(10*time.Second),
 			).ListUsers(ctx, test.inputRequest)
@@ -3614,6 +3608,7 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 				test.inputRequest.StoreId = storeID
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					emptyContextualTuples,
 					WithListUsersDeadline(test.inputConfigDeadline),
 				).ListUsers(ctx, test.inputRequest)
 
@@ -3725,6 +3720,7 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 				start := time.Now()
 				res, err := NewListUsersQuery(
 					mocks.NewMockSlowDataStorage(ds, test.inputReadDelay),
+					test.inputRequest.GetContextualTuples(),
 					WithListUsersMaxConcurrentReads(test.inputConfigMaxConcurrentReads),
 				).ListUsers(ctx, test.inputRequest)
 
@@ -3763,7 +3759,7 @@ func TestListUsers_ExpandExclusionHandler(t *testing.T) {
 			"document:1#restricted@user:jon",
 		})
 
-		l := NewListUsersQuery(ds, WithResolveNodeLimit(maximumRecursiveDepth))
+		l := NewListUsersQuery(ds, emptyContextualTuples, WithResolveNodeLimit(maximumRecursiveDepth))
 		channelDone := make(chan struct{})
 		channelWithResults := make(chan foundUser)
 		channelWithError := make(chan error, 1)
@@ -3857,6 +3853,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
 		q := NewListUsersQuery(
 			mockDatastore,
+			emptyContextualTuples,
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
@@ -3873,6 +3870,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
 		q := NewListUsersQuery(
 			mockDatastore,
+			emptyContextualTuples,
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
@@ -3889,6 +3887,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
 		q := NewListUsersQuery(
 			mockDatastore,
+			emptyContextualTuples,
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
@@ -3905,6 +3904,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
 		q := NewListUsersQuery(
 			mockDatastore,
+			emptyContextualTuples,
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    0,
@@ -3924,6 +3924,7 @@ func TestListUsersThrottle(t *testing.T) {
 		mockThrottler := mocks.NewMockThrottler(mockController)
 		q := NewListUsersQuery(
 			mockDatastore,
+			emptyContextualTuples,
 			WithDispatchThrottlerConfig(threshold.Config{
 				Throttler:    mockThrottler,
 				Threshold:    200,
@@ -3949,7 +3950,7 @@ func TestListUsers_CorrectContext(t *testing.T) {
 	t.Cleanup(ds.Close)
 
 	t.Run("typesystem_missing_returns_error", func(t *testing.T) {
-		l := NewListUsersQuery(ds)
+		l := NewListUsersQuery(ds, emptyContextualTuples)
 		_, err := l.ListUsers(context.Background(), &openfgav1.ListUsersRequest{})
 
 		require.ErrorContains(t, err, "typesystem missing in context")
@@ -3982,7 +3983,7 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 	typesys, err := typesystem.NewAndValidate(ctx, model)
 	require.NoError(t, err)
 
-	query := NewListUsersQuery(mockDatastore)
+	query := NewListUsersQuery(mockDatastore, emptyContextualTuples)
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	t.Run("uses_passed_consistency_preference", func(t *testing.T) {

@@ -315,7 +315,8 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			}
 			tmpKey := t.GetObject()
 			for tmpKey < maxObject {
-				t, err := stream.buffer.Next(ctx)
+				_, _ = stream.buffer.Next(ctx)
+				t, err := stream.buffer.Head(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						stream.buffer.Stop()
@@ -425,7 +426,9 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 
 		// diff < base, then move the diff to catch up with base
 		for diff < base {
-			t, err := iterStreams[DifferenceIndex].buffer.Next(ctx)
+			_, _ = iterStreams[DifferenceIndex].buffer.Next(ctx)
+			t, err := iterStreams[DifferenceIndex].buffer.Head(ctx)
+
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
 					iterStreams[DifferenceIndex].buffer.Stop()
@@ -616,6 +619,62 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	return res, ctx.Err()
 }
 
+func (c *LocalChecker) constructLeftChannels(ctx context.Context,
+	req *ResolveCheckRequest,
+	relationReferences []*openfgav1.RelationReference,
+	channelRelationFunc checkutil.V2LeftChannelRelationFunc) ([]chan *iteratorMsg, error) {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	leftChans := make([]chan *iteratorMsg, 0, len(relationReferences))
+	for _, parentType := range relationReferences {
+		r := req.clone()
+		r.TupleKey = &openfgav1.TupleKey{
+			Object: tuple.BuildObject(parentType.GetType(), "ignore"),
+			// depending on channelRelationFunc, it may either return the parentType's relation (in case of userset) or computedRelation (in case of TTU)
+			Relation: channelRelationFunc(parentType),
+			User:     r.GetTupleKey().GetUser(),
+		}
+		rel, err := typesys.GetRelation(parentType.GetType(), channelRelationFunc(parentType))
+		if err != nil {
+			// NOTE: is there a better way to check and filter rather than skipping?
+			// other paths can be reachable
+			continue
+		}
+		leftChan, err := c.fastPathRewrite(ctx, r, rel.GetRewrite())
+		if err != nil {
+			return nil, err
+		}
+		leftChans = append(leftChans, leftChan)
+	}
+	return leftChans, nil
+}
+
+func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "checkUsersetFastPathV2")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
+
+	leftChans, err := c.constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2LeftChannelRelationFunc())
+
+	if err != nil {
+		return nil, err
+	}
+
+	if len(leftChans) == 0 {
+		return &ResolveCheckResponse{
+			Allowed: false,
+		}, nil
+	}
+
+	return c.resolveFastPath(ctx, leftChans, wrapIterator(UsersetKind, iter))
+}
+
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkTTUFastPathV2")
 	defer span.End()
@@ -632,29 +691,13 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans := make([]chan *iteratorMsg, 0)
-	for _, parentType := range possibleParents {
-		r := req.clone()
-		r.TupleKey = &openfgav1.TupleKey{
-			Object:   tuple.BuildObject(parentType.GetType(), "ignore"),
-			Relation: computedRelation,
-			User:     r.GetTupleKey().GetUser(),
-		}
-		rel, err := typesys.GetRelation(parentType.GetType(), computedRelation)
-		if err != nil {
-			// NOTE: is there a better way to check and filter rather than skipping?
-			// other paths can be reachable
-			continue
-		}
-		leftChan, err := c.fastPathRewrite(cancellableCtx, r, rel.GetRewrite())
-		if err != nil {
-			return nil, err
-		}
-		leftChans = append(leftChans, leftChan)
+	leftChans, err := c.constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2LeftChannelRelationFunc(computedRelation))
+
+	if err != nil {
+		return nil, err
 	}
 
 	if len(leftChans) == 0 {
-		// NOTE: this should be an error right?
 		return &ResolveCheckResponse{
 			Allowed: false,
 		}, nil
