@@ -13,11 +13,11 @@ import (
 )
 
 type hasher interface {
-	WriteString(value string) error
+	WriteString(value string)
 }
 
 type hashableValue interface {
-	Append(hasher) error
+	Append(hasher)
 }
 
 // stringHasher implements the hashableValue interface for string types.
@@ -25,8 +25,8 @@ type stringHasher string
 
 var _ hashableValue = (*stringHasher)(nil)
 
-func (s stringHasher) Append(h hasher) error {
-	return h.WriteString(string(s))
+func (s stringHasher) Append(h hasher) {
+	h.WriteString(string(s))
 }
 
 // NewTupleKeysHasher returns a hasher for an array of *openfgav1.TupleKey.
@@ -43,7 +43,7 @@ type tupleKeysHasher struct {
 
 var _ hashableValue = (*tupleKeysHasher)(nil)
 
-func (t tupleKeysHasher) Append(h hasher) error {
+func (t tupleKeysHasher) Append(h hasher) {
 	sortedTupleKeys := append([]*openfgav1.TupleKey(nil), t.tupleKeys...) // Copy input to avoid mutating it
 
 	sort.SliceStable(sortedTupleKeys, func(i, j int) bool {
@@ -71,7 +71,7 @@ func (t tupleKeysHasher) Append(h hasher) error {
 	})
 
 	// prefix to avoid overlap with previous strings written
-	_ = h.WriteString("/") // always returns nil error
+	h.WriteString("/")
 
 	n := 0
 	for _, tupleKey := range sortedTupleKeys {
@@ -91,31 +91,26 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			key.WriteString(" ")
 
 			// now write the hash to this point
-			// This method always returns a nil error, we can ignore it
-			_ = h.WriteString(key.String())
+			h.WriteString(key.String())
 
 			// Clear the string builder for the next loop
 			key.Reset()
 
 			// now consider condition context
-			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
-				return err
-			}
+			NewContextHasher(cond.GetContext()).Append(h)
 		}
 
 		key.WriteString("@")
 		key.WriteString(tupleKey.GetUser())
 
-		_ = h.WriteString(key.String())
+		h.WriteString(key.String())
 
 		if n < len(t.tupleKeys)-1 {
-			_ = h.WriteString(",")
+			h.WriteString(",")
 		}
 
 		n++
 	}
-
-	return nil
 }
 
 // contextHasher represents a hashable protobuf Struct.
@@ -136,9 +131,9 @@ func NewContextHasher(s *structpb.Struct) *contextHasher {
 
 var _ hashableValue = (*contextHasher)(nil)
 
-func (c contextHasher) Append(h hasher) error {
+func (c contextHasher) Append(h hasher) {
 	if c.Struct == nil {
-		return nil
+		return
 	}
 
 	fields := c.GetFields()
@@ -146,19 +141,13 @@ func (c contextHasher) Append(h hasher) error {
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		// always returns a nil error
-		_ = h.WriteString(fmt.Sprintf("'%s:'", key))
+		h.WriteString(fmt.Sprintf("'%s:'", key))
 
 		valueHasher := structValueHasher{fields[key]}
-		if err := valueHasher.Append(h); err != nil {
-			return err
-		}
+		valueHasher.Append(h)
 
-		// always returns a nil error
-		_ = h.WriteString(",")
+		h.WriteString(",")
 	}
-
-	return nil
 }
 
 // structValueHasher represents a hashable protobuf Struct value.
@@ -170,39 +159,33 @@ type structValueHasher struct {
 
 var _ hashableValue = (*structValueHasher)(nil)
 
-func (s structValueHasher) Append(h hasher) error {
+func (s structValueHasher) Append(h hasher) {
 	switch val := s.Kind.(type) {
 	case *structpb.Value_BoolValue:
-		return h.WriteString(fmt.Sprintf("%v", val.BoolValue))
+		h.WriteString(fmt.Sprintf("%v", val.BoolValue))
 	case *structpb.Value_NullValue:
-		return h.WriteString("null")
+		h.WriteString("null")
 	case *structpb.Value_StringValue:
-		return h.WriteString(val.StringValue)
+		h.WriteString(val.StringValue)
 	case *structpb.Value_NumberValue:
-		return h.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
+		h.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
 	case *structpb.Value_ListValue:
 		n := 0
 		values := val.ListValue.GetValues()
 
 		for _, v := range values {
 			valueHasher := structValueHasher{v}
-			if err := valueHasher.Append(h); err != nil {
-				return err
-			}
+			valueHasher.Append(h)
 
 			if n < len(values)-1 {
-				if err := h.WriteString(","); err != nil {
-					return err
-				}
+				h.WriteString(",")
 			}
 
 			n++
 		}
 	case *structpb.Value_StructValue:
-		return contextHasher{val.StructValue}.Append(h)
+		contextHasher{val.StructValue}.Append(h)
 	default:
 		panic("unexpected structpb value encountered")
 	}
-
-	return nil
 }

@@ -15,11 +15,9 @@ func NewCacheKeyHasher(xhash *xxhash.Digest) *cacheKeyHasher {
 }
 
 // WriteString writes the provided string to the hash.
-func (c *cacheKeyHasher) WriteString(value string) error {
-	// WritesString always returns nil error
+func (c *cacheKeyHasher) WriteString(value string) {
+	// WriteString always returns nil error
 	_, _ = c.hasher.WriteString(value)
-
-	return nil
 }
 
 // Key returns the stableCacheKey that this key hash defines.
