@@ -24,7 +24,7 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241213152732-0bb89b73d655
+	github.com/openfga/api/proto v0.0.0-20241217152032-6e048d8023f4
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20241115164311-10e575c8e47c
 	github.com/pressly/goose/v3 v3.23.1
 	github.com/prometheus/client_golang v1.20.5
@@ -138,5 +138,3 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
-
-replace github.com/openfga/api/proto => github.com/grafana/openfga-api/proto v0.0.0-20241216094218-ecdc5a791b7f
