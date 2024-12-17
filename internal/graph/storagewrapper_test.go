@@ -41,7 +41,8 @@ func TestFindInCache(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
+	wg := &sync.WaitGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 	key := "key"
@@ -124,7 +125,8 @@ func TestReadStartingWithUser(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
+	wg := &sync.WaitGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -336,7 +338,8 @@ func TestReadUsersetTuples(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
+	wg := &sync.WaitGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -543,7 +546,8 @@ func TestRead(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
+	wg := &sync.WaitGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -772,7 +776,8 @@ func TestDatastoreIteratorError(t *testing.T) {
 	maxSize := 10
 	ttl := 5 * time.Hour
 	sf := &singleflight.Group{}
-	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf)
+	wg := &sync.WaitGroup{}
+	ds := NewCachedDatastore(ctx, mockDatastore, mockCache, maxSize, ttl, sf, wg)
 
 	storeID := ulid.Make().String()
 
@@ -853,6 +858,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -892,6 +898,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -925,6 +932,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -980,6 +988,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1016,6 +1025,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1077,6 +1087,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1119,6 +1130,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1173,6 +1185,7 @@ func TestCachedIterator(t *testing.T) {
 			maxResultSize:     maxCacheSize,
 			ttl:               ttl,
 			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
 			objectType:        "",
 			objectID:          "",
 			relation:          "",
@@ -1228,6 +1241,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
+				wg:                &sync.WaitGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",
@@ -1249,6 +1263,7 @@ func TestCachedIterator(t *testing.T) {
 				maxResultSize:     maxCacheSize,
 				ttl:               ttl,
 				sf:                sf,
+				wg:                &sync.WaitGroup{},
 				objectType:        "",
 				objectID:          "",
 				relation:          "",

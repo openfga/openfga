@@ -71,6 +71,10 @@ type CachedDatastore struct {
 	// sf is used to prevent draining the same iterator
 	// across multiple requests.
 	sf *singleflight.Group
+
+	// wg is used to synchronize inflight goroutines from underlying
+	// cached iterators.
+	wg *sync.WaitGroup
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -81,6 +85,7 @@ func NewCachedDatastore(
 	maxSize int,
 	ttl time.Duration,
 	sf *singleflight.Group,
+	wg *sync.WaitGroup,
 ) *CachedDatastore {
 	return &CachedDatastore{
 		ctx:                     ctx,
@@ -89,6 +94,7 @@ func NewCachedDatastore(
 		maxResultSize:           maxSize,
 		ttl:                     ttl,
 		sf:                      sf,
+		wg:                      wg,
 	}
 }
 
@@ -228,6 +234,8 @@ func (c *CachedDatastore) Read(
 
 func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
+
+	// The iterator cache has a TTL and will eventually consistent.
 	if res := c.cache.Get(key); res != nil {
 		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
@@ -344,6 +352,7 @@ func (c *CachedDatastore) newCachedIterator(
 		objectID:          objectID,
 		relation:          relation,
 		userType:          userType,
+		wg:                c.wg,
 	}, nil
 }
 
@@ -382,8 +391,9 @@ type cachedIterator struct {
 	// mu is used to synchronize access to the iterator.
 	mu sync.Mutex
 
-	// wg is used purely for testing and is an internal detail.
-	wg sync.WaitGroup
+	// wg is used to synchronize inflight goroutines spawned
+	// when stopping the iterator.
+	wg *sync.WaitGroup
 }
 
 // Next will return the next available tuple from the underlying iterator and

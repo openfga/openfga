@@ -236,6 +236,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if check-query-cache-enabled, this is the TTL of each value")
 
+	flags.Bool("cache-controller-enabled", defaultConfig.CacheController.Enabled, "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.")
+
+	flags.Duration("cache-controller-ttl", defaultConfig.CacheController.TTL, "if cache controller is enabled, control how frequent read changes are invoked internally to query for recent tuple writes to the store.")
+
 	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
 	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request_duration_ms.")
 

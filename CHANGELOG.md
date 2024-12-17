@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.8.2] - 2024-12-13
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2)
+
 ### Added
 - Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
+- Improve `Check` performance when cache controller is enabled by invalidating iterator and sub-problem cache asynchronously when read changes API indicates there are recent writes/deletes for the store.  [#2124](https://github.com/openfga/openfga/pull/2124)
+- Improve check cache key generation performance via `strings.Builder` [#2161](https://github.com/openfga/openfga/pull/2161).
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
+- Prevent possible data races by waiting for in-flight cached iterator goroutines during server shutdown [#2145](https://github.com/openfga/openfga/pull/2145)
+- Correct incorrect check result returned when using experimental flag `enable-check-optimizations` and model has intersection or exclusion within a TTU or Userset. [#2157](https://github.com/openfga/openfga/pull/2157)
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
@@ -20,6 +28,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
+- Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
 - Add a field in log entries when authz calls were made. [#2130](https://github.com/openfga/openfga/pull/2130)
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
@@ -490,7 +499,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Database iterators yielded by the RelationshipTupleReader storage interface now accept a `context` parameter which allows iteration to be promptly terminated ([#1055](https://github.com/openfga/openfga/pull/1055))
 
   We have noticed improvements in query performance by adding this because once a resolution path has been found we more quickly cancel any further evaluation by terminating the iterators promptly.
-- Improved tuple validation peformance with precomputation of TTUs ([#1171](https://github.com/openfga/openfga/pull/1171))
+- Improved tuple validation performance with precomputation of TTUs ([#1171](https://github.com/openfga/openfga/pull/1171))
 - Refactored the commands in the `pkg/server/commands` package to uniformly use the Options builder pattern ([#1142](https://github.com/openfga/openfga/pull/1142)). Thanks for the contribution @ilaleksin!
 - Upgraded to Go `1.21.4` ([#1143](https://github.com/openfga/openfga/pull/1143)). Thanks @tranngoclam!
 
@@ -1157,7 +1166,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.2...HEAD
+[1.8.2]: https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/openfga/openfga/compare/v1.6.2...v1.7.0

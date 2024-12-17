@@ -24,6 +24,7 @@ import (
 type BatchCheckQuery struct {
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
+	cacheWaitGroup         *sync.WaitGroup
 	serverCtx              context.Context
 	shouldCacheIterators   bool
 	checkCache             storage.InMemoryCache[any]
@@ -72,11 +73,20 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCacheOptions(ctrl cachecontroller.CacheController, shouldCache bool, sf *singleflight.Group, cc storage.InMemoryCache[any], m uint32, ttl time.Duration) BatchCheckQueryOption {
+func WithBatchCheckCacheOptions(
+	ctrl cachecontroller.CacheController,
+	shouldCache bool,
+	sf *singleflight.Group,
+	cc storage.InMemoryCache[any],
+	wg *sync.WaitGroup,
+	m uint32,
+	ttl time.Duration,
+) BatchCheckQueryOption {
 	return func(c *BatchCheckQuery) {
 		c.cacheController = ctrl
 		c.shouldCacheIterators = shouldCache
 		c.cacheSingleflightGroup = sf
+		c.cacheWaitGroup = wg
 		c.checkCache = cc
 		c.maxCheckCacheSize = m
 		c.checkCacheTTL = ttl
@@ -176,7 +186,16 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.serverCtx, bq.cacheController, bq.shouldCacheIterators, bq.cacheSingleflightGroup, bq.checkCache, bq.maxCheckCacheSize, bq.checkCacheTTL),
+				WithCheckCommandCache(
+					bq.serverCtx,
+					bq.cacheController,
+					bq.shouldCacheIterators,
+					bq.cacheSingleflightGroup,
+					bq.checkCache,
+					bq.cacheWaitGroup,
+					bq.maxCheckCacheSize,
+					bq.checkCacheTTL,
+				),
 			)
 
 			checkParams := &CheckCommandParams{

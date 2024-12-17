@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -22,7 +23,6 @@ import (
 )
 
 const (
-	defaultResolveNodeLimit           = 25
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
@@ -34,10 +34,10 @@ type CheckQuery struct {
 	datastore              storage.RelationshipTupleReader
 	cacheController        cachecontroller.CacheController
 	cacheSingleflightGroup *singleflight.Group
+	cacheWaitGroup         *sync.WaitGroup
 	checkCache             storage.InMemoryCache[any]
 	checkCacheTTL          time.Duration
 	maxCheckCacheSize      uint32
-	resolveNodeLimit       uint32
 	maxConcurrentReads     uint32
 	shouldCacheIterators   bool
 }
@@ -52,12 +52,6 @@ type CheckCommandParams struct {
 
 type CheckQueryOption func(*CheckQuery)
 
-func WithCheckCommandResolveNodeLimit(nl uint32) CheckQueryOption {
-	return func(c *CheckQuery) {
-		c.resolveNodeLimit = nl
-	}
-}
-
 func WithCheckCommandMaxConcurrentReads(m uint32) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.maxConcurrentReads = m
@@ -71,12 +65,22 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 }
 
 // TODO can we make this better? There are too many caching flags.
-func WithCheckCommandCache(serverCtx context.Context, ctrl cachecontroller.CacheController, shouldCache bool, sf *singleflight.Group, cc storage.InMemoryCache[any], m uint32, ttl time.Duration) CheckQueryOption {
+func WithCheckCommandCache(
+	serverCtx context.Context,
+	ctrl cachecontroller.CacheController,
+	shouldCache bool,
+	sf *singleflight.Group,
+	cc storage.InMemoryCache[any],
+	wg *sync.WaitGroup,
+	m uint32,
+	ttl time.Duration,
+) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.cacheController = ctrl
 		c.shouldCacheIterators = shouldCache
 		c.serverCtx = serverCtx
 		c.cacheSingleflightGroup = sf
+		c.cacheWaitGroup = wg
 		c.checkCache = cc
 		c.maxCheckCacheSize = m
 		c.checkCacheTTL = ttl
@@ -91,7 +95,6 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		checkResolver:        checkResolver,
 		typesys:              typesys,
 		cacheController:      cachecontroller.NewNoopCacheController(),
-		resolveNodeLimit:     defaultResolveNodeLimit,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		serverCtx:            context.TODO(),
@@ -122,13 +125,24 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
+		RequestMetadata:      graph.NewCheckRequestMetadata(),
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.serverCtx, c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.shouldCacheIterators, c.cacheSingleflightGroup, c.checkCache, c.maxCheckCacheSize, c.checkCacheTTL)
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(
+		c.serverCtx,
+		c.datastore,
+		params.ContextualTuples.GetTupleKeys(),
+		c.maxConcurrentReads,
+		c.shouldCacheIterators,
+		c.cacheSingleflightGroup,
+		c.cacheWaitGroup,
+		c.checkCache,
+		c.maxCheckCacheSize,
+		c.checkCacheTTL,
+	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
