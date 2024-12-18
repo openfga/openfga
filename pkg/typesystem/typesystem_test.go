@@ -3905,7 +3905,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
-			expected:   false,
+			expected:   true,
 		},
 		{
 			name: "complex_userset_exclusion",
