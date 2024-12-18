@@ -136,11 +136,9 @@ func TestStaticTupleIterator(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expected[0], tk)
 	})
-	t.Run("check_for_race", func(t *testing.T) {
-		t.Skip("TODO: whether static tuple iterator is intended to be thread safe")
-		const numberItem = 50
-		tks := make([]*openfgav1.Tuple, numberItem)
-		for i := 0; i < numberItem; i++ {
+	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
+		tks := make([]*openfgav1.Tuple, 100)
+		for i := 0; i < 100; i++ {
 			tks[i] = &openfgav1.Tuple{
 				Key:       tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "bill"),
 				Timestamp: timestamppb.New(time.Now()),
@@ -150,15 +148,25 @@ func TestStaticTupleIterator(t *testing.T) {
 		defer iter.Stop()
 
 		var wg errgroup.Group
-		for i := 0; i < numberItem; i++ {
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
-				_, err := iter.Next(context.Background())
+				_, err := iter.Head(context.Background())
 				return err
 			})
 		}
 
 		err := wg.Wait()
 		require.NoError(t, err)
+
+		for i := 0; i < 101; i++ {
+			wg.Go(func() error {
+				_, err := iter.Next(context.Background())
+				return err
+			})
+		}
+
+		err = wg.Wait()
+		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 }
 
@@ -514,40 +522,39 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 		})
 	})
 
-	t.Run("race_condition", func(t *testing.T) {
-		t.Skip("TODO: underlying static tuple key iterator is not thread safe")
-		const numMatchingIterator = 50
-		tuples := make([]*openfgav1.TupleKey, numMatchingIterator*3)
-		for i := 0; i < numMatchingIterator; i++ {
-			tuples[3*i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
-			tuples[3*i+1] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "editor", "user:elbuo")
-			tuples[3*i+2] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:charlie")
+	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 100)
+		for i := 0; i < 100; i++ {
+			tuples[i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
 		}
 		iter := NewFilteredTupleKeyIterator(
 			NewStaticTupleKeyIterator(tuples),
 			func(tk *openfgav1.TupleKey) bool {
-				return tk.GetRelation() == "editor"
+				return true
 			},
 		)
 		defer iter.Stop()
-		var wg errgroup.Group
 
-		for i := 0; i < numMatchingIterator; i++ {
+		var wg errgroup.Group
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
 				_, err := iter.Head(context.Background())
 				return err
 			})
 		}
 
-		for i := 0; i < numMatchingIterator-1; i++ {
+		err := wg.Wait()
+		require.NoError(t, err)
+
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
 				_, err := iter.Next(context.Background())
 				return err
 			})
 		}
 
-		err := wg.Wait()
-		require.NoError(t, err)
+		err = wg.Wait()
+		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 }
 
