@@ -470,20 +470,20 @@ func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, [
 
 	heads := make([]*openfgav1.Tuple, 0, len(c.pending))
 	headIdxToPendingIdx := make(map[int]int, len(c.pending))
-	for i := range c.pending {
-		if c.pending[i] == nil {
+	for pendingIdx := range c.pending {
+		if c.pending[pendingIdx] == nil {
 			continue
 		}
-		head, err := c.pending[i].Head(ctx)
+		head, err := c.pending[pendingIdx].Head(ctx)
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
-				c.pending[i] = nil
+				c.pending[pendingIdx] = nil
 				continue
 			}
 			return nil, []int{}, err
 		}
 		heads = append(heads, head)
-		headIdxToPendingIdx[len(heads)-1] = i
+		headIdxToPendingIdx[len(heads)-1] = pendingIdx
 	}
 
 	if len(heads) == 0 {
