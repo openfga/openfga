@@ -537,7 +537,7 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs, false)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -1165,17 +1165,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				return nil, ctx.Err()
 			}
 
-			userType := tuple.GetType(reqTupleKey.GetUser())
-
 			opts := storage.ReadUsersetTuplesOptions{
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},
-			}
-
-			canFastPathV2 := c.canFastPathv2ForUserset(reqTupleKey, typesys, objectType, relation, userType, directlyRelatedUsersetTypes)
-			if canFastPathV2 {
-				opts.WithContextualTuplesOrderedByUserAscending = true
 			}
 
 			resolver := c.checkUsersetSlowPath
@@ -1185,11 +1178,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					resolver = c.checkUsersetFastPath
 					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 				} else if c.optimizationsEnabled {
+					userType := tuple.GetType(reqTupleKey.GetUser())
 					if typesys.RecursiveUsersetCanFastPath(
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if canFastPathV2 {
+					} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
@@ -1390,11 +1384,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			},
 		}
 
-		canFastPathV2 := c.canFastPathV2ForTTU(typesys, objectType, relation, userType, rewrite)
-		if canFastPathV2 {
-			opts.WithContextualTuplesOrderedByUserAscending = true
-		}
-
 		storeID := req.GetStoreID()
 		iter, err := ds.Read(
 			ctx,
@@ -1433,7 +1422,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			} else if canFastPathV2 {
+			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
@@ -1441,14 +1430,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
-}
-
-func (c *LocalChecker) canFastPathV2ForTTU(typesys *typesystem.TypeSystem, objectType string, relation string, userType string, rewrite *openfgav1.Userset) bool {
-	return c.optimizationsEnabled && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset())
-}
-
-func (c *LocalChecker) canFastPathv2ForUserset(reqTupleKey *openfgav1.TupleKey, typesys *typesystem.TypeSystem, objectType string, relation string, userType string, directlyRelatedUsersetTypes []*openfgav1.RelationReference) bool {
-	return c.optimizationsEnabled && !tuple.IsObjectRelation(reqTupleKey.GetUser()) && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes)
 }
 
 func (c *LocalChecker) checkSetOperation(

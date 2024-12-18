@@ -45,6 +45,23 @@ func makeMocks(t *testing.T) (*gomock.Controller, *mocks.MockRelationshipTupleRe
 	return controller, mockRelationshipTupleReader
 }
 
+func Test_combinedTupleReader_Constructor(t *testing.T) {
+	controller := gomock.NewController(t)
+	defer controller.Finish()
+
+	mockRelationshipTupleReader := mocks.NewMockRelationshipTupleReader(controller)
+
+	c := NewCombinedTupleReader(mockRelationshipTupleReader, tuple.MustParseTupleStrings(
+		"group:3#member@user:maria",
+		"group:2#member@user:maria",
+		"group:1#member@user:maria",
+	))
+
+	require.Equal(t, "group:1", c.contextualTuplesOrderedByObjectID[0].GetObject())
+	require.Equal(t, "group:2", c.contextualTuplesOrderedByObjectID[1].GetObject())
+	require.Equal(t, "group:3", c.contextualTuplesOrderedByObjectID[2].GetObject())
+}
+
 func Test_combinedTupleReader_Read(t *testing.T) {
 	mockCtl, mockRelationshipTupleReader := makeMocks(t)
 	defer mockCtl.Finish()
@@ -302,6 +319,45 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 				testTuples["group:3#member@user:11"],
 			},
 			wantErr: nil,
+		},
+		{
+			name: "Test_combinedTupleReader_ReadStartingWithUser_OK_sorted",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+					tuple.NewTupleKey("document:3", "viewer", "user:maria"),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "",
+				filter: storage.ReadStartingWithUserFilter{
+					ObjectType: "document",
+					Relation:   "viewer",
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object: "user:maria",
+						},
+					},
+				},
+				options: storage.ReadStartingWithUserOptions{
+					WithContextualTuplesOrderedByObjectAscending: true,
+				},
+			},
+			setups: func() {
+				mockRelationshipTupleReader.EXPECT().
+					ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+						{Key: tuple.NewTupleKey("document:2", "viewer", "user:maria")},
+						{Key: tuple.NewTupleKey("document:4", "viewer", "user:maria")}}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "viewer", "user:maria")},
+				{Key: tuple.NewTupleKey("document:2", "viewer", "user:maria")},
+				{Key: tuple.NewTupleKey("document:3", "viewer", "user:maria")},
+				{Key: tuple.NewTupleKey("document:4", "viewer", "user:maria")},
+			},
 		},
 		{
 			name: "Test_combinedTupleReader_ReadStartingWithUser_OK_no_contextual_tuples",

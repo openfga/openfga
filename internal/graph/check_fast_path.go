@@ -99,7 +99,7 @@ func (c *LocalChecker) fastPathDirect(ctx context.Context,
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
-	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil)
+	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -928,7 +928,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
-		nil)
+		nil, true)
 	if err != nil {
 		return nil, err
 	}

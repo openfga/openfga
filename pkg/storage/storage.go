@@ -115,8 +115,7 @@ type ConsistencyOptions struct {
 // ReadOptions represents the options that can
 // be used with the Read method.
 type ReadOptions struct {
-	Consistency                                ConsistencyOptions
-	WithContextualTuplesOrderedByUserAscending bool
+	Consistency ConsistencyOptions
 }
 
 // ReadUserTupleOptions represents the options that can
@@ -128,8 +127,7 @@ type ReadUserTupleOptions struct {
 // ReadUsersetTuplesOptions represents the options that can
 // be used with the ReadUsersetTuples method.
 type ReadUsersetTuplesOptions struct {
-	Consistency                                ConsistencyOptions
-	WithContextualTuplesOrderedByUserAscending bool
+	Consistency ConsistencyOptions
 }
 
 // ReadStartingWithUserOptions represents the options that can
