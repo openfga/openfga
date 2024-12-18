@@ -1448,10 +1448,17 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				return nil, ctx.Err()
 			}
 
+			userType := tuple.GetType(reqTupleKey.GetUser())
+
 			opts := storage.ReadUsersetTuplesOptions{
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},
+			}
+
+			canFastPathV2 := c.canFastPathv2ForUserset(reqTupleKey, typesys, objectType, relation, userType, directlyRelatedUsersetTypes)
+			if canFastPathV2 {
+				opts.WithContextualTuplesOrderedByUserAscending = true
 			}
 
 			resolver := c.checkUsersetSlowPath
@@ -1460,12 +1467,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
 				} else if c.optimizationsEnabled {
-					userType := tuple.GetType(reqTupleKey.GetUser())
 					if typesys.RecursiveUsersetCanFastPath(
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.nestedUsersetFastPath
-					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						// TODO: Add support for contextual tuples - since these are injected without order
+					} else if canFastPathV2 {
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 					}
@@ -1665,6 +1670,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			},
 		}
 
+		canFastPathV2 := c.canFastPathV2ForTTU(typesys, objectType, relation, userType, rewrite)
+		if canFastPathV2 {
+			opts.WithContextualTuplesOrderedByUserAscending = true
+		}
+
 		storeID := req.GetStoreID()
 		iter, err := ds.Read(
 			ctx,
@@ -1701,13 +1711,21 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if c.optimizationsEnabled {
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.nestedTTUFastPath
-			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			} else if canFastPathV2 {
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
 			}
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
+}
+
+func (c *LocalChecker) canFastPathV2ForTTU(typesys *typesystem.TypeSystem, objectType string, relation string, userType string, rewrite *openfgav1.Userset) bool {
+	return c.optimizationsEnabled && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset())
+}
+
+func (c *LocalChecker) canFastPathv2ForUserset(reqTupleKey *openfgav1.TupleKey, typesys *typesystem.TypeSystem, objectType string, relation string, userType string, directlyRelatedUsersetTypes []*openfgav1.RelationReference) bool {
+	return c.optimizationsEnabled && !tuple.IsObjectRelation(reqTupleKey.GetUser()) && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes)
 }
 
 func (c *LocalChecker) checkSetOperation(

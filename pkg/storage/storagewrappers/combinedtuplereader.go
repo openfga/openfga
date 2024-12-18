@@ -12,25 +12,32 @@ import (
 )
 
 // NewCombinedTupleReader returns a [storage.RelationshipTupleReader] that reads from
-// a persistent datastore and from the contextual tuples specified in the request
-// and returns them in sorted order.
+// a persistent datastore and from the contextual tuples specified in the request.
 func NewCombinedTupleReader(
 	ds storage.RelationshipTupleReader,
 	contextualTuples []*openfgav1.TupleKey,
 ) storage.RelationshipTupleReader {
 	ctr := &CombinedTupleReader{
-		RelationshipTupleReader:         ds,
-		contextualTuplesOrderedByUser:   contextualTuples,
-		contextualTuplesOrderedByObject: contextualTuples,
+		RelationshipTupleReader: ds,
 	}
 
-	slices.SortFunc(ctr.contextualTuplesOrderedByUser, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+	co := make([]*openfgav1.TupleKey, len(contextualTuples))
+	cu := make([]*openfgav1.TupleKey, len(contextualTuples))
+	for i, t := range contextualTuples {
+		cu[i] = tuple.NewTupleKeyWithCondition(t.GetObject(), t.GetRelation(), t.GetUser(), t.GetCondition().GetName(), t.GetCondition().GetContext())
+		co[i] = tuple.NewTupleKeyWithCondition(t.GetObject(), t.GetRelation(), t.GetUser(), t.GetCondition().GetName(), t.GetCondition().GetContext())
+	}
+
+	slices.SortFunc(cu, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
 		return strings.Compare(a.GetUser(), b.GetUser())
 	})
 
-	slices.SortFunc(ctr.contextualTuplesOrderedByObject, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+	slices.SortFunc(co, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
 		return strings.Compare(a.GetObject(), b.GetObject())
 	})
+
+	ctr.contextualTuplesOrderedByUser = cu
+	ctr.contextualTuplesOrderedByObject = co
 
 	return ctr
 }
