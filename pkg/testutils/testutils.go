@@ -88,6 +88,13 @@ func ConvertTuplesToTupleKeys(input []*openfgav1.Tuple) []*openfgav1.TupleKey {
 	return converted
 }
 
+func Shuffle(arr []*openfgav1.TupleKey) []*openfgav1.TupleKey {
+	rand.Shuffle(len(arr), func(i, j int) {
+		arr[i], arr[j] = arr[j], arr[i]
+	})
+	return arr
+}
+
 func CreateRandomString(n int) string {
 	b := make([]byte, n)
 	for i := range b {

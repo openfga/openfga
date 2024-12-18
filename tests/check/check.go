@@ -124,9 +124,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 		for stageNumber, stage := range test.Stages {
 			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
-				if contextTupleTest && len(stage.Tuples) > 20 {
-					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
-					t.Skipf("cannot send more than 20 contextual tuples in one request")
+				if contextTupleTest && len(stage.Tuples) > 100 {
+					// https://github.com/openfga/api/blob/6e048d8023f434cb7a1d3943f41bdc3937d4a1bf/openfga/v1/openfga.proto#L222
+					t.Skipf("cannot send more than 100 contextual tuples in one request")
 				}
 				// arrange: write model
 				model := testutils.MustTransformDSLToProtoWithID(stage.Model)
@@ -146,6 +146,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 						writeChunk := (tuples)[i:end]
+						testutils.Shuffle(writeChunk)
 						_, err = client.Write(ctx, &openfgav1.WriteRequest{
 							StoreId:              storeID,
 							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
@@ -166,6 +167,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 						ctxTuples := assertion.ContextualTuples
 						if contextTupleTest {
+							testutils.Shuffle(ctxTuples)
 							ctxTuples = append(ctxTuples, stage.Tuples...)
 						}
 
@@ -1225,6 +1227,7 @@ condition xcond(x: string) {
 					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 						writeChunk := (tuples)[i:end]
+						testutils.Shuffle(writeChunk)
 						_, err = client.Write(ctx, &openfgav1.WriteRequest{
 							StoreId:              storeID,
 							AuthorizationModelId: modelID,
