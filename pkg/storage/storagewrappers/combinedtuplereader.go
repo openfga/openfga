@@ -2,8 +2,10 @@ package storagewrappers
 
 import (
 	"context"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"slices"
+	"strings"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -22,9 +24,13 @@ func NewCombinedTupleReader(
 		contextualTuplesOrderedByObject: contextualTuples,
 	}
 
-	slices.SortFunc(ctr.contextualTuplesOrderedByUser, storage.AscendingUserFunc())
+	slices.SortFunc(ctr.contextualTuplesOrderedByUser, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+		return strings.Compare(a.GetUser(), b.GetUser())
+	})
 
-	slices.SortFunc(ctr.contextualTuplesOrderedByObject, storage.AscendingObjectFunc())
+	slices.SortFunc(ctr.contextualTuplesOrderedByObject, func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
+		return strings.Compare(a.GetObject(), b.GetObject())
+	})
 
 	return ctr
 }
@@ -71,7 +77,11 @@ func (c *CombinedTupleReader) Read(
 		return nil, err
 	}
 
-	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
+	if options.WithContextualTuplesOrderedByUserAscending {
+		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
+	}
+
+	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
 // ReadPage see [storage.RelationshipTupleReader.ReadPage].
@@ -121,7 +131,11 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 		return nil, err
 	}
 
-	return storage.NewOrderedCombinedIterator(storage.AscendingUserFunc(), iter1, iter2), nil
+	if options.WithContextualTuplesOrderedByUserAscending {
+		return storage.NewOrderedCombinedIterator(storage.UserMapper(), iter1, iter2), nil
+	}
+
+	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader.ReadStartingWithUser].
@@ -155,5 +169,9 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		return nil, err
 	}
 
-	return storage.NewOrderedCombinedIterator(storage.AscendingObjectFunc(), iter1, iter2), nil
+	if options.WithContextualTuplesOrderedByObjectAscending {
+		return storage.NewOrderedCombinedIterator(storage.ObjectMapper(), iter1, iter2), nil
+	}
+
+	return storage.NewCombinedIterator(iter1, iter2), nil
 }

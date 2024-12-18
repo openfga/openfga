@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -402,43 +401,43 @@ func IterIsDoneOrCancelled(err error) bool {
 }
 
 type OrderedCombinedIterator struct {
-	mu       *sync.Mutex
-	once     *sync.Once
-	pending  []TupleIterator
-	next     TupleIterator
-	sortFunc TupleOrderFunc
+	mu      *sync.Mutex
+	once    *sync.Once
+	pending []TupleIterator // GUARDED_BY(mu)
+	mapper  TupleMapper
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 
-type TupleOrderFunc func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int
+type TupleMapper func(t *openfgav1.Tuple) string
 
-func AscendingUserFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetUser(), b.GetUser())
+func UserMapper() TupleMapper {
+	return func(t *openfgav1.Tuple) string {
+		return t.GetKey().GetUser()
 	}
 }
 
-func AscendingObjectFunc() TupleOrderFunc {
-	return func(a *openfgav1.TupleKey, b *openfgav1.TupleKey) int {
-		return strings.Compare(a.GetObject(), b.GetObject())
+func ObjectMapper() TupleMapper {
+	return func(t *openfgav1.Tuple) string {
+		return t.GetKey().GetObject()
 	}
 }
 
 // NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
-// All the iterators must be individually ordered.
-func NewOrderedCombinedIterator(sortFunc TupleOrderFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+// All the input iterators must be individually ordered already according to mapper.
+// Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
+func NewOrderedCombinedIterator(mapper TupleMapper, sortedIters ...TupleIterator) *OrderedCombinedIterator {
 	pending := make([]TupleIterator, 0, len(sortedIters))
-	for _, iter := range sortedIters {
-		if iter != nil {
-			pending = append(pending, iter)
+	for _, sortedIter := range sortedIters {
+		if sortedIter != nil {
+			pending = append(pending, sortedIter)
 		}
 	}
-	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, sortFunc: sortFunc}
+	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper}
 }
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	val, err := c.Head(ctx)
+	head, iteratorsToMove, err := c.head(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -446,46 +445,68 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// move the iter that we just peeked
-	_, _ = c.next.Next(ctx)
-
-	return val, nil
-}
-
-// Head sets the value of c.next.
-func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	if len(c.pending) == 0 {
-		return nil, ErrIteratorDone
+	for _, iterIndex := range iteratorsToMove {
+		_, err = c.pending[iterIndex].Next(ctx)
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				c.pending[iterIndex] = nil
+				continue
+			}
+			return nil, err
+		}
 	}
 
+	return head, nil
+}
+
+func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	head, _, err := c.head(ctx)
+	return head, err
+}
+
+func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.next = c.pending[0]
+	heads := make([]*openfgav1.Tuple, 0, len(c.pending))
+	headIdxToPendingIdx := make(map[int]int, len(c.pending))
+	for i := range c.pending {
+		if c.pending[i] == nil {
+			continue
+		}
+		head, err := c.pending[i].Head(ctx)
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				c.pending[i] = nil
+				continue
+			}
+			return nil, []int{}, err
+		}
+		heads = append(heads, head)
+		headIdxToPendingIdx[len(heads)-1] = i
+	}
 
-	// TODO
-	//result = nil
-	//moveIterators[]
-	//iterators = [iterWild, iterNotWild, iterContextual]
-	//FOR EACH iterator in iterators THEN
-	//IF iterator hasn't reached the end THEN
-	//IF result is nil THEN
-	//result = iterator.Top().GetObject()
-	//moveIterators.add(iterator)
-	//ELSE IF result > iterator.Top().GetObject() THEN
-	//result = iterator.Top().GetObject()
-	//moveIterators.clear()
-	//moveIterators.add(iterator)
-	//ELSE IF result == iterator.Top().GetObject() THEN
-	//moveIterators.add(iterator)
-	//END
-	//END
-	//END
-	//FOR EACH iterator in moveIterators THEN
-	//iterator.next()
-	//END
-	//return result
-	return nil, nil
+	if len(heads) == 0 {
+		return nil, []int{}, ErrIteratorDone
+	}
+
+	// Pick the minimum element.
+	headMin := heads[0]
+	for i, h := range heads {
+		if c.mapper(headMin) > c.mapper(h) {
+			headMin = heads[i]
+		}
+	}
+
+	// Gather all iterators that have the same head.
+	indexesWithSameHead := make([]int, 0, len(heads))
+	for i, h := range heads {
+		if c.mapper(headMin) == c.mapper(h) {
+			indexesWithSameHead = append(indexesWithSameHead, headIdxToPendingIdx[i])
+		}
+	}
+
+	return headMin, indexesWithSameHead, nil
 }
 
 func (c *OrderedCombinedIterator) Stop() {
@@ -493,7 +514,9 @@ func (c *OrderedCombinedIterator) Stop() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		for _, iter := range c.pending {
-			iter.Stop()
+			if iter != nil {
+				iter.Stop()
+			}
 		}
 	})
 }
