@@ -800,12 +800,22 @@ func (s *MemoryBackend) ListStores(ctx context.Context, options storage.ListStor
 	}
 
 	if len(options.IDs) > 0 {
-		var filteredStores []*openfgav1.Store
+		filteredStores := make([]*openfgav1.Store, 0, len(stores))
 		for _, storeID := range options.IDs {
 			for _, store := range stores {
 				if store.GetId() == storeID {
 					filteredStores = append(filteredStores, store)
 				}
+			}
+		}
+		stores = filteredStores
+	}
+
+	if options.Name != "" {
+		filteredStores := make([]*openfgav1.Store, 0, len(stores))
+		for _, store := range stores {
+			if store.GetName() == options.Name {
+				filteredStores = append(filteredStores, store)
 			}
 		}
 		stores = filteredStores
