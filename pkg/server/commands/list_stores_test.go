@@ -36,7 +36,8 @@ func TestListStores(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().
 			ListStores(gomock.Any(), storage.ListStoresOptions{
-				IDs: []string{"store1"},
+				IDs:  []string{"store1"},
+				Name: "storeName",
 				Pagination: storage.PaginationOptions{
 					PageSize: 1,
 					From:     "",
@@ -46,6 +47,7 @@ func TestListStores(t *testing.T) {
 
 		resp, err := NewListStoresQuery(mockDatastore).Execute(context.Background(), &openfgav1.ListStoresRequest{
 			PageSize:          wrapperspb.Int32(1),
+			Name:              "storeName",
 			ContinuationToken: "",
 		}, []string{"store1"})
 		require.NoError(t, err)

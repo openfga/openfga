@@ -19,21 +19,36 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	entropy := ulid.DefaultEntropy()
 
-	// Create some stores.
-	numStores := 10
-	var stores []*openfgav1.Store
-	for i := 0; i < numStores; i++ {
+	const sharedStoreName = "shared"
+
+	var (
+		numStores               = 10
+		numStoresWithSharedName = 3
+	)
+
+	stores := make([]*openfgav1.Store, 0, numStores+numStoresWithSharedName)
+
+	createStore := func(name string) *openfgav1.Store {
 		store := &openfgav1.Store{
 			Id:   ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String(),
-			Name: testutils.CreateRandomString(10),
+			Name: name,
 		}
 
 		resp, err := datastore.CreateStore(ctx, store)
 		require.NoError(t, err)
 		require.NotEmpty(t, resp.GetCreatedAt())
 		require.NotEmpty(t, resp.GetUpdatedAt())
+		return store
+	}
 
-		stores = append(stores, store)
+	// Create some stores.
+	for i := 0; i < numStores; i++ {
+		stores = append(stores, createStore(testutils.CreateRandomString(10)))
+	}
+
+	// Stores that shares name are created after numStores so we have an easy way to access them.
+	for i := 0; i < numStoresWithSharedName; i++ {
+		stores = append(stores, createStore(sharedStoreName))
 	}
 
 	t.Run("inserting_store_in_twice_fails", func(t *testing.T) {
@@ -72,7 +87,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Empty(t, ct)
 	})
 
-	t.Run("list_stores_succeeds_with_filter_match", func(t *testing.T) {
+	t.Run("list_stores_succeeds_with_ids_filter_match", func(t *testing.T) {
 		opts := storage.ListStoresOptions{
 			Pagination: storage.NewPaginationOptions(1, ""),
 			IDs:        []string{stores[0].GetId()},
@@ -83,12 +98,82 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.Empty(t, ct)
 	})
 
+	verifyStore := func(t *testing.T, expected, got *openfgav1.Store) {
+		require.Equal(t, expected.GetId(), got.GetId())
+		require.Equal(t, expected.GetName(), got.GetName())
+	}
+
+	t.Run("list_stores_succeeds_with_name_filter_match", func(t *testing.T) {
+		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(10, ""),
+			Name:       stores[1].GetName(),
+		})
+
+		require.NoError(t, err)
+		require.Len(t, gotStores, 1)
+		require.Empty(t, ct)
+		verifyStore(t, stores[1], gotStores[0])
+	})
+
+	t.Run("list_stores_with_name_filter_no_match", func(t *testing.T) {
+		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(10, ""),
+			Name:       "unlikely-to-match",
+		})
+
+		require.NoError(t, err)
+		require.Empty(t, gotStores)
+		require.Empty(t, ct)
+	})
+
+	t.Run("list_stores_succeeds_with_name_filter_match_shared_name", func(t *testing.T) {
+		// filter out stores that shares name
+		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(2, ""),
+			Name:       sharedStoreName,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, gotStores, 2)
+		require.NotEmpty(t, ct)
+
+		verifyStore(t, stores[numStores], gotStores[0])
+		verifyStore(t, stores[numStores+1], gotStores[1])
+
+		// paginate stores that shares name
+		gotStores, ct, err = datastore.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(2, ct),
+			Name:       sharedStoreName,
+		})
+
+		require.NoError(t, err)
+		require.Len(t, gotStores, 1)
+		require.Empty(t, ct)
+		verifyStore(t, stores[numStores+2], gotStores[0])
+	})
+
+	t.Run("list_stores_succeeds_with_all_filters", func(t *testing.T) {
+		expected1 := stores[numStores]
+		expected2 := stores[numStores+2]
+
+		gotStores, ct, err := datastore.ListStores(ctx, storage.ListStoresOptions{
+			Pagination: storage.NewPaginationOptions(10, ""),
+			Name:       sharedStoreName,
+			IDs:        []string{expected1.GetId(), expected2.GetId()},
+		})
+
+		require.NoError(t, err)
+		require.Len(t, gotStores, 2)
+		require.Empty(t, ct)
+		verifyStore(t, expected1, gotStores[0])
+		verifyStore(t, expected2, gotStores[1])
+	})
+
 	t.Run("get_store_succeeds", func(t *testing.T) {
 		store := stores[0]
 		gotStore, err := datastore.GetStore(ctx, store.GetId())
 		require.NoError(t, err)
-		require.Equal(t, store.GetId(), gotStore.GetId())
-		require.Equal(t, store.GetName(), gotStore.GetName())
+		verifyStore(t, store, gotStore)
 	})
 
 	t.Run("get_non-existent_store_returns_not_found", func(t *testing.T) {
