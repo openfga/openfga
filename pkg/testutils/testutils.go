@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
@@ -31,6 +29,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
