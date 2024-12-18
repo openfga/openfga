@@ -139,14 +139,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 				require.NoError(t, err)
 
-				tuples := stage.Tuples
+				tuples := testutils.Shuffle(stage.Tuples)
 				tuplesLength := len(tuples)
 				// arrange: write tuples
 				if tuplesLength > 0 && !contextTupleTest {
 					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 						writeChunk := (tuples)[i:end]
-						testutils.Shuffle(writeChunk)
 						_, err = client.Write(ctx, &openfgav1.WriteRequest{
 							StoreId:              storeID,
 							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
@@ -165,9 +164,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
 						detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
-						ctxTuples := assertion.ContextualTuples
+						ctxTuples := testutils.Shuffle(assertion.ContextualTuples)
 						if contextTupleTest {
-							testutils.Shuffle(ctxTuples)
 							ctxTuples = append(ctxTuples, stage.Tuples...)
 						}
 
@@ -1221,13 +1219,12 @@ condition xcond(x: string) {
 				require.NoError(t, err)
 				modelID := writeModelResponse.GetAuthorizationModelId()
 
-				tuples := stage.Tuples
+				tuples := testutils.Shuffle(stage.Tuples)
 				tuplesLength := len(tuples)
 				if tuplesLength > 0 {
 					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 						writeChunk := (tuples)[i:end]
-						testutils.Shuffle(writeChunk)
 						_, err = client.Write(ctx, &openfgav1.WriteRequest{
 							StoreId:              storeID,
 							AuthorizationModelId: modelID,
