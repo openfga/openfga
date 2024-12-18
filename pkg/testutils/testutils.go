@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/tuple"
+
 	"github.com/cenkalti/backoff/v4"
 	"github.com/google/go-cmp/cmp"
 	"github.com/hashicorp/go-retryablehttp"
@@ -90,10 +92,20 @@ func ConvertTuplesToTupleKeys(input []*openfgav1.Tuple) []*openfgav1.TupleKey {
 
 // Shuffle returns the input but with order of elements randomized.
 func Shuffle(arr []*openfgav1.TupleKey) []*openfgav1.TupleKey {
-	rand.Shuffle(len(arr), func(i, j int) {
-		arr[i], arr[j] = arr[j], arr[i]
+	// copy array to avoid data races :(
+	copied := make([]*openfgav1.TupleKey, len(arr))
+	for i := range arr {
+		copied[i] = tuple.NewTupleKeyWithCondition(arr[i].GetObject(),
+			arr[i].GetRelation(),
+			arr[i].GetUser(),
+			arr[i].GetCondition().GetName(),
+			arr[i].GetCondition().GetContext(),
+		)
+	}
+	rand.Shuffle(len(copied), func(i, j int) {
+		copied[i], copied[j] = copied[j], copied[i]
 	})
-	return arr
+	return copied
 }
 
 func CreateRandomString(n int) string {
