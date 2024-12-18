@@ -80,11 +80,11 @@ func TestTupleKeysHasherSortsFirst(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			hasher1 := NewCacheKeyHasher(xxhash.New())
 			tuplesHasher := NewTupleKeysHasher(test.tuplesOriginal...)
-			require.NoError(t, tuplesHasher.Append(hasher1))
+			tuplesHasher.Append(hasher1)
 
 			hasher2 := NewCacheKeyHasher(xxhash.New())
 			tuplesInvertedHasher := NewTupleKeysHasher(test.tuplesReversed...)
-			require.NoError(t, tuplesInvertedHasher.Append(hasher2))
+			tuplesInvertedHasher.Append(hasher2)
 
 			require.Equal(t, hasher1.Key().ToUInt64(), hasher2.Key().ToUInt64())
 		})
@@ -177,14 +177,12 @@ func TestContextHasher(t *testing.T) {
 			hasher1 := NewCacheKeyHasher(xxhash.New())
 
 			struct1 := testutils.MustNewStruct(t, test.context1)
-			err := NewContextHasher(struct1).Append(hasher1)
-			require.NoError(t, err)
+			NewContextHasher(struct1).Append(hasher1)
 			key1 := hasher1.Key().ToUInt64()
 
 			hasher2 := NewCacheKeyHasher(xxhash.New())
 			struct2 := testutils.MustNewStruct(t, test.context2)
-			err = NewContextHasher(struct2).Append(hasher2)
-			require.NoError(t, err)
+			NewContextHasher(struct2).Append(hasher2)
 			key2 := hasher2.Key().ToUInt64()
 
 			if test.equal {
