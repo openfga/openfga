@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -202,7 +203,9 @@ func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 // Stop see [Iterator.Stop].
-func (s *StaticIterator[T]) Stop() {}
+func (s *StaticIterator[T]) Stop() {
+	s.items = nil
+}
 
 // Head see [Iterator.Head].
 func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
@@ -401,10 +404,12 @@ func IterIsDoneOrCancelled(err error) bool {
 }
 
 type OrderedCombinedIterator struct {
-	mu      *sync.Mutex
-	once    *sync.Once
+	mu     *sync.Mutex
+	once   *sync.Once
+	mapper TupleMapper
+
+	// pending holds non-nil, non-ended iterators.
 	pending []TupleIterator // GUARDED_BY(mu)
-	mapper  TupleMapper
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
@@ -446,14 +451,7 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 	defer c.mu.Unlock()
 
 	for _, iterIndex := range iteratorsToMove {
-		_, err = c.pending[iterIndex].Next(ctx)
-		if err != nil {
-			if errors.Is(err, ErrIteratorDone) {
-				c.pending[iterIndex] = nil
-				continue
-			}
-			return nil, err
-		}
+		_, _ = c.pending[iterIndex].Next(ctx)
 	}
 
 	return head, nil
@@ -464,26 +462,29 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 	return head, err
 }
 
+// head returns the next tuple without advancing the iterator.
+// It also returns the indexes (within the pending array) that have the same head.
+// There may be nil elements in pending array after this runs.
 func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	heads := make([]*openfgav1.Tuple, 0, len(c.pending))
-	headIdxToPendingIdx := make(map[int]int, len(c.pending))
+	c.clearPendingThatAreNil()
+
+	var headMin *openfgav1.Tuple
+	heads := make(map[int]*openfgav1.Tuple, len(c.pending))
 	for pendingIdx := range c.pending {
-		if c.pending[pendingIdx] == nil {
-			continue
-		}
 		head, err := c.pending[pendingIdx].Head(ctx)
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
+				c.pending[pendingIdx].Stop()
 				c.pending[pendingIdx] = nil
 				continue
 			}
 			return nil, []int{}, err
 		}
-		heads = append(heads, head)
-		headIdxToPendingIdx[len(heads)-1] = pendingIdx
+		heads[pendingIdx] = head
+		headMin = head
 	}
 
 	if len(heads) == 0 {
@@ -491,32 +492,37 @@ func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, [
 	}
 
 	// Pick the minimum element.
-	headMin := heads[0]
-	for i, h := range heads {
-		if c.mapper(headMin) > c.mapper(h) {
-			headMin = heads[i]
+	for pendingIdx, curhead := range heads {
+		if c.mapper(headMin) > c.mapper(curhead) {
+			headMin = heads[pendingIdx]
 		}
 	}
 
 	// Gather all iterators that have the same head.
 	indexesWithSameHead := make([]int, 0, len(heads))
-	for i, h := range heads {
-		if c.mapper(headMin) == c.mapper(h) {
-			indexesWithSameHead = append(indexesWithSameHead, headIdxToPendingIdx[i])
+	for pendingIdx, curhead := range heads {
+		if c.mapper(headMin) == c.mapper(curhead) {
+			indexesWithSameHead = append(indexesWithSameHead, pendingIdx)
 		}
 	}
 
 	return headMin, indexesWithSameHead, nil
 }
 
+func (c *OrderedCombinedIterator) clearPendingThatAreNil() {
+	c.pending = slices.DeleteFunc(c.pending, func(t TupleIterator) bool {
+		return t == nil
+	})
+}
+
 func (c *OrderedCombinedIterator) Stop() {
 	c.once.Do(func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
+
+		c.clearPendingThatAreNil()
 		for _, iter := range c.pending {
-			if iter != nil {
-				iter.Stop()
-			}
+			iter.Stop()
 		}
 	})
 }
