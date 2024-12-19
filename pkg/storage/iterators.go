@@ -6,6 +6,9 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/google/go-cmp/cmp"
+	"google.golang.org/protobuf/testing/protocmp"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
@@ -414,10 +417,11 @@ func IterIsDoneOrCancelled(err error) bool {
 }
 
 type OrderedCombinedIterator struct {
-	mu      *sync.Mutex
-	once    *sync.Once
-	mapper  TupleMapper
-	pending []TupleIterator // GUARDED_BY(mu)
+	mu       *sync.Mutex
+	once     *sync.Once
+	mapper   TupleMapper
+	pending  []TupleIterator  // GUARDED_BY(mu)
+	lastNext *openfgav1.Tuple // GUARDED_BY(mu)
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
@@ -451,10 +455,10 @@ func NewOrderedCombinedIterator(mapper TupleMapper, sortedIters ...TupleIterator
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
-	head, iteratorsToMove, err := c.head(ctx)
+	newNext, iteratorsToMove, err := c.head(ctx)
 	if err != nil {
+		c.mu.Unlock()
 		return nil, err
 	}
 
@@ -462,7 +466,16 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 		_, _ = c.pending[iterIndex].Next(ctx)
 	}
 
-	return head, nil
+	duplicatesExistWithinOneIterator := cmp.Diff(newNext, c.lastNext, protocmp.Transform()) == ""
+
+	if duplicatesExistWithinOneIterator {
+		c.mu.Unlock()
+		return c.Next(ctx)
+	}
+
+	c.lastNext = newNext
+	c.mu.Unlock()
+	return newNext, nil
 }
 
 func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {

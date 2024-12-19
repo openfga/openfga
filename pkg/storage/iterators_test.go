@@ -336,14 +336,12 @@ func TestOrderedCombinedIterator(t *testing.T) {
 			iter2    TupleIterator
 			expected []*openfgav1.Tuple
 		}{
-			`removes_duplicates`: {
+			`removes_duplicates_within_iterator`: {
 				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
-					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 				}),
 				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
-					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
 					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
 				}),
@@ -351,6 +349,17 @@ func TestOrderedCombinedIterator(t *testing.T) {
 					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
 					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				},
+			},
+			`removes_duplicates_across_iterators`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 				},
 			},
 			`non_overlapping_elements_returns_all`: {
@@ -397,7 +406,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 					require.Empty(t, iter.pending)
 				})
 
-				idx := 0
+				gotItems := make([]*openfgav1.Tuple, 0)
 				for {
 					got, err := iter.Next(context.Background())
 					if err != nil {
@@ -407,10 +416,11 @@ func TestOrderedCombinedIterator(t *testing.T) {
 						require.Fail(t, "no error was expected")
 					}
 					require.NotNil(t, got)
-					if diff := cmp.Diff(tc.expected[idx], got, protocmp.Transform()); diff != "" {
-						t.Errorf("mismatch (-want +got):\n%s", diff)
-					}
-					idx++
+					gotItems = append(gotItems, got)
+				}
+
+				if diff := cmp.Diff(tc.expected, gotItems, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
 				}
 			})
 		}
