@@ -414,11 +414,9 @@ func IterIsDoneOrCancelled(err error) bool {
 }
 
 type OrderedCombinedIterator struct {
-	mu     *sync.Mutex
-	once   *sync.Once
-	mapper TupleMapper
-
-	// pending holds non-nil, non-ended iterators.
+	mu      *sync.Mutex
+	once    *sync.Once
+	mapper  TupleMapper
 	pending []TupleIterator // GUARDED_BY(mu)
 }
 
@@ -452,13 +450,13 @@ func NewOrderedCombinedIterator(mapper TupleMapper, sortedIters ...TupleIterator
 }
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	head, iteratorsToMove, err := c.head(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	for _, iterIndex := range iteratorsToMove {
 		_, _ = c.pending[iterIndex].Next(ctx)
@@ -468,6 +466,8 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 }
 
 func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	head, _, err := c.head(ctx)
 	return head, err
 }
@@ -475,6 +475,7 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 // head returns the next tuple without advancing the iterator.
 // It also returns the indexes (within the pending array) that have the same head.
 // There may be nil elements in pending array after this runs.
+// NOTE: callers must hold mu.
 func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
