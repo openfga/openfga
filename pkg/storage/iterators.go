@@ -6,9 +6,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/google/go-cmp/cmp"
-	"google.golang.org/protobuf/testing/protocmp"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
@@ -455,68 +452,76 @@ func NewOrderedCombinedIterator(mapper TupleMapper, sortedIters ...TupleIterator
 
 func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
-
-	newNext, iteratorsToMove, err := c.head(ctx)
+	defer c.mu.Unlock()
+	idx, err := c.head(ctx)
 	if err != nil {
-		c.mu.Unlock()
 		return nil, err
 	}
 
-	for _, iterIndex := range iteratorsToMove {
-		_, _ = c.pending[iterIndex].Next(ctx)
+	t, err := c.pending[idx].Next(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	duplicatesExistWithinOneIterator := cmp.Diff(newNext, c.lastNext, protocmp.Transform()) == ""
-
-	if duplicatesExistWithinOneIterator {
-		c.mu.Unlock()
-		return c.Next(ctx)
-	}
-
-	c.lastNext = newNext
-	c.mu.Unlock()
-	return newNext, nil
+	c.lastNext = t
+	return t, nil
 }
 
 func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	head, _, err := c.head(ctx)
-	return head, err
+	idx, err := c.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.pending[idx].Head(ctx)
 }
 
 // head returns the next tuple without advancing the iterator.
 // It also returns the indexes (within the pending array) that have the same head.
 // There may be nil elements in pending array after this runs.
 // NOTE: callers must hold mu.
-func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
+func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
 	c.clearPendingThatAreNil()
 
-	var headMin *openfgav1.Tuple
-	indexesWithSameHead := make([]int, 0, len(c.pending))
-	for pendingIdx := range c.pending {
-		head, err := c.pending[pendingIdx].Head(ctx)
+	headMin := c.lastNext
+	minIdx := -1
+	for pendingIdx, iter := range c.pending {
+		head, err := iter.Head(ctx)
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
-				c.pending[pendingIdx].Stop()
+				iter.Stop()
 				c.pending[pendingIdx] = nil
 				continue
 			}
-			return nil, []int{}, err
+			return minIdx, err
 		}
+
+		if c.lastNext != nil {
+			// case when head is actually smaller than lastYield thus it is a duplicate and should be thrown off
+			for c.mapper(head) <= c.mapper(c.lastNext) {
+				head, err = iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, ErrIteratorDone) {
+						iter.Stop()
+						c.pending[pendingIdx] = nil
+						break
+					}
+					return minIdx, err
+				}
+			}
+		}
+
+		// initialize or found a new lower value at head
 		if headMin == nil || c.mapper(headMin) > c.mapper(head) {
 			headMin = head
-			indexesWithSameHead = []int{pendingIdx}
-		} else if c.mapper(headMin) == c.mapper(head) {
-			indexesWithSameHead = append(indexesWithSameHead, pendingIdx)
+			minIdx = pendingIdx
 		}
 	}
 
-	if len(indexesWithSameHead) == 0 {
-		return nil, []int{}, ErrIteratorDone
+	if minIdx == -1 {
+		return minIdx, ErrIteratorDone
 	}
-
-	return headMin, indexesWithSameHead, nil
+	return minIdx, nil
 }
 
 func (c *OrderedCombinedIterator) clearPendingThatAreNil() {
