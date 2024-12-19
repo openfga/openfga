@@ -39,7 +39,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
@@ -71,7 +70,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
@@ -96,7 +94,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)

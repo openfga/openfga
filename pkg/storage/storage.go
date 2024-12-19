@@ -133,7 +133,8 @@ type ReadUsersetTuplesOptions struct {
 // ReadStartingWithUserOptions represents the options that can
 // be used with the ReadStartingWithUser method.
 type ReadStartingWithUserOptions struct {
-	Consistency ConsistencyOptions
+	Consistency                                  ConsistencyOptions
+	WithContextualTuplesOrderedByObjectAscending bool
 }
 
 // Writes is a typesafe alias for Write arguments.
