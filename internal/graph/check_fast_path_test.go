@@ -1764,5 +1764,4 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
 	})
-
 }
