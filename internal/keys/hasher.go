@@ -106,7 +106,7 @@ func (t tupleKeysHasher) Append(h hasher) error {
 				return err
 			}
 
-			// reset hash key for next iteration of loop
+			// reset key builder for next iteration of loop
 			key.Reset()
 		}
 
