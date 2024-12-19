@@ -479,6 +479,7 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
 	c.clearPendingThatAreNil()
 
+	// Pick the minimum element.
 	var headMin *openfgav1.Tuple
 	heads := make(map[int]*openfgav1.Tuple, len(c.pending))
 	for pendingIdx := range c.pending {
@@ -492,21 +493,16 @@ func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, [
 			return nil, []int{}, err
 		}
 		heads[pendingIdx] = head
-		headMin = head
+		if headMin == nil || c.mapper(headMin) > c.mapper(head) {
+			headMin = head
+		}
 	}
 
 	if len(heads) == 0 {
 		return nil, []int{}, ErrIteratorDone
 	}
 
-	// Pick the minimum element.
-	for pendingIdx, curhead := range heads {
-		if c.mapper(headMin) > c.mapper(curhead) {
-			headMin = heads[pendingIdx]
-		}
-	}
-
-	// Gather all iterators that have the same head.
+	// Gather all iterators that have the same minimum element.
 	indexesWithSameHead := make([]int, 0, len(heads))
 	for pendingIdx, curhead := range heads {
 		if c.mapper(headMin) == c.mapper(curhead) {
