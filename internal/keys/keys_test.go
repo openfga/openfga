@@ -9,10 +9,12 @@ import (
 
 func TestCacheKeyHasher(t *testing.T) {
 	hasher1 := NewCacheKeyHasher(xxhash.New())
-	hasher1.WriteString("a")
+	err := hasher1.WriteString("a")
+	require.NoError(t, err)
 
 	hasher2 := NewCacheKeyHasher(xxhash.New())
-	hasher2.WriteString("b")
+	err = hasher2.WriteString("b")
+	require.NoError(t, err)
 
 	require.NotEqual(t, hasher1.Key().ToUInt64(), hasher2.Key().ToUInt64())
 }

@@ -175,15 +175,21 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	key.WriteString("@")
 	key.WriteString(params.TupleKey.GetUser())
 
-	hasher.WriteString(key.String())
+	// this always returns a nil error
+	_ = hasher.WriteString(key.String())
 
 	// here, and for context below, avoid hashing if we don't need to
 	if len(params.ContextualTuples) > 0 {
-		keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher)
+		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+			return "", err
+		}
 	}
 
 	if params.Context != nil {
-		keys.NewContextHasher(params.Context).Append(hasher)
+		err := keys.NewContextHasher(params.Context).Append(hasher)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
