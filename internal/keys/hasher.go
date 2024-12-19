@@ -89,21 +89,25 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			// resultant cache key format is "object:object_id#relation with {condition} {context}@user:user_id"
 			key.WriteString(" with ")
 			key.WriteString(cond.GetName())
-			// as a separator before context, since condition names also don't contain spaces
-			key.WriteString(" ")
 
-			// now write the hash to this point
+			// if the condition also has context, we need an additional separator
+			// which cannot be present in condition names
+			if cond.GetContext() != nil {
+				key.WriteString(" ")
+			}
+
+			// Write the hash key to this point
 			if err := h.WriteString(key.String()); err != nil {
 				return err
 			}
 
-			// Clear the string builder for the next loop
-			key.Reset()
-
-			// now consider condition context
+			// now write context to hash. Is a noop if context is nil.
 			if err := NewContextHasher(cond.GetContext()).Append(h); err != nil {
 				return err
 			}
+
+			// reset hash key for next iteration of loop
+			key.Reset()
 		}
 
 		key.WriteString("@")
