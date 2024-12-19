@@ -71,7 +71,9 @@ func (t tupleKeysHasher) Append(h hasher) error {
 	})
 
 	// prefix to avoid overlap with previous strings written
-	_ = h.WriteString("/") // always returns nil error
+	if err := h.WriteString("/"); err != nil {
+		return err
+	}
 
 	n := 0
 	for _, tupleKey := range sortedTupleKeys {
@@ -146,16 +148,18 @@ func (c contextHasher) Append(h hasher) error {
 	sort.Strings(keys)
 
 	for _, key := range keys {
-		// always returns a nil error
-		_ = h.WriteString(fmt.Sprintf("'%s:'", key))
+		if err := h.WriteString(fmt.Sprintf("'%s:'", key)); err != nil {
+			return err
+		}
 
 		valueHasher := structValueHasher{fields[key]}
 		if err := valueHasher.Append(h); err != nil {
 			return err
 		}
 
-		// always returns a nil error
-		_ = h.WriteString(",")
+		if err := h.WriteString(","); err != nil {
+			return err
+		}
 	}
 
 	return nil

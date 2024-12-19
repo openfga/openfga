@@ -136,8 +136,9 @@ func (c *CachedDatastore) ReadStartingWithUser(
 	if filter.ObjectIDs != nil {
 		hasher := xxhash.New()
 		for _, oid := range filter.ObjectIDs.Values() {
-			// WriteString always returns len(s), nil
-			_, _ = hasher.WriteString(oid)
+			if _, err := hasher.WriteString(oid); err != nil {
+				return nil, err
+			}
 		}
 
 		b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
