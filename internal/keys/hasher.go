@@ -93,8 +93,9 @@ func (t tupleKeysHasher) Append(h hasher) error {
 			key.WriteString(" ")
 
 			// now write the hash to this point
-			// This method always returns a nil error, we can ignore it
-			_ = h.WriteString(key.String())
+			if err := h.WriteString(key.String()); err != nil {
+				return err
+			}
 
 			// Clear the string builder for the next loop
 			key.Reset()
@@ -108,10 +109,14 @@ func (t tupleKeysHasher) Append(h hasher) error {
 		key.WriteString("@")
 		key.WriteString(tupleKey.GetUser())
 
-		_ = h.WriteString(key.String())
+		if err := h.WriteString(key.String()); err != nil {
+			return err
+		}
 
 		if n < len(t.tupleKeys)-1 {
-			_ = h.WriteString(",")
+			if err := h.WriteString(","); err != nil {
+				return err
+			}
 		}
 
 		n++
