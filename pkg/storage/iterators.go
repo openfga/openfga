@@ -477,9 +477,6 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 // There may be nil elements in pending array after this runs.
 // NOTE: callers must hold mu.
 func (c *OrderedCombinedIterator) head(ctx context.Context) (*openfgav1.Tuple, []int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.clearPendingThatAreNil()
 
 	var headMin *openfgav1.Tuple
