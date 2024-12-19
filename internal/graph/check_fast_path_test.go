@@ -99,6 +99,7 @@ func TestFastPathDirect(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
+			WithContextualTuplesOrderedByObjectAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -148,6 +149,7 @@ func TestFastPathDirect(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
+			WithContextualTuplesOrderedByObjectAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
