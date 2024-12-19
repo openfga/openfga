@@ -6,9 +6,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -552,8 +554,9 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 					break
 				}
 			}
-			if !reflect.DeepEqual(gotArr, tt.want) {
-				t.Errorf("ReadStartingWithUser() got = %v, want %v", gotArr, tt.want)
+
+			if diff := cmp.Diff(gotArr, tt.want, protocmp.Transform()); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
