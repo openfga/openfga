@@ -427,39 +427,92 @@ func TestOrderedCombinedIterator(t *testing.T) {
 	})
 
 	t.Run("Head", func(t *testing.T) {
-		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-		})
-		iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{})
-		expected := []*openfgav1.Tuple{
-			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
-		}
+		t.Run("return_err_if_unsorted_input_iterator", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{})
 
-		iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
-		t.Cleanup(func() {
-			iter.Stop()
-			require.Empty(t, iter.pending)
-		})
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
 
-		idx := 0
-		for {
-			got, err := iter.Head(context.Background())
-			if err != nil {
-				if errors.Is(err, ErrIteratorDone) {
+			next, err := iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, "document:1#2@user:b", tuple.TupleKeyToString(next.GetKey()))
+
+			next, err = iter.Next(context.Background())
+			require.Nil(t, next)
+			require.ErrorContains(t, err, "internal server error: iterator 0 is not in ascending order")
+		})
+		t.Run("multiple_calls_to_head_should_return_same_value", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			})
+			expected := &openfgav1.Tuple{
+				Key: tuple.NewTupleKey("document:1", "2", "user:a"),
+			}
+
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
+
+			for i := 0; i < 5; i++ {
+				got, err := iter.Head(context.Background())
+				require.NoError(t, err)
+
+				if diff := cmp.Diff(expected, got, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+		t.Run("head_and_next_interleaved", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			})
+			expected := []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			}
+
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
+
+			var errorFromHead error
+			gotItems := make([]*openfgav1.Tuple, 0)
+			for {
+				gotHead, err := iter.Head(context.Background())
+				if err != nil {
+					require.ErrorIs(t, err, ErrIteratorDone)
+					errorFromHead = err
+				}
+				gotNext, err := iter.Next(context.Background())
+				if err != nil {
+					require.Equal(t, errorFromHead, err)
 					break
 				}
-				require.Fail(t, "no error was expected")
+				require.NotNil(t, gotNext)
+				if diff := cmp.Diff(gotHead, gotNext, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch in result of Next compared to Head (-want +got):\n%s", diff)
+				}
+				gotItems = append(gotItems, gotNext)
 			}
-			require.NotNil(t, got)
-			if diff := cmp.Diff(expected[idx], got, protocmp.Transform()); diff != "" {
-				t.Errorf("mismatch (-want +got):\n%s", diff)
+
+			if diff := cmp.Diff(expected, gotItems, protocmp.Transform()); diff != "" {
+				t.Errorf("mismatch in result of Next (-want +got):\n%s", diff)
 			}
-			idx++
-
-			_, _ = iter.Next(context.Background())
-		}
-
-		require.Equal(t, len(expected), idx)
+		})
 	})
 }
 

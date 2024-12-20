@@ -3,10 +3,13 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	internalErrors "github.com/openfga/openfga/internal/errors"
 )
 
 var ErrIteratorDone = errors.New("iterator done")
@@ -414,11 +417,11 @@ func IterIsDoneOrCancelled(err error) bool {
 }
 
 type OrderedCombinedIterator struct {
-	mu       *sync.Mutex
-	once     *sync.Once
-	mapper   TupleMapper
-	pending  []TupleIterator  // GUARDED_BY(mu)
-	lastNext *openfgav1.Tuple // GUARDED_BY(mu)
+	mu          *sync.Mutex
+	once        *sync.Once
+	mapper      TupleMapper
+	pending     []TupleIterator  // GUARDED_BY(mu)
+	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
 }
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
@@ -462,7 +465,7 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 	if err != nil {
 		return nil, err
 	}
-	c.lastNext = t
+	c.lastYielded = t
 	return t, nil
 }
 
@@ -483,8 +486,10 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
 	c.clearPendingThatAreNil()
 
-	headMin := c.lastNext
+	var headMin *openfgav1.Tuple
 	minIdx := -1
+
+IterateOverPending:
 	for pendingIdx, iter := range c.pending {
 		head, err := iter.Head(ctx)
 		if err != nil {
@@ -496,15 +501,18 @@ func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
 			return minIdx, err
 		}
 
-		if c.lastNext != nil {
-			// case when head is actually smaller than lastYield thus it is a duplicate and should be thrown off
-			for c.mapper(head) <= c.mapper(c.lastNext) {
+		if c.lastYielded != nil {
+			if c.mapper(head) < c.mapper(c.lastYielded) {
+				return minIdx, fmt.Errorf("%w: iterator %d is not in ascending order", internalErrors.ErrUnknown, pendingIdx)
+			}
+			// discard duplicate values
+			for c.mapper(head) == c.mapper(c.lastYielded) {
 				head, err = iter.Next(ctx)
 				if err != nil {
 					if errors.Is(err, ErrIteratorDone) {
 						iter.Stop()
 						c.pending[pendingIdx] = nil
-						break
+						continue IterateOverPending
 					}
 					return minIdx, err
 				}
