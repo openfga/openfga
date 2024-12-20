@@ -645,9 +645,6 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	if !ok {
 		return false
 	}
-	if len(node.GetWildcards()) != 0 {
-		return false
-	}
 	// node.weight(userType) is the maximum weight to get to "userType".
 	// if the weight is exactly 2 (and all TTUs are a minimum of 2), exit early.
 	// if the weight is > 2:
