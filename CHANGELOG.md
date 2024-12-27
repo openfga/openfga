@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- fixed issue with missing cache controller flags [#2184](https://github.com/openfga/openfga/pull/2184)
+
 ## [1.8.2] - 2024-12-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2)
 
