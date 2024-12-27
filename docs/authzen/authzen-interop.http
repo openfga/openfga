@@ -1,8 +1,8 @@
-@fga_api_url = http://localhost:8080
-@fga_api_key = key1
-@fga_store_id = 01JF5XGTC8A8WCC06Q0JXPH979
+@fga_api_url = http://ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com
+@fga_api_key = FbtmrFbuBOT/4R68B2s0pSYsPg5BI6dr+b7KX1OGwhs=
+@fga_store_id = 01JG2JKG07BQE6PAK8ZZWYQ4YK
 
-# GET /users/{userID}
+# Simple Evaluation Request
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
 Authorization: bearer {{fga_api_key}}
@@ -18,14 +18,107 @@ Authorization: bearer {{fga_api_key}}
   "resource": {
     "type": "user",
     "id": "beth@the-smiths.com"
+ 
+  }
+}
+
+### Simple Evaluation Request with Invalid Type
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_read_user"
+  },
+  "resource": {
+    "type": "usr",
+    "id": "beth@the-smiths.com"
+ 
   }
 }
 
 
-### Get All Authorization Models
+### Batch EvaluationS request with invalid type
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
 Content-Type: application/json
-X-Request-Id: 5cc5b3c6-ac44-4110-9683-eba3a7df7fc3
+Authorization: bearer {{fga_api_key}}
+
+ {
+  "evaluations" : [
+    {
+      "subject": {
+        "type": "user",
+        "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "ser",
+        "id": "rick@the-citadel.com"
+      }
+    },
+    {
+      "subject": {
+        "type": "user",
+        "id": "XiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "user",
+        "id": "rick1@the-citadel.com"
+      }
+    }
+  ]
+}
+
+
+### Batch EvaluationS request with invalid type
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+ {
+  "evaluations" : [
+    {
+      "subject": {
+        "type": "user",
+        "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "ser",
+        "id": "rick@the-citadel.com"
+      }
+    },
+    {
+      "subject": {
+        "type": "user",
+        "id": "XiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "user",
+        "id": "rick1@the-citadel.com"
+      }
+    }
+  ]
+}
+
+### Batch EvaluationS request 
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
+Content-Type: application/json
 Authorization: bearer {{fga_api_key}}
 
  {
@@ -61,6 +154,7 @@ Authorization: bearer {{fga_api_key}}
 
 ### Create New Authorization Model
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Authorization: bearer {{fga_api_key}}
 Content-Type: application/json
 
  {
@@ -79,6 +173,7 @@ Content-Type: application/json
 
 ### Query all tuples
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
+Authorization: bearer {{fga_api_key}}
 Content-Type: application/json
 
 {
@@ -98,13 +193,10 @@ Content-Type: application/json
   }
 }
 
-########################
-# /WRITE
-########################
-
-### Adding relationships
+###  
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
 
 {
   "subject": {
@@ -124,13 +216,10 @@ Content-Type: application/json
 }
 
 
-########################
-# /CHECK
-########################
-
 ### Check
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
 
  {
   "subject": {
@@ -152,6 +241,7 @@ Content-Type: application/json
 ### Check with contextual tuples
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
 Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
 
  {
   "subject": {
@@ -169,72 +259,3 @@ Content-Type: application/json
     }
   }
 }
-
-### Check with higher consistency (default value = MINIMIZE_LATENCY)
-POST {{fga_api_url}}/stores/{{fga_store_id}}/check
-Authorization: Bearer {{fga_api_token}}
-Content-Type: application/json
-
-{
-  "tuple_key": {
-    "user": "user:anne",
-    "relation": "owner",
-    "object": "document:test"
-  },
-  "consistency": "HIGHER_CONSISTENCY"
-}
-
-########################
-# /EXPAND
-########################
-
-POST {{fga_api_url}}/stores/{{fga_store_id}}/expand
-Authorization: Bearer {{fga_api_token}}
-Content-Type: application/json
-
-{
-  "tuple_key": {
-    "user": "user:anne",
-    "relation": "owner",
-    "object": "document:test"
-  }
-}
-
-########################
-# /LIST-OBJECTS
-########################
-POST {{fga_api_url}}/stores/{{fga_store_id}}/list-objects
-Authorization: Bearer {{fga_api_token}}
-Content-Type: application/json
-
-{
-  "type": "document",
-  "relation": "can_view",
-  "user": "user:anne"
-}
-
-########################
-# /LIST-USERS
-########################
-POST {{fga_api_url}}/stores/{{fga_store_id}}/list-users
-Authorization: Bearer {{fga_api_token}}
-Content-Type: application/json
-
-{
-  "object": {
-    "type": "document",
-    "id": "test"
-  },
-  "relation": "can_view",
-  "user_filters": [
-    {
-      "type": "user"
-    }
-  ]
-}
-
-
-
-GET {{fga_api_url}}/stores/{{fga_store_id}}/authzen/v1/evaluation
-Content-Type: application/json
-
