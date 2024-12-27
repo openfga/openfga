@@ -24,7 +24,7 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241107182745-c14fb4b3d4b4
+ 	github.com/openfga/api/proto v0.0.0-20241215195308-0383d236664b
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20241115164311-10e575c8e47c
 	github.com/pressly/goose/v3 v3.23.0
 	github.com/prometheus/client_golang v1.20.5
@@ -52,9 +52,7 @@ require (
 	google.golang.org/protobuf v1.35.2
 	modernc.org/sqlite v1.34.1
 	sigs.k8s.io/yaml v1.4.0
-)
-replace github.com/openfga/api/proto => /Users/aaguiar/gh/api/proto
-
+)                 
 require (
 	cel.dev/expr v0.18.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
