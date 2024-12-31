@@ -273,6 +273,19 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 	})
 }
 
+func TestServerPanicIfNilContext(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: server cannot be started with nil context", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			WithContext(nil), //nolint
+		)
+	})
+}
+
 func TestServerPanicIfEmptyRequestDurationDispatchCountBuckets(t *testing.T) {
 	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration by dispatch count buckets must not be empty", func() {
 		mockController := gomock.NewController(t)
