@@ -705,6 +705,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
 
+	// ctx can be nil despite the default above if WithContext() was called
 	if s.ctx == nil {
 		return nil, fmt.Errorf("server cannot be started with nil context")
 	}
@@ -759,6 +760,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
+	// TODO: this makes s.ctx required
+	//
 	s.sharedCheckResources, err = shared.NewSharedCheckResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings)
 	if err != nil {
 		return nil, err

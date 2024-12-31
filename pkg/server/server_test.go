@@ -2339,3 +2339,138 @@ func TestCheckWithCachedIterator(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
 }
+
+func TestBatchCheckWithCachedIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type company
+			relations
+				define viewer: [user]
+		type license
+			relations
+				define viewer: [user, company#viewer]`).GetTypeDefinitions()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		Times(1).
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetObject() == "company:1" {
+					return &openfgav1.Tuple{
+						Key:       tk,
+						Timestamp: timestamppb.Now(),
+					}, nil
+				}
+
+				return nil, storage.ErrNotFound
+			})
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(mockDatastore),
+		WithCheckCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(10),
+	)
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	fakeID := "abc123"
+	batchCheckResponse, err := s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:1",
+					Relation: "viewer",
+					Object:   "license:1",
+				},
+				CorrelationId: fakeID,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
+
+	// Sleep for a while to ensure that the iterator is cached
+	time.Sleep(1 * time.Millisecond)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
+	batchCheckResponse, err = s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:2", // New user
+					Relation: "viewer",
+					Object:   "license:1",
+				},
+				CorrelationId: fakeID,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
+}
