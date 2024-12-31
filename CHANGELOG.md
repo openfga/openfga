@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Additional guard against nil context at the time of server initialization [#2187](https://github.com/openfga/openfga/pull/2187)
+
 ## [1.8.2] - 2024-12-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2)
 
