@@ -1498,6 +1498,50 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		}
 		require.Equal(t, []string{"doc1", "doc3", "doc4", "doc5", "doc6", "doc7"}, actualObjectIDs)
 	})
+	t.Run("enforce_order_of_tuples_with_public_wildcard", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var tupleInReverseOrder = []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc7", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc6", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc5", "viewer", "user:*"),
+			tuple.NewTupleKey("document:doc4", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:*"),
+			tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:doc1", "viewer", "user:bob"),
+			tuple.NewTupleKey("folder:folder1", "viewer", "user:bob"),
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tupleInReverseOrder)
+		require.NoError(t, err)
+
+		tupleIterator, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object: "user:bob",
+					},
+					{
+						Object: "user:*",
+					},
+				},
+			},
+			storage.ReadStartingWithUserOptions{},
+		)
+		require.NoError(t, err)
+
+		tuples := iterateThroughAllTuples(t, tupleIterator)
+		var actualObjectIDs []string
+		for _, item := range tuples {
+			_, objectID := tuple.SplitObject(item.GetObject())
+			actualObjectIDs = append(actualObjectIDs, objectID)
+		}
+		require.Equal(t, []string{"doc1", "doc3", "doc4", "doc5", "doc6", "doc7"}, actualObjectIDs)
+	})
 }
 
 func ReadAndReadPageTest(t *testing.T, datastore storage.OpenFGADatastore) {
