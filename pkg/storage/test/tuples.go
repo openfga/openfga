@@ -1502,11 +1502,12 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		storeID := ulid.Make().String()
 
 		var tupleInReverseOrder = []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc8", "viewer", "user:(A)"),
 			tuple.NewTupleKey("document:doc7", "viewer", "user:bob"),
-			tuple.NewTupleKey("document:doc6", "viewer", "user:bob"),
-			tuple.NewTupleKey("document:doc5", "viewer", "user:*"),
-			tuple.NewTupleKey("document:doc4", "viewer", "user:bob"),
-			tuple.NewTupleKey("document:doc3", "viewer", "user:*"),
+			tuple.NewTupleKey("document:doc6", "viewer", "user:*"),
+			tuple.NewTupleKey("document:doc5", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc4", "viewer", "user:*"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:(A)"),
 			tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
 			tuple.NewTupleKey("document:doc1", "viewer", "user:bob"),
 			tuple.NewTupleKey("folder:folder1", "viewer", "user:bob"),
@@ -1522,6 +1523,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				ObjectType: "document",
 				Relation:   "viewer",
 				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object: "user:(A)",
+					},
 					{
 						Object: "user:bob",
 					},
@@ -1540,7 +1544,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			_, objectID := tuple.SplitObject(item.GetObject())
 			actualObjectIDs = append(actualObjectIDs, objectID)
 		}
-		require.Equal(t, []string{"doc1", "doc3", "doc4", "doc5", "doc6", "doc7"}, actualObjectIDs)
+		require.Equal(t, []string{"doc1", "doc3", "doc4", "doc5", "doc6", "doc7", "doc8"}, actualObjectIDs)
 	})
 }
 
