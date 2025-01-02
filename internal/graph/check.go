@@ -537,7 +537,7 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs, false)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -1183,8 +1183,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						// TODO: Add support for contextual tuples - since these are injected without order
+					} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
@@ -1423,8 +1422,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				// TODO: Add support for contextual tuples - since these are injected without order
+			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
