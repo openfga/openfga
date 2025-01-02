@@ -650,7 +650,7 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
-		ctx:                              context.TODO(),
+		ctx:                              context.Background(),
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
@@ -760,8 +760,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	// TODO: this makes s.ctx required
-	//
 	s.sharedCheckResources, err = shared.NewSharedCheckResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings)
 	if err != nil {
 		return nil, err
