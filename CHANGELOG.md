@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
 
 ### Added
+- Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
 - Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
 
 ### Fixed
@@ -37,7 +38,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
-- Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
 - Add a field in log entries when authz calls were made. [#2130](https://github.com/openfga/openfga/pull/2130)
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
