@@ -85,6 +85,8 @@ func (i InMemoryLRUCache[T]) Get(key string) T {
 	return item
 }
 
+// Set will store the value during the ttl.
+// Note that math.MaxInt ttl is interpreted as negative and results in noop.
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 	// negative ttl are noop
 	i.client.SetWithTTL(key, value, 1, ttl)

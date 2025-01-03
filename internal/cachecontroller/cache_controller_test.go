@@ -58,6 +58,9 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).AnyTimes().Return(&storage.ChangelogCacheEntry{
+				LastModified: time.Now().Add(-20 * time.Second),
+			}),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
 		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
@@ -96,6 +99,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 		continuationToken  string
 		readChangesResults *readChangesResponse
 		setCacheKeys       []string
+		emptyCacheKey      bool
 	}{
 		{
 			name:               "empty_changelog",
@@ -229,6 +233,25 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				storage.GetChangelogCacheKey("7"),
 				storage.GetInvalidIteratorCacheKey("7")},
 		},
+		{
+			name:    "empty_cache_key",
+			storeID: "8",
+			readChangesResults: &readChangesResponse{err: nil, changes: []*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(time.Now().Add(-20 * time.Second)),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}},
+			emptyCacheKey: true,
+			setCacheKeys: []string{
+				storage.GetChangelogCacheKey("8"),
+				storage.GetInvalidIteratorCacheKey("8"),
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -241,6 +264,14 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			cache := mocks.NewMockInMemoryCache[any](ctrl)
 			for _, k := range test.setCacheKeys {
 				cache.EXPECT().Set(k, gomock.Any(), gomock.Any())
+			}
+
+			if test.emptyCacheKey {
+				cache.EXPECT().Get(storage.GetChangelogCacheKey(test.storeID)).AnyTimes().Return(nil)
+			} else {
+				cache.EXPECT().Get(storage.GetChangelogCacheKey(test.storeID)).AnyTimes().Return(&storage.ChangelogCacheEntry{
+					LastModified: time.Now().Add(-20 * time.Second),
+				})
 			}
 
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)

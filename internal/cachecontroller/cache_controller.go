@@ -2,7 +2,6 @@ package cachecontroller
 
 import (
 	"context"
-	"math"
 	"sync"
 	"time"
 
@@ -46,6 +45,8 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"invalidation_required", "changes_size"})
 )
+
+const OneYear = time.Hour * 24 * 365
 
 type CacheController interface {
 	DetermineInvalidation(ctx context.Context, storeID string) time.Time
@@ -152,13 +153,15 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		LastModified: changes[0].GetTimestamp().AsTime(),
 	}
 
+	hasCacheEntry := c.cache.Get(cacheKey) != nil
+
 	// set changelog entry as soon as possible for subsequent cache
 	// lookups have the entry and not have to wait on the existing singleflight group
 	c.cache.Set(cacheKey, entry, c.ttl)
 
 	lastVerified := time.Now().Add(-c.ttl)
 
-	if entry.LastModified.Before(lastVerified) {
+	if hasCacheEntry && entry.LastModified.Before(lastVerified) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
@@ -169,7 +172,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
 	idx := len(changes) - 1
 	for ; idx >= 0; idx-- {
-		if changes[idx].GetTimestamp().AsTime().After(lastVerified) {
+		if !hasCacheEntry || changes[idx].GetTimestamp().AsTime().After(lastVerified) {
 			break
 		}
 	}
@@ -190,8 +193,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
-	// These entries do not need to expire
-	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
+	// These entries do not need to expire. We set it as OneYear instead of math.MaxInt so that it could not be interpreted
+	// as negative number.
+	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, OneYear)
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
