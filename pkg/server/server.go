@@ -650,6 +650,7 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
+		ctx:                              context.Background(),
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
@@ -702,6 +703,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	// ctx can be nil despite the default above if WithContext() was called
+	if s.ctx == nil {
+		return nil, fmt.Errorf("server cannot be started with nil context")
 	}
 
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
