@@ -3,6 +3,7 @@ package run
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
@@ -555,13 +556,15 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	)
 
 	if config.GRPC.TLS.Enabled {
-		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-		}
-		creds, err := credentials.NewServerTLSFromFile(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
-		if err != nil {
-			return err
-		}
+		creds := credentials.NewTLS(&tls.Config{
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				cert, err := tls.LoadX509KeyPair(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
+				if err != nil {
+					return nil, err
+				}
+				return &cert, nil
+			},
+		})
 
 		serverOpts = append(serverOpts, grpc.Creds(creds))
 
@@ -755,20 +758,33 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}).Handler(handler), s.Logger),
 		}
 
+		listener, err := net.Listen("tcp", config.HTTP.Addr)
+		if err != nil {
+			return err
+		}
+
+		if config.HTTP.TLS.Enabled {
+			listener = tls.NewListener(listener, &tls.Config{
+				GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+					cert, err := tls.LoadX509KeyPair(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
+					if err != nil {
+						return nil, err
+					}
+					return &cert, nil
+				},
+			})
+
+			s.Logger.Info("HTTP TLS is enabled, serving connections using the provided certificate")
+		} else {
+			s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
+		}
+
 		go func() {
 			s.Logger.Info(fmt.Sprintf("🚀 starting HTTP server on '%s'...", httpServer.Addr))
-			var err error
-			if config.HTTP.TLS.Enabled {
-				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
-					s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
+			if err := httpServer.Serve(listener); err != nil {
+				if !errors.Is(err, http.ErrServerClosed) {
+					s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 				}
-				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
-			} else {
-				s.Logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
-				err = httpServer.ListenAndServe()
-			}
-			if err != http.ErrServerClosed {
-				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 			}
 			s.Logger.Info("HTTP server shut down.")
 		}()
