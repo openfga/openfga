@@ -1,6 +1,6 @@
-@fga_api_url = http://ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com
-@fga_api_key = FbtmrFbuBOT/4R68B2s0pSYsPg5BI6dr+b7KX1OGwhs=
-@fga_store_id = 01JG2JKG07BQE6PAK8ZZWYQ4YK
+@fga_api_url = https://authzen-interop.openfga.dev
+@fga_store_id = 01JG9JGS4W0950VN17G8NNAH3C
+@fga_api_key = <key>
 
 # Simple Evaluation Request
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
@@ -80,42 +80,6 @@ Authorization: bearer {{fga_api_key}}
 }
 
 
-### Batch EvaluationS request with invalid type
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
-Content-Type: application/json
-Authorization: bearer {{fga_api_key}}
-
- {
-  "evaluations" : [
-    {
-      "subject": {
-        "type": "user",
-        "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-      },
-      "action": {
-        "name": "can_read_user"
-      },
-      "resource": {
-        "type": "ser",
-        "id": "rick@the-citadel.com"
-      }
-    },
-    {
-      "subject": {
-        "type": "user",
-        "id": "XiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-      },
-      "action": {
-        "name": "can_read_user"
-      },
-      "resource": {
-        "type": "user",
-        "id": "rick1@the-citadel.com"
-      }
-    }
-  ]
-}
-
 ### Batch EvaluationS request 
 POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
 Content-Type: application/json
@@ -152,110 +116,3 @@ Authorization: bearer {{fga_api_key}}
   ]
 }
 
-### Create New Authorization Model
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
-Authorization: bearer {{fga_api_key}}
-Content-Type: application/json
-
- {
-  "subject": {
-    "type": "user",
-    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-  },
-  "action": {
-    "name": "can_read_todos"
-  },
-  "resource": {
-    "type": "todo",
-    "id": "todo-1"
-  }
-}
-
-### Query all tuples
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
-Authorization: bearer {{fga_api_key}}
-Content-Type: application/json
-
-{
-  "subject": {
-    "type": "user",
-    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-  },
-  "action": {
-    "name": "can_update_todo"
-  },
-  "resource": {
-    "type": "todo",
-    "id": "7240d0db-8ff0-41ec-98b2-34a096273b9f",
-    "properties": {
-      "ownerID": "rick@the-citadel.com"
-    }
-  }
-}
-
-###  
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
-Content-Type: application/json
-Authorization: bearer {{fga_api_key}}
-
-{
-  "subject": {
-    "type": "user",
-    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-  },
-  "action": {
-    "name": "can_update_todo"
-  },
-  "resource": {
-    "type": "todo",
-    "id": "7240d0db-8ff0-41ec-98b2-34a096273b9f",
-    "properties": {
-      "ownerID": "morty@the-citadel.com"
-    }
-  }
-}
-
-
-### Check
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
-Content-Type: application/json
-Authorization: bearer {{fga_api_key}}
-
- {
-  "subject": {
-    "type": "user",
-    "id": "CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-  },
-  "action": {
-    "name": "can_delete_todo"
-  },
-  "resource": {
-    "type": "todo",
-    "id": "7240d0db-8ff0-41ec-98b2-34a096273b9f",
-    "properties": {
-      "ownerID": "summer@the-citadel.com"
-    }
-  }
-}
-
-### Check with contextual tuples
-POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluation
-Content-Type: application/json
-Authorization: bearer {{fga_api_key}}
-
- {
-  "subject": {
-    "type": "user",
-    "id": "CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
-  },
-  "action": {
-    "name": "can_update_todo"
-  },
-  "resource": {
-    "type": "todo",
-    "id": "7240d0db-8ff0-41ec-98b2-34a096273b9f",
-    "properties": {
-      "ownerID": "summer@the-citadel.com"
-    }
-  }
-}
