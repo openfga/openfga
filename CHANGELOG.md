@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.8.3] - 2024-12-31
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
+
 ### Added
+- Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
+- Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
 - Additional guard against nil context at the time of server initialization [#2187](https://github.com/openfga/openfga/pull/2187)
+
+### Fixed
+- Ensure Check Cache Key considers `contextual_tuple` conditions and their contexts [#2160](https://github.com/openfga/openfga/pull/2160).
 
 ## [1.8.2] - 2024-12-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2)
@@ -22,7 +31,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
 - Prevent possible data races by waiting for in-flight cached iterator goroutines during server shutdown [#2145](https://github.com/openfga/openfga/pull/2145)
 - Correct incorrect check result returned when using experimental flag `enable-check-optimizations` and model has intersection or exclusion within a TTU or Userset. [#2157](https://github.com/openfga/openfga/pull/2157)
-- Ensure Check Cache Key considers `contextual_tuple` conditions and their contexts [#2160](https://github.com/openfga/openfga/pull/2160).
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
@@ -31,12 +39,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - New flag `OPENFGA_CHECK_ITERATOR_TTL`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - New flag `OPENFGA_CHECK_CACHE_LIMIT`. Please see the flag description (`./openfga run --help`) for more details. [#2082](https://github.com/openfga/openfga/pull/2082)
 - Improve `Check` performance for TTU relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2075](https://github.com/openfga/openfga/pull/2075)
-- Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
 - Add a field in log entries when authz calls were made. [#2130](https://github.com/openfga/openfga/pull/2130)
 - Add `Duration` to `ResolveCheckResponseMetadata` for use in metrics. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Add `check_duration_ms` metric to `server` package to enable measurement of check across different API methods. [#2139](https://github.com/openfga/openfga/pull/2139)
 - Added deduplication logic to BatchCheck API. [#2102](https://github.com/openfga/openfga/pull/2102)
-- Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
 
 ### Changed
 - OIDC token validation will now exclusively throw error code 1004 for invalid tokens. [#1999](https://github.com/openfga/openfga/pull/1999)
@@ -1170,7 +1176,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.3...HEAD
+[1.8.3]: https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/openfga/openfga/compare/v1.7.0...v1.8.0
