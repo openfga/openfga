@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-### Added
-- Additional guard against nil context at the time of server initialization [#2187](https://github.com/openfga/openfga/pull/2187)
 
 ## [1.8.3] - 2024-12-31
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
@@ -16,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Improve `Check` performance for Userset relationships that include set operations. Enable via experimental flag `enable-check-optimizations`. [#2140](https://github.com/openfga/openfga/pull/2140)
 - Add `name` as a filter to `ListStores`. The name parameter instructs the API to only include results that match that name. [#2103](https://github.com/openfga/openfga/pull/2103)
+- Additional guard against nil context at the time of server initialization [#2187](https://github.com/openfga/openfga/pull/2187)
 
 ### Fixed
 - Ensure Check Cache Key considers `contextual_tuple` conditions and their contexts [#2160](https://github.com/openfga/openfga/pull/2160).
