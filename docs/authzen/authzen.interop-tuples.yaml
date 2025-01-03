@@ -1,0 +1,34 @@
+# These tuples are needed to run the interop scenario
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b9f
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    - user: todo:todo-1
+      relation: parent
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      relation: owner
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      relation: owner
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      relation: owner
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      relation: owner
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      relation: owner
+      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95

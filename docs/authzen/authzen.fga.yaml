@@ -13,29 +13,40 @@ model: |+
 
     type todo
       relations
+        define parent: [todo]
+
+        # This is set as a contextual tuple. It's required to pass the 
         define OwnerID: [user]
-        define admin: [user]
-        define admin_role: user_or_linked_user from admin
         define can_create_todo: editor_role or evil_genius_role or admin_role or can_create_todo from parent
         define can_delete_todo: (editor_role from parent and owner_role) or admin_role from parent
         define can_read_todos: viewer_role or editor_role or evil_genius_role or admin_role
         define can_update_todo: (editor_role from parent and owner_role) or evil_genius_role from parent
+
         define can_view_users: user_viewer
+        
+        define admin: [user]
+        define admin_role: user_or_linked_user from admin
+
         define editor: [user]
-        define editor_role: user_or_linked_user from editor
+        define editor_role: user_or_linked_user from editor or admin_role or evil_genius
+
         define evil_genius: [user]
-        define evil_genius_role: user_or_linked_user from evil_genius
+        define evil_genius_role: user_or_linked_user from evil_genius 
+
         define owner: [user]
         define owner_role: user_or_linked_user from owner or user_or_linked_user from OwnerID
-        define parent: [todo]
+
         define user_viewer: [user:*]
         define viewer: [user]
-        define viewer_role: user_or_linked_user from viewer
+        define viewer_role: user_or_linked_user from viewer or editor
 
 tuples:
     - user: user:*
       relation: user_viewer
       object: todo:todo-1
+
+    # Linking users to themselves
+
     - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: me
       object: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
@@ -51,6 +62,8 @@ tuples:
     - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: me
       object: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    
+    # Linking user IDs and Emails
     - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: linked_user
       object: user:jerry@the-smiths.com
@@ -66,6 +79,8 @@ tuples:
     - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: linked_user
       object: user:rick@the-citadel.com
+      
+    # Relating all users to the root todo ('the todo app')
     - user: todo:todo-1
       relation: todo
       object: user:morty@the-citadel.com
@@ -81,57 +96,31 @@ tuples:
     - user: todo:todo-1
       relation: todo
       object: user:jerry@the-smiths.com
+
+    # Rick 
     - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: admin
       object: todo:todo-1
     - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: evil_genius
       object: todo:todo-1
+    # Beth
     - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: viewer
       object: todo:todo-1
+    # Morty
     - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: editor
       object: todo:todo-1
+    # Summer
     - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: editor
       object: todo:todo-1
+    # Jerry
     - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
       relation: viewer
       object: todo:todo-1
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b9f
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
-    - user: todo:todo-1
-      relation: parent
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
-    - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-      relation: owner
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
-    - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-      relation: owner
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
-    - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-      relation: owner
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
-    - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-      relation: owner
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
-    - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-      relation: owner
-      object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+
 tests:
     - name: Tests
       check: []
