@@ -427,6 +427,7 @@ type OrderedCombinedIterator struct {
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 
+// TODO(miparnisari): this interface & impls belong, conceptually, in internal/graph/tuplemapper.go, but i don't want to have storage import graph.
 type TupleMapper func(t *openfgav1.Tuple) string
 
 func UserMapper() TupleMapper {
