@@ -421,6 +421,7 @@ type OrderedCombinedIterator struct {
 	once        *sync.Once
 	mapper      TupleMapper
 	pending     []TupleIterator  // GUARDED_BY(mu)
+	lastHead    *openfgav1.Tuple // GUARDED_BY(mu)
 	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
 }
 
@@ -461,6 +462,7 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 		return nil, err
 	}
 
+	c.lastHead = nil // invalidate it
 	t, err := c.pending[idx].Next(ctx)
 	if err != nil {
 		return nil, err
@@ -472,16 +474,22 @@ func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, e
 func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if c.lastHead != nil {
+		return c.lastHead, nil
+	}
 	idx, err := c.head(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return c.pending[idx].Head(ctx)
+	lastHead, err := c.pending[idx].Head(ctx)
+	c.lastHead = lastHead
+	return c.lastHead, err
 }
 
-// head returns the next tuple without advancing the iterator.
-// It also returns the indexes (within the pending array) that have the same head.
-// There may be nil elements in pending array after this runs.
+// head returns the index (within the pending array) that has the next smallest element.
+// The pending array is mutated, and there may be nil elements in it after this function runs.
+// Callers must use the returned index immediately, without mutating the pending array.
 // NOTE: callers must hold mu.
 func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
 	c.clearPendingThatAreNil()

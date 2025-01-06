@@ -926,6 +926,8 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
 
+	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
+	// since we are using hashsets to check for intersection.
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 		nil, false)

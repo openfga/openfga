@@ -647,8 +647,8 @@ func Test_combinedTupleReader_ReadUserTuple(t *testing.T) {
 
 			got, err := c.ReadUserTuple(tt.args.ctx, tt.args.store, tt.args.tk, tt.args.options)
 			require.NoError(t, err)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ReadUserTuple() got = %v, want %v", got, tt.want)
+			if diff := cmp.Diff(got, tt.want, protocmp.Transform()); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

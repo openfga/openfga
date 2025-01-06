@@ -351,7 +351,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
 				},
 			},
-			`removes_duplicates_across_iterators`: {
+			`removes_duplicates_across_iterators_first_entry`: {
 				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
 				}),
@@ -360,6 +360,19 @@ func TestOrderedCombinedIterator(t *testing.T) {
 				}),
 				expected: []*openfgav1.Tuple{
 					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				},
+			},
+			`removes_duplicates_across_iterators_last_entry`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
 				},
 			},
 			`non_overlapping_elements_returns_all`: {
