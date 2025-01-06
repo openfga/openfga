@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed missing binding between flags and environment variables for the cache controller feature [#2184](https://github.com/openfga/openfga/pull/2184)
+- Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 
 ## [1.8.3] - 2024-12-31
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
@@ -28,7 +29,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add metrics `cachecontroller_find_changes_and_invalidate_histogram` on latency for cache controller in finding changes and invalidating.  [#2135](https://github.com/openfga/openfga/pull/2135)
 - Improve `Check` performance when cache controller is enabled by invalidating iterator and sub-problem cache asynchronously when read changes API indicates there are recent writes/deletes for the store.  [#2124](https://github.com/openfga/openfga/pull/2124)
 - Improve check cache key generation performance via `strings.Builder` [#2161](https://github.com/openfga/openfga/pull/2161).
-- Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
