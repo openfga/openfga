@@ -1,27 +1,22 @@
 package storagewrappers
 
 import (
-	"context"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 func TestRequestStorageWrapper(t *testing.T) {
-	sf := &singleflight.Group{}
-	wg := &sync.WaitGroup{}
 	const maxConcurrentReads = 1000
-	serverCtx := context.Background()
 
 	t.Run("check_api_with_caching_on", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -33,18 +28,13 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(
-			serverCtx,
-			mockDatastore,
-			requestContextualTuples,
-			maxConcurrentReads,
-			true,
-			sf,
-			wg,
-			mockCache,
-			1000,
-			10*time.Second,
-		)
+		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads,
+			&shared.SharedCheckResources{
+				CheckCache: mockCache,
+			}, config.CacheSettings{
+				CheckIteratorCacheEnabled: true,
+				CheckCacheLimit:           1,
+			})
 		require.NotNil(t, br)
 
 		// assert on the chain
@@ -75,18 +65,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(
-			serverCtx,
-			mockDatastore,
-			requestContextualTuples,
-			maxConcurrentReads,
-			false,
-			nil,
-			nil,
-			nil,
-			0,
-			0,
-		)
+		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, &shared.SharedCheckResources{}, config.CacheSettings{})
 		require.NotNil(t, br)
 
 		// assert on the chain
