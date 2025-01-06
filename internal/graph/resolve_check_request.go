@@ -4,6 +4,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/openfga/openfga/pkg/tuple"
+
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -21,6 +23,8 @@ type ResolveCheckRequest struct {
 	VisitedPaths              map[string]struct{}
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
+	CacheKey                  string
+	InvariantCacheKey         string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -44,6 +48,39 @@ func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 		DispatchCounter: new(atomic.Uint32),
 		WasThrottled:    new(atomic.Bool),
 	}
+}
+
+type ResolveCheckRequestParams struct {
+	StoreID          string
+	TupleKey         *openfgav1.CheckRequestTupleKey
+	ContextualTuples *openfgav1.ContextualTupleKeys
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
+}
+
+func NewResolveCheckRequest(
+	checkParams *ResolveCheckRequestParams,
+	cacheInvalidationTime time.Time,
+	authModelID string,
+) *ResolveCheckRequest {
+	r := &ResolveCheckRequest{
+		StoreID:              checkParams.StoreID,
+		AuthorizationModelID: authModelID,
+		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(checkParams.TupleKey),
+		ContextualTuples:     checkParams.ContextualTuples.GetTupleKeys(),
+		Context:              checkParams.Context,
+		VisitedPaths:         make(map[string]struct{}),
+		RequestMetadata:      NewCheckRequestMetadata(),
+		Consistency:          checkParams.Consistency,
+		// avoid having to read from cache consistently by propagating it
+		LastCacheInvalidationTime: cacheInvalidationTime,
+	}
+
+	// TODO: needs real error handling, but end behavior would be the same as current
+	r.InvariantCacheKey, _ = CheckRequestInvariantCacheKey(r)
+	r.CacheKey, _ = CheckRequestCacheKey(r)
+
+	return r
 }
 
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
@@ -72,6 +109,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
+		InvariantCacheKey:         r.GetInvariantCacheKey(),
 	}
 }
 
@@ -136,4 +174,10 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 		return time.Time{}
 	}
 	return r.LastCacheInvalidationTime
+}
+func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
+	if r == nil {
+		return ""
+	}
+	return r.InvariantCacheKey
 }

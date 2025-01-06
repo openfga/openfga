@@ -99,18 +99,30 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
 	}
 
-	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              params.StoreID,
-		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
-		Context:              params.Context,
-		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(),
-		Consistency:          params.Consistency,
-		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: cacheInvalidationTime,
+	// TODO: this is a dupe for now to avoid import cycle
+	resolveParams := &graph.ResolveCheckRequestParams{
+		StoreID:          params.StoreID,
+		TupleKey:         params.TupleKey,
+		Context:          params.Context,
+		ContextualTuples: params.ContextualTuples,
+		Consistency:      params.Consistency,
 	}
+
+	resolveCheckRequest := graph.NewResolveCheckRequest(
+		resolveParams, cacheInvalidationTime, c.typesys.GetAuthorizationModelID(),
+	)
+	// resolveCheckRequest := graph.ResolveCheckRequest{
+	//	StoreID:              params.StoreID,
+	//	AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
+	//	TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+	//	ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+	//	Context:              params.Context,
+	//	VisitedPaths:         make(map[string]struct{}),
+	//	RequestMetadata:      graph.NewCheckRequestMetadata(),
+	//	Consistency:          params.Consistency,
+	//	// avoid having to read from cache consistently by propagating it
+	//	LastCacheInvalidationTime: cacheInvalidationTime,
+	//}
 
 	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
 
@@ -118,7 +130,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
 
 	startTime := time.Now()
-	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
+
+	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, nil, &ThrottledError{Cause: err}

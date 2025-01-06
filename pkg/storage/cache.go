@@ -178,6 +178,26 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 		return "", err
 	}
 
+	// TODO: Removing this might have implications for batch check deduplication
+	//// here, and for context below, avoid hashing if we don't need to
+	// if len(params.ContextualTuples) > 0 {
+	//	if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+	//		return "", err
+	//	}
+	//}
+	//
+	//if params.Context != nil {
+	//	err := keys.NewContextHasher(params.Context).Append(hasher)
+	//	if err != nil {
+	//		return "", err
+	//	}
+	//}
+
+	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+}
+
+func GetInvariantCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
+	hasher := keys.NewCacheKeyHasher(xxhash.New())
 	// here, and for context below, avoid hashing if we don't need to
 	if len(params.ContextualTuples) > 0 {
 		if err = keys.WriteTuples(hasher, params.ContextualTuples...); err != nil {

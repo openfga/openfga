@@ -8,7 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -139,12 +138,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey, err := CheckRequestCacheKey(req)
-	if err != nil {
-		c.logger.Error("cache key computation failed with error", zap.Error(err))
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
+	cacheKey := req.CacheKey + req.InvariantCacheKey
+	// cacheKey, err := CheckRequestCacheKey(req)
+	//if err != nil {
+	//	c.logger.Error("cache key computation failed with error", zap.Error(err))
+	//	telemetry.TraceError(span, err)
+	//	return nil, err
+	//}
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -180,9 +180,20 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		StoreID:              req.GetStoreID(),
 		AuthorizationModelID: req.GetAuthorizationModelID(),
 		TupleKey:             req.GetTupleKey(),
-		ContextualTuples:     req.GetContextualTuples(),
-		Context:              req.GetContext(),
+
+		//// these two don't change within an individual request
+		//ContextualTuples: req.GetContextualTuples(),
+		//Context:          req.GetContext(),
 	}
 
 	return storage.GetCheckCacheKey(params)
+}
+
+func CheckRequestInvariantCacheKey(req *ResolveCheckRequest) (string, error) {
+	params := &storage.CheckCacheKeyParams{
+		ContextualTuples: req.GetContextualTuples(),
+		Context:          req.GetContext(),
+	}
+
+	return storage.GetInvariantCheckCacheKey(params)
 }
