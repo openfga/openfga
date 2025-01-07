@@ -24,7 +24,7 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241230191130-b61b4ea28b71
+	github.com/openfga/api/proto v0.0.0-20250107154247-c22e6db5c4f5
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20241115164311-10e575c8e47c
 	github.com/pressly/goose/v3 v3.24.0
 	github.com/prometheus/client_golang v1.20.5
