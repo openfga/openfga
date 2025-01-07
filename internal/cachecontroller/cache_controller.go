@@ -112,14 +112,13 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
+	c.logger.Debug("cachecontroller DetermineInvalidation cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
-		c.logger.Debug("cachecontroller DetermineInvalidation cache hit", zap.String("storeID", storeID))
 		span.SetAttributes(attribute.Bool("cached", true))
 		return entry.LastModified
 	}
-	c.logger.Debug("cachecontroller DetermineInvalidation cache miss", zap.String("storeID", storeID))
 
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
@@ -183,7 +182,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		c.logger.Debug("cachecontroller findChangesAndInvalidate invalidation as entry.LastModified before last verified",
-			zap.String("storeID", storeID),
+			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
 			zap.Time("lastVerified", lastVerified))
 
@@ -217,7 +216,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	}
 
 	c.logger.Debug("cachecontroller findChangesAndInvalidate invalidation",
-		zap.String("storeID", storeID),
+		zap.String("store_id", storeID),
 		zap.Time("entry.LastModified", entry.LastModified),
 		zap.Time("lastVerified", lastVerified),
 		zap.Bool("partialInvalidation", partialInvalidation))

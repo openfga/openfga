@@ -154,9 +154,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 			res := cachedResp.(*CheckResponseCacheEntry)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
 			c.logger.Debug("CachedCheckResolver found cache key",
-				zap.String("store", req.GetStoreID()),
-				zap.String("auth model id", req.GetAuthorizationModelID()),
-				zap.String("tuple key", req.GetTupleKey().String()),
+				zap.String("store_id", req.GetStoreID()),
+				zap.String("authorization_model_id", req.GetAuthorizationModelID()),
+				zap.String("tuple_key", req.GetTupleKey().String()),
 				zap.Bool("isValid", isValid))
 
 			span.SetAttributes(attribute.Bool("cached", isValid))
@@ -167,9 +167,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 			}
 		} else {
 			c.logger.Debug("CachedCheckResolver not found cache key",
-				zap.String("store", req.GetStoreID()),
-				zap.String("auth model id", req.GetAuthorizationModelID()),
-				zap.String("tuple key", req.GetTupleKey().String()))
+				zap.String("store_id", req.GetStoreID()),
+				zap.String("authorization_model_id", req.GetAuthorizationModelID()),
+				zap.String("tuple_key", req.GetTupleKey().String()))
 		}
 	}
 

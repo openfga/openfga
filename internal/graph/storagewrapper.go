@@ -260,7 +260,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 	if res := c.cache.Get(key); res != nil {
 		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
-		c.logger.Debug("CachedDatastore not found in cache ", zap.String("store", store), zap.String("key", key))
+		c.logger.Debug("CachedDatastore not found in cache ", zap.String("store_id", store), zap.String("key", key))
 		return nil, false
 	}
 
@@ -269,7 +269,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
 			c.logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
-				zap.String("store", store),
+				zap.String("store_id", store),
 				zap.String("key", key),
 				zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
 				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
@@ -281,7 +281,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 			invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 			if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
 				c.logger.Debug("CachedDatastore found in cache but has expired for invalidEntry",
-					zap.String("store", store),
+					zap.String("store_id", store),
 					zap.String("key", key),
 					zap.String("invalidEntityKey", invalidEntityKey),
 					zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
@@ -290,7 +290,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 			}
 		}
 	}
-	c.logger.Debug("CachedDatastore found in cache ", zap.String("store", store), zap.String("key", key))
+	c.logger.Debug("CachedDatastore found in cache ", zap.String("store_id", store), zap.String("key", key))
 
 	return tupleEntry, true
 }
