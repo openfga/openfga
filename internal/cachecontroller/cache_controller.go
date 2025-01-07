@@ -62,6 +62,10 @@ func NewNoopCacheController() CacheController {
 	return &NoopCacheController{}
 }
 
+// InMemoryCacheController will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
+// that are more recent than the last write for the specified store.
+// Note that the invalidation is done asynchronously. Therefore, the cache iterator and sub problem cache may be stale
+// initially and will be eventually consistent.
 type InMemoryCacheController struct {
 	ds                    storage.OpenFGADatastore
 	cache                 storage.InMemoryCache[any]
