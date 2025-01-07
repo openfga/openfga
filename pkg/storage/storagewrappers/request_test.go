@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -34,7 +35,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			}, config.CacheSettings{
 				CheckIteratorCacheEnabled: true,
 				CheckCacheLimit:           1,
-			})
+			}, logger.NewNoopLogger())
 		require.NotNil(t, br)
 
 		// assert on the chain
@@ -66,7 +67,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, &shared.SharedCheckResources{}, config.CacheSettings{})
+		br := NewRequestStorageWrapperForCheckAPI(mockDatastore, requestContextualTuples, maxConcurrentReads, &shared.SharedCheckResources{}, config.CacheSettings{}, logger.NewNoopLogger())
 		require.NotNil(t, br)
 
 		// assert on the chain

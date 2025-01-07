@@ -153,12 +153,23 @@ func (c *CachedCheckResolver) ResolveCheck(
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
+			c.logger.Debug("CachedCheckResolver found cache key",
+				zap.String("store", req.GetStoreID()),
+				zap.String("auth model id", req.GetAuthorizationModelID()),
+				zap.String("tuple key", req.GetTupleKey().String()),
+				zap.Bool("isValid", isValid))
+
 			span.SetAttributes(attribute.Bool("cached", isValid))
 			if isValid {
 				checkCacheHitCounter.Inc()
 				// return a copy to avoid races across goroutines
 				return res.CheckResponse.clone(), nil
 			}
+		} else {
+			c.logger.Debug("CachedCheckResolver not found cache key",
+				zap.String("store", req.GetStoreID()),
+				zap.String("auth model id", req.GetAuthorizationModelID()),
+				zap.String("tuple key", req.GetTupleKey().String()))
 		}
 	}
 

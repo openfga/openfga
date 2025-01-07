@@ -15,11 +15,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -60,6 +62,15 @@ var (
 // from the underlying datastore.
 type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
 
+type CachedDatastoreOpt func(*CachedDatastore)
+
+// WithCachedDatastoreLogger sets the logger for the BoundedConcurrencyTupleReader.
+func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
+	return func(b *CachedDatastore) {
+		b.logger = logger
+	}
+}
+
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
@@ -75,6 +86,8 @@ type CachedDatastore struct {
 	// wg is used to synchronize inflight goroutines from underlying
 	// cached iterators.
 	wg *sync.WaitGroup
+
+	logger logger.Logger
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -86,8 +99,9 @@ func NewCachedDatastore(
 	ttl time.Duration,
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
+	opts ...CachedDatastoreOpt,
 ) *CachedDatastore {
-	return &CachedDatastore{
+	c := &CachedDatastore{
 		ctx:                     ctx,
 		RelationshipTupleReader: inner,
 		cache:                   cache,
@@ -95,7 +109,14 @@ func NewCachedDatastore(
 		ttl:                     ttl,
 		sf:                      sf,
 		wg:                      wg,
+		logger:                  logger.NewNoopLogger(),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 func (c *CachedDatastore) ReadStartingWithUser(
@@ -239,12 +260,19 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 	if res := c.cache.Get(key); res != nil {
 		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
+		c.logger.Debug("CachedDatastore not found in cache ", zap.String("store", store), zap.String("key", key))
 		return nil, false
 	}
+
 	invalidCacheKey := storage.GetInvalidIteratorCacheKey(store)
 	if res := c.cache.Get(invalidCacheKey); res != nil {
 		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+			c.logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
+				zap.String("store", store),
+				zap.String("key", key),
+				zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
+				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
 			return nil, false
 		}
 	}
@@ -252,10 +280,18 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 		if res := c.cache.Get(invalidEntityKey); res != nil {
 			invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 			if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+				c.logger.Debug("CachedDatastore found in cache but has expired for invalidEntry",
+					zap.String("store", store),
+					zap.String("key", key),
+					zap.String("invalidEntityKey", invalidEntityKey),
+					zap.Time("invalidEntry.LastModified", invalidEntry.LastModified),
+					zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
 				return nil, false
 			}
 		}
 	}
+	c.logger.Debug("CachedDatastore found in cache ", zap.String("store", store), zap.String("key", key))
+
 	return tupleEntry, true
 }
 
