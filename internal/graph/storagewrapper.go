@@ -260,7 +260,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 	if res := c.cache.Get(key); res != nil {
 		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
 	} else {
-		c.logger.Debug("CachedDatastore not found in cache ", zap.String("store_id", store), zap.String("key", key))
+		c.logger.Debug("CachedDatastore findInCache not found ", zap.String("store_id", store), zap.String("key", key))
 		return nil, false
 	}
 
@@ -280,7 +280,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 		if res := c.cache.Get(invalidEntityKey); res != nil {
 			invalidEntry := res.(*storage.InvalidEntityCacheEntry)
 			if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
-				c.logger.Debug("CachedDatastore found in cache but has expired for invalidEntry",
+				c.logger.Debug("CachedDatastore findInCache but has expired for invalidEntry",
 					zap.String("store_id", store),
 					zap.String("key", key),
 					zap.String("invalidEntityKey", invalidEntityKey),
@@ -290,7 +290,7 @@ func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []str
 			}
 		}
 	}
-	c.logger.Debug("CachedDatastore found in cache ", zap.String("store_id", store), zap.String("key", key))
+	c.logger.Debug("CachedDatastore findInCache ", zap.String("store_id", store), zap.String("key", key))
 
 	return tupleEntry, true
 }
@@ -389,6 +389,7 @@ func (c *CachedDatastore) newCachedIterator(
 		relation:          relation,
 		userType:          userType,
 		wg:                c.wg,
+		logger:            c.logger,
 	}, nil
 }
 
@@ -430,6 +431,8 @@ type cachedIterator struct {
 	// wg is used to synchronize inflight goroutines spawned
 	// when stopping the iterator.
 	wg *sync.WaitGroup
+
+	logger logger.Logger
 }
 
 // Next will return the next available tuple from the underlying iterator and
@@ -595,6 +598,10 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 // flush will store copy of buffered tuples into cache.
 func (c *cachedIterator) flush() {
 	if c.tuples == nil || c.ctx.Err() != nil {
+		c.logger.Debug("cachedIterator flush noop due to empty tuples or c.ctx.Err",
+			zap.String("key", c.cacheKey),
+			zap.Bool("nil_tuples", c.tuples == nil),
+			zap.Error(c.ctx.Err()))
 		return
 	}
 
@@ -605,6 +612,7 @@ func (c *cachedIterator) flush() {
 	c.tuples = nil
 	c.records = nil
 
+	c.logger.Debug("cachedIterator flush and update cache for ", zap.String("cacheKey", c.cacheKey))
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {
 		c.cache.Delete(k)

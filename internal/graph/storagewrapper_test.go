@@ -19,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -863,6 +864,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		_, err = iter.Next(ctx)
@@ -903,6 +905,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		_, err = iter.Next(ctx)
@@ -937,6 +940,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		var actual []*openfgav1.Tuple
@@ -993,6 +997,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		iter.Stop()
@@ -1030,6 +1035,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		var actual []*openfgav1.Tuple
@@ -1092,6 +1098,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		iter.Stop()
@@ -1135,6 +1142,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		cancelledCtx, cancel := context.WithCancel(context.Background())
@@ -1190,6 +1198,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		wg.Add(1)
@@ -1246,6 +1255,7 @@ func TestCachedIterator(t *testing.T) {
 				objectID:          "",
 				relation:          "",
 				userType:          "",
+				logger:            logger.NewNoopLogger(),
 			}
 
 			mockedIter2 := &mockCalledTupleIterator{
@@ -1268,6 +1278,7 @@ func TestCachedIterator(t *testing.T) {
 				objectID:          "",
 				relation:          "",
 				userType:          "",
+				logger:            logger.NewNoopLogger(),
 			}
 
 			wg.Add(2)
