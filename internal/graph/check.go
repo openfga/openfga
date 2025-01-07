@@ -1420,9 +1420,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		if c.optimizationsEnabled {
+			//nolint:gocritic
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
+			} else if typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType) {
+				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for contextual tuples - since these are injected without order
 				// TODO: Add support for wildcard - we are doing exact matches

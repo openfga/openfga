@@ -990,6 +990,15 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	})
 }
 
+func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
+	defer span.End()
+
+	return &ResolveCheckResponse{
+		Allowed: false,
+	}, nil
+}
+
 func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveUsersetFastPath")
 	defer span.End()
