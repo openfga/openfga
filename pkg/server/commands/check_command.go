@@ -108,21 +108,13 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		Consistency:      params.Consistency,
 	}
 
-	resolveCheckRequest := graph.NewResolveCheckRequest(
+	resolveCheckRequest, err := graph.NewResolveCheckRequest(
 		resolveParams, cacheInvalidationTime, c.typesys.GetAuthorizationModelID(),
 	)
-	// resolveCheckRequest := graph.ResolveCheckRequest{
-	//	StoreID:              params.StoreID,
-	//	AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-	//	TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-	//	ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
-	//	Context:              params.Context,
-	//	VisitedPaths:         make(map[string]struct{}),
-	//	RequestMetadata:      graph.NewCheckRequestMetadata(),
-	//	Consistency:          params.Consistency,
-	//	// avoid having to read from cache consistently by propagating it
-	//	LastCacheInvalidationTime: cacheInvalidationTime,
-	//}
+
+	if err != nil {
+		return nil, nil, err
+	}
 
 	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
 

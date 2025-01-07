@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -138,13 +139,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := req.CacheKey + req.InvariantCacheKey
-	// cacheKey, err := CheckRequestCacheKey(req)
-	//if err != nil {
-	//	c.logger.Error("cache key computation failed with error", zap.Error(err))
-	//	telemetry.TraceError(span, err)
-	//	return nil, err
-	//}
+	reqCacheKey, err := CheckRequestCacheKey(req)
+	if err != nil {
+		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		telemetry.TraceError(span, err)
+		return nil, err
+	}
+
+	cacheKey := reqCacheKey + req.InvariantCacheKey
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -180,15 +182,15 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		StoreID:              req.GetStoreID(),
 		AuthorizationModelID: req.GetAuthorizationModelID(),
 		TupleKey:             req.GetTupleKey(),
-
-		//// these two don't change within an individual request
-		//ContextualTuples: req.GetContextualTuples(),
-		//Context:          req.GetContext(),
 	}
 
 	return storage.GetCheckCacheKey(params)
 }
 
+// CheckRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request,
+// meaning Context and ContextualTuples, as they do not change within a single request.
+// The InvariantCacheKey is calculated once per request and passed along to
+// sub-problems via ResolveCheckRequest.clone() if necessary.
 func CheckRequestInvariantCacheKey(req *ResolveCheckRequest) (string, error) {
 	params := &storage.CheckCacheKeyParams{
 		ContextualTuples: req.GetContextualTuples(),

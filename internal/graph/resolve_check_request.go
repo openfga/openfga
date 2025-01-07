@@ -4,13 +4,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/openfga/openfga/pkg/tuple"
-
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type ResolveCheckRequest struct {
@@ -23,7 +23,6 @@ type ResolveCheckRequest struct {
 	VisitedPaths              map[string]struct{}
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
-	CacheKey                  string
 	InvariantCacheKey         string
 }
 
@@ -62,7 +61,7 @@ func NewResolveCheckRequest(
 	checkParams *ResolveCheckRequestParams,
 	cacheInvalidationTime time.Time,
 	authModelID string,
-) *ResolveCheckRequest {
+) (*ResolveCheckRequest, error) {
 	r := &ResolveCheckRequest{
 		StoreID:              checkParams.StoreID,
 		AuthorizationModelID: authModelID,
@@ -76,11 +75,14 @@ func NewResolveCheckRequest(
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	// TODO: needs real error handling, but end behavior would be the same as current
-	r.InvariantCacheKey, _ = CheckRequestInvariantCacheKey(r)
-	r.CacheKey, _ = CheckRequestCacheKey(r)
+	key, err := CheckRequestInvariantCacheKey(r)
+	if err != nil {
+		return nil, err
+	}
 
-	return r
+	r.InvariantCacheKey = key
+
+	return r, nil
 }
 
 func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
@@ -99,7 +101,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	return &ResolveCheckRequest{
+	req := &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -111,6 +113,8 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		InvariantCacheKey:         r.GetInvariantCacheKey(),
 	}
+
+	return req
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
