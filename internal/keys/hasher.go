@@ -12,13 +12,14 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
 
 func WriteStructValue(w io.StringWriter, v *structpb.Value) (err error) {
-	switch val := v.Kind.(type) {
+	switch val := v.GetKind().(type) {
 	case *structpb.Value_BoolValue:
 		_, err = w.WriteString(fmt.Sprintf("%v", val.BoolValue))
 	case *structpb.Value_NullValue:
