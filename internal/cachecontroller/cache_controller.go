@@ -11,11 +11,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -61,6 +63,17 @@ func NewNoopCacheController() CacheController {
 	return &NoopCacheController{}
 }
 
+// InMemoryCacheControllerOpt defines an option that can be used to change the behavior of InMemoryCacheController
+// instance.
+type InMemoryCacheControllerOpt func(*InMemoryCacheController)
+
+// WithLogger sets the logger for InMemoryCacheController.
+func WithLogger(logger logger.Logger) InMemoryCacheControllerOpt {
+	return func(inm *InMemoryCacheController) {
+		inm.logger = logger
+	}
+}
+
 type InMemoryCacheController struct {
 	ds                    storage.OpenFGADatastore
 	cache                 storage.InMemoryCache[any]
@@ -68,9 +81,10 @@ type InMemoryCacheController struct {
 	iteratorCacheTTL      time.Duration
 	changelogBuckets      []uint
 	inflightInvalidations sync.Map
+	logger                logger.Logger
 }
 
-func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
+func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration, opts ...InMemoryCacheControllerOpt) CacheController {
 	c := &InMemoryCacheController{
 		ds:                    ds,
 		cache:                 cache,
@@ -78,6 +92,11 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		iteratorCacheTTL:      iteratorCacheTTL,
 		changelogBuckets:      []uint{0, 25, 50, 75, 100},
 		inflightInvalidations: sync.Map{},
+		logger:                logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(c)
 	}
 
 	return c
@@ -96,9 +115,11 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
+		c.logger.Debug("cachecontroller DetermineInvalidation cache hit", zap.String("storeID", storeID))
 		span.SetAttributes(attribute.Bool("cached", true))
 		return entry.LastModified
 	}
+	c.logger.Debug("cachecontroller DetermineInvalidation cache miss", zap.String("storeID", storeID))
 
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
@@ -161,6 +182,11 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(lastVerified) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
+		c.logger.Debug("cachecontroller findChangesAndInvalidate invalidation as entry.LastModified before last verified",
+			zap.String("storeID", storeID),
+			zap.Time("entry.LastModified", entry.LastModified),
+			zap.Time("lastVerified", lastVerified))
+
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
@@ -173,8 +199,12 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 			break
 		}
 	}
+
+	partialInvalidation := true
+
 	// all changes are new, thus we should revoke the whole query cache
 	if idx == len(changes)-1 {
+		partialInvalidation = false
 		c.invalidateIteratorCache(storeID)
 	} else {
 		// only a subset of changes are new, revoke the respective ones
@@ -185,6 +215,12 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
+
+	c.logger.Debug("cachecontroller findChangesAndInvalidate invalidation",
+		zap.String("storeID", storeID),
+		zap.Time("entry.LastModified", entry.LastModified),
+		zap.Time("lastVerified", lastVerified),
+		zap.Bool("partialInvalidation", partialInvalidation))
 	span.SetAttributes(attribute.Bool("invalidations", true))
 	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 }
