@@ -1,6 +1,9 @@
 package keys
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -22,12 +25,38 @@ func MustNewStruct(m map[string]any) *structpb.Struct {
 	panic(err)
 }
 
+type ResetableStringWriter interface {
+	io.StringWriter
+	fmt.Stringer
+	Reset()
+}
+
+var ErrWriteString = errors.New("test error")
+
+type ErrorStringWriter struct{}
+
+func (e *ErrorStringWriter) WriteString(s string) (int, error) {
+	return 0, ErrWriteString
+}
+
+func (e *ErrorStringWriter) Reset() {}
+
+func (e *ErrorStringWriter) String() string {
+	return ""
+}
+
+var errorWriter ErrorStringWriter
+var validWriter strings.Builder
+
 func TestWriteValue(t *testing.T) {
 	var cases = map[string]struct {
+		writer ResetableStringWriter
 		value  *structpb.Value
 		output string
+		error  bool
 	}{
 		"list": {
+			writer: &validWriter,
 			value: structpb.NewListValue(&structpb.ListValue{
 				Values: []*structpb.Value{
 					structpb.NewStringValue("A"),
@@ -41,48 +70,100 @@ func TestWriteValue(t *testing.T) {
 			}),
 			output: "A,null,true,1111111111,'key:'value,",
 		},
+		"list_error": {
+			writer: &errorWriter,
+			value: structpb.NewListValue(&structpb.ListValue{
+				Values: []*structpb.Value{
+					structpb.NewStringValue("A"),
+					structpb.NewNullValue(),
+					structpb.NewBoolValue(true),
+					structpb.NewNumberValue(1111111111),
+					structpb.NewStructValue(MustNewStruct(map[string]any{
+						"key": "value",
+					})),
+				},
+			}),
+			error: true,
+		},
+		"nil": {
+			writer: &validWriter,
+			value:  nil,
+			error:  true,
+		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			var b strings.Builder
-			err := WriteValue(&b, test.value)
-			require.NoError(t, err)
-			require.Equal(t, test.output, b.String())
+			test.writer.Reset()
+			err := WriteValue(test.writer, test.value)
+			if test.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.output, test.writer.String())
+			}
 		})
 	}
 }
 
 func TestWriteStruct(t *testing.T) {
 	var cases = map[string]struct {
+		writer ResetableStringWriter
 		value  *structpb.Struct
 		output string
+		error  bool
 	}{
-		"list": {
+		"general": {
+			writer: &validWriter,
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
 				"keyB": "valueB",
 			}),
 			output: "'keyA:'valueA,'keyB:'valueB,",
 		},
+		"general_error": {
+			writer: &errorWriter,
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			error: true,
+		},
+		"nil": {
+			writer: &validWriter,
+			value:  nil,
+			output: "",
+		},
+		"nil_error": {
+			writer: &errorWriter,
+			value:  nil,
+			output: "",
+		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			var b strings.Builder
-			err := WriteStruct(&b, test.value)
-			require.NoError(t, err)
-			require.Equal(t, test.output, b.String())
+			test.writer.Reset()
+			err := WriteStruct(test.writer, test.value)
+			if test.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.output, test.writer.String())
+			}
 		})
 	}
 }
 
 func TestWriteTuples(t *testing.T) {
 	var cases = map[string]struct {
+		writer ResetableStringWriter
 		tuples []*openfgav1.TupleKey
 		output string
+		error  bool
 	}{
 		"sans_condition": {
+			writer: &validWriter,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:C", "relationC", "user:C"),
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
@@ -90,7 +171,17 @@ func TestWriteTuples(t *testing.T) {
 			},
 			output: "/document:A#relationA@user:A,document:B#relationB@user:B,document:C#relationC@user:C",
 		},
+		"sans_condition_error": {
+			writer: &errorWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:C", "relationC", "user:C"),
+				tuple.NewTupleKey("document:A", "relationA", "user:A"),
+				tuple.NewTupleKey("document:B", "relationB", "user:B"),
+			},
+			error: true,
+		},
 		"with_condition": {
+			writer: &validWriter,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKeyWithCondition(
 					"document:A",
@@ -113,14 +204,42 @@ func TestWriteTuples(t *testing.T) {
 			},
 			output: "/document:A#relationA with A 'key:'value,@user:A,document:A#relationA with B 'key:'value,@user:A",
 		},
+		"with_condition_error": {
+			writer: &errorWriter,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition(
+					"document:A",
+					"relationA",
+					"user:A",
+					"B",
+					MustNewStruct(map[string]any{
+						"key": "value",
+					}),
+				),
+				tuple.NewTupleKeyWithCondition(
+					"document:A",
+					"relationA",
+					"user:A",
+					"A",
+					MustNewStruct(map[string]any{
+						"key": "value",
+					}),
+				),
+			},
+			error: true,
+		},
 	}
 
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
-			var b strings.Builder
-			err := WriteTuples(&b, test.tuples...)
-			require.NoError(t, err)
-			require.Equal(t, test.output, b.String())
+			test.writer.Reset()
+			err := WriteTuples(test.writer, test.tuples...)
+			if test.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.output, test.writer.String())
+			}
 		})
 	}
 }
