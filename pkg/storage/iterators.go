@@ -507,7 +507,10 @@ IterateOverPending:
 			if c.mapper(head) < c.mapper(c.lastYielded) {
 				return -1, fmt.Errorf("iterator %d is not in ascending order", pendingIdx)
 			}
-			// discard duplicate values
+			// Discard duplicate values.
+			// We do this based on the previous Head() returned for performance reasons.
+			// If on every call to Head() we discarded, we would need to iterate twice over pending:
+			// one time to find the minIdx, and one time to move the corresponding iterators.
 			for c.mapper(head) == c.mapper(c.lastYielded) {
 				head, err = iter.Next(ctx)
 				if err != nil {
