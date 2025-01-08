@@ -9,8 +9,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type ResolveCheckRequest struct {
@@ -42,6 +40,16 @@ type ResolveCheckRequestMetadata struct {
 	WasThrottled *atomic.Bool
 }
 
+type ResolveCheckRequestParams struct {
+	StoreID               string
+	TupleKey              *openfgav1.TupleKey
+	ContextualTuples      *openfgav1.ContextualTupleKeys
+	Context               *structpb.Struct
+	Consistency           openfgav1.ConsistencyPreference
+	CacheInvalidationTime time.Time
+	AuthorizationModelID  string
+}
+
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	return &ResolveCheckRequestMetadata{
 		DispatchCounter: new(atomic.Uint32),
@@ -49,30 +57,20 @@ func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 	}
 }
 
-type ResolveCheckRequestParams struct {
-	StoreID          string
-	TupleKey         *openfgav1.CheckRequestTupleKey
-	ContextualTuples *openfgav1.ContextualTupleKeys
-	Context          *structpb.Struct
-	Consistency      openfgav1.ConsistencyPreference
-}
-
 func NewResolveCheckRequest(
-	checkParams *ResolveCheckRequestParams,
-	cacheInvalidationTime time.Time,
-	authModelID string,
+	params ResolveCheckRequestParams,
 ) (*ResolveCheckRequest, error) {
 	r := &ResolveCheckRequest{
-		StoreID:              checkParams.StoreID,
-		AuthorizationModelID: authModelID,
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(checkParams.TupleKey),
-		ContextualTuples:     checkParams.ContextualTuples.GetTupleKeys(),
-		Context:              checkParams.Context,
+		StoreID:              params.StoreID,
+		AuthorizationModelID: params.AuthorizationModelID,
+		TupleKey:             params.TupleKey,
+		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      NewCheckRequestMetadata(),
-		Consistency:          checkParams.Consistency,
+		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: cacheInvalidationTime,
+		LastCacheInvalidationTime: params.CacheInvalidationTime,
 	}
 
 	key, err := CheckRequestInvariantCacheKey(r)

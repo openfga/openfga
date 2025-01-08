@@ -184,7 +184,12 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		TupleKey:             req.GetTupleKey(),
 	}
 
-	return storage.GetCheckCacheKey(params)
+	key, err := storage.GetCheckCacheKey(params)
+	if err != nil {
+		return "", err
+	}
+
+	return key + req.InvariantCacheKey, nil
 }
 
 // CheckRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request,

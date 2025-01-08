@@ -99,17 +99,16 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
 	}
 
-	// TODO: this is a dupe for now to avoid import cycle
-	resolveParams := &graph.ResolveCheckRequestParams{
-		StoreID:          params.StoreID,
-		TupleKey:         params.TupleKey,
-		Context:          params.Context,
-		ContextualTuples: params.ContextualTuples,
-		Consistency:      params.Consistency,
-	}
-
 	resolveCheckRequest, err := graph.NewResolveCheckRequest(
-		resolveParams, cacheInvalidationTime, c.typesys.GetAuthorizationModelID(),
+		graph.ResolveCheckRequestParams{
+			StoreID:               params.StoreID,
+			TupleKey:              tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+			Context:               params.Context,
+			ContextualTuples:      params.ContextualTuples,
+			Consistency:           params.Consistency,
+			CacheInvalidationTime: cacheInvalidationTime,
+			AuthorizationModelID:  c.typesys.GetAuthorizationModelID(),
+		},
 	)
 
 	if err != nil {
