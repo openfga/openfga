@@ -184,7 +184,7 @@ func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		TupleKey:             req.GetTupleKey(),
 	}
 
-	key, err := storage.GetCheckCacheKey(params)
+	key, err := storage.GetTupleCacheKey(params)
 	if err != nil {
 		return "", err
 	}

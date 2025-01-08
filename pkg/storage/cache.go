@@ -178,9 +178,6 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 		return "", err
 	}
 
-	// TODO: Removing this might have implications for batch check deduplication
-	// TODO: Test batch check dedupes with contextual tuples
-
 	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
 }
 
