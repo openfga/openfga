@@ -4,8 +4,8 @@ import "time"
 
 type CacheSettings struct {
 	CheckCacheLimit              uint32
-	CacheControllerEnabled       bool
-	CacheControllerTTL           time.Duration
+	CacheInvalidatorEnabled      bool
+	CacheInvalidatorTTL          time.Duration
 	CheckQueryCacheEnabled       bool
 	CheckQueryCacheTTL           time.Duration
 	CheckIteratorCacheEnabled    bool
@@ -16,8 +16,8 @@ type CacheSettings struct {
 func NewDefaultCacheSettings() CacheSettings {
 	return CacheSettings{
 		CheckCacheLimit:              DefaultCheckCacheLimit,
-		CacheControllerEnabled:       DefaultCacheControllerEnabled,
-		CacheControllerTTL:           DefaultCacheControllerTTL,
+		CacheInvalidatorEnabled:      DefaultCacheInvalidatorEnabled,
+		CacheInvalidatorTTL:          DefaultCacheInvalidatorTTL,
 		CheckQueryCacheEnabled:       DefaultCheckQueryCacheEnabled,
 		CheckQueryCacheTTL:           DefaultCheckQueryCacheTTL,
 		CheckIteratorCacheEnabled:    DefaultCheckIteratorCacheEnabled,
@@ -30,8 +30,8 @@ func (c CacheSettings) ShouldCreateNewCache() bool {
 	return c.ShouldCacheCheckQueries() || c.ShouldCacheIterators()
 }
 
-func (c CacheSettings) ShouldCreateCacheController() bool {
-	return c.ShouldCreateNewCache() && c.CacheControllerEnabled
+func (c CacheSettings) ShouldCreateCacheInvalidator() bool {
+	return c.ShouldCreateNewCache() && c.CacheInvalidatorEnabled
 }
 
 func (c CacheSettings) ShouldCacheCheckQueries() bool {

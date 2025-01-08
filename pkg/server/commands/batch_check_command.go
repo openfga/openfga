@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/cacheinvalidator"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
@@ -101,7 +101,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 		cacheSettings:       config.NewDefaultCacheSettings(),
 		sharedCheckResources: &shared.SharedCheckResources{
-			CacheController: cachecontroller.NewNoopCacheController(),
+			CacheInvalidator: cacheinvalidator.NewNoopCacheInvalidator(),
 		},
 	}
 

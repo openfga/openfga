@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/cacheinvalidator"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
@@ -77,7 +77,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
 		sharedCheckResources: &shared.SharedCheckResources{
-			CacheController: cachecontroller.NewNoopCacheController(),
+			CacheInvalidator: cacheinvalidator.NewNoopCacheInvalidator(),
 		},
 	}
 
@@ -96,7 +96,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheInvalidator.GetLastWriteAndInvalidate(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{

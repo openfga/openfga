@@ -188,15 +188,15 @@ type doc
 	t.Run("cache_controller_sets_invalidation_time", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
-		cacheController := mockstorage.NewMockCacheController(mockController)
+		cacheInvalidator := mockstorage.NewMockCacheInvalidator(mockController)
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedCheckResources{
-			CacheController: cacheController,
+			CacheInvalidator: cacheInvalidator,
 		}, config.CacheSettings{}))
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
 			return &graph.ResolveCheckResponse{}, nil
 		})
-		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
+		cacheInvalidator.EXPECT().GetLastWriteAndInvalidate(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),

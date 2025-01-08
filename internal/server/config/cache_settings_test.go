@@ -62,43 +62,43 @@ func TestCacheSettings(t *testing.T) {
 		}
 	})
 
-	t.Run("should_create_new_cache_controller", func(t *testing.T) {
+	t.Run("should_create_new_cache_invalidator", func(t *testing.T) {
 		tests := []struct {
-			name                          string
-			cacheSettings                 CacheSettings
-			expectedCreateCacheController bool
+			name                           string
+			cacheSettings                  CacheSettings
+			expectedCreateCacheInvalidator bool
 		}{
 			{
 				name: "not_when_limit_is_zero",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit: 0,
 				},
-				expectedCreateCacheController: false,
+				expectedCreateCacheInvalidator: false,
 			},
 			{
 				name: "when_limit_over_zero_and_query_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:        10,
-					CheckQueryCacheEnabled: true,
-					CacheControllerEnabled: true,
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					CacheInvalidatorEnabled: true,
 				},
-				expectedCreateCacheController: true,
+				expectedCreateCacheInvalidator: true,
 			},
 			{
 				name: "when_limit_over_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit:           10,
 					CheckIteratorCacheEnabled: true,
-					CacheControllerEnabled:    true,
+					CacheInvalidatorEnabled:   true,
 				},
-				expectedCreateCacheController: true,
+				expectedCreateCacheInvalidator: true,
 			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got := tt.cacheSettings.ShouldCreateCacheController()
-				assert.Equal(t, tt.expectedCreateCacheController, got)
+				got := tt.cacheSettings.ShouldCreateCacheInvalidator()
+				assert.Equal(t, tt.expectedCreateCacheInvalidator, got)
 			})
 		}
 	})
