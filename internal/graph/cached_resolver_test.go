@@ -39,13 +39,13 @@ func TestResolveCheckFromCache(t *testing.T) {
 	tests := []struct {
 		name                string
 		initialReqParams    *ResolveCheckRequestParams
-		subsequentReq       *ResolveCheckRequestParams
+		subsequentReqParams *ResolveCheckRequestParams
 		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
 		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -59,7 +59,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_returns_results_from_cache_when_minimize_latency_requested",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -74,7 +74,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_returns_results_from_cache_when_no_consistency_requested",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -89,7 +89,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_does_not_use_cache_if_higher_consistency_requested",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -110,7 +110,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -125,7 +125,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_store_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -139,7 +139,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_model_id_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -153,7 +153,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_object_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
@@ -167,7 +167,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_relation_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
@@ -181,7 +181,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_user_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
@@ -195,7 +195,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_with_different_contextual_tuple_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -218,7 +218,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "response_with_error_not_cached",
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -251,7 +251,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -298,7 +298,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -340,7 +340,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:prefi"),
@@ -382,7 +382,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -434,7 +434,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
-			subsequentReq: &ResolveCheckRequestParams{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
@@ -475,7 +475,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				require.Equal(t, result.Allowed, actualResult.Allowed)
 			}
 
-			subsequentRequest, err := NewResolveCheckRequest(*test.subsequentReq)
+			subsequentRequest, err := NewResolveCheckRequest(*test.subsequentReqParams)
 			require.NoError(t, err)
 
 			test.setTestExpectations(mockResolver, subsequentRequest)
