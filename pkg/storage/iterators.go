@@ -8,8 +8,6 @@ import (
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
-	internalErrors "github.com/openfga/openfga/internal/errors"
 )
 
 var ErrIteratorDone = errors.New("iterator done")
@@ -411,11 +409,6 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 	}
 }
 
-// IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
-func IterIsDoneOrCancelled(err error) bool {
-	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
-
 type OrderedCombinedIterator struct {
 	mu          *sync.Mutex
 	once        *sync.Once
@@ -488,7 +481,7 @@ func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, e
 	return c.lastHead, err
 }
 
-// head returns the index (within the pending array) that has the next smallest element.
+// head returns the index (within the pending array) that has the next smallest element, or -1 if there was an error.
 // The pending array is mutated, and there may be nil elements in it after this function runs.
 // Callers must use the returned index immediately, without mutating the pending array.
 // NOTE: callers must hold mu.
@@ -507,14 +500,17 @@ IterateOverPending:
 				c.pending[pendingIdx] = nil
 				continue
 			}
-			return minIdx, err
+			return -1, err
 		}
 
 		if c.lastYielded != nil {
 			if c.mapper(head) < c.mapper(c.lastYielded) {
-				return minIdx, fmt.Errorf("%w: iterator %d is not in ascending order", internalErrors.ErrUnknown, pendingIdx)
+				return -1, fmt.Errorf("iterator %d is not in ascending order", pendingIdx)
 			}
-			// discard duplicate values
+			// Discard duplicate values.
+			// We do this based on the previous Head() returned for performance reasons.
+			// If on every call to Head() we discarded, we would need to iterate twice over pending:
+			// one time to find the minIdx, and one time to move the corresponding iterators.
 			for c.mapper(head) == c.mapper(c.lastYielded) {
 				head, err = iter.Next(ctx)
 				if err != nil {
@@ -523,7 +519,7 @@ IterateOverPending:
 						c.pending[pendingIdx] = nil
 						continue IterateOverPending
 					}
-					return minIdx, err
+					return -1, err
 				}
 			}
 		}
@@ -557,4 +553,9 @@ func (c *OrderedCombinedIterator) Stop() {
 			iter.Stop()
 		}
 	})
+}
+
+// IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
+func IterIsDoneOrCancelled(err error) bool {
+	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

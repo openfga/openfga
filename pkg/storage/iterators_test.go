@@ -318,6 +318,17 @@ func TestCombinedIterator(t *testing.T) {
 	})
 }
 
+func TestTupleMappers(t *testing.T) {
+	tk := &openfgav1.Tuple{
+		Key: tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	}
+	userMapper := UserMapper()
+	require.Equal(t, "user:anne", userMapper(tk))
+
+	objectMapper := ObjectMapper()
+	require.Equal(t, "document:1", objectMapper(tk))
+}
+
 func TestOrderedCombinedIterator(t *testing.T) {
 	t.Run("Stop", func(t *testing.T) {
 		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
@@ -456,7 +467,7 @@ func TestOrderedCombinedIterator(t *testing.T) {
 
 			next, err = iter.Next(context.Background())
 			require.Nil(t, next)
-			require.ErrorContains(t, err, "internal server error: iterator 0 is not in ascending order")
+			require.ErrorContains(t, err, "iterator 0 is not in ascending order")
 		})
 		t.Run("multiple_calls_to_head_should_return_same_value", func(t *testing.T) {
 			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
