@@ -11,6 +11,39 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type TupleKeys []*openfgav1.TupleKey
+
+func (tk TupleKeys) Len() int {
+	return len(tk)
+}
+
+func (tk TupleKeys) Less(i, j int) bool {
+	if tk[i].GetObject() != tk[j].GetObject() {
+		return tk[i].GetObject() < tk[j].GetObject()
+	}
+
+	if tk[i].GetRelation() != tk[j].GetRelation() {
+		return tk[i].GetRelation() < tk[j].GetRelation()
+	}
+
+	if tk[i].GetUser() != tk[j].GetUser() {
+		return tk[i].GetUser() < tk[j].GetUser()
+	}
+
+	cond1 := tk[i].GetCondition()
+	cond2 := tk[j].GetCondition()
+	if (cond1 != nil || cond2 != nil) && cond1.GetName() != cond2.GetName() {
+		return cond1.GetName() < cond2.GetName()
+	}
+	// Note: conditions also optionally have context structs, but we aren't sorting by context
+
+	return true
+}
+
+func (tk TupleKeys) Swap(i, j int) {
+	tk[i], tk[j] = tk[j], tk[i]
+}
+
 type TupleWithCondition interface {
 	TupleWithoutCondition
 	GetCondition() *openfgav1.RelationshipCondition
