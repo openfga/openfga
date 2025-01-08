@@ -18,7 +18,7 @@ import (
 
 var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered")
 
-func WriteStructValue(w io.StringWriter, v *structpb.Value) (err error) {
+func WriteValue(w io.StringWriter, v *structpb.Value) (err error) {
 	switch val := v.GetKind().(type) {
 	case *structpb.Value_BoolValue:
 		_, err = w.WriteString(fmt.Sprintf("%v", val.BoolValue))
@@ -32,7 +32,7 @@ func WriteStructValue(w io.StringWriter, v *structpb.Value) (err error) {
 		values := val.ListValue.GetValues()
 
 		for n, vv := range values {
-			if err = WriteStructValue(w, vv); err != nil {
+			if err = WriteValue(w, vv); err != nil {
 				return
 			}
 
@@ -64,7 +64,7 @@ func WriteStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 			return
 		}
 
-		if err = WriteStructValue(w, fields[key]); err != nil {
+		if err = WriteValue(w, fields[key]); err != nil {
 			return
 		}
 
