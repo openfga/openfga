@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -27,6 +28,28 @@ func TestInMemoryCache(t *testing.T) {
 		cache.Set("key", "value", 1*time.Second)
 		result := cache.Get("key")
 		require.Equal(t, "value", result)
+	})
+	t.Run("set_and_get_more_than_one_year", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		cache.Set("key", "value", math.MaxInt64)
+		result := cache.Get("key")
+		require.Equal(t, "value", result)
+	})
+	t.Run("negative_ttl_ignored", func(t *testing.T) {
+		cache, err := NewInMemoryLRUCache[string]()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		defer cache.Stop()
+		cache.Set("key", "value", -2)
+		result := cache.Get("key")
+		require.NotEqual(t, "value", result)
 	})
 
 	t.Run("stop_multiple_times", func(t *testing.T) {

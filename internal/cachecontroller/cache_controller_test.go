@@ -94,12 +94,12 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	}
 
 	tests := []struct {
-		name               string
-		storeID            string
-		continuationToken  string
-		readChangesResults *readChangesResponse
-		setCacheKeys       []string
-		emptyCacheKey      bool
+		name                   string
+		storeID                string
+		continuationToken      string
+		readChangesResults     *readChangesResponse
+		setCacheKeys           []string
+		mockedGetCacheResponse []interface{}
 	}{
 		{
 			name:               "empty_changelog",
@@ -133,6 +133,9 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				storage.GetChangelogCacheKey("3"),
 				storage.GetInvalidIteratorCacheKey("3"),
 			},
+			mockedGetCacheResponse: []interface{}{
+				&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)},
+			},
 		},
 		{
 			name:    "last_change_is_same_change",
@@ -149,6 +152,9 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			}},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("4"),
+			},
+			mockedGetCacheResponse: []interface{}{
+				&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)},
 			},
 		},
 		{
@@ -178,6 +184,9 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				storage.GetChangelogCacheKey("5"),
 				storage.GetInvalidIteratorByObjectRelationCacheKeys("5", "test:5", "viewer")[0],
 				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0]},
+			mockedGetCacheResponse: []interface{}{
+				&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)},
+			},
 		},
 		{
 			name:    "last_change_is_halfway_in_the_newest_batch",
@@ -224,6 +233,9 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				storage.GetChangelogCacheKey("6"),
 				storage.GetInvalidIteratorByObjectRelationCacheKeys("6", "test:5", "viewer")[0],
 				storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0]},
+			mockedGetCacheResponse: []interface{}{
+				&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)},
+			},
 		},
 		{
 			name:               "last_change_not_in_newest_batch",
@@ -232,9 +244,12 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("7"),
 				storage.GetInvalidIteratorCacheKey("7")},
+			mockedGetCacheResponse: []interface{}{
+				&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-20 * time.Second)},
+			},
 		},
 		{
-			name:    "empty_cache_key",
+			name:    "initial_check_for_invalidation",
 			storeID: "8",
 			readChangesResults: &readChangesResponse{err: nil, changes: []*openfgav1.TupleChange{
 				{
@@ -246,10 +261,33 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 						User:     "test",
 					}},
 			}},
-			emptyCacheKey: true,
+			mockedGetCacheResponse: []interface{}{
+				nil,
+			},
 			setCacheKeys: []string{
 				storage.GetChangelogCacheKey("8"),
 				storage.GetInvalidIteratorCacheKey("8"),
+			},
+		},
+		{
+			name:    "initial_check_for_invalidation_change_is_recent",
+			storeID: "9",
+			readChangesResults: &readChangesResponse{err: nil, changes: []*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(time.Now().Add(-5 * time.Second)),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}},
+			mockedGetCacheResponse: []interface{}{
+				nil,
+			},
+			setCacheKeys: []string{
+				storage.GetChangelogCacheKey("9"),
+				storage.GetInvalidIteratorCacheKey("9"),
 			},
 		},
 	}
@@ -261,21 +299,18 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			cache := mocks.NewMockInMemoryCache[any](ctrl)
-			for _, k := range test.setCacheKeys {
-				cache.EXPECT().Set(k, gomock.Any(), gomock.Any())
-			}
-
-			if test.emptyCacheKey {
-				cache.EXPECT().Get(storage.GetChangelogCacheKey(test.storeID)).AnyTimes().Return(nil)
-			} else {
-				cache.EXPECT().Get(storage.GetChangelogCacheKey(test.storeID)).AnyTimes().Return(&storage.ChangelogCacheEntry{
-					LastModified: time.Now().Add(-20 * time.Second),
-				})
-			}
-
 			datastore := mocks.NewMockOpenFGADatastore(ctrl)
-			datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
+			currentMockedResponse := datastore.EXPECT().ReadChanges(gomock.Any(), test.storeID, gomock.Any(), gomock.Any()).Return(test.readChangesResults.changes, "", test.readChangesResults.err)
+
+			cache := mocks.NewMockInMemoryCache[any](ctrl)
+			for _, k := range test.mockedGetCacheResponse {
+				currentMockedResponse = cache.EXPECT().Get(storage.GetChangelogCacheKey(test.storeID)).Return(k).After(currentMockedResponse)
+			}
+
+			for _, k := range test.setCacheKeys {
+				currentMockedResponse = cache.EXPECT().Set(k, gomock.Any(), gomock.Any()).After(currentMockedResponse)
+			}
+
 			cacheController := &InMemoryCacheController{
 				ds:                    datastore,
 				cache:                 cache,
