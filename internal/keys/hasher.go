@@ -90,7 +90,10 @@ func WriteStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 // in the tuple string representation. WriteTuples returns an error only when
 // the underlying writer returns an error.
 func WriteTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
-	sortedTuples := tuple.TupleKeys(tuples)
+	sortedTuples := make(tuple.TupleKeys, len(tuples))
+
+	// copy tuples slice to avoid mutating the original slice during sorting.
+	copy(sortedTuples, tuples)
 
 	// sort tulpes for a deterministic write
 	sort.Sort(sortedTuples)
