@@ -1,16 +1,129 @@
 package keys
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+func MustNewStruct(m map[string]any) *structpb.Struct {
+	s, err := structpb.NewStruct(m)
+	if err == nil {
+		return s
+	}
+	panic(err)
+}
+
+func TestWriteValue(t *testing.T) {
+	var cases = map[string]struct {
+		value  *structpb.Value
+		output string
+	}{
+		"list": {
+			value: structpb.NewListValue(&structpb.ListValue{
+				Values: []*structpb.Value{
+					structpb.NewStringValue("A"),
+					structpb.NewNullValue(),
+					structpb.NewBoolValue(true),
+					structpb.NewNumberValue(1111111111),
+					structpb.NewStructValue(MustNewStruct(map[string]any{
+						"key": "value",
+					})),
+				},
+			}),
+			output: "A,null,true,1111111111,'key:'value,",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			var b strings.Builder
+			err := WriteValue(&b, test.value)
+			require.NoError(t, err)
+			require.Equal(t, test.output, b.String())
+		})
+	}
+}
+
+func TestWriteStruct(t *testing.T) {
+	var cases = map[string]struct {
+		value  *structpb.Struct
+		output string
+	}{
+		"list": {
+			value: MustNewStruct(map[string]any{
+				"keyA": "valueA",
+				"keyB": "valueB",
+			}),
+			output: "'keyA:'valueA,'keyB:'valueB,",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			var b strings.Builder
+			err := WriteStruct(&b, test.value)
+			require.NoError(t, err)
+			require.Equal(t, test.output, b.String())
+		})
+	}
+}
+
+func TestWriteTuples(t *testing.T) {
+	var cases = map[string]struct {
+		tuples []*openfgav1.TupleKey
+		output string
+	}{
+		"sans_condition": {
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:C", "relationC", "user:C"),
+				tuple.NewTupleKey("document:A", "relationA", "user:A"),
+				tuple.NewTupleKey("document:B", "relationB", "user:B"),
+			},
+			output: "/document:A#relationA@user:A,document:B#relationB@user:B,document:C#relationC@user:C",
+		},
+		"with_condition": {
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition(
+					"document:A",
+					"relationA",
+					"user:A",
+					"B",
+					MustNewStruct(map[string]any{
+						"key": "value",
+					}),
+				),
+				tuple.NewTupleKeyWithCondition(
+					"document:A",
+					"relationA",
+					"user:A",
+					"A",
+					MustNewStruct(map[string]any{
+						"key": "value",
+					}),
+				),
+			},
+			output: "/document:A#relationA with A 'key:'value,@user:A,document:A#relationA with B 'key:'value,@user:A",
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			var b strings.Builder
+			err := WriteTuples(&b, test.tuples...)
+			require.NoError(t, err)
+			require.Equal(t, test.output, b.String())
+		})
+	}
+}
 
 func TestTupleKeysHasherSortsFirst(t *testing.T) {
 	var testCases = map[string]struct {
