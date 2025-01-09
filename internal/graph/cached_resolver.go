@@ -176,6 +176,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
+// CheckRequestCacheKey calculates a cache key for the Tuple currently being checked
+// and combines it with the existing ResolveCheckRequest.InvariantCacheKey to create a unique key for this check.
 func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	params := &storage.CheckCacheKeyParams{TupleKey: req.GetTupleKey()}
 
