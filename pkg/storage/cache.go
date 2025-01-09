@@ -4,6 +4,7 @@ package storage
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"sync"
 	"time"
@@ -162,38 +163,59 @@ type CheckCacheKeyParams struct {
 func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	hasher := xxhash.New()
 
-	_, err := hasher.WriteString(
-		SubproblemCachePrefix +
-			params.StoreID +
-			"/" +
-			params.AuthorizationModelID +
-			"/" +
-			params.TupleKey.GetObject() +
+	err := WriteTupleCheckCacheKey(hasher, params)
+	if err != nil {
+		return "", err
+	}
+
+	err = WriteInvariantCheckCacheKey(hasher, params)
+	if err != nil {
+		return "", err
+	}
+
+	return strconv.FormatUint(hasher.Sum64(), 10), nil
+}
+
+func WriteTupleCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
+	_, err := w.WriteString(
+		params.TupleKey.GetObject() +
 			"#" +
 			params.TupleKey.GetRelation() +
 			"@" +
 			params.TupleKey.GetUser(),
 	)
+
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+	return nil
 }
 
-func GetInvariantCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
+func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
+	_, err := w.WriteString(
+		" " + // space to separate from user in the TupleCacheKey, where spaces cannot be present
+			SubproblemCachePrefix +
+			params.StoreID +
+			"/" +
+			params.AuthorizationModelID,
+	)
+	if err != nil {
+		return err
+	}
+
 	// here, and for context below, avoid hashing if we don't need to
 	if len(params.ContextualTuples) > 0 {
-		if err = keys.WriteTuples(hasher, params.ContextualTuples...); err != nil {
-			return "", err
+		if err := keys.WriteTuples(w, params.ContextualTuples...); err != nil {
+			return err
 		}
 	}
 
 	if params.Context != nil {
-		if err = keys.WriteStruct(hasher, params.Context); err != nil {
-			return "", err
+		if err := keys.WriteStruct(w, params.Context); err != nil {
+			return err
 		}
 	}
-	return strconv.FormatUint(hasher.Sum64(), 10), nil
+
+	return nil
 }
