@@ -71,7 +71,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
 		StoreID:          storeID,
 		TupleKey:         req.GetTupleKey(),
-		ContextualTuples: req.GetContextualTuples(),
+		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 		Context:          req.GetContext(),
 		Consistency:      req.GetConsistency(),
 	})

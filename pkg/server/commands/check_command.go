@@ -40,7 +40,7 @@ type CheckQuery struct {
 type CheckCommandParams struct {
 	StoreID          string
 	TupleKey         *openfgav1.CheckRequestTupleKey
-	ContextualTuples *openfgav1.ContextualTupleKeys
+	ContextualTuples []*openfgav1.TupleKey
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
 }
@@ -103,7 +103,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		StoreID:              params.StoreID,
 		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
 		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     params.ContextualTuples,
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      graph.NewCheckRequestMetadata(),
@@ -112,7 +112,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples, c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
@@ -133,14 +133,14 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
-func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
+func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples []*openfgav1.TupleKey) error {
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return &InvalidRelationError{Cause: err}
 	}
 
 	// But contextual tuples need to be validated more strictly, the same as an input to a Write Tuple request.
-	for _, ctxTuple := range contextualTuples.GetTupleKeys() {
+	for _, ctxTuple := range contextualTuples {
 		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
 			return &InvalidTupleError{Cause: err}
 		}

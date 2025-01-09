@@ -87,10 +87,8 @@ type doc
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
-			ContextualTuples: &openfgav1.ContextualTupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("invalid:1", "viewer", "user:1"),
-				},
+			ContextualTuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("invalid:1", "viewer", "user:1"),
 			},
 		})
 		require.ErrorContains(t, err, "type 'invalid' not found")
@@ -101,11 +99,9 @@ type doc
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
-			ContextualTuples: &openfgav1.ContextualTupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					// this isn't a tuple that you can write
-					tuple.NewTupleKey("doc:1", "viewer_computed", "user:1"),
-				},
+			ContextualTuples: []*openfgav1.TupleKey{
+				// this isn't a tuple that you can write
+				tuple.NewTupleKey("doc:1", "viewer_computed", "user:1"),
 			},
 		})
 		require.ErrorContains(t, err, "type 'user' is not an allowed type restriction for 'doc#viewer_computed'")
