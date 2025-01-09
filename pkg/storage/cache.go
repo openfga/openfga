@@ -5,7 +5,6 @@ package storage
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -167,37 +166,35 @@ type CheckCacheKeyParams struct {
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
 func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
+	hasher := xxhash.New()
 
-	key := strings.Builder{}
-	key.WriteString(SubproblemCachePrefix)
-	key.WriteString(params.StoreID)
-	key.WriteString("/")
-	key.WriteString(params.AuthorizationModelID)
-	key.WriteString("/")
-	key.WriteString(params.TupleKey.GetObject())
-	key.WriteString("#")
-	key.WriteString(params.TupleKey.GetRelation())
-	key.WriteString("@")
-	key.WriteString(params.TupleKey.GetUser())
-
-	if err := hasher.WriteString(key.String()); err != nil {
+	_, err := hasher.WriteString(
+		SubproblemCachePrefix +
+			params.StoreID +
+			"/" +
+			params.AuthorizationModelID +
+			"/" +
+			params.TupleKey.GetObject() +
+			"#" +
+			params.TupleKey.GetRelation() +
+			"@" +
+			params.TupleKey.GetUser(),
+	)
+	if err != nil {
 		return "", err
 	}
 
 	// here, and for context below, avoid hashing if we don't need to
 	if len(params.ContextualTuples) > 0 {
-		if err := keys.NewTupleKeysHasher(params.ContextualTuples...).Append(hasher); err != nil {
+		if err = keys.WriteTuples(hasher, params.ContextualTuples...); err != nil {
 			return "", err
 		}
 	}
 
 	if params.Context != nil {
-		err := keys.NewContextHasher(params.Context).Append(hasher)
-		if err != nil {
+		if err = keys.WriteStruct(hasher, params.Context); err != nil {
 			return "", err
 		}
 	}
-
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+	return strconv.FormatUint(hasher.Sum64(), 10), nil
 }
