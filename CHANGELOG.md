@@ -11,6 +11,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed missing binding between flags and environment variables for the cache controller feature [#2184](https://github.com/openfga/openfga/pull/2184)
 - Fixed Read API to validate user field and assert presence of both type and value. [#2195](https://github.com/openfga/openfga/pull/2195)
 
+### Changed
+- Refactor `CheckCommandParams.ContextualTuples` type to underlying `[]*TupleKey` [#2202](https://github.com/openfga/openfga/pull/2202)
+
 ## [1.8.3] - 2024-12-31
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
 
