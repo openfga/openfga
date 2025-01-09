@@ -2,11 +2,8 @@ package graph
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,16 +13,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 const (
-	defaultMaxCacheSize     = 10000
-	defaultCacheTTL         = 10 * time.Second
-	defaultResolveNodeLimit = 25
+	defaultMaxCacheSize = 10000
+	defaultCacheTTL     = 10 * time.Second
 )
 
 var (
@@ -45,11 +40,10 @@ var (
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
-	delegate     CheckResolver
-	cache        storage.InMemoryCache[any]
-	maxCacheSize int64
-	cacheTTL     time.Duration
-	logger       logger.Logger
+	delegate CheckResolver
+	cache    storage.InMemoryCache[any]
+	cacheTTL time.Duration
+	logger   logger.Logger
 	// allocatedCache is used to denote whether the cache is allocated by this struct.
 	// If so, CachedCheckResolver is responsible for cleaning up.
 	allocatedCache bool
@@ -60,14 +54,6 @@ var _ CheckResolver = (*CachedCheckResolver)(nil)
 // CachedCheckResolverOpt defines an option that can be used to change the behavior of cachedCheckResolver
 // instance.
 type CachedCheckResolverOpt func(*CachedCheckResolver)
-
-// WithMaxCacheSize sets the maximum size of the Check resolution cache. After this
-// maximum size is met, then cache keys will start being evicted with an LRU policy.
-func WithMaxCacheSize(size int64) CachedCheckResolverOpt {
-	return func(ccr *CachedCheckResolver) {
-		ccr.maxCacheSize = size
-	}
-}
 
 // WithCacheTTL sets the TTL (as a duration) for any single Check cache key value.
 func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
@@ -97,11 +83,10 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
 // NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup.
-func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver {
+func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) (*CachedCheckResolver, error) {
 	checker := &CachedCheckResolver{
-		maxCacheSize: defaultMaxCacheSize,
-		cacheTTL:     defaultCacheTTL,
-		logger:       logger.NewNoopLogger(),
+		cacheTTL: defaultCacheTTL,
+		logger:   logger.NewNoopLogger(),
 	}
 	checker.delegate = checker
 
@@ -112,12 +97,17 @@ func NewCachedCheckResolver(opts ...CachedCheckResolverOpt) *CachedCheckResolver
 	if checker.cache == nil {
 		checker.allocatedCache = true
 		cacheOptions := []storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](checker.maxCacheSize),
+			storage.WithMaxCacheSize[any](defaultMaxCacheSize),
 		}
-		checker.cache = storage.NewInMemoryLRUCache[any](cacheOptions...)
+
+		var err error
+		checker.cache, err = storage.NewInMemoryLRUCache[any](cacheOptions...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return checker
+	return checker, nil
 }
 
 // SetDelegate sets this CachedCheckResolver's dispatch delegate.
@@ -185,43 +175,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-// CheckRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
-// used for Check resolution cache key lookups in a stable way.
-//
-// For one store and model ID, the same tuple provided with the same contextual tuples and context
-// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
-// only the contents are compared.
 func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	hasher := keys.NewCacheKeyHasher(xxhash.New())
-
-	tupleKey := req.GetTupleKey()
-	key := fmt.Sprintf("%s%s/%s/%s#%s@%s",
-		storage.SubproblemCachePrefix,
-		req.GetStoreID(),
-		req.GetAuthorizationModelID(),
-		tupleKey.GetObject(),
-		tupleKey.GetRelation(),
-		tupleKey.GetUser(),
-	)
-
-	if err := hasher.WriteString(key); err != nil {
-		return "", err
+	params := &storage.CheckCacheKeyParams{
+		StoreID:              req.GetStoreID(),
+		AuthorizationModelID: req.GetAuthorizationModelID(),
+		TupleKey:             req.GetTupleKey(),
+		ContextualTuples:     req.GetContextualTuples(),
+		Context:              req.GetContext(),
 	}
 
-	// here, and for context below, avoid hashing if we don't need to
-	contextualTuples := req.GetContextualTuples()
-	if len(contextualTuples) > 0 {
-		if err := keys.NewTupleKeysHasher(contextualTuples...).Append(hasher); err != nil {
-			return "", err
-		}
-	}
-
-	if req.GetContext() != nil {
-		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
+	return storage.GetCheckCacheKey(params)
 }

@@ -12,6 +12,8 @@ import (
 
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -21,19 +23,18 @@ import (
 )
 
 const (
-	defaultResolveNodeLimit           = 25
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
 type CheckQuery struct {
-	logger          logger.Logger
-	checkResolver   graph.CheckResolver
-	typesys         *typesystem.TypeSystem
-	datastore       *storagewrappers.InstrumentedOpenFGAStorage
-	cacheController cachecontroller.CacheController
-
-	resolveNodeLimit   uint32
-	maxConcurrentReads uint32
+	logger               logger.Logger
+	checkResolver        graph.CheckResolver
+	typesys              *typesystem.TypeSystem
+	datastore            storage.RelationshipTupleReader
+	sharedCheckResources *shared.SharedCheckResources
+	cacheSettings        config.CacheSettings
+	maxConcurrentReads   uint32
+	shouldCacheIterators bool
 }
 
 type CheckCommandParams struct {
@@ -45,12 +46,6 @@ type CheckCommandParams struct {
 }
 
 type CheckQueryOption func(*CheckQuery)
-
-func WithCheckCommandResolveNodeLimit(nl uint32) CheckQueryOption {
-	return func(c *CheckQuery) {
-		c.resolveNodeLimit = nl
-	}
-}
 
 func WithCheckCommandMaxConcurrentReads(m uint32) CheckQueryOption {
 	return func(c *CheckQuery) {
@@ -64,21 +59,26 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
-func WithCacheController(ctrl cachecontroller.CacheController) CheckQueryOption {
+func WithCheckCommandCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.cacheController = ctrl
+		c.sharedCheckResources = sharedCheckResources
+		c.cacheSettings = cacheSettings
 	}
 }
 
+// TODO accept CheckCommandParams so we can build the datastore object right away.
 func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
-		logger:             logger.NewNoopLogger(),
-		datastore:          storagewrappers.NewInstrumentedOpenFGAStorage(datastore),
-		checkResolver:      checkResolver,
-		typesys:            typesys,
-		cacheController:    cachecontroller.NewNoopCacheController(),
-		resolveNodeLimit:   defaultResolveNodeLimit,
-		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
+		logger:               logger.NewNoopLogger(),
+		datastore:            datastore,
+		checkResolver:        checkResolver,
+		typesys:              typesys,
+		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
+		shouldCacheIterators: false,
+		cacheSettings:        config.NewDefaultCacheSettings(),
+		sharedCheckResources: &shared.SharedCheckResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -96,7 +96,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest := graph.ResolveCheckRequest{
@@ -106,14 +106,18 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(c.resolveNodeLimit),
+		RequestMetadata:      graph.NewCheckRequestMetadata(),
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: cacheInvalidationTime,
 	}
 
-	ctx = buildCheckContext(ctx, c.typesys, c.datastore, c.maxConcurrentReads, resolveCheckRequest.GetContextualTuples())
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings)
 
+	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
+
+	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
@@ -122,9 +126,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 		return nil, nil, err
 	}
-	if resp != nil {
-		resp.ResolutionMetadata.DatastoreQueryCount = c.datastore.GetMetrics().DatastoreQueryCount
-	}
+
+	resp.ResolutionMetadata.Duration = time.Since(startTime)
+	resp.ResolutionMetadata.DatastoreQueryCount = requestDatastore.GetMetrics().DatastoreQueryCount
+
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
 
@@ -141,20 +146,4 @@ func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.Ch
 		}
 	}
 	return nil
-}
-
-func buildCheckContext(ctx context.Context, typesys *typesystem.TypeSystem, datastore storage.RelationshipTupleReader, maxconcurrentreads uint32, contextualTuples []*openfgav1.TupleKey) context.Context {
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	// TODO the order is wrong, see https://github.com/openfga/openfga/issues/1394
-	ctx = storage.ContextWithRelationshipTupleReader(ctx,
-		storagewrappers.NewBoundedConcurrencyTupleReader(
-			storagewrappers.NewCombinedTupleReader(
-				datastore,
-				contextualTuples,
-			),
-			maxconcurrentreads,
-		),
-	)
-	return ctx
 }

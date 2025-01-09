@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
+
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -11,19 +14,21 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type BatchCheckQuery struct {
-	cacheController     cachecontroller.CacheController
-	checkResolver       graph.CheckResolver
-	datastore           storage.RelationshipTupleReader
-	logger              logger.Logger
-	maxChecksAllowed    uint32
-	maxConcurrentChecks uint32
-	typesys             *typesystem.TypeSystem
+	sharedCheckResources *shared.SharedCheckResources
+	cacheSettings        config.CacheSettings
+	checkResolver        graph.CheckResolver
+	datastore            storage.RelationshipTupleReader
+	logger               logger.Logger
+	maxChecksAllowed     uint32
+	maxConcurrentChecks  uint32
+	typesys              *typesystem.TypeSystem
 }
 
 type BatchCheckCommandParams struct {
@@ -40,6 +45,7 @@ type BatchCheckOutcome struct {
 
 type BatchCheckMetadata struct {
 	DatastoreQueryCount uint32
+	DuplicateCheckCount int
 }
 
 type BatchCheckValidationError struct {
@@ -51,12 +57,19 @@ func (e BatchCheckValidationError) Error() string {
 }
 
 type CorrelationID string
+type CacheKey string
+
+type checkAndCorrelationIDs struct {
+	Check          *openfgav1.BatchCheckItem
+	CorrelationIDs []CorrelationID
+}
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCommandCacheController(cc cachecontroller.CacheController) BatchCheckQueryOption {
-	return func(bq *BatchCheckQuery) {
-		bq.cacheController = cc
+func WithBatchCheckCacheOptions(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
+	return func(c *BatchCheckQuery) {
+		c.sharedCheckResources = sharedCheckResources
+		c.cacheSettings = cacheSettings
 	}
 }
 
@@ -82,11 +95,14 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
 		datastore:           datastore,
-		cacheController:     cachecontroller.NewNoopCacheController(),
 		checkResolver:       checkResolver,
 		typesys:             typesys,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
+		cacheSettings:       config.NewDefaultCacheSettings(),
+		sharedCheckResources: &shared.SharedCheckResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -112,14 +128,36 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 		return nil, nil, err
 	}
 
+	// Before processing the batch, deduplicate the checks based on their unique cache key
+	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
+	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
+	for _, check := range params.Checks {
+		key, err := generateCacheKeyFromCheck(check, params.StoreID, bq.typesys.GetAuthorizationModelID())
+		if err != nil {
+			bq.logger.Error("batch check cache key computation failed with error", zap.Error(err))
+			return nil, nil, err
+		}
+
+		if item, ok := cacheKeyMap[key]; ok {
+			item.CorrelationIDs = append(item.CorrelationIDs, CorrelationID(check.GetCorrelationId()))
+		} else {
+			cacheKeyMap[key] = &checkAndCorrelationIDs{
+				Check:          check,
+				CorrelationIDs: []CorrelationID{CorrelationID(check.GetCorrelationId())},
+			}
+		}
+	}
+
 	var resultMap = new(sync.Map)
+	var totalQueryCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
-	for _, check := range params.Checks {
+	for key, item := range cacheKeyMap {
+		check := item.Check
 		pool.Go(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
-				resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
+				resultMap.Store(key, &BatchCheckOutcome{
 					Err: ctx.Err(),
 				})
 				return nil
@@ -131,7 +169,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.checkResolver,
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
-				WithCacheController(bq.cacheController),
+				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
 			)
 
 			checkParams := &CheckCommandParams{
@@ -144,10 +182,12 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 			response, _, err := checkQuery.Execute(ctx, checkParams)
 
-			resultMap.Store(check.GetCorrelationId(), &BatchCheckOutcome{
+			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,
 				Err:           err,
 			})
+
+			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
 
 			return nil
 		})
@@ -156,18 +196,22 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	_ = pool.Wait()
 
 	results := map[CorrelationID]*BatchCheckOutcome{}
-	var totalQueryCount uint32
 
-	resultMap.Range(func(k, v interface{}) bool {
-		// Convert types since sync.Map is `any`
-		outcome := v.(*BatchCheckOutcome)
-		results[CorrelationID(k.(string))] = outcome
+	// Each cacheKey can have > 1 associated CorrelationID
+	for cacheKey, checkItem := range cacheKeyMap {
+		res, _ := resultMap.Load(cacheKey)
+		outcome := res.(*BatchCheckOutcome)
 
-		totalQueryCount += outcome.CheckResponse.GetResolutionMetadata().DatastoreQueryCount
-		return true
-	})
+		for _, id := range checkItem.CorrelationIDs {
+			// map all associated CorrelationIDs to this outcome
+			results[id] = outcome
+		}
+	}
 
-	return results, &BatchCheckMetadata{DatastoreQueryCount: totalQueryCount}, nil
+	return results, &BatchCheckMetadata{
+		DatastoreQueryCount: totalQueryCount.Load(),
+		DuplicateCheckCount: len(params.Checks) - len(cacheKeyMap),
+	}, nil
 }
 
 func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
@@ -191,4 +235,26 @@ func validateCorrelationIDs(checks []*openfgav1.BatchCheckItem) error {
 	}
 
 	return nil
+}
+
+func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, authModelID string) (CacheKey, error) {
+	tupleKey := check.GetTupleKey()
+	cacheKeyParams := &storage.CheckCacheKeyParams{
+		StoreID:              storeID,
+		AuthorizationModelID: authModelID,
+		TupleKey: &openfgav1.TupleKey{
+			User:     tupleKey.GetUser(),
+			Relation: tupleKey.GetRelation(),
+			Object:   tupleKey.GetObject(),
+		},
+		ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
+		Context:          check.GetContext(),
+	}
+
+	cacheKey, err := storage.GetCheckCacheKey(cacheKeyParams)
+	if err != nil {
+		return "", err
+	}
+
+	return CacheKey(cacheKey), nil
 }

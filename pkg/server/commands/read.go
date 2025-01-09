@@ -78,20 +78,22 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
+		return nil, serverErrors.ErrInvalidContinuationToken
 	}
 
 	if len(decodedContToken) > 0 {
 		from, _, err := q.tokenSerializer.Deserialize(string(decodedContToken))
 		if err != nil {
-			return nil, serverErrors.InvalidContinuationToken
+			return nil, serverErrors.ErrInvalidContinuationToken
 		}
 		decodedContToken = []byte(from)
 	}
 
 	opts := storage.ReadPageOptions{
-		Pagination: storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Pagination:  storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken)),
+		Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()},
 	}
+
 	tuples, contUlid, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)

@@ -25,7 +25,6 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -38,7 +37,7 @@ type ReverseExpandRequest struct {
 	ObjectType       string
 	Relation         string
 	User             IsUserRef
-	ContextualTuples []*openfgav1.TupleKey
+	ContextualTuples []*openfgav1.TupleKey // TODO remove
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
 
@@ -145,6 +144,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+// TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
 		logger:                  logger.NewNoopLogger(),
@@ -339,6 +339,7 @@ LoopOnEdges:
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
 			edge:             innerLoopEdge,
+			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
@@ -482,10 +483,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		panic("unsupported edge type")
 	}
 
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
-
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
+	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
 		UserFilter: userFilter,
@@ -566,6 +565,7 @@ LoopOnIterator:
 				ContextualTuples: req.ContextualTuples,
 				Context:          req.Context,
 				edge:             req.edge,
+				Consistency:      req.Consistency,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}

@@ -511,14 +511,14 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				graph.WithMaxConcurrentReads(30),
 			}
 			cacheOpts := []graph.CachedCheckResolverOpt{
-				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
 			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
 				graph.WithCachedCheckResolverOpts(test.useCheckCache, cacheOpts...),
 				graph.WithLocalCheckerOpts(localCheckOpts...),
 			}
-			checkResolver, closer := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+			checkResolver, closer, err := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+			require.NoError(t, err)
 			t.Cleanup(closer)
 
 			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
@@ -657,7 +657,8 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 
 	var oneResultIterations, allResultsIterations int
 
-	checkResolver, checkResolverCloser := graph.NewOrderedCheckResolvers().Build()
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
 	b.Run("oneResult", func(b *testing.B) {

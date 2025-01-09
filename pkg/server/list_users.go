@@ -74,6 +74,7 @@ func (s *Server) ListUsers(
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	listUsersQuery := listusers.NewListUsersQuery(s.datastore,
+		req.GetContextualTuples(),
 		listusers.WithResolveNodeLimit(s.resolveNodeLimit),
 		listusers.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		listusers.WithListUsersQueryLogger(s.logger),
@@ -94,7 +95,7 @@ func (s *Server) ListUsers(
 
 		switch {
 		case errors.Is(err, graph.ErrResolutionDepthExceeded):
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+			return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 		case errors.Is(err, condition.ErrEvaluationFailed):
 			return nil, serverErrors.ValidationError(err)
 		default:

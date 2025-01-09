@@ -100,9 +100,9 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption
 	}
 }
 
-func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
+func WithListObjectsMaxResults(maxResults uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.listObjectsMaxResults = max
+		d.listObjectsMaxResults = maxResults
 	}
 }
 
@@ -267,12 +267,7 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(q.datastore)
-		ds := storagewrappers.NewCombinedTupleReader(
-			storagewrappers.NewBoundedConcurrencyTupleReader(
-				metricsDs, q.maxConcurrentReads),
-			req.GetContextualTuples().GetTupleKeys(),
-		)
+		ds := storagewrappers.NewRequestStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -342,10 +337,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-					ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
-						WithCheckCommandResolveNodeLimit(q.resolveNodeLimit),
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 					).
@@ -380,7 +372,7 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
-		resolutionMetadata.DatastoreQueryCount.Add(metricsDs.GetMetrics().DatastoreQueryCount)
+		resolutionMetadata.DatastoreQueryCount.Add(ds.GetMetrics().DatastoreQueryCount)
 	}
 
 	go handler()
@@ -430,7 +422,7 @@ func (q *ListObjectsQuery) Execute(
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {
@@ -479,7 +471,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	for result := range resultsChan {
 		if result.Err != nil {
 			if errors.Is(result.Err, graph.ErrResolutionDepthExceeded) {
-				return nil, serverErrors.AuthorizationModelResolutionTooComplex
+				return nil, serverErrors.ErrAuthorizationModelResolutionTooComplex
 			}
 
 			if errors.Is(result.Err, condition.ErrEvaluationFailed) {

@@ -323,6 +323,115 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("cache_query_cache", func(t *testing.T) {
+		t.Run("enable_but_ttl_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckQueryCache.Enabled = true
+			cfg.CheckQueryCache.TTL = 0
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+		t.Run("enable_but_ttl_negative", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckQueryCache.Enabled = true
+			cfg.CheckQueryCache.TTL = -2 * time.Second
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+		t.Run("enable_and_ttl_positive", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckQueryCache.Enabled = true
+			cfg.CheckQueryCache.TTL = 2 * time.Second
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+		t.Run("disable_and_ttl_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckQueryCache.Enabled = false
+			cfg.CheckQueryCache.TTL = 0
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+	})
+
+	t.Run("check_iterator_cache", func(t *testing.T) {
+		t.Run("enable_but_ttl_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckIteratorCache.Enabled = true
+			cfg.CheckIteratorCache.TTL = 0
+			cfg.CheckIteratorCache.MaxResults = 1000
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+
+		t.Run("enable_but_ttl_negative", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckIteratorCache.Enabled = true
+			cfg.CheckIteratorCache.TTL = -2 * time.Second
+			cfg.CheckIteratorCache.MaxResults = 1000
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+
+		t.Run("enable_but_max_results_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckIteratorCache.Enabled = true
+			cfg.CheckIteratorCache.TTL = 2 * time.Second
+			cfg.CheckIteratorCache.MaxResults = 0
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+
+		t.Run("disable_but_ttl_and_max_results_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckIteratorCache.Enabled = false
+			cfg.CheckIteratorCache.TTL = 0
+			cfg.CheckIteratorCache.MaxResults = 0
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+
+		t.Run("enable_and_ttl_and_max_results_positive", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CheckIteratorCache.Enabled = true
+			cfg.CheckIteratorCache.TTL = 10 * time.Second
+			cfg.CheckIteratorCache.MaxResults = 10000
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+	})
+
+	t.Run("cache_controller", func(t *testing.T) {
+		t.Run("enable_but_ttl_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheController.Enabled = true
+			cfg.CacheController.TTL = 0
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+		t.Run("enable_but_ttl_negative", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheController.Enabled = true
+			cfg.CacheController.TTL = -2 * time.Second
+			err := cfg.Verify()
+			require.Error(t, err)
+		})
+		t.Run("enable_and_ttl_positive", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheController.Enabled = true
+			cfg.CacheController.TTL = 2 * time.Second
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+		t.Run("disable_and_ttl_zero", func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.CacheController.Enabled = false
+			cfg.CacheController.TTL = 0
+			err := cfg.Verify()
+			require.NoError(t, err)
+		})
+	})
+
 	t.Run("prints_warning_when_log_level_is_none", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "none"
@@ -850,60 +959,6 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 		configGeneratingFunction    func() *Config
 		expectedCheckDispatchConfig DispatchThrottlingConfig
 	}{
-		"get_value_from_dispatch_config_if_check_dispatch_config_is_not_set": {
-			configGeneratingFunction: func() *Config {
-				config := DefaultConfig()
-				viper.Set("dispatchThrottling.enabled", true)
-				viper.Set("dispatchThrottling.frequency", 10)
-				viper.Set("dispatchThrottling.threshold", 10)
-				viper.Set("dispatchThrottling.maxThreshold", 10)
-				config.DispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      true,
-					Frequency:    10,
-					Threshold:    10,
-					MaxThreshold: 10,
-				}
-				return config
-			},
-			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      true,
-				Frequency:    10,
-				Threshold:    10,
-				MaxThreshold: 10,
-			},
-		},
-		"override_from_check_dispatch_config_if_set": {
-			configGeneratingFunction: func() *Config {
-				viper.Set("dispatchThrottling.enabled", true)
-				viper.Set("dispatchThrottling.frequency", 100)
-				viper.Set("dispatchThrottling.threshold", 100)
-				viper.Set("dispatchThrottling.maxThreshold", 100)
-				viper.Set("checkDispatchThrottling.enabled", true)
-				viper.Set("checkDispatchThrottling.frequency", 10)
-				viper.Set("checkDispatchThrottling.threshold", 10)
-				viper.Set("checkDispatchThrottling.maxThreshold", 10)
-				config := DefaultConfig()
-				config.DispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      true,
-					Frequency:    100,
-					Threshold:    100,
-					MaxThreshold: 100,
-				}
-				config.CheckDispatchThrottling = DispatchThrottlingConfig{
-					Enabled:      false,
-					Frequency:    10,
-					Threshold:    10,
-					MaxThreshold: 10,
-				}
-				return config
-			},
-			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      false,
-				Frequency:    10,
-				Threshold:    10,
-				MaxThreshold: 10,
-			},
-		},
 		"get_default_values_if_none_are_set": {
 			configGeneratingFunction: DefaultConfig,
 			expectedCheckDispatchConfig: DispatchThrottlingConfig{

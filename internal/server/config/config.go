@@ -34,7 +34,7 @@ const (
 
 	DefaultWriteContextByteLimit = 32 * 1_024 // 32KB
 
-	DefaultCacheLimit = 10000
+	DefaultCheckCacheLimit = 10000
 
 	DefaultCacheControllerEnabled = false
 	DefaultCacheControllerTTL     = 10 * time.Second
@@ -44,6 +44,10 @@ const (
 
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
+	DefaultCheckIteratorCacheTTL        = 10 * time.Second
+
+	DefaultCacheControllerConfigEnabled = false
+	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -211,13 +215,23 @@ type CheckQueryCache struct {
 	TTL     time.Duration
 }
 
-type CacheConfig struct {
+// CheckCacheConfig defines configuration for a cache that is shared across Check requests.
+type CheckCacheConfig struct {
 	Limit uint32
 }
 
+// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
 type CheckIteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
+	TTL        time.Duration
+}
+
+// CacheControllerConfig defines configuration to manage cache invalidation dynamically by observing whether
+// there are recent tuple changes to specified store.
+type CacheControllerConfig struct {
+	Enabled bool
+	TTL     time.Duration
 }
 
 // DispatchThrottlingConfig defines configurations for dispatch throttling.
@@ -328,10 +342,10 @@ type Config struct {
 	Playground                    PlaygroundConfig
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
-	Cache                         CacheConfig
+	CheckCache                    CheckCacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
-	DispatchThrottling            DispatchThrottlingConfig
+	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -348,37 +362,20 @@ func (cfg *Config) Verify() error {
 }
 
 func (cfg *Config) VerifyServerSettings() error {
-	configuredTimeout := DefaultContextTimeout(cfg)
-
-	if cfg.ListObjectsDeadline > configuredTimeout {
-		return fmt.Errorf(
-			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
-			configuredTimeout,
-			cfg.ListObjectsDeadline,
-		)
-	}
-	if cfg.ListUsersDeadline > configuredTimeout {
-		return fmt.Errorf(
-			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
-			configuredTimeout,
-			cfg.ListUsersDeadline,
-		)
+	if err := cfg.verifyDeadline(); err != nil {
+		return err
 	}
 
 	if cfg.MaxConcurrentReadsForListUsers == 0 {
 		return fmt.Errorf("config 'maxConcurrentReadsForListUsers' cannot be 0")
 	}
 
-	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
-		return errors.New("request duration datastore query count buckets must not be empty")
+	if err := cfg.verifyRequestDurationDatastoreQueryCountBuckets(); err != nil {
+		return err
 	}
-	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New(
-				"request duration datastore query count bucket items must be non-negative integer",
-			)
-		}
+
+	if err := cfg.verifyCacheConfig(); err != nil {
+		return err
 	}
 
 	if len(cfg.RequestDurationDispatchCountBuckets) == 0 {
@@ -492,6 +489,10 @@ func (cfg *Config) VerifyBinarySettings() error {
 		return errors.New("http.upstreamTimeout must be a non-negative time duration")
 	}
 
+	if viper.IsSet("cache.limit") && !viper.IsSet("checkCache.limit") {
+		fmt.Println("WARNING: flag `check-query-cache-limit` is deprecated. Please set --check-cache-limit instead.")
+	}
+
 	return nil
 }
 
@@ -509,39 +510,12 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
-// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check. To avoid breaking change
-// we will try to get the value from config.DispatchThrottling but override it with config.CheckDispatchThrottling if
-// a non-zero value exists there.
+// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check.
 func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
 	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
 	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
 	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
 	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
-
-	if viper.IsSet("dispatchThrottling.enabled") && !viper.IsSet("checkDispatchThrottling.enabled") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.enabled' is deprecated. Please use 'checkDispatchThrottling.enabled'")
-		}
-		checkDispatchThrottlingEnabled = config.DispatchThrottling.Enabled
-	}
-	if viper.IsSet("dispatchThrottling.frequency") && !viper.IsSet("checkDispatchThrottling.frequency") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.frequency' is deprecated. Please use 'checkDispatchThrottling.frequency'")
-		}
-		checkDispatchThrottlingFrequency = config.DispatchThrottling.Frequency
-	}
-	if viper.IsSet("dispatchThrottling.threshold") && !viper.IsSet("checkDispatchThrottling.threshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.threshold' is deprecated. Please use 'checkDispatchThrottling.threshold'")
-		}
-		checkDispatchThrottlingDefaultThreshold = config.DispatchThrottling.Threshold
-	}
-	if viper.IsSet("dispatchThrottling.maxThreshold") && !viper.IsSet("checkDispatchThrottling.maxThreshold") {
-		if logger != nil {
-			logger.Warn("'dispatchThrottling.maxThreshold' is deprecated. Please use 'checkDispatchThrottling.maxThreshold'")
-		}
-		checkDispatchThrottlingMaxThreshold = config.DispatchThrottling.MaxThreshold
-	}
 
 	return DispatchThrottlingConfig{
 		Enabled:      checkDispatchThrottlingEnabled,
@@ -556,14 +530,67 @@ func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
 	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
 	if checkDispatchThrottlingConfig.Enabled {
 		if checkDispatchThrottlingConfig.Frequency <= 0 {
-			return errors.New("'dispatchThrottling.frequency (deprecated)' or 'checkDispatchThrottling.frequency' must be non-negative time duration")
+			return errors.New("'checkDispatchThrottling.frequency' must be non-negative time duration")
 		}
 		if checkDispatchThrottlingConfig.Threshold <= 0 {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be non-negative integer")
+			return errors.New("'checkDispatchThrottling.threshold' must be non-negative integer")
 		}
 		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
-			return errors.New("'dispatchThrottling.threshold (deprecated)' or 'checkDispatchThrottling.threshold' must be less than or equal to 'dispatchThrottling.maxThreshold (deprecated)' or 'checkDispatchThrottling.maxThreshold' respectively")
+			return errors.New("'checkDispatchThrottling.threshold' must be less than or equal to 'checkDispatchThrottling.maxThreshold' respectively")
 		}
+	}
+	return nil
+}
+
+func (cfg *Config) verifyDeadline() error {
+	configuredTimeout := DefaultContextTimeout(cfg)
+
+	if cfg.ListObjectsDeadline > configuredTimeout {
+		return fmt.Errorf(
+			"configured request timeout (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			configuredTimeout,
+			cfg.ListObjectsDeadline,
+		)
+	}
+	if cfg.ListUsersDeadline > configuredTimeout {
+		return fmt.Errorf(
+			"configured request timeout (%s) cannot be lower than 'listUsersDeadline' config (%s)",
+			configuredTimeout,
+			cfg.ListUsersDeadline,
+		)
+	}
+	return nil
+}
+
+func (cfg *Config) verifyRequestDurationDatastoreQueryCountBuckets() error {
+	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
+		return errors.New("request duration datastore query count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New(
+				"request duration datastore query count bucket items must be non-negative integer",
+			)
+		}
+	}
+	return nil
+}
+
+func (cfg *Config) verifyCacheConfig() error {
+	if cfg.CheckQueryCache.Enabled && cfg.CheckQueryCache.TTL <= 0 {
+		return errors.New("'checkQueryCache.ttl' must be greater than zero")
+	}
+	if cfg.CheckIteratorCache.Enabled {
+		if cfg.CheckIteratorCache.TTL <= 0 {
+			return errors.New("'checkIteratorCache.ttl' must be greater than zero")
+		}
+		if cfg.CheckIteratorCache.MaxResults <= 0 {
+			return errors.New("'checkIteratorCache.maxResults' must be greater than zero")
+		}
+	}
+	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
+		return errors.New("'cacheController.ttl' must be greater than zero")
 	}
 	return nil
 }
@@ -651,19 +678,18 @@ func DefaultConfig() *Config {
 		CheckIteratorCache: CheckIteratorCacheConfig{
 			Enabled:    DefaultCheckIteratorCacheEnabled,
 			MaxResults: DefaultCheckIteratorCacheMaxResults,
+			TTL:        DefaultCheckIteratorCacheTTL,
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,
 			TTL:     DefaultCheckQueryCacheTTL,
 		},
-		Cache: CacheConfig{
-			Limit: DefaultCacheLimit,
+		CheckCache: CheckCacheConfig{
+			Limit: DefaultCheckCacheLimit,
 		},
-		DispatchThrottling: DispatchThrottlingConfig{
-			Enabled:      DefaultCheckDispatchThrottlingEnabled,
-			Frequency:    DefaultCheckDispatchThrottlingFrequency,
-			Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
-			MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
+		CacheController: CacheControllerConfig{
+			Enabled: DefaultCacheControllerConfigEnabled,
+			TTL:     DefaultCacheControllerConfigTTL,
 		},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,

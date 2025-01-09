@@ -35,7 +35,7 @@ var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 
 type listUsersQuery struct {
 	logger                  logger.Logger
-	ds                      storage.RelationshipTupleReader
+	datastore               *storagewrappers.RequestStorageWrapper
 	resolveNodeBreadthLimit uint32
 	resolveNodeLimit        uint32
 	maxResults              uint32
@@ -86,9 +86,9 @@ func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
-func WithListUsersMaxResults(max uint32) ListUsersQueryOption {
+func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
-		d.maxResults = max
+		d.maxResults = maxResults
 	}
 }
 
@@ -146,11 +146,10 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 	}
 }
 
-// NewListUsersQuery is not meant to be shared.
-func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQueryOption) *listUsersQuery {
+// TODO accept ListUsersRequest instead of contextualTuples.
+func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
 		logger:                  logger.NewNoopLogger(),
-		ds:                      ds,
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
 		deadline:                serverconfig.DefaultListUsersDeadline,
@@ -162,6 +161,8 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, opts ...ListUsersQuer
 	for _, opt := range opts {
 		opt(l)
 	}
+
+	l.datastore = storagewrappers.NewRequestStorageWrapperForListAPIs(ds, contextualTuples, l.maxConcurrentReads)
 
 	return l
 }
@@ -183,12 +184,6 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
-	metricsDs := storagewrappers.NewInstrumentedOpenFGAStorage(l.ds)
-	l.ds = storagewrappers.NewCombinedTupleReader(
-		storagewrappers.NewBoundedConcurrencyTupleReader(
-			metricsDs, l.maxConcurrentReads),
-		req.GetContextualTuples(),
-	)
 	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -286,7 +281,7 @@ func (l *listUsersQuery) ListUsers(
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: metricsDs.GetMetrics().DatastoreQueryCount,
+			DatastoreQueryCount: l.datastore.GetMetrics().DatastoreQueryCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},
@@ -437,7 +432,7 @@ func (l *listUsersQuery) expandDirect(
 			Preference: req.GetConsistency(),
 		},
 	}
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
 	}, opts)
@@ -857,7 +852,7 @@ func (l *listUsersQuery) expandTTU(
 			Preference: req.GetConsistency(),
 		},
 	}
-	iter, err := l.ds.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
 	}, opts)

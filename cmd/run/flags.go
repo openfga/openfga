@@ -209,15 +209,27 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listUsersMaxResults", flags.Lookup("listUsers-max-results"))
 		util.MustBindEnv("listUsersMaxResults", "OPENFGA_LIST_USERS_MAX_RESULTS", "OPENFGA_LISTUSERSMAXRESULTS")
 
-		// TODO: make breaking change for cache limit
+		util.MustBindPFlag("checkCache.limit", flags.Lookup("check-cache-limit"))
+		util.MustBindEnv("checkCache.limit", "OPENFGA_CHECK_CACHE_LIMIT")
+
+		// The below configuration is deprecated in favour of OPENFGA_CHECK_CACHE_LIMIT
 		util.MustBindPFlag("cache.limit", flags.Lookup("check-query-cache-limit"))
 		util.MustBindEnv("cache.limit", "OPENFGA_CHECK_QUERY_CACHE_LIMIT")
+
+		util.MustBindPFlag("cacheController.enabled", flags.Lookup("cache-controller-enabled"))
+		util.MustBindEnv("cacheController.enabled", "OPENFGA_CACHE_CONTROLLER_ENABLED")
+
+		util.MustBindPFlag("cacheController.ttl", flags.Lookup("cache-controller-ttl"))
+		util.MustBindEnv("cacheController.ttl", "OPENFGA_CACHE_CONTROLLER_TTL")
 
 		util.MustBindPFlag("checkIteratorCache.enabled", flags.Lookup("check-iterator-cache-enabled"))
 		util.MustBindEnv("checkIteratorCache.enabled", "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED")
 
 		util.MustBindPFlag("checkIteratorCache.maxResults", flags.Lookup("check-iterator-cache-max-results"))
 		util.MustBindEnv("checkIteratorCache.maxResults", "OPENFGA_CHECK_ITERATOR_CACHE_MAX_RESULTS")
+
+		util.MustBindPFlag("checkIteratorCache.ttl", flags.Lookup("check-iterator-cache-ttl"))
+		util.MustBindEnv("checkIteratorCache.ttl", "OPENFGA_CHECK_ITERATOR_CACHE_TTL")
 
 		util.MustBindPFlag("checkQueryCache.enabled", flags.Lookup("check-query-cache-enabled"))
 		util.MustBindEnv("checkQueryCache.enabled", "OPENFGA_CHECK_QUERY_CACHE_ENABLED")
@@ -269,22 +281,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("listUsersDispatchThrottling.maxThreshold", flags.Lookup("listUsers-dispatch-throttling-max-threshold"))
 		util.MustBindEnv("listUsersDispatchThrottling.maxThreshold", "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED
-		util.MustBindPFlag("dispatchThrottling.enabled", flags.Lookup("dispatch-throttling-enabled"))
-		util.MustBindEnv("dispatchThrottling.enabled", "OPENFGA_DISPATCH_THROTTLING_ENABLED")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY
-		util.MustBindPFlag("dispatchThrottling.frequency", flags.Lookup("dispatch-throttling-frequency"))
-		util.MustBindEnv("dispatchThrottling.frequency", "OPENFGA_DISPATCH_THROTTLING_FREQUENCY")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD
-		util.MustBindPFlag("dispatchThrottling.threshold", flags.Lookup("dispatch-throttling-threshold"))
-		util.MustBindEnv("dispatchThrottling.threshold", "OPENFGA_DISPATCH_THROTTLING_THRESHOLD")
-
-		// The below configuration will be deprecated in favour of OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD
-		util.MustBindPFlag("dispatchThrottling.maxThreshold", flags.Lookup("dispatch-throttling-max-threshold"))
-		util.MustBindEnv("dispatchThrottling.maxThreshold", "OPENFGA_DISPATCH_THROTTLING_MAX_THRESHOLD")
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")

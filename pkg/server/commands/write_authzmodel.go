@@ -74,6 +74,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
 	if modelSize > w.maxAuthorizationModelSizeInBytes {
+		// Consider using serverErrors.ExceededEntityLimit.
 		return nil, status.Error(
 			codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
 			fmt.Sprintf("model exceeds size limit: %d bytes vs %d bytes", modelSize, w.maxAuthorizationModelSizeInBytes),
