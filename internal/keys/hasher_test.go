@@ -1,9 +1,6 @@
 package keys
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"strings"
 	"testing"
 
@@ -28,55 +25,11 @@ func MustNewStruct(m map[string]any) *structpb.Struct {
 	panic(err)
 }
 
-// ResetableStringWriter is an interface that groups the
-// io.StringWriter and fmt.Stringer interfaces with a
-// Reset method.
-type ResetableStringWriter interface {
-	io.StringWriter
-	fmt.Stringer
-	Reset()
-}
-
-// ErrWriteString is an error used exclusively for testing
-// Write functions.
-var ErrWriteString = errors.New("test error")
-
-// An ErrorStringWriter counts the calls made to its WriteString
-// method and returns an error when the number of calls is
-// greater than or equal to TriggerAt.
-type ErrorStringWriter struct {
-	TriggerAt int // number of calls to WriteString before returning an error
-	current   int // the number of calls to WriteString up to this point
-}
-
-// WriteString ignores string s and returns the length of string s
-// in bytes with a nil error. When the number of calls to WriteString
-// is greater than or equal to TriggerAt WriteString will return
-// 0 bytes and an error.
-func (e *ErrorStringWriter) WriteString(s string) (int, error) {
-	e.current++
-	if e.current >= e.TriggerAt {
-		return 0, ErrWriteString
-	}
-	return len([]byte(s)), nil
-}
-
-// Reset sets the number of calls made to WriteString up to this
-// point, to 0.
-func (e *ErrorStringWriter) Reset() {
-	e.current = 0
-}
-
-// String always returns an empty string value.
-func (e *ErrorStringWriter) String() string {
-	return ""
-}
-
 var validWriter strings.Builder // A global string builder intended for reuse across tests
 
 func TestWriteValue(t *testing.T) {
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer testutils.ResetableStringWriter
 		value  *structpb.Value
 		output string
 		error  bool
@@ -97,7 +50,7 @@ func TestWriteValue(t *testing.T) {
 			output: "A,null,true,1111111111,'key:'value,",
 		},
 		"list_write_value_error": {
-			writer: &ErrorStringWriter{},
+			writer: &testutils.ErrorStringWriter{},
 			value: structpb.NewListValue(&structpb.ListValue{
 				Values: []*structpb.Value{
 					structpb.NewStringValue("A"),
@@ -112,7 +65,7 @@ func TestWriteValue(t *testing.T) {
 			error: true,
 		},
 		"list_write_comma_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 2,
 			},
 			value: structpb.NewListValue(&structpb.ListValue{
@@ -146,7 +99,7 @@ func TestWriteValue(t *testing.T) {
 
 func TestWriteStruct(t *testing.T) {
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer testutils.ResetableStringWriter
 		value  *structpb.Struct
 		output string
 		error  bool
@@ -160,7 +113,7 @@ func TestWriteStruct(t *testing.T) {
 			output: "'keyA:'valueA,'keyB:'valueB,",
 		},
 		"fields_write_key_error": {
-			writer: &ErrorStringWriter{},
+			writer: &testutils.ErrorStringWriter{},
 			value: MustNewStruct(map[string]any{
 				"keyA": "valueA",
 				"keyB": "valueB",
@@ -168,7 +121,7 @@ func TestWriteStruct(t *testing.T) {
 			error: true,
 		},
 		"fields_write_value_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 2,
 			},
 			value: MustNewStruct(map[string]any{
@@ -178,7 +131,7 @@ func TestWriteStruct(t *testing.T) {
 			error: true,
 		},
 		"fields_write_comma_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 3,
 			},
 			value: MustNewStruct(map[string]any{
@@ -193,7 +146,7 @@ func TestWriteStruct(t *testing.T) {
 			output: "",
 		},
 		"nil_error": {
-			writer: &ErrorStringWriter{},
+			writer: &testutils.ErrorStringWriter{},
 			value:  nil,
 			output: "",
 		},
@@ -215,7 +168,7 @@ func TestWriteStruct(t *testing.T) {
 
 func TestWriteTuples(t *testing.T) {
 	var cases = map[string]struct {
-		writer ResetableStringWriter
+		writer testutils.ResetableStringWriter
 		tuples []*openfgav1.TupleKey
 		output string
 		error  bool
@@ -230,14 +183,14 @@ func TestWriteTuples(t *testing.T) {
 			output: "/document:A#relationA@user:A,document:B#relationB@user:B,document:C#relationC@user:C",
 		},
 		"write_forward_slash_error": {
-			writer: &ErrorStringWriter{},
+			writer: &testutils.ErrorStringWriter{},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
 			},
 			error: true,
 		},
 		"write_object_relation_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 2,
 			},
 			tuples: []*openfgav1.TupleKey{
@@ -246,7 +199,7 @@ func TestWriteTuples(t *testing.T) {
 			error: true,
 		},
 		"write_user_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 3,
 			},
 			tuples: []*openfgav1.TupleKey{
@@ -255,7 +208,7 @@ func TestWriteTuples(t *testing.T) {
 			error: true,
 		},
 		"write_comma_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 3,
 			},
 			tuples: []*openfgav1.TupleKey{
@@ -289,7 +242,7 @@ func TestWriteTuples(t *testing.T) {
 			output: "/document:A#relationA with A 'key:'value,@user:A,document:A#relationA with B 'key:'value,@user:A",
 		},
 		"with_condition_write_with_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 3,
 			},
 			tuples: []*openfgav1.TupleKey{
@@ -315,7 +268,7 @@ func TestWriteTuples(t *testing.T) {
 			error: true,
 		},
 		"with_condition_write_space_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 4,
 			},
 			tuples: []*openfgav1.TupleKey{
@@ -341,7 +294,7 @@ func TestWriteTuples(t *testing.T) {
 			error: true,
 		},
 		"with_condition_write_context_error": {
-			writer: &ErrorStringWriter{
+			writer: &testutils.ErrorStringWriter{
 				TriggerAt: 5,
 			},
 			tuples: []*openfgav1.TupleKey{
