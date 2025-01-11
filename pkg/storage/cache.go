@@ -194,6 +194,7 @@ func keys[T comparable, U any](m map[T]U) []T {
 	var i int
 	for k := range m {
 		n[i] = k
+		i++
 	}
 	return n
 }
