@@ -259,7 +259,7 @@ func TestWriteTuples(t *testing.T) {
 		},
 		"write_comma_error": {
 			writer: &ErrorStringWriter{
-				TriggerAt: 3,
+				TriggerAt: 4,
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:A", "relationA", "user:A"),
