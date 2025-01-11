@@ -230,7 +230,7 @@ func writeStruct(w io.StringWriter, s *structpb.Struct) (err error) {
 // writeTuples writes the set of tuples to writer w in ascending sorted order.
 // The intention of this function is to write the tuples as a unique string.
 // Tuples are separated by commas, and when present, conditions are included
-// in the tuple string representation. writeTuples returns an error only when
+// in the tuple string representation. Returns an error only when
 // the underlying writer returns an error.
 func writeTuples(w io.StringWriter, tuples ...*openfgav1.TupleKey) (err error) {
 	sortedTuples := make(tuple.TupleKeys, len(tuples))
