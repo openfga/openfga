@@ -107,7 +107,7 @@ type ChangelogCacheEntry struct {
 }
 
 func GetChangelogCacheKey(storeID string) string {
-	return fmt.Sprintf("%s%s", changelogCachePrefix, storeID)
+	return changelogCachePrefix + storeID
 }
 
 type InvalidEntityCacheEntry struct {
@@ -115,11 +115,11 @@ type InvalidEntityCacheEntry struct {
 }
 
 func GetInvalidIteratorCacheKey(storeID string) string {
-	return fmt.Sprintf("%s%s", invalidIteratorCachePrefix, storeID)
+	return invalidIteratorCachePrefix + storeID
 }
 
 func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation string) []string {
-	return []string{fmt.Sprintf("%s%s-or/%s#%s", invalidIteratorCachePrefix, storeID, object, relation)}
+	return []string{invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation}
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
@@ -138,15 +138,15 @@ type TupleIteratorCacheEntry struct {
 }
 
 func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
-	return fmt.Sprintf("%srut/%s/%s#%s", iteratorCachePrefix, store, object, relation)
+	return iteratorCachePrefix + "rut/" + store + "/" + object + "#" + relation
 }
 
 func GetReadStartingWithUserCacheKeyPrefix(store, objectType, relation string) string {
-	return fmt.Sprintf("%srtwu/%s/%s#%s", iteratorCachePrefix, store, objectType, relation)
+	return iteratorCachePrefix + "rtwu/" + store + "/" + objectType + "#" + relation
 }
 
 func GetReadCacheKey(store, tuple string) string {
-	return fmt.Sprintf("%sr/%s/%s", iteratorCachePrefix, store, tuple)
+	return iteratorCachePrefix + "r/" + store + "/" + tuple
 }
 
 // ErrUnexpectedStructValue is an error used to indicate that
