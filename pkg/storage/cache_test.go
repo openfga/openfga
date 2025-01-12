@@ -839,3 +839,40 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 		require.NoError(b, err)
 	}
 }
+
+func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
+	storeId := "abc123"
+	objectType := "document"
+	users := []string{
+		"a",
+		"b",
+		"c",
+		"d",
+		"e",
+		"f",
+		"g",
+		"h",
+		"i",
+		"j",
+		"k",
+		"l",
+		"m",
+		"n",
+		"o",
+		"p",
+		"q",
+		"r",
+		"s",
+		"t",
+		"u",
+		"v",
+		"w",
+		"x",
+		"y",
+		"z",
+	}
+
+	for n := 0; n < b.N; n++ {
+		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeId, users, objectType)
+	}
+}

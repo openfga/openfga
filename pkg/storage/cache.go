@@ -123,9 +123,11 @@ func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation strin
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
-	res := make([]string, 0, len(users))
+	res := make([]string, len(users))
+	var i int
 	for _, user := range users {
-		res = append(res, fmt.Sprintf("%s%s-otr/%s|%s", invalidIteratorCachePrefix, storeID, user, objectType))
+		res[i] = invalidIteratorCachePrefix + storeID + "-otr/" + user + "|" + objectType
+		i++
 	}
 	return res
 }
