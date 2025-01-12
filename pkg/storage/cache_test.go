@@ -841,7 +841,7 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 }
 
 func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
-	storeId := "abc123"
+	storeID := "abc123"
 	objectType := "document"
 	users := []string{
 		"a",
@@ -873,6 +873,6 @@ func BenchmarkGetInvalidIteratorByUserObjectTypeCacheKeys(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeId, users, objectType)
+		_ = GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, users, objectType)
 	}
 }
