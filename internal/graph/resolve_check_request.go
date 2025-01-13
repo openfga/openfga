@@ -109,7 +109,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		tupleKey = proto.Clone(origTupleKey).(*openfgav1.TupleKey)
 	}
 
-	req := &ResolveCheckRequest{
+	return &ResolveCheckRequest{
 		StoreID:                   r.GetStoreID(),
 		AuthorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
@@ -121,8 +121,6 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		InvariantCacheKey:         r.GetInvariantCacheKey(),
 	}
-
-	return req
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
