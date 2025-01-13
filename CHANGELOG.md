@@ -12,7 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
 
 ### Security
-- Address [CVE-2024-56323](https://github.com/openfga/openfga/security/advisories/GHSA-32q6-rr98-cjqv) - an issue affecting Check and ListObjects results for models containing conditions. Please see the CVE report for more details.
+- Address [CVE-2024-56323](https://github.com/openfga/openfga/security/advisories/GHSA-32q6-rr98-cjqv) - an issue affecting Check and ListObjects results for users using Conditions in Contextual Tuples. Please see the CVE report for more details.
 
 ### Fixed
 - Fixed missing binding between flags and environment variables for the cache controller feature [#2184](https://github.com/openfga/openfga/pull/2184)
