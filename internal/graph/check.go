@@ -1423,6 +1423,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
+			} else if ok, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
+				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for contextual tuples - since these are injected without order
 				// TODO: Add support for wildcard - we are doing exact matches
@@ -1496,15 +1499,6 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		typesys, _ := typesystem.TypesystemFromContext(ctx)
-		objectType := tuple.GetType(req.GetTupleKey().GetObject())
-		relation := req.GetTupleKey().GetRelation()
-		userType := tuple.GetType(req.GetTupleKey().GetUser())
-		if c.optimizationsEnabled && typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType) {
-			return func(ctx context.Context) (*ResolveCheckResponse, error) {
-				return c.recursiveTTUFastPathUnionAlgebraicOperations(ctx, req, rewrite)
-			}
-		}
 		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
 		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)

@@ -2,7 +2,6 @@ package typesystem
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -263,12 +262,16 @@ type document
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
-			fmt.Println(testName)
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
+			result, arr := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
 			require.Equal(t, test.expected, result)
+			if test.expected {
+				require.NotEmpty(t, arr)
+			} else {
+				require.Empty(t, arr)
+			}
 		})
 	}
 }

@@ -1,6 +1,7 @@
 package typesystem
 
 import (
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/pkg/tuple"
@@ -11,39 +12,40 @@ import (
 
 // IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
 // - node[objectType#relation].weights[userType] = infinite
-// - node[objectType#relation] has only 1 edge to an OR node
+// - node[objectType#relation] has only 1 edge, and it's to an OR node
 // - The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-// - Any other edge coming out of the OR node has weight 1 for the terminal type.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) bool {
+// - Any other edge leaving the OR node has weight 1 for the terminal type.
+func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (bool, []*openfgav1.Userset) {
+	usersets := make([]*openfgav1.Userset, 0)
 	if t.authzWeightedGraph == nil {
-		return false
+		return false, usersets
 	}
 	objRel := tuple.ToObjectRelationString(objectType, relation)
 	objRelNode, ok := t.authzWeightedGraph.GetNodeByID(objRel)
 	if !ok {
-		return false
+		return false, usersets
 	}
 
 	w, ok := objRelNode.GetWeight(userType)
 	if !ok || w != graph.Infinite {
-		return false
+		return false, usersets
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesByNode(objRelNode)
 	if !ok || len(edges) != 1 {
-		return false
+		return false, usersets
 	}
 
 	edge := edges[0]
 	if edge.GetTo().GetLabel() != graph.UnionOperator {
-		return false
+		return false, usersets
 	}
 
 	unionNode := edge.GetTo()
 
 	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesByNode(unionNode)
 	if !ok {
-		return false
+		return false, usersets
 	}
 
 	ttuEdgeSatisfiesCond, restOfEdgesAreWeight1, ttuEdgeCount := false, true, 0
@@ -62,6 +64,12 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 			}
 		} else {
 			w, ok := edgeFromUnionNode.GetWeight(userType)
+			if ok && w == 1 {
+				nodeLabel := edgeFromUnionNode.GetTo().GetLabel()
+				objType, rel := tuple.SplitObjectRelation(nodeLabel)
+				getRelation, _ := t.GetRelation(objType, rel)
+				usersets = append(usersets, getRelation.GetRewrite())
+			}
 			if !ok || w != 1 {
 				restOfEdgesAreWeight1 = false
 				break
@@ -69,5 +77,9 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		}
 	}
 
-	return ttuEdgeSatisfiesCond && restOfEdgesAreWeight1
+	satisfies := ttuEdgeSatisfiesCond && restOfEdgesAreWeight1
+	if !satisfies {
+		usersets = nil
+	}
+	return satisfies, usersets
 }
