@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -140,7 +139,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := CheckRequestCacheKey(req.GetTupleKey(), req.GetInvariantCacheKey())
+	t := tuple.From(req.GetTupleKey())
+	cacheKey := t.String() + req.GetInvariantCacheKey()
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -169,38 +169,4 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
 	return resp, nil
-}
-
-// CheckRequestCacheKey calculates a cache key for the Tuple currently being checked
-// and combines it with the existing ResolveCheckRequest.InvariantCacheKey to create a unique key for this check.
-func CheckRequestCacheKey(tupleKey *openfgav1.TupleKey, invariantKey string) string {
-	writer := &strings.Builder{}
-
-	t := tuple.From(tupleKey)
-	writer.WriteString(t.String())
-
-	writer.WriteString(invariantKey)
-
-	return writer.String()
-}
-
-// CheckRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request:
-// StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
-// The InvariantCacheKey is calculated once per request and passed along to
-// sub-problems via ResolveCheckRequest.clone() if necessary.
-func CheckRequestInvariantCacheKey(req *ResolveCheckRequest) (string, error) {
-	params := &storage.CheckCacheKeyParams{
-		StoreID:              req.GetStoreID(),
-		AuthorizationModelID: req.GetAuthorizationModelID(),
-		ContextualTuples:     req.GetContextualTuples(),
-		Context:              req.GetContext(),
-	}
-
-	writer := &strings.Builder{}
-	err := storage.WriteInvariantCheckCacheKey(writer, params)
-	if err != nil {
-		return "", err
-	}
-
-	return writer.String(), nil
 }

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 type ResolveCheckRequest struct {
@@ -73,12 +76,10 @@ func NewResolveCheckRequest(
 		LastCacheInvalidationTime: params.CacheInvalidationTime,
 	}
 
-	key, err := CheckRequestInvariantCacheKey(r)
+	err := r.SetRequestInvariantCacheKey()
 	if err != nil {
 		return nil, err
 	}
-
-	r.InvariantCacheKey = key
 
 	return r, nil
 }
@@ -182,4 +183,26 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.InvariantCacheKey
+}
+
+// SetRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request and attaches it to the request.
+// StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
+// The InvariantCacheKey is calculated once per request and passed along to
+// sub-problems via ResolveCheckRequest.clone() if necessary.
+func (r *ResolveCheckRequest) SetRequestInvariantCacheKey() error {
+	params := &storage.CheckCacheKeyParams{
+		StoreID:              r.GetStoreID(),
+		AuthorizationModelID: r.GetAuthorizationModelID(),
+		ContextualTuples:     r.GetContextualTuples(),
+		Context:              r.GetContext(),
+	}
+
+	writer := &strings.Builder{}
+	err := storage.WriteInvariantCheckCacheKey(writer, params)
+	if err != nil {
+		return err
+	}
+
+	r.InvariantCacheKey = writer.String()
+	return nil
 }

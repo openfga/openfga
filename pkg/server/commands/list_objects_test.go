@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -322,9 +323,10 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 		CacheInvalidationTime: time.Time{},
 		AuthorizationModelID:  ts.GetAuthorizationModelID(),
 	})
-
 	require.NoError(t, err)
-	cacheKey := graph.CheckRequestCacheKey(req.GetTupleKey(), req.GetInvariantCacheKey())
+
+	tup := tuple.From(req.GetTupleKey())
+	cacheKey := tup.String() + req.GetInvariantCacheKey()
 
 	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
 		LastModified: time.Now(),
