@@ -193,7 +193,7 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 }
 
 // SetRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request and attaches it to the request.
-// StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
+// Invariant parts: StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
 // The InvariantCacheKey is calculated once per request and passed along to
 // sub-problems via ResolveCheckRequest.clone() if necessary.
 func (r *ResolveCheckRequest) SetRequestInvariantCacheKey() error {
