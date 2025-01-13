@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"errors"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -79,6 +80,14 @@ func NewResolveCheckRequest(
 	err := r.SetRequestInvariantCacheKey()
 	if err != nil {
 		return nil, err
+	}
+
+	if r.GetAuthorizationModelID() == "" {
+		return nil, errors.New("missing authorization_model_id")
+	}
+
+	if r.GetStoreID() == "" {
+		return nil, errors.New("missing store_id")
 	}
 
 	return r, nil
