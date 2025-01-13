@@ -26,6 +26,7 @@ const (
 	changelogCachePrefix       = "cc."
 	invalidIteratorCachePrefix = "iq."
 	defaultMaxCacheSize        = 10000
+	oneYear                    = time.Hour * 24 * 365
 )
 
 // InMemoryCache is a general purpose cache to store things in memory.
@@ -87,8 +88,13 @@ func (i InMemoryLRUCache[T]) Get(key string) T {
 	return item
 }
 
+// Set will store the value during the ttl.
+// Note that ttl is truncated to one year to avoid misinterpreted as negative value.
+// Negative ttl are noop.
 func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
-	// negative ttl are noop
+	if ttl >= oneYear {
+		ttl = oneYear
+	}
 	i.client.SetWithTTL(key, value, 1, ttl)
 }
 
