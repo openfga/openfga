@@ -298,6 +298,7 @@ func (c *CachedDatastore) newCachedIteratorByUserObjectType(
 		}
 	}
 
+	// NOTE: we are not including the relation because ????
 	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(store, users, objectType)
 	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, "", "", userType)
 }

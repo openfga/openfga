@@ -152,8 +152,10 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
+	lastWrite := changes[0]
+
 	entry := &storage.ChangelogCacheEntry{
-		LastModified: changes[0].GetTimestamp().AsTime(),
+		LastModified: lastWrite.GetTimestamp().AsTime(),
 	}
 
 	lastInvalidationOccurred := c.cache.Get(cacheKey) != nil
@@ -172,14 +174,14 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	}
 
 	// need to consider there might just be 1 change
-	// iterate from the oldest to most recent to determine if the last change is part of the current batch
-	idx := len(changes) - 1
+	// iterate from the most recent to oldest to determine if the last change is part of the current batch
+	idx := len(changes) - 1 // first Write that was returned
 	for ; idx >= 0; idx-- {
 		if !lastInvalidationOccurred || changes[idx].GetTimestamp().AsTime().After(timestampOfLastInvalidation) {
 			break
 		}
 	}
-	// all changes are new, thus we should revoke the whole query cache
+	// all changes happened after the last invalidation, thus we should revoke all the cached iterators for the store
 	if idx == len(changes)-1 {
 		c.invalidateIteratorCache(storeID)
 	} else {
