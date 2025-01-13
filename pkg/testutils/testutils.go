@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -278,48 +277,4 @@ func TCPRandomPort() (int, func()) {
 	return l.Addr().(*net.TCPAddr).Port, func() {
 		l.Close()
 	}
-}
-
-// ResetableStringWriter is an interface that groups the
-// io.StringWriter and fmt.Stringer interfaces with a
-// Reset method.
-type ResetableStringWriter interface {
-	io.StringWriter
-	fmt.Stringer
-	Reset()
-}
-
-// ErrWriteString is an error used exclusively for testing
-// Write functions.
-var ErrWriteString = errors.New("test error")
-
-// An ErrorStringWriter counts the calls made to its WriteString
-// method and returns an error when the number of calls is
-// greater than or equal to TriggerAt.
-type ErrorStringWriter struct {
-	TriggerAt int // number of calls to WriteString before returning an error
-	current   int // the number of calls to WriteString up to this point
-}
-
-// WriteString ignores string s and returns the length of string s
-// in bytes with a nil error. When the number of calls to WriteString
-// is greater than or equal to TriggerAt WriteString will return
-// 0 bytes and an error.
-func (e *ErrorStringWriter) WriteString(s string) (int, error) {
-	e.current++
-	if e.current >= e.TriggerAt {
-		return 0, ErrWriteString
-	}
-	return len([]byte(s)), nil
-}
-
-// Reset sets the number of calls made to WriteString up to this
-// point, to 0.
-func (e *ErrorStringWriter) Reset() {
-	e.current = 0
-}
-
-// String always returns an empty string value.
-func (e *ErrorStringWriter) String() string {
-	return ""
 }

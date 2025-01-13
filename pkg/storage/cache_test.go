@@ -17,7 +17,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -779,7 +778,7 @@ func TestWriteTupleCheckCacheKey(t *testing.T) {
 
 	var validWriter strings.Builder
 	var cases = map[string]struct {
-		writer testutils.ResetableStringWriter
+		writer ResetableStringWriter
 		params *CheckCacheKeyParams
 		output string
 		error  bool
@@ -800,7 +799,7 @@ func TestWriteTupleCheckCacheKey(t *testing.T) {
 			error:  false,
 		},
 		"writer_error": {
-			writer: &testutils.ErrorStringWriter{TriggerAt: 0},
+			writer: &ErrorStringWriter{TriggerAt: 0},
 			params: &CheckCacheKeyParams{},
 			output: "",
 			error:  true,
@@ -826,7 +825,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 
 	var validWriter strings.Builder
 	var cases = map[string]struct {
-		writer testutils.ResetableStringWriter
+		writer ResetableStringWriter
 		params *CheckCacheKeyParams
 		output string
 		error  bool
@@ -850,7 +849,7 @@ func TestWriteInvariantCheckCacheKey(t *testing.T) {
 			error:  false,
 		},
 		"writer_error": {
-			writer: &testutils.ErrorStringWriter{TriggerAt: 0},
+			writer: &ErrorStringWriter{TriggerAt: 0},
 			params: &CheckCacheKeyParams{},
 			output: "",
 			error:  true,
