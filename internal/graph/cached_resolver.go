@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
@@ -140,12 +140,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey, err := CheckRequestCacheKey(req)
-	if err != nil {
-		c.logger.Error("cache key computation failed with error", zap.Error(err))
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
+	cacheKey := CheckRequestCacheKey(req)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -178,18 +173,17 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 // CheckRequestCacheKey calculates a cache key for the Tuple currently being checked
 // and combines it with the existing ResolveCheckRequest.InvariantCacheKey to create a unique key for this check.
-func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
+func CheckRequestCacheKey(req *ResolveCheckRequest) string {
 	params := &storage.CheckCacheKeyParams{TupleKey: req.GetTupleKey()}
 
 	writer := &strings.Builder{}
-	err := storage.WriteTupleCheckCacheKey(writer, params)
-	if err != nil {
-		return "", err
-	}
+
+	t := tuple.From(params.TupleKey)
+	writer.WriteString(t.String())
 
 	writer.WriteString(req.InvariantCacheKey)
 
-	return writer.String(), nil
+	return writer.String()
 }
 
 // CheckRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request:

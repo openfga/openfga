@@ -324,8 +324,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	cacheKey, err := graph.CheckRequestCacheKey(req)
-	require.NoError(t, err)
+	cacheKey := graph.CheckRequestCacheKey(req)
 
 	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
 		LastModified: time.Now(),

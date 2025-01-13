@@ -312,7 +312,9 @@ type CheckCacheKeyParams struct {
 func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	hasher := xxhash.New()
 
-	err := WriteTupleCheckCacheKey(hasher, params)
+	t := tuple.From(params.TupleKey)
+
+	_, err := hasher.WriteString(t.String())
 	if err != nil {
 		return "", err
 	}
@@ -323,22 +325,6 @@ func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
 	}
 
 	return strconv.FormatUint(hasher.Sum64(), 10), nil
-}
-
-func WriteTupleCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
-	_, err := w.WriteString(
-		params.TupleKey.GetObject() +
-			"#" +
-			params.TupleKey.GetRelation() +
-			"@" +
-			params.TupleKey.GetUser(),
-	)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {

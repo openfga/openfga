@@ -772,53 +772,6 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	require.NotEqual(t, key3, key4)
 }
 
-func TestWriteTupleCheckCacheKey(t *testing.T) {
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{"key1": true})
-	require.NoError(t, err)
-
-	var validWriter strings.Builder
-	var cases = map[string]struct {
-		writer ResetableStringWriter
-		params *CheckCacheKeyParams
-		output string
-		error  bool
-	}{
-		"writes_cache_key": {
-			writer: &validWriter,
-			params: &CheckCacheKeyParams{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:1",
-					Relation: "can_view",
-					User:     "user:anne",
-				},
-				ContextualTuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "condition_name", contextStruct),
-				},
-			},
-			output: "document:1#can_view@user:anne",
-			error:  false,
-		},
-		"writer_error": {
-			writer: &ErrorStringWriter{TriggerAt: 0},
-			params: &CheckCacheKeyParams{},
-			output: "",
-			error:  true,
-		},
-	}
-
-	for name, test := range cases {
-		t.Run(name, func(t *testing.T) {
-			err := WriteTupleCheckCacheKey(test.writer, test.params)
-			if test.error {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, test.output, test.writer.String())
-			}
-		})
-	}
-}
-
 func TestWriteInvariantCheckCacheKey(t *testing.T) {
 	contextStruct, err := structpb.NewStruct(map[string]interface{}{"key1": true})
 	require.NoError(t, err)
