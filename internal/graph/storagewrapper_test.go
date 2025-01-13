@@ -52,7 +52,7 @@ func TestFindInCache(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_no_invalid", func(t *testing.T) {
@@ -62,8 +62,15 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_bad_result", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
+		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid", func(t *testing.T) {
 		gomock.InOrder(
@@ -72,7 +79,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
@@ -83,8 +90,18 @@ func TestFindInCache(t *testing.T) {
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalidation_incorrect_type", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []*storage.TupleRecord{}, LastModified: time.Now()}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
+				Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
+		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity", func(t *testing.T) {
 		gomock.InOrder(
@@ -94,7 +111,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity_stale", func(t *testing.T) {
@@ -105,8 +122,19 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalid_entity_stale_invalid", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []*storage.TupleRecord{}, LastModified: time.Now()}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKeys[0]).
+				Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys)
+		require.False(t, ok)
 	})
 }
 
@@ -1162,11 +1190,19 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
+		store := ulid.Make().String()
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](mockController)
-		mockCache.EXPECT().Get(gomock.Any()).Return(tuples)
+		tupleRecord := &storage.TupleIteratorCacheEntry{
+			Tuples:       cachedTuples,
+			LastModified: time.Now().Add(-1 * time.Second),
+		}
+		gomock.InOrder(
+			mockCache.EXPECT().Get(cacheKey).Return(tupleRecord),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(store)).Return(nil),
+		)
 
 		var wg sync.WaitGroup
 
@@ -1177,6 +1213,7 @@ func TestCachedIterator(t *testing.T) {
 		iter := &cachedIterator{
 			ctx:               ctx,
 			iter:              mockedIter,
+			store:             store,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1204,6 +1241,68 @@ func TestCachedIterator(t *testing.T) {
 		iter.wg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
+	})
+
+	t.Run("prevent_draining_if_already_cached_but_invalidated", func(t *testing.T) {
+		maxCacheSize := 10
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		store := ulid.Make().String()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](mockController)
+		tupleRecord := &storage.TupleIteratorCacheEntry{
+			Tuples:       cachedTuples,
+			LastModified: time.Now().Add(-1 * time.Hour),
+		}
+		gomock.InOrder(
+			mockCache.EXPECT().Get(cacheKey).Return(tupleRecord),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(store)).Return(&storage.InvalidEntityCacheEntry{
+				LastModified: time.Now().Add(-1 * time.Minute),
+			}),
+			mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).AnyTimes(),
+		)
+
+		var wg sync.WaitGroup
+
+		mockedIter := &mockCalledTupleIterator{
+			iter: storage.NewStaticTupleIterator(tuples),
+		}
+
+		iter := &cachedIterator{
+			ctx:               ctx,
+			iter:              mockedIter,
+			store:             store,
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             mockCache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+		}
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			iter.Stop()
+		}()
+
+		wg.Wait()
+		iter.wg.Wait()
+
+		require.NotZero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
 		require.Nil(t, iter.records)
 	})
