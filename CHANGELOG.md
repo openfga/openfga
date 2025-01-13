@@ -7,19 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-
 ### Fixed
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190)
 
 ## [1.8.4] - 2025-01-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
 
-### Security
-- Address [CVE-2024-56323](https://github.com/openfga/openfga/security/advisories/GHSA-32q6-rr98-cjqv) - an issue affecting Check and ListObjects results for users using Conditions in Contextual Tuples. Please see the CVE report for more details.
-
 ### Fixed
 - Fixed missing binding between flags and environment variables for the cache controller feature [#2184](https://github.com/openfga/openfga/pull/2184)
 - Fixed Read API to validate user field and assert presence of both type and value. [#2195](https://github.com/openfga/openfga/pull/2195)
+
+### Security
+- Address [CVE-2024-56323](https://github.com/openfga/openfga/security/advisories/GHSA-32q6-rr98-cjqv) - an issue affecting Check and ListObjects results for users using Conditions in Contextual Tuples. Please see the CVE report for more details.
 
 ## [1.8.3] - 2024-12-31
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
