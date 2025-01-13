@@ -140,7 +140,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey := CheckRequestCacheKey(req)
+	cacheKey := CheckRequestCacheKey(req.GetTupleKey(), req.GetInvariantCacheKey())
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -173,15 +173,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 // CheckRequestCacheKey calculates a cache key for the Tuple currently being checked
 // and combines it with the existing ResolveCheckRequest.InvariantCacheKey to create a unique key for this check.
-func CheckRequestCacheKey(req *ResolveCheckRequest) string {
-	params := &storage.CheckCacheKeyParams{TupleKey: req.GetTupleKey()}
-
+func CheckRequestCacheKey(tupleKey *openfgav1.TupleKey, invariantKey string) string {
 	writer := &strings.Builder{}
 
-	t := tuple.From(params.TupleKey)
+	t := tuple.From(tupleKey)
 	writer.WriteString(t.String())
 
-	writer.WriteString(req.InvariantCacheKey)
+	writer.WriteString(invariantKey)
 
 	return writer.String()
 }
