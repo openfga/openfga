@@ -64,7 +64,7 @@ type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
 
 type CachedDatastoreOpt func(*CachedDatastore)
 
-// WithCachedDatastoreLogger sets the logger for the BoundedConcurrencyTupleReader.
+// WithCachedDatastoreLogger sets the logger for the CachedDatastore.
 func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
 	return func(b *CachedDatastore) {
 		b.logger = logger

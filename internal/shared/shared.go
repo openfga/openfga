@@ -16,7 +16,7 @@ import (
 // instance.
 type SharedCheckResourcesOpt func(*SharedCheckResources)
 
-// WithLogger sets the logger for InMemoryCacheController.
+// WithLogger sets the logger for CachedDatastore.
 func WithLogger(logger logger.Logger) SharedCheckResourcesOpt {
 	return func(scr *SharedCheckResources) {
 		scr.Logger = logger
