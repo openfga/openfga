@@ -2256,6 +2256,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              "ABC123",
 		}, nil)
 
 	mockDatastore.EXPECT().
@@ -2372,6 +2373,7 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              "ABC123",
 		}, nil)
 
 	mockDatastore.EXPECT().
