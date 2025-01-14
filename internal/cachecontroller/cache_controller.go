@@ -61,6 +61,10 @@ func NewNoopCacheController() CacheController {
 	return &NoopCacheController{}
 }
 
+// InMemoryCacheController will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
+// that are more recent than the last write for the specified store.
+// Note that the invalidation is done asynchronously, and only after a Check request is received.
+// It will be eventually consistent.
 type InMemoryCacheController struct {
 	ds                    storage.OpenFGADatastore
 	cache                 storage.InMemoryCache[any]
@@ -152,13 +156,15 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		LastModified: changes[0].GetTimestamp().AsTime(),
 	}
 
+	lastInvalidationOccurred := c.cache.Get(cacheKey) != nil
+
 	// set changelog entry as soon as possible for subsequent cache
 	// lookups have the entry and not have to wait on the existing singleflight group
 	c.cache.Set(cacheKey, entry, c.ttl)
 
-	lastVerified := time.Now().Add(-c.ttl)
+	timestampOfLastInvalidation := time.Now().Add(-c.ttl)
 
-	if entry.LastModified.Before(lastVerified) {
+	if lastInvalidationOccurred && entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
@@ -169,7 +175,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
 	idx := len(changes) - 1
 	for ; idx >= 0; idx-- {
-		if changes[idx].GetTimestamp().AsTime().After(lastVerified) {
+		if !lastInvalidationOccurred || changes[idx].GetTimestamp().AsTime().After(timestampOfLastInvalidation) {
 			break
 		}
 	}
@@ -190,7 +196,6 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
-	// These entries do not need to expire
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
