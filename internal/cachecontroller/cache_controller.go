@@ -197,17 +197,21 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 }
 
+// invalidateIteratorCache writes a new key to the cache with a very long TTL.
+// An alternative implementation could delete invalid keys, but this approach is faster (see graph.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
+// invalidateIteratorCacheByObjectRelation writes a new key to the cache.
+// An alternative implementation could delete invalid keys, but this approach is faster (see graph.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
-	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
 	// GetInvalidIteratorByObjectRelationCacheKeys returns only 1 instance
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
+// invalidateIteratorCacheByObjectTypeRelation writes a new key to the cache.
+// An alternative implementation could delete invalid keys, but this approach is faster (see graph.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, user, objectType string, ts time.Time) {
-	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

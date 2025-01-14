@@ -78,6 +78,7 @@ type CachedDatastore struct {
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
+// It should be used ONLY from within Check API, where the iterators _always_ have object/relation defined.
 func NewCachedDatastore(
 	ctx context.Context,
 	inner storage.RelationshipTupleReader,
@@ -568,7 +569,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	return true
 }
 
-// flush will store copy of buffered tuples into cache.
+// flush will store copy of buffered tuples into cache and delete invalidEntityKeys from the cache.
 func (c *cachedIterator) flush() {
 	if c.tuples == nil || c.ctx.Err() != nil {
 		return
