@@ -232,11 +232,15 @@ func (c *CachedDatastore) Read(
 	return c.newCachedIteratorByObjectRelation(ctx, "Read", store, iter, b.String(), tupleKey.GetObject(), tupleKey.GetRelation())
 }
 
+// findInCache tries to find a key in the cache.
+// It returns true if and only if:
+// the key is present, and
+// the cache key for the store doesn't satisfy TS(key) < TS(store), and
+// none of the invalidEntityKeys satisfy TS(key) < TS(invalid)
 func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
 	var ok bool
 
-	// The iterator cache has a TTL and will eventually consistent.
 	if res := cache.Get(key); res != nil {
 		tupleEntry, ok = res.(*storage.TupleIteratorCacheEntry)
 		if !ok {
