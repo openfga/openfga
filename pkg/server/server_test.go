@@ -903,6 +903,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -1193,6 +1194,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -1274,6 +1276,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	mockDatastore.EXPECT().
@@ -1446,6 +1449,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
+		Id:              modelID,
 	}, nil)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
@@ -2256,7 +2260,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-			Id:              "ABC123",
+			Id:              modelID,
 		}, nil)
 
 	mockDatastore.EXPECT().
@@ -2373,7 +2377,7 @@ func TestBatchCheckWithCachedIterator(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
-			Id:              "ABC123",
+			Id:              modelID,
 		}, nil)
 
 	mockDatastore.EXPECT().
