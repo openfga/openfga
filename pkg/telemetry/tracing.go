@@ -70,32 +70,36 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	options := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(tracer.endpoint),
-		otlptracegrpc.WithDialOption(
-			// nolint:staticcheck // ignoring gRPC deprecations
-			grpc.WithBlock(),
-		),
-	}
-
-	if tracer.insecure {
-		options = append(options, otlptracegrpc.WithInsecure())
-	}
-
-	var exp sdktrace.SpanExporter
-	exp, err = otlptracegrpc.New(ctx, options...)
-	if err != nil {
-		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
-	}
-
-	tp := sdktrace.NewTracerProvider(
+	tracerOpts := []sdktrace.TracerProviderOption{
 		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(tracer.samplingRatio)),
 		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
-	)
+	}
+
+	if tracer.endpoint != "none" {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		options := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(tracer.endpoint),
+			otlptracegrpc.WithDialOption(
+				// nolint:staticcheck // ignoring gRPC deprecations
+				grpc.WithBlock(),
+			),
+		}
+
+		if tracer.insecure {
+			options = append(options, otlptracegrpc.WithInsecure())
+		}
+
+		var exp sdktrace.SpanExporter
+		exp, err = otlptracegrpc.New(ctx, options...)
+		if err != nil {
+			panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
+		}
+		tracerOpts = append(tracerOpts, sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)))
+	}
+
+	tp := sdktrace.NewTracerProvider(tracerOpts...)
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
