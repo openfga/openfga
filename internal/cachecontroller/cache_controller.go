@@ -190,7 +190,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
 			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
-			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
+			// We invalidate all iterators for the tuple's user and object type, regardless of the relation.
+			c.invalidateIteratorCacheByUserAndObjectType(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
 	span.SetAttributes(attribute.Bool("invalidations", true))
@@ -210,8 +211,8 @@ func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeI
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
-// invalidateIteratorCacheByObjectTypeRelation writes a new key to the cache.
+// invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see graph.findInCache).
-func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, user, objectType string, ts time.Time) {
+func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
