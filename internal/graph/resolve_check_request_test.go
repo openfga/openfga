@@ -25,10 +25,7 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			ContextualTuples:     &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")}},
 			Context:              contextStruct,
-			//VisitedPaths: map[string]struct{}{
-			//	"abc": {},
-			//},
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
 		orig.VisitedPaths["abc"] = struct{}{}
 		orig.GetRequestMetadata().DispatchCounter.Add(2)

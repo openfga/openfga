@@ -1816,24 +1816,24 @@ func TestCycleDetection(t *testing.T) {
 	// assert that we never call dispatch
 	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
 
-	//t.Run("returns_true_if_path_visited", func(t *testing.T) {
-	//	cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
-	//
-	//	// TODO: visited paths
-	//	resp, err := checker.ResolveCheck(context.Background(), MustNewResolveCheckRequest(ResolveCheckRequestParams{
-	//		StoreID:         ulid.Make().String(),
-	//		TupleKey:        cyclicalTuple, // here
-	//		VisitedPaths: map[string]struct{}{
-	//			tuple.TupleKeyToString(cyclicalTuple): {}, // and here
-	//		},
-	//	})
-	//
-	//	require.NoError(t, err)
-	//	require.NotNil(t, resp)
-	//	require.False(t, resp.GetAllowed())
-	//	require.True(t, resp.GetCycleDetected())
-	//	require.NotNil(t, resp.ResolutionMetadata)
-	//})
+	t.Run("returns_true_if_path_visited", func(t *testing.T) {
+		cyclicalTuple := tuple.NewTupleKey("document:1", "viewer", "user:maria")
+
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
+			AuthorizationModelID: "abc123",
+			StoreID:              ulid.Make().String(),
+			TupleKey:             cyclicalTuple,
+		})
+		req.VisitedPaths[tuple.TupleKeyToString(cyclicalTuple)] = struct{}{}
+
+		resp, err := checker.ResolveCheck(context.Background(), req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
+		require.NotNil(t, resp.ResolutionMetadata)
+	})
 
 	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
 		storeID := ulid.Make().String()

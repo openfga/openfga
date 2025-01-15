@@ -22,7 +22,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+	req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
 		TupleKey: &openfgav1.TupleKey{
@@ -31,7 +31,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 			User:     "user:XYZ",
 		},
 	})
-	require.NoError(t, err)
 
 	result := &ResolveCheckResponse{Allowed: true}
 
@@ -466,8 +465,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			// make assertions on initial call
 			initialReq := req
 			if test.initialReqParams != nil {
-				initialReq, err = NewResolveCheckRequest(*test.initialReqParams)
-				require.NoError(t, err)
+				initialReq = MustNewResolveCheckRequest(*test.initialReqParams)
 			}
 			test.setInitialResult(mockResolver, initialReq)
 			actualResult, err := dut.ResolveCheck(ctx, initialReq)
@@ -475,8 +473,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				require.Equal(t, result.Allowed, actualResult.Allowed)
 			}
 
-			subsequentRequest, err := NewResolveCheckRequest(*test.subsequentReqParams)
-			require.NoError(t, err)
+			subsequentRequest := MustNewResolveCheckRequest(*test.subsequentReqParams)
 
 			test.setTestExpectations(mockResolver, subsequentRequest)
 			actualResult, err = dut.ResolveCheck(ctx, subsequentRequest)
@@ -545,12 +542,11 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	ctx := context.Background()
 
-	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+	req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 	})
-	require.NoError(t, err)
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
@@ -581,13 +577,12 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 
 	ctx := context.Background()
 
-	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+	req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 		AuthorizationModelID:  "33",
 		StoreID:               "12",
 		TupleKey:              tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 		CacheInvalidationTime: time.Now().Add(5 * time.Minute),
 	})
-	require.NoError(t, err)
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)

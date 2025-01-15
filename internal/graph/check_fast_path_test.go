@@ -121,12 +121,11 @@ func TestFastPathDirect(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
-		require.NoError(t, err)
 
 		c, err := checker.fastPathDirect(ctx, req)
 		require.NoError(t, err)
@@ -173,12 +172,11 @@ func TestFastPathDirect(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
-		require.NoError(t, err)
 
 		_, err = checker.fastPathDirect(ctx, req)
 		require.Error(t, err)
@@ -208,12 +206,11 @@ func TestFastPathComputed(t *testing.T) {
 
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			StoreID:              ulid.Make().String(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
-		require.NoError(t, err)
 
 		_, err = checker.fastPathComputed(ctx, req, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
 
@@ -1075,12 +1072,11 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
-			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+			req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
 			})
-			require.NoError(t, err)
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
@@ -1177,12 +1173,11 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 			rel, err := ts.GetRelation("group", "parent")
 			require.NoError(t, err)
 
-			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+			req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
 			})
-			require.NoError(t, err)
 
 			ctx := context.Background()
 			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
@@ -1344,12 +1339,11 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			require.NoError(t, err)
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+			req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 			})
-			require.NoError(t, err)
 
 			checker := NewLocalChecker()
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
@@ -1410,12 +1404,11 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 		require.NoError(t, err)
 		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: ulid.Make().String(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
-		require.NoError(t, err)
 
 		checker := NewLocalChecker()
 		tupleKeys := []*openfgav1.TupleKey{{Object: "group:1", Relation: "member", User: "group:0#member"}}
@@ -1468,14 +1461,13 @@ func TestBuildRecursiveMapper(t *testing.T) {
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		}
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			AuthorizationModelID: ulid.Make().String(),
 			StoreID:              storeID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:              testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
 			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
-		require.NoError(t, err)
 
 		res, err := checker.buildRecursiveMapper(ctx, req, mapping)
 		require.NoError(t, err)
@@ -1495,14 +1487,13 @@ func TestBuildRecursiveMapper(t *testing.T) {
 			tuplesetRelation: "parent",
 			kind:             TTUKind,
 		}
-		req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		req := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			AuthorizationModelID: ulid.Make().String(),
 			StoreID:              storeID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:              testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
 			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
-		require.NoError(t, err)
 
 		res, err := checker.buildRecursiveMapper(ctx, req, mapping)
 		require.NoError(t, err)
