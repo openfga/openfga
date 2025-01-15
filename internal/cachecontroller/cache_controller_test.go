@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
@@ -328,6 +329,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				iteratorCacheTTL:      30 * time.Second,
 				changelogBuckets:      []uint{0, 25, 50, 75, 100},
 				inflightInvalidations: sync.Map{},
+				logger:                logger.NewNoopLogger(),
 			}
 			cacheController.findChangesAndInvalidate(context.Background(), test.storeID, span)
 		})
