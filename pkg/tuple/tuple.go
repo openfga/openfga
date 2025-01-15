@@ -13,10 +13,20 @@ import (
 
 type TupleKeys []*openfgav1.TupleKey
 
+// Len is a method that is required to implement the
+// sort.Interface interface. Len returns the number
+// of elements in the slice.
 func (tk TupleKeys) Len() int {
 	return len(tk)
 }
 
+// Less is a method that is required to implement the
+// sort.Interface interface. Less returns true when the
+// value at index i is less than the value at index j.
+// Tuples are compared first by their object, then their
+// relation, then their user, and finally their condition.
+// If Less(i, j) returns false and Less(j, i) returns false,
+// then the tuples are equal.
 func (tk TupleKeys) Less(i, j int) bool {
 	if tk[i].GetObject() != tk[j].GetObject() {
 		return tk[i].GetObject() < tk[j].GetObject()
@@ -40,6 +50,9 @@ func (tk TupleKeys) Less(i, j int) bool {
 	return true
 }
 
+// Swap is a method that is required to implement the
+// sort.Interface interface. Swap exchanges the values
+// at slice indexes i and j.
 func (tk TupleKeys) Swap(i, j int) {
 	tk[i], tk[j] = tk[j], tk[i]
 }

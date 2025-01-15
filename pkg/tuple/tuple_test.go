@@ -9,6 +9,9 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+// MustNewStruct returns a new *structpb.Struct or panics
+// on error. The new *structpb.Struct value is built from
+// the map m.
 func MustNewStruct(m map[string]any) *structpb.Struct {
 	s, err := structpb.NewStruct(m)
 	if err == nil {
