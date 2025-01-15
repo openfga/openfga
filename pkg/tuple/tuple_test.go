@@ -133,6 +133,17 @@ func TestTuple_Getters(t *testing.T) {
 	})
 }
 
+func TestTuple_String(t *testing.T) {
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "document:A",
+		Relation: "relationA",
+		User:     "user:A",
+	}
+
+	result := From(tupleKey).String()
+	require.Equal(t, "document:A#relationA@user:A", result)
+}
+
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {
 		name                    string
