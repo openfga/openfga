@@ -25,7 +25,11 @@ type ResolveCheckRequest struct {
 	VisitedPaths              map[string]struct{}
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
-	invariantCacheKey         string
+
+	// Invariant parts of a check request are those that don't change in sub-problems
+	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
+	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
+	invariantCacheKey string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -85,12 +89,18 @@ func NewResolveCheckRequest(
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
 	}
 
-	key, err := GenerateInvariantCacheKey(r)
+	keyBuilder := &strings.Builder{}
+	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
+		StoreID:              params.StoreID,
+		AuthorizationModelID: params.AuthorizationModelID,
+		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		Context:              params.Context,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	r.invariantCacheKey = key
+	r.invariantCacheKey = keyBuilder.String()
 
 	return r, nil
 }
@@ -193,25 +203,4 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
-}
-
-// GenerateInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request and returns it.
-// Invariant parts: StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
-// The InvariantCacheKey is calculated once per request and passed along to
-// sub-problems via ResolveCheckRequest.clone() if necessary.
-func GenerateInvariantCacheKey(req *ResolveCheckRequest) (string, error) {
-	params := &storage.CheckCacheKeyParams{
-		StoreID:              req.GetStoreID(),
-		AuthorizationModelID: req.GetAuthorizationModelID(),
-		ContextualTuples:     req.GetContextualTuples(),
-		Context:              req.GetContext(),
-	}
-
-	writer := &strings.Builder{}
-	err := storage.WriteInvariantCheckCacheKey(writer, params)
-	if err != nil {
-		return "", err
-	}
-
-	return writer.String(), nil
 }
