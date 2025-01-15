@@ -101,13 +101,13 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 
 	resolveCheckRequest, err := graph.NewResolveCheckRequest(
 		graph.ResolveCheckRequestParams{
-			StoreID:               params.StoreID,
-			TupleKey:              tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-			Context:               params.Context,
-			ContextualTuples:      params.ContextualTuples,
-			Consistency:           params.Consistency,
-			CacheInvalidationTime: cacheInvalidationTime,
-			AuthorizationModelID:  c.typesys.GetAuthorizationModelID(),
+			StoreID:                   params.StoreID,
+			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+			Context:                   params.Context,
+			ContextualTuples:          params.ContextualTuples,
+			Consistency:               params.Consistency,
+			LastCacheInvalidationTime: cacheInvalidationTime,
+			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
 		},
 	)
 

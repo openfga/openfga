@@ -318,10 +318,10 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 			Relation: "viewer",
 			Object:   "folder:A",
 		},
-		ContextualTuples:      nil,
-		Context:               nil,
-		CacheInvalidationTime: time.Time{},
-		AuthorizationModelID:  ts.GetAuthorizationModelID(),
+		ContextualTuples:          nil,
+		Context:                   nil,
+		LastCacheInvalidationTime: time.Time{},
+		AuthorizationModelID:      ts.GetAuthorizationModelID(),
 	})
 	require.NoError(t, err)
 

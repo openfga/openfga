@@ -45,13 +45,13 @@ type ResolveCheckRequestMetadata struct {
 }
 
 type ResolveCheckRequestParams struct {
-	StoreID               string
-	TupleKey              *openfgav1.TupleKey
-	ContextualTuples      *openfgav1.ContextualTupleKeys
-	Context               *structpb.Struct
-	Consistency           openfgav1.ConsistencyPreference
-	CacheInvalidationTime time.Time
-	AuthorizationModelID  string
+	StoreID                   string
+	TupleKey                  *openfgav1.TupleKey
+	ContextualTuples          *openfgav1.ContextualTupleKeys
+	Context                   *structpb.Struct
+	Consistency               openfgav1.ConsistencyPreference
+	LastCacheInvalidationTime time.Time
+	AuthorizationModelID      string
 }
 
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
@@ -74,7 +74,7 @@ func NewResolveCheckRequest(
 		RequestMetadata:      NewCheckRequestMetadata(),
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: params.CacheInvalidationTime,
+		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
 	}
 
 	err := r.SetRequestInvariantCacheKey()
