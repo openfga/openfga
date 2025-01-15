@@ -142,13 +142,13 @@ func (c *CachedCheckResolver) ResolveCheck(
 	t := tuple.From(req.GetTupleKey())
 	cacheKey := t.String() + req.GetInvariantCacheKey()
 
-	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+	tryCache := req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
 	if tryCache {
 		checkCacheTotalCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
-			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
+			isValid := res.LastModified.After(req.GetLastCacheInvalidationTime())
 			span.SetAttributes(attribute.Bool("cached", isValid))
 			if isValid {
 				checkCacheHitCounter.Inc()
