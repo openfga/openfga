@@ -144,6 +144,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
 	// re-evaluate at a later time.
+	// Note that changes are sorted in descending order.
 	changes, _, err := c.findChanges(ctx, storeID)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -152,6 +153,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
+	// changes[0] returns the most recent change
 	entry := &storage.ChangelogCacheEntry{
 		LastModified: changes[0].GetTimestamp().AsTime(),
 	}
@@ -171,11 +173,17 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
+	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
+
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
+	// Remember that idx[0] is the most recent change while idx[len(changes)-1] is the oldest change because
+	// changes is ordered from most recent to oldest.
 	idx := len(changes) - 1
 	for ; idx >= 0; idx-- {
-		if !lastInvalidationOccurred || changes[idx].GetTimestamp().AsTime().After(timestampOfLastInvalidation) {
+		// idx marks the changes the first change after the timestampOfLastIteratorInvalidation.
+		// therefore, we want to use the changes happens at/after this time to invalidate cache.
+		if changes[idx].GetTimestamp().AsTime().After(timestampOfLastIteratorInvalidation) {
 			break
 		}
 	}
