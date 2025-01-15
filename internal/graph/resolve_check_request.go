@@ -25,7 +25,7 @@ type ResolveCheckRequest struct {
 	VisitedPaths              map[string]struct{}
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
-	InvariantCacheKey         string
+	invariantCacheKey         string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -77,11 +77,6 @@ func NewResolveCheckRequest(
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
 	}
 
-	err := r.SetRequestInvariantCacheKey()
-	if err != nil {
-		return nil, err
-	}
-
 	if r.GetAuthorizationModelID() == "" {
 		return nil, errors.New("missing authorization_model_id")
 	}
@@ -89,6 +84,13 @@ func NewResolveCheckRequest(
 	if r.GetStoreID() == "" {
 		return nil, errors.New("missing store_id")
 	}
+
+	key, err := GenerateInvariantCacheKey(r)
+	if err != nil {
+		return nil, err
+	}
+
+	r.invariantCacheKey = key
 
 	return r, nil
 }
@@ -119,7 +121,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
-		InvariantCacheKey:         r.GetInvariantCacheKey(),
+		invariantCacheKey:         r.GetInvariantCacheKey(),
 	}
 }
 
@@ -190,27 +192,26 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 	if r == nil {
 		return ""
 	}
-	return r.InvariantCacheKey
+	return r.invariantCacheKey
 }
 
-// SetRequestInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request and attaches it to the request.
+// GenerateInvariantCacheKey calculates a cache key for the "Invariant" parts of a check request and returns it.
 // Invariant parts: StoreID, AuthorizationModelID, Context and ContextualTuples, as they do not change within a single request.
 // The InvariantCacheKey is calculated once per request and passed along to
 // sub-problems via ResolveCheckRequest.clone() if necessary.
-func (r *ResolveCheckRequest) SetRequestInvariantCacheKey() error {
+func GenerateInvariantCacheKey(req *ResolveCheckRequest) (string, error) {
 	params := &storage.CheckCacheKeyParams{
-		StoreID:              r.GetStoreID(),
-		AuthorizationModelID: r.GetAuthorizationModelID(),
-		ContextualTuples:     r.GetContextualTuples(),
-		Context:              r.GetContext(),
+		StoreID:              req.GetStoreID(),
+		AuthorizationModelID: req.GetAuthorizationModelID(),
+		ContextualTuples:     req.GetContextualTuples(),
+		Context:              req.GetContext(),
 	}
 
 	writer := &strings.Builder{}
 	err := storage.WriteInvariantCheckCacheKey(writer, params)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	r.InvariantCacheKey = writer.String()
-	return nil
+	return writer.String(), nil
 }
