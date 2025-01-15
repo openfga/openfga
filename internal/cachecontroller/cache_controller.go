@@ -183,6 +183,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	for ; idx >= 0; idx-- {
 		// idx marks the changes the first change after the timestampOfLastIteratorInvalidation.
 		// therefore, we want to use the changes happens at/after this time to invalidate cache.
+		//
+		// Note that we only want to add invalidation entries for changes with timestamp >= now - iterator cache's TTL
+		// because anything older than that time would not live in the iterator cache anyway.
 		if changes[idx].GetTimestamp().AsTime().After(timestampOfLastIteratorInvalidation) {
 			break
 		}
@@ -191,7 +194,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if idx == len(changes)-1 {
 		c.invalidateIteratorCache(storeID)
 	} else {
-		// only a subset of changes are new, revoke the respective ones
+		// only a subset of changes are new, revoke the respective ones.
 		lastModified := time.Now()
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
