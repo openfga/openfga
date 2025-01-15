@@ -8,9 +8,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190)
+
+## [1.8.4] - 2025-01-13
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
+
+### Fixed
 - Fixed missing binding between flags and environment variables for the cache controller feature [#2184](https://github.com/openfga/openfga/pull/2184)
 - Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 - Fixed Read API to validate user field and assert presence of both type and value. [#2195](https://github.com/openfga/openfga/pull/2195)
+
+### Security
+- Address [CVE-2024-56323](https://github.com/openfga/openfga/security/advisories/GHSA-32q6-rr98-cjqv) - an issue affecting Check and ListObjects results for users using Conditions in Contextual Tuples. Please see the CVE report for more details.
 
 ## [1.8.3] - 2024-12-31
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3)
@@ -1180,7 +1189,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.4...HEAD
+[1.8.4]: https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1
