@@ -64,6 +64,14 @@ func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
 func NewResolveCheckRequest(
 	params ResolveCheckRequestParams,
 ) (*ResolveCheckRequest, error) {
+	if params.AuthorizationModelID == "" {
+		return nil, errors.New("missing authorization_model_id")
+	}
+
+	if params.StoreID == "" {
+		return nil, errors.New("missing store_id")
+	}
+
 	r := &ResolveCheckRequest{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
@@ -75,14 +83,6 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
-	}
-
-	if r.GetAuthorizationModelID() == "" {
-		return nil, errors.New("missing authorization_model_id")
-	}
-
-	if r.GetStoreID() == "" {
-		return nil, errors.New("missing store_id")
 	}
 
 	key, err := GenerateInvariantCacheKey(r)
