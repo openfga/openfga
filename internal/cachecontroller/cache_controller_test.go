@@ -157,7 +157,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					datastore.EXPECT().ReadChanges(gomock.Any(), "4", gomock.Any(), expectedReadChangesOpts).Return([]*openfgav1.TupleChange{
 						{
 							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-							Timestamp: timestamppb.New(time.Now().Add(-20 * time.Second)),
+							Timestamp: timestamppb.New(time.Now().Add(-40 * time.Second)),
 							TupleKey: &openfgav1.TupleKey{
 								Object:   "test:4",
 								Relation: "viewer",

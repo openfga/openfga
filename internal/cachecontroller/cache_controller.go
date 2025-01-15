@@ -184,21 +184,22 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// lookups have the entry and not have to wait on the existing singleflight group
 	c.cache.Set(cacheKey, entry, c.ttl)
 
-	timestampOfLastInvalidation := time.Now().Add(-c.ttl)
+	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
 
-	if lastInvalidationOccurred && entry.LastModified.Before(timestampOfLastInvalidation) {
+	// We want to compare against iterator cache TTL instead of in memory controller cache TTL
+	// because the invalidation logic below is only for iterator cache. Thus, anything older than
+	// cache iterator TTL will already have been invalidated by the iterator cache datastore.
+	if lastInvalidationOccurred && entry.LastModified.Before(timestampOfLastIteratorInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
-			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
+			zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation))
 
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
-
-	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
 
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
@@ -235,7 +236,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation",
 		zap.String("store_id", storeID),
 		zap.Time("entry.LastModified", entry.LastModified),
-		zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation),
+		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
 		zap.Bool("partialInvalidation", partialInvalidation))
 	span.SetAttributes(attribute.Bool("invalidations", true))
 	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
