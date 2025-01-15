@@ -185,6 +185,7 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 	}
 	return r.LastCacheInvalidationTime
 }
+
 func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 	if r == nil {
 		return ""
