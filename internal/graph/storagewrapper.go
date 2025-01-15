@@ -236,8 +236,8 @@ func (c *CachedDatastore) Read(
 // findInCache tries to find a key in the cache.
 // It returns true if and only if:
 // the key is present, and
-// the cache key for the store doesn't satisfy TS(key) < TS(store), and
-// none of the invalidEntityKeys satisfy TS(key) < TS(invalid)
+// the cache key satisfies TS(key) >= TS(store), and
+// all of the invalidEntityKeys satisfy TS(key) >= TS(invalid)
 func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
 	var ok bool

@@ -66,8 +66,10 @@ func NewNoopCacheController() CacheController {
 // Note that the invalidation is done asynchronously, and only after a Check request is received.
 // It will be eventually consistent.
 type InMemoryCacheController struct {
-	ds                    storage.OpenFGADatastore
-	cache                 storage.InMemoryCache[any]
+	ds    storage.OpenFGADatastore
+	cache storage.InMemoryCache[any]
+
+	// ttl for the entry that stores the last timestamp for a Write for a store.
 	ttl                   time.Duration
 	iteratorCacheTTL      time.Duration
 	changelogBuckets      []uint
@@ -87,6 +89,9 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 	return c
 }
 
+// DetermineInvalidation returns the timestamp of the last write for the specified store.
+// It may return a cached timestamp.
+// If the timestamp is not known, it will asynchronously find the last Write and store it, and also invalidate some or all entries in the cache.
 func (c *InMemoryCacheController) DetermineInvalidation(
 	ctx context.Context,
 	storeID string,
@@ -104,11 +109,12 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
+	// if the cache key cannot be found, we asynchronously
+	// find the last Write and store it, and also invalidate some or all entries in the cache.
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
 		span.SetAttributes(attribute.Bool("check_invalidation", true))
-		// if the cache cannot be found, we want to invalidate entries in the background
-		// so that it does not block the answer path.
+
 		go func() {
 			// we do not want to propagate context to avoid early cancellation
 			// and pollute span.
