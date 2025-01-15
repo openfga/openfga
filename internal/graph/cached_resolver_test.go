@@ -545,12 +545,12 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	ctx := context.Background()
 
-	req := &ResolveCheckRequest{
+	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
 		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-		RequestMetadata:      NewCheckRequestMetadata(),
-	}
+	})
+	require.NoError(t, err)
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)
@@ -581,17 +581,13 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 
 	ctx := context.Background()
 
-	req := &ResolveCheckRequest{
-		StoreID:              "12",
-		AuthorizationModelID: "33",
-		TupleKey: &openfgav1.TupleKey{
-			Object:   "document:abc",
-			Relation: "reader",
-			User:     "user:XYZ",
-		},
-		RequestMetadata:           NewCheckRequestMetadata(),
-		LastCacheInvalidationTime: time.Now().Add(5 * time.Minute),
-	}
+	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		AuthorizationModelID:  "33",
+		StoreID:               "12",
+		TupleKey:              tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+		CacheInvalidationTime: time.Now().Add(5 * time.Minute),
+	})
+	require.NoError(t, err)
 
 	result := &ResolveCheckResponse{Allowed: true}
 	initialMockResolver := NewMockCheckResolver(ctrl)

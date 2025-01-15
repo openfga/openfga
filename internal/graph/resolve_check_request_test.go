@@ -19,18 +19,18 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 			"x": 10,
 		})
 		require.NoError(t, err)
-		orig := &ResolveCheckRequest{
+		orig := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			StoreID:              "12",
 			AuthorizationModelID: "33",
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-			ContextualTuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")},
+			ContextualTuples:     &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")}},
 			Context:              contextStruct,
-			RequestMetadata:      NewCheckRequestMetadata(),
-			VisitedPaths: map[string]struct{}{
-				"abc": {},
-			},
+			//VisitedPaths: map[string]struct{}{
+			//	"abc": {},
+			//},
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		}
+		})
+		orig.VisitedPaths["abc"] = struct{}{}
 		orig.GetRequestMetadata().DispatchCounter.Add(2)
 
 		// First, assert the values of the orig
@@ -116,18 +116,15 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		orig := &ResolveCheckRequest{
+		orig := MustNewResolveCheckRequest(ResolveCheckRequestParams{
 			StoreID:              "12",
 			AuthorizationModelID: "33",
 			TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-			ContextualTuples:     []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")},
+			ContextualTuples:     &openfgav1.ContextualTupleKeys{TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("document:def", "writer", "user:123")}},
 			Context:              contextStruct,
-			RequestMetadata:      NewCheckRequestMetadata(),
-			VisitedPaths: map[string]struct{}{
-				"abc": {},
-			},
-			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
-		}
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		orig.VisitedPaths["abc"] = struct{}{}
 
 		const clonesCount = 100
 		var wg sync.WaitGroup

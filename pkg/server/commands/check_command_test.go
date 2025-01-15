@@ -130,7 +130,7 @@ type doc
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				_, _ = ds.Read(ctx, req.GetStoreID(), nil, storage.ReadOptions{})
 				return &graph.ResolveCheckResponse{}, nil
 			})
 		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{

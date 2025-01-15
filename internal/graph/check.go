@@ -1084,7 +1084,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 		if err != nil {
 			return response, nil
 		}
-		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
+		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys)
 		conditionMet, err := tupleKeyConditionFilter(tupleKey)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -1183,7 +1183,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					} else if len(req.GetContextualTuples()) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for contextual tuples - since these are injected without order
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
@@ -1423,7 +1423,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			} else if len(req.GetContextualTuples()) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for contextual tuples - since these are injected without order
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2

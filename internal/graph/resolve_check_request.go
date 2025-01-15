@@ -16,15 +16,15 @@ import (
 )
 
 type ResolveCheckRequest struct {
-	StoreID                   string
-	AuthorizationModelID      string // TODO replace with typesystem
+	storeID                   string
+	authorizationModelID      string // TODO replace with typesystem
 	TupleKey                  *openfgav1.TupleKey
-	ContextualTuples          []*openfgav1.TupleKey
-	Context                   *structpb.Struct
+	contextualTuples          []*openfgav1.TupleKey
+	context                   *structpb.Struct
 	RequestMetadata           *ResolveCheckRequestMetadata
 	VisitedPaths              map[string]struct{}
-	Consistency               openfgav1.ConsistencyPreference
-	LastCacheInvalidationTime time.Time
+	consistency               openfgav1.ConsistencyPreference
+	lastCacheInvalidationTime time.Time
 	InvariantCacheKey         string
 }
 
@@ -65,16 +65,16 @@ func NewResolveCheckRequest(
 	params ResolveCheckRequestParams,
 ) (*ResolveCheckRequest, error) {
 	r := &ResolveCheckRequest{
-		StoreID:              params.StoreID,
-		AuthorizationModelID: params.AuthorizationModelID,
+		storeID:              params.StoreID,
+		authorizationModelID: params.AuthorizationModelID,
 		TupleKey:             params.TupleKey,
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
-		Context:              params.Context,
+		contextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      NewCheckRequestMetadata(),
-		Consistency:          params.Consistency,
+		consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: params.CacheInvalidationTime,
+		lastCacheInvalidationTime: params.CacheInvalidationTime,
 	}
 
 	err := r.SetRequestInvariantCacheKey()
@@ -110,15 +110,15 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 	}
 
 	return &ResolveCheckRequest{
-		StoreID:                   r.GetStoreID(),
-		AuthorizationModelID:      r.GetAuthorizationModelID(),
+		storeID:                   r.GetStoreID(),
+		authorizationModelID:      r.GetAuthorizationModelID(),
 		TupleKey:                  tupleKey,
-		ContextualTuples:          r.GetContextualTuples(),
-		Context:                   r.GetContext(),
+		contextualTuples:          r.GetContextualTuples(),
+		context:                   r.GetContext(),
 		RequestMetadata:           requestMetadata,
 		VisitedPaths:              maps.Clone(r.GetVisitedPaths()),
-		Consistency:               r.GetConsistency(),
-		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
+		consistency:               r.GetConsistency(),
+		lastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		InvariantCacheKey:         r.GetInvariantCacheKey(),
 	}
 }
@@ -127,14 +127,14 @@ func (r *ResolveCheckRequest) GetStoreID() string {
 	if r == nil {
 		return ""
 	}
-	return r.StoreID
+	return r.storeID
 }
 
 func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
 	if r == nil {
 		return ""
 	}
-	return r.AuthorizationModelID
+	return r.authorizationModelID
 }
 
 func (r *ResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
@@ -148,7 +148,7 @@ func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r == nil {
 		return nil
 	}
-	return r.ContextualTuples
+	return r.contextualTuples
 }
 
 func (r *ResolveCheckRequest) GetRequestMetadata() *ResolveCheckRequestMetadata {
@@ -162,14 +162,14 @@ func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
 	if r == nil {
 		return nil
 	}
-	return r.Context
+	return r.context
 }
 
 func (r *ResolveCheckRequest) GetConsistency() openfgav1.ConsistencyPreference {
 	if r == nil {
 		return openfgav1.ConsistencyPreference_UNSPECIFIED
 	}
-	return r.Consistency
+	return r.consistency
 }
 
 func (r *ResolveCheckRequest) GetVisitedPaths() map[string]struct{} {
@@ -183,7 +183,7 @@ func (r *ResolveCheckRequest) GetLastCacheInvalidationTime() time.Time {
 	if r == nil {
 		return time.Time{}
 	}
-	return r.LastCacheInvalidationTime
+	return r.lastCacheInvalidationTime
 }
 func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 	if r == nil {
