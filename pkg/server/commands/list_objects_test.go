@@ -324,6 +324,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Preload the cache the way the cached_resolver does it
 	tup := tuple.From(req.GetTupleKey())
 	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
 	hasher := xxhash.New()
