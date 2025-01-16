@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("openfga/pkg/storagewrappers/caching_wrapper")
+	tracer = otel.Tracer("openfga/pkg/storagewrappers/check_caching")
 
 	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
