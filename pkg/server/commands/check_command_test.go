@@ -12,6 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/condition"
 	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
@@ -204,6 +205,18 @@ type doc
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
+	})
+
+	t.Run("fails_if_store_id_is_missing", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedCheckResources{
+			CacheController: &cachecontroller.NoopCacheController{},
+			Logger:          logger.NewNoopLogger(),
+		}, config.CacheSettings{}))
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  "",
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.Error(t, err)
 	})
 }
 
