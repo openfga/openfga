@@ -48,6 +48,8 @@ var (
 )
 
 type CacheController interface {
+	// DetermineInvalidation returns the timestamp of the last write for the specified store.
+	// It may return a cached timestamp.
 	DetermineInvalidation(ctx context.Context, storeID string) time.Time
 }
 
@@ -69,7 +71,7 @@ type InMemoryCacheController struct {
 	ds    storage.OpenFGADatastore
 	cache storage.InMemoryCache[any]
 
-	// ttl for the entry that stores the last timestamp for a Write for a store.
+	// ttl for the entry that keeps the last timestamp for a Write for a storeID.
 	ttl                   time.Duration
 	iteratorCacheTTL      time.Duration
 	changelogBuckets      []uint
@@ -166,8 +168,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 
 	lastInvalidationOccurred := c.cache.Get(cacheKey) != nil
 
-	// set changelog entry as soon as possible for subsequent cache
-	// lookups have the entry and not have to wait on the existing singleflight group
+	// set changelog entry as soon as possible so that subsequent cache lookups can find the entry
 	c.cache.Set(cacheKey, entry, c.ttl)
 
 	timestampOfLastInvalidation := time.Now().Add(-c.ttl)
@@ -179,9 +180,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
-	// need to consider there might just be 1 change
-	// iterate from the most recent to oldest to determine if the last change is part of the current batch
-	idx := len(changes) - 1 // first Write that was returned
+	// iterate from the oldest to most recent to determine if the last change is part of the current batch
+	idx := len(changes) - 1
 	for ; idx >= 0; idx-- {
 		if !lastInvalidationOccurred || changes[idx].GetTimestamp().AsTime().After(timestampOfLastInvalidation) {
 			break
