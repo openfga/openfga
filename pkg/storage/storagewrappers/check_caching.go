@@ -1,4 +1,4 @@
-package graph
+package storagewrappers
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -27,6 +28,8 @@ import (
 )
 
 var (
+	tracer = otel.Tracer("openfga/pkg/storagewrappers/caching_wrapper")
+
 	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
 	tuplesCacheTotalCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -71,6 +74,8 @@ func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
 	}
 }
 
+// CachedDatastore is a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
@@ -91,6 +96,7 @@ type CachedDatastore struct {
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests.
 func NewCachedDatastore(
 	ctx context.Context,
 	inner storage.RelationshipTupleReader,
@@ -145,7 +151,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
 	)
 
-	// NOTE: while `storagewrapper` is only used in Check there is no need to limit the length of this
+	// NOTE: while CachedDatastore is only used in Check there is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
