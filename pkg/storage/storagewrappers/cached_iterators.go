@@ -1,4 +1,4 @@
-package graph
+package storagewrappers
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// cachedTupleIterator is a wrapper around a cached iterator
+// cachedTupleIterator is a wrapper around an iterator
 // for a given object/relation.
 type cachedTupleIterator struct {
 	objectID   string
@@ -23,7 +23,7 @@ type cachedTupleIterator struct {
 
 var _ storage.TupleIterator = (*cachedTupleIterator)(nil)
 
-// Next will return the next available minimal cached tuple tuple
+// Next will return the next available minimal cached tuple
 // as a well-formed [openfgav1.Tuple].
 func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	t, err := c.iter.Next(ctx)
