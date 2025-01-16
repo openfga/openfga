@@ -902,7 +902,6 @@ func BenchmarkCheckRequestCacheKey(b *testing.B) {
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		})
-		writer.Reset()
 		require.NoError(b, err)
 	}
 }
@@ -928,7 +927,6 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 			ContextualTuples:     tuples,
 		})
 		require.NoError(b, err)
-		writer.Reset()
 	}
 }
 
@@ -959,7 +957,6 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 			Context:              contextStruct,
 		})
 		require.NoError(b, err)
-		writer.Reset()
 	}
 }
 
