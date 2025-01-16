@@ -25,7 +25,8 @@ func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader, req
 	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	if cacheSettings.ShouldCacheIterators() {
 		// TODO(miparnisari): pass cacheSettings and resources directly, i can't now because i would create a package import cycle
-		a = NewCachedDatastore(resources.ServerCtx, a, resources.CheckCache, int(cacheSettings.CheckIteratorCacheMaxResults), cacheSettings.CheckIteratorCacheTTL, resources.SingleflightGroup, resources.WaitGroup, []CachedDatastoreOpt{WithCachedDatastoreLogger(logger)}...) // to read tuples from cache
+		a = NewCachedDatastore(resources.ServerCtx, a, resources.CheckCache, int(cacheSettings.CheckIteratorCacheMaxResults), cacheSettings.CheckIteratorCacheTTL, resources.SingleflightGroup, resources.WaitGroup,
+			WithCachedDatastoreLogger(logger)) // to read tuples from cache
 	}
 	b := NewInstrumentedOpenFGAStorage(a)                   // to capture metrics
 	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples
