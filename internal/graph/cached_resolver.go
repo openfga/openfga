@@ -2,8 +2,10 @@ package graph
 
 import (
 	"context"
+	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -141,7 +143,18 @@ func (c *CachedCheckResolver) ResolveCheck(
 	span := trace.SpanFromContext(ctx)
 
 	t := tuple.From(req.GetTupleKey())
-	cacheKey := t.String() + req.GetInvariantCacheKey()
+	cacheKeyString := t.String() + req.GetInvariantCacheKey()
+
+	hasher := xxhash.New()
+	_, err := hasher.WriteString(cacheKeyString)
+
+	// this err is always nil, according to xxhash docs
+	if err != nil {
+		return nil, err
+	}
+
+	// Get unique hash int and convert to string for storage
+	cacheKey := strconv.FormatUint(hasher.Sum64(), 10)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 

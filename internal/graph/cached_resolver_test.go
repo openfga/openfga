@@ -646,3 +646,56 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	require.NotNil(t, resp)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 }
+
+func BenchmarkCachedCheckResolver_ResolveCheck(b *testing.B) {
+	params := &ResolveCheckRequestParams{
+		StoreID:              "12",
+		AuthorizationModelID: "33",
+		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				{
+					Object:   "document:aaa",
+					Relation: "reader",
+					User:     "user:XYZ",
+				},
+				{
+					Object:   "document:xxx",
+					Relation: "reader",
+					User:     "user:XYZ",
+				},
+				{
+					Object:   "document:yyy",
+					Relation: "reader",
+					User:     "user:XYZ",
+				},
+			},
+		},
+	}
+
+	// build cached resolver
+	ctrl := gomock.NewController(b)
+	defer ctrl.Finish()
+	mockResolver := NewMockCheckResolver(ctrl)
+	dut, err := NewCachedCheckResolver()
+	require.NoError(b, err)
+	defer dut.Close()
+	req, _ := NewResolveCheckRequest(*params)
+	mockResolver.EXPECT().
+		ResolveCheck(gomock.Any(), req).
+		AnyTimes().
+		Return(&ResolveCheckResponse{}, nil)
+	//setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+	//	mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
+	// },
+	dut.SetDelegate(mockResolver)
+
+	ctx := context.Background()
+
+	b.Run("benchmark_resolve_check", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, err = dut.ResolveCheck(ctx, req)
+			require.NoError(b, err)
+		}
+	})
+}

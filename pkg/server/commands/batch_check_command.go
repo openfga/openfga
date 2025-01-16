@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -251,10 +252,11 @@ func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, 
 		Context:          check.GetContext(),
 	}
 
-	cacheKey, err := storage.GetCheckCacheKey(cacheKeyParams)
+	w := &strings.Builder{}
+	err := storage.WriteCheckCacheKey(w, cacheKeyParams)
 	if err != nil {
 		return "", err
 	}
 
-	return CacheKey(cacheKey), nil
+	return CacheKey(w.String()), nil
 }

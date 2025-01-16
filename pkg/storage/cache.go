@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Yiling-J/theine-go"
-	"github.com/cespare/xxhash/v2"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -309,28 +308,26 @@ type CheckCacheKeyParams struct {
 	Context              *structpb.Struct
 }
 
-// GetCheckCacheKey converts the elements of a Check into a canonical cache key that can be
-// used for Check resolution cache key lookups in a stable way.
+// WriteCheckCacheKey converts the elements of a Check into a canonical cache key that can be
+// used for Check resolution cache key lookups in a stable way, and writes it to the provided writer.
 //
 // For one store and model ID, the same tuple provided with the same contextual tuples and context
 // should produce the same cache key. Contextual tuple order and context parameter order is ignored,
 // only the contents are compared.
-func GetCheckCacheKey(params *CheckCacheKeyParams) (string, error) {
-	hasher := xxhash.New()
-
+func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	t := tuple.From(params.TupleKey)
 
-	_, err := hasher.WriteString(t.String())
+	_, err := w.WriteString(t.String())
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	err = WriteInvariantCheckCacheKey(hasher, params)
+	err = WriteInvariantCheckCacheKey(w, params)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return strconv.FormatUint(hasher.Sum64(), 10), nil
+	return nil
 }
 
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
