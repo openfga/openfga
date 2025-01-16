@@ -308,6 +308,27 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				)
 			},
 		},
+		{
+			name:    "bad_cache_key_return",
+			storeID: "10",
+			setMocks: func(cache *mocks.MockInMemoryCache[any], datastore *mocks.MockOpenFGADatastore) {
+				gomock.InOrder(
+					datastore.EXPECT().ReadChanges(gomock.Any(), "10", gomock.Any(), expectedReadChangesOpts).Return([]*openfgav1.TupleChange{
+						{
+							Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+							Timestamp: timestamppb.New(time.Now().Add(-20 * time.Second)),
+							TupleKey: &openfgav1.TupleKey{
+								Object:   "test:10",
+								Relation: "viewer",
+								User:     "test",
+							}},
+					}, "", nil),
+					cache.EXPECT().Get(storage.GetChangelogCacheKey("10")).Return("bad_value"),
+					cache.EXPECT().Set(storage.GetChangelogCacheKey("10"), gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorCacheKey("10"), gomock.Any(), gomock.Any()),
+				)
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

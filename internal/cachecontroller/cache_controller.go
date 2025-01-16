@@ -178,28 +178,36 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		LastModified: changes[0].GetTimestamp().AsTime(),
 	}
 
-	lastInvalidationOccurred := c.cache.Get(cacheKey) != nil
+	lastCacheRecord := c.cache.Get(cacheKey)
 
 	// set changelog entry as soon as possible for subsequent cache
 	// lookups have the entry and not have to wait on the existing singleflight group
 	c.cache.Set(cacheKey, entry, c.ttl)
 
-	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
+	timestampOfLastInvalidation := time.Time{}
+	if lastCacheRecord != nil {
+		decodedRecord, ok := lastCacheRecord.(*storage.ChangelogCacheEntry)
+		if ok {
+			// if the change log cache is available and valid, use the last modified
+			// time to have better consistency. Otherwise, the timestampOfLastInvalidation will
+			// be beginning of time which imply the need to perform read changes and invalidate record
+			timestampOfLastInvalidation = decodedRecord.LastModified
+		}
+	}
 
-	// We want to compare against iterator cache TTL instead of in memory controller cache TTL
-	// because the invalidation logic below is only for iterator cache. Thus, anything older than
-	// cache iterator TTL will already have been invalidated by the iterator cache datastore.
-	if lastInvalidationOccurred && entry.LastModified.Before(timestampOfLastIteratorInvalidation) {
+	if entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
-			zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation))
+			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
 
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
+
+	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
 
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
