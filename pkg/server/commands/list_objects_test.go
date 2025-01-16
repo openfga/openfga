@@ -2,9 +2,11 @@ package commands
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -312,21 +314,21 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
 	req, err := graph.NewResolveCheckRequest(graph.ResolveCheckRequestParams{
-		StoreID: storeID,
+		StoreID:              storeID,
+		AuthorizationModelID: ts.GetAuthorizationModelID(),
 		TupleKey: &openfgav1.TupleKey{
 			User:     "user:jon",
 			Relation: "viewer",
 			Object:   "folder:A",
 		},
-		ContextualTuples:          nil,
-		Context:                   nil,
-		LastCacheInvalidationTime: time.Time{},
-		AuthorizationModelID:      ts.GetAuthorizationModelID(),
 	})
 	require.NoError(t, err)
 
 	tup := tuple.From(req.GetTupleKey())
-	cacheKey := tup.String() + req.GetInvariantCacheKey()
+	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
+	hasher := xxhash.New()
+	_, _ = hasher.WriteString(cacheKeyString)
+	cacheKey := strconv.FormatUint(hasher.Sum64(), 10)
 
 	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
 		LastModified: time.Now(),
