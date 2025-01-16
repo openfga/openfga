@@ -3,10 +3,11 @@ package commands
 import (
 	"context"
 	"fmt"
-	"strings"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
+	"github.com/cespare/xxhash/v2"
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -252,11 +253,12 @@ func generateCacheKeyFromCheck(check *openfgav1.BatchCheckItem, storeID string, 
 		Context:          check.GetContext(),
 	}
 
-	w := &strings.Builder{}
-	err := storage.WriteCheckCacheKey(w, cacheKeyParams)
+	hasher := xxhash.New()
+	err := storage.WriteCheckCacheKey(hasher, cacheKeyParams)
 	if err != nil {
 		return "", err
 	}
 
-	return CacheKey(w.String()), nil
+	keyStr := strconv.FormatUint(hasher.Sum64(), 10)
+	return CacheKey(keyStr), nil
 }

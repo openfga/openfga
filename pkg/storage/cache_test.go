@@ -889,28 +889,25 @@ func TestWriteCheckCacheKey(t *testing.T) {
 	}
 }
 
-func BenchmarkCheckRequestCacheKey(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
+// TupleCacheKey is calculated on every invocation of check, potentially multiple times
+// per request.
+func BenchmarkTupleCacheKey(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
 
+	params := &CheckCacheKeyParams{
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	}
+
 	for n := 0; n < b.N; n++ {
-		err = WriteCheckCacheKey(writer, &CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		})
+		err = WriteCheckCacheKey(writer, params)
 		require.NoError(b, err)
 		writer.Reset()
 	}
 }
 
-func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this key.
+func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
 
@@ -920,22 +917,23 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 		tuple.NewTupleKey("document:z", "viewer", "user:z"),
 	}
 
+	require.NoError(b, err)
+
+	params := &CheckCacheKeyParams{
+		AuthorizationModelID: ulid.Make().String(),
+		StoreID:              ulid.Make().String(),
+		ContextualTuples:     tuples,
+	}
+
 	for n := 0; n < b.N; n++ {
-		err = WriteCheckCacheKey(writer, &CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			ContextualTuples:     tuples,
-		})
+		err = WriteInvariantCheckCacheKey(writer, params)
 		require.NoError(b, err)
 		writer.Reset()
 	}
 }
 
-func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this key.
+func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
 
@@ -951,12 +949,31 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 	})
 	require.NoError(b, err)
 
+	params := &CheckCacheKeyParams{
+		AuthorizationModelID: ulid.Make().String(),
+		StoreID:              ulid.Make().String(),
+		Context:              contextStruct,
+	}
+
+	for n := 0; n < b.N; n++ {
+		err = WriteInvariantCheckCacheKey(writer, params)
+		require.NoError(b, err)
+		writer.Reset()
+	}
+}
+
+func BenchmarkCheckRequestCacheKey(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+	writer := &strings.Builder{}
+
 	for n := 0; n < b.N; n++ {
 		err = WriteCheckCacheKey(writer, &CheckCacheKeyParams{
 			StoreID:              storeID,
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			Context:              contextStruct,
 		})
 		require.NoError(b, err)
 		writer.Reset()
