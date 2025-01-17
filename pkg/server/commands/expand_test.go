@@ -3,13 +3,14 @@ package commands
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/testing/protocmp"
-	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
