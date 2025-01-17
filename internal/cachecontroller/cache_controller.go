@@ -47,6 +47,18 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"invalidation_required", "changes_size"})
+
+	iteratorCacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_iterator_cache_invalidation_count",
+		Help:      "The total number of cache hits from cachecontroller requests.",
+	})
+
+	checkQueryCacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_check_query_cache_invalidation_count",
+		Help:      "The total number of invalidations of the check query cache.",
+	})
 )
 
 type CacheController interface {
@@ -127,6 +139,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
 		span.SetAttributes(attribute.Bool("check_invalidation", true))
+		checkQueryCacheInvalidationCounter.Inc()
 		// if the cache cannot be found, we want to invalidate entries in the background
 		// so that it does not block the answer path.
 		go func() {
@@ -169,6 +182,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
+		// TODO: do we want to increment the counter in this scenario?
 		c.invalidateIteratorCache(storeID)
 		return
 	}
@@ -253,6 +267,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 }
 
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
+	iteratorCacheInvalidationCounter.Inc()
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
