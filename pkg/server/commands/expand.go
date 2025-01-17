@@ -180,6 +180,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 		users = append(users, u)
 	}
 
+	// to make output array deterministic
 	slices.Sort(users)
 
 	return &openfgav1.UsersetTree_Node{
