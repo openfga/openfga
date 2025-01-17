@@ -918,73 +918,75 @@ type recursiveMapping struct {
 
 type channelBuilder func(cancellableCtx context.Context) (chan usersetMessage, func(), error)
 
-func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator, rightSideMapping *recursiveMapping, leftChanBuilder channelBuilder) (*ResolveCheckResponse, error) {
-	leftSet, rightSet := hashset.New(), hashset.New()
-	leftDone, rightDone := false, false
+func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, leftChanBuilder channelBuilder) (*ResolveCheckResponse, error) {
+	usersetFromUser := hashset.New()
+	usersetFromObject := hashset.New()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-
-	rightIterator := wrapIterator(rightSideMapping.kind, rightIter)
-	defer rightIterator.Stop()
-	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, rightIterator)
+	objectToUsersetIter := wrapIterator(mapping.kind, iter)
+	defer objectToUsersetIter.Stop()
+	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
 	}
 
-	// check to see if there are any recursive userset assigned on the right-hand side. If not,
-	// we don't even need to check the left-hand side.
+	// check to see if there are any recursive userset assigned. If not,
+	// we don't even need to check the terminal type side.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case rightMessage, ok := <-rightChan:
+	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
 		if !ok {
 			return res, ctx.Err()
 		}
-		if rightMessage.err != nil {
-			return nil, rightMessage.err
+		if objectToUsersetMessage.err != nil {
+			return nil, objectToUsersetMessage.err
 		}
-		rightSet.Add(rightMessage.userset)
+		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
 
-	leftChan, leftChanCloser, err := leftChanBuilder(cancellableCtx)
+	userToUsersetMessageChan, leftChanCloser, err := leftChanBuilder(cancellableCtx)
 	if err != nil {
 		return nil, err
 	}
 	defer leftChanCloser()
 
+	userToUsersetDone := false
+	objectToUsersetDone := false
+
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
-	for !leftDone || !rightDone {
+	for !userToUsersetDone || !objectToUsersetDone {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case leftMessage, ok := <-leftChan:
+		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
 			if !ok {
-				leftDone = true
-				if leftSet.Size() == 0 {
+				userToUsersetDone = true
+				if usersetFromUser.Size() == 0 {
 					return res, ctx.Err()
 				}
 				break
 			}
-			if leftMessage.err != nil {
-				return nil, leftMessage.err
+			if userToUsersetMessage.err != nil {
+				return nil, userToUsersetMessage.err
 			}
-			if processUsersetMessage(leftMessage.userset, leftSet, rightSet) {
+			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) {
 				res.Allowed = true
 				return res, nil
 			}
-		case rightMessage, ok := <-rightChan:
+		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
 			if !ok {
-				// rightSet must not be empty because we would have caught it earlier.
-				rightDone = true
+				// usersetFromObject must not be empty because we would have caught it earlier.
+				objectToUsersetDone = true
 				break
 			}
-			if rightMessage.err != nil {
-				return nil, rightMessage.err
+			if objectToUsersetMessage.err != nil {
+				return nil, objectToUsersetMessage.err
 			}
-			if processUsersetMessage(rightMessage.userset, rightSet, leftSet) {
+			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) {
 				res.Allowed = true
 				return res, nil
 			}
@@ -992,7 +994,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	}
 
 	newReq := req.clone()
-	return c.recursiveMatchUserUserset(ctx, newReq, rightSideMapping, rightSet, leftSet)
+	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
 }
 
 func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
