@@ -2338,6 +2338,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			storeID := ulid.Make().String()
 			objectIDs := storage.NewSortedSet()
 			for _, objectID := range tt.objectIDs {
 				objectIDs.Add(objectID)
@@ -2346,24 +2347,34 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			t.Cleanup(ctrl.Finish)
 
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: "group",
+				Relation:   "member",
+				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+				ObjectIDs:  objectIDs,
+			}, storage.ReadStartingWithUserOptions{
+				WithContextualTuplesOrderedByObjectAscending: false,
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+				}},
+			).Times(1).
+				Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
 			ctx := context.Background()
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+			ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
 
 			result, err := checkAssociatedObjects(ctx, &ResolveCheckRequest{
-				StoreID:              ulid.Make().String(),
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-				Context:              contextStruct,
+				StoreID:         storeID,
+				TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(),
+				Context:         contextStruct,
 			}, "group#member", objectIDs)
 			if tt.expectedError {
 				require.Error(t, err)

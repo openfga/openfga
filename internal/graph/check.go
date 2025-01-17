@@ -530,6 +530,8 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // [group#owner][1, 3].
 type usersetsMapType map[string]storage.SortedSet
 
+// checkAssociatedObjects returns true if there is an intersection in the set of object IDs returned by an iterator built for objectRel,
+// and the set "objectIDs".
 func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 	defer span.End()
