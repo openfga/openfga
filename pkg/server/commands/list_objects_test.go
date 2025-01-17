@@ -310,7 +310,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	defer checkCache.Stop()
 
 	// Write an item to the cache that has an Allowed value of false for folder:A
-	req := &graph.ResolveCheckRequest{
+	req, err := graph.NewResolveCheckRequest(graph.ResolveCheckRequestParams{
 		StoreID:              storeID,
 		AuthorizationModelID: ts.GetAuthorizationModelID(),
 		TupleKey: &openfgav1.TupleKey{
@@ -318,10 +318,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 			Relation: "viewer",
 			Object:   "folder:A",
 		},
-	}
-	cacheKey, err := graph.CheckRequestCacheKey(req)
+	})
 	require.NoError(t, err)
 
+	// Preload the cache
+	cacheKey := graph.BuildCacheKey(*req)
 	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
 		LastModified: time.Now(),
 		CheckResponse: &graph.ResolveCheckResponse{
