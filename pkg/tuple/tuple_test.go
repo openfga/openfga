@@ -112,6 +112,38 @@ func TestTupleKeys_Less(t *testing.T) {
 	}
 }
 
+func TestTuple_Getters(t *testing.T) {
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "document:A",
+		Relation: "relationA",
+		User:     "user:A",
+	}
+	tup := From(tupleKey)
+
+	t.Run("get_object", func(t *testing.T) {
+		require.Equal(t, "document:A", tup.GetObject())
+	})
+
+	t.Run("get_relation", func(t *testing.T) {
+		require.Equal(t, "relationA", tup.GetRelation())
+	})
+
+	t.Run("get_user", func(t *testing.T) {
+		require.Equal(t, "user:A", tup.GetUser())
+	})
+}
+
+func TestTuple_String(t *testing.T) {
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "document:A",
+		Relation: "relationA",
+		User:     "user:A",
+	}
+
+	result := From(tupleKey).String()
+	require.Equal(t, "document:A#relationA@user:A", result)
+}
+
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {
 		name                    string
