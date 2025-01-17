@@ -2,11 +2,9 @@ package commands
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -20,7 +18,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -324,13 +321,8 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Preload the cache the way the cached_resolver does it
-	tup := tuple.From(req.GetTupleKey())
-	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
-	hasher := xxhash.New()
-	_, _ = hasher.WriteString(cacheKeyString)
-	cacheKey := strconv.FormatUint(hasher.Sum64(), 10)
-
+	// Preload the cache
+	cacheKey := graph.BuildCacheKey(*req)
 	checkCache.Set(cacheKey, &graph.CheckResponseCacheEntry{
 		LastModified: time.Now(),
 		CheckResponse: &graph.ResolveCheckResponse{

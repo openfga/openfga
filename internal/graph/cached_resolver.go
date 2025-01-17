@@ -142,19 +142,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	t := tuple.From(req.GetTupleKey())
-	cacheKeyString := t.String() + req.GetInvariantCacheKey()
-
-	hasher := xxhash.New()
-	_, err := hasher.WriteString(cacheKeyString)
-
-	// this err is always nil, according to xxhash docs
-	if err != nil {
-		return nil, err
-	}
-
-	// Get unique hash int and convert to string for storage
-	cacheKey := strconv.FormatUint(hasher.Sum64(), 10)
+	cacheKey := BuildCacheKey(*req)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -194,4 +182,16 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
 	return resp, nil
+}
+
+func BuildCacheKey(req ResolveCheckRequest) string {
+	tup := tuple.From(req.GetTupleKey())
+	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
+
+	hasher := xxhash.New()
+
+	// Digest.WriteString returns int and a nil error, ignoring
+	_, _ = hasher.WriteString(cacheKeyString)
+
+	return strconv.FormatUint(hasher.Sum64(), 10)
 }

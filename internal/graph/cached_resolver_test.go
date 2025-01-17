@@ -646,3 +646,19 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	require.NotNil(t, resp)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 }
+
+func TestBuildCacheKey(t *testing.T) {
+	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		StoreID: "abc123",
+		TupleKey: &openfgav1.TupleKey{
+			Object:   "document:abc",
+			Relation: "reader",
+			User:     "user:XYZ",
+		},
+		AuthorizationModelID: "def456",
+	})
+	require.NoError(t, err)
+
+	result := BuildCacheKey(*req)
+	require.NotEmpty(t, result)
+}
