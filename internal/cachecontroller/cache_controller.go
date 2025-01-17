@@ -142,7 +142,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	return time.Time{}
 }
 
-func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
+func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
 		Pagination: storage.PaginationOptions{
@@ -164,8 +164,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
 	// re-evaluate at a later time.
-	// Note that changes are sorted in descending order.
-	changes, _, err := c.findChanges(ctx, storeID)
+	// Note that changes are sorted most-recent first
+	changes, _, err := c.findChangesDescending(ctx, storeID)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
@@ -173,9 +173,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
-	// changes[0] returns the most recent change
+	mostRecentChanges := changes[0]
 	entry := &storage.ChangelogCacheEntry{
-		LastModified: changes[0].GetTimestamp().AsTime(),
+		LastModified: mostRecentChanges.GetTimestamp().AsTime(),
 	}
 
 	lastCacheRecord := c.cache.Get(cacheKey)
@@ -190,8 +190,10 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		if ok {
 			// if the change log cache is available and valid, use the last modified
 			// time to have better consistency. Otherwise, the timestampOfLastInvalidation will
-			// be beginning of time which imply the need to perform read changes and invalidate record
+			// be the beginning of time which imply the need to invalidate one or more records.
 			timestampOfLastInvalidation = decodedRecord.LastModified
+		} else {
+			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("cacheKey", cacheKey))
 		}
 	}
 
