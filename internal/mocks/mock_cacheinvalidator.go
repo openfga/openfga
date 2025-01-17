@@ -17,7 +17,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockCacheInvalidator is a mock of CacheController interface.
+// MockCacheInvalidator is a mock of CacheInvalidator interface.
 type MockCacheInvalidator struct {
 	ctrl     *gomock.Controller
 	recorder *MockCacheInvalidatorMockRecorder
