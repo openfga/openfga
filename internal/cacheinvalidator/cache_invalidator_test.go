@@ -18,14 +18,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestNoopCacheInvalidator_DetermineInvalidation(t *testing.T) {
+func TestNoopCacheInvalidator_GetLastWriteAndInvalidate(t *testing.T) {
 	t.Run("returns_zero_time", func(t *testing.T) {
 		ctrl := NewNoopCacheInvalidator()
 		require.Zero(t, ctrl.GetLastWriteAndInvalidate(context.Background(), ""))
 	})
 }
 
-func TestInMemoryCacheInvalidator_DetermineInvalidation(t *testing.T) {
+func TestInMemoryCacheInvalidator_GetLastWriteAndInvalidate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
