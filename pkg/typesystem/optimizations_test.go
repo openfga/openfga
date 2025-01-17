@@ -11,11 +11,12 @@ import (
 
 func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 	tests := map[string]struct {
-		model      string
-		objectType string
-		relation   string
-		userType   string
-		expected   bool
+		model                   string
+		objectType              string
+		relation                string
+		userType                string
+		expected                bool
+		expectedCountOfRewrites int
 	}{
 		`recursive_ttu_or_computed_weight_one_1`: {
 			model: `
@@ -35,10 +36,11 @@ type document
     define rel5: [user]
     define rel6: [user]
 `,
-			objectType: "document",
-			relation:   "rel1a",
-			userType:   "user",
-			expected:   true,
+			objectType:              "document",
+			relation:                "rel1a",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 1, // computed
 		},
 		`recursive_ttu_or_computed_weight_one_2`: {
 			model: `
@@ -58,10 +60,11 @@ type document
     define rel5: [user]
     define rel6: [user]
 `,
-			objectType: "document",
-			relation:   "rel1b",
-			userType:   "user",
-			expected:   true,
+			objectType:              "document",
+			relation:                "rel1b",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 2, // direct and computed
 		},
 		`recursive_ttu_or_computed_weight_one_3`: {
 			model: `
@@ -81,10 +84,11 @@ type document
     define rel5: [user]
     define rel6: [user]
 `,
-			objectType: "document",
-			relation:   "rel1c",
-			userType:   "user",
-			expected:   true,
+			objectType:              "document",
+			relation:                "rel1c",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 2, // 2 computed
 		},
 		`recursive_ttu_or_computed_weight_one_infinity`: {
 			model: `
@@ -118,10 +122,11 @@ type document
             relations
               define parent: [folder]
               define viewer: [user] or viewer from parent`,
-			objectType: "folder",
-			relation:   "viewer",
-			userType:   "user",
-			expected:   true,
+			objectType:              "folder",
+			relation:                "viewer",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 1, // direct
 		},
 		`complex_ttu_multiple_parent_types`: {
 			model: `
@@ -235,10 +240,11 @@ type document
     define rel4: [user:*]
     define rel5: [user]
 `,
-			objectType: "document",
-			relation:   "rel1",
-			userType:   "user",
-			expected:   true,
+			objectType:              "document",
+			relation:                "rel1",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 1, // computed
 		},
 		`two_ttus`: {
 			model: `
@@ -268,7 +274,7 @@ type document
 			result, arr := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
 			require.Equal(t, test.expected, result)
 			if test.expected {
-				require.NotEmpty(t, arr)
+				require.Len(t, arr, test.expectedCountOfRewrites)
 			} else {
 				require.Empty(t, arr)
 			}

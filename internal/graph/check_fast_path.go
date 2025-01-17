@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"sync"
 
@@ -108,12 +107,10 @@ func (c *LocalChecker) fastPathDirect(ctx context.Context,
 		return nil, err
 	}
 	iterChan := make(chan *iteratorMsg, 1)
-	fmt.Println("send iter")
 	if !concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: i}, iterChan) {
 		i.Stop() // will not be received to be cleaned up
 	}
 	close(iterChan)
-	fmt.Println("closed iter")
 	return iterChan, nil
 }
 
@@ -768,52 +765,6 @@ func ObjectMapper() TupleKeyMapper {
 	}
 }
 
-func fanInIteratorChannelsToUsersetChannel(ctx context.Context, chans []chan *iteratorMsg, mapper TupleKeyMapper) chan usersetMessage {
-	limit := len(chans)
-	pool := concurrency.NewPool(ctx, limit)
-	out := make(chan usersetMessage, limit)
-
-	for _, iteratorMessageChannel := range chans {
-		fmt.Println("pool.Go")
-		pool.Go(func(ctx context.Context) error {
-			fmt.Println("begin Go")
-			for msg := range iteratorMessageChannel {
-				fmt.Println(msg)
-				if msg.err != nil {
-					return msg.err
-				}
-				for {
-					t, err := msg.iter.Next(ctx)
-					if err != nil {
-						msg.iter.Stop()
-						if storage.IterIsDoneOrCancelled(err) {
-							break
-						}
-						return err
-					}
-					fmt.Println(t)
-					um := usersetMessage{userset: mapper(t)}
-					if !concurrency.TrySendThroughChannel(ctx, um, out) {
-						if msg.iter != nil {
-							msg.iter.Stop()
-						}
-					}
-				}
-			}
-			fmt.Println("end Go")
-			return nil
-		})
-	}
-
-	fmt.Println("begin pool.Wait")
-	// NOTE: the consumer of this channel will block waiting for it to close
-	_ = pool.Wait()
-	fmt.Println("end pool.Wait")
-	close(out)
-
-	return out
-}
-
 // Note that visited does not necessary means that there are cycles.  For the following model,
 // type user
 // type group
@@ -1069,32 +1020,60 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	}, leftChannelBuilder)
 }
 
-// recursiveTTUFastPathUnionAlgebraicOperations solves a union relation of the form "{something} OR {recursive TTU} "
-// req.Object # req.Relation is the OR.
-func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, ttuRewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+// recursiveTTUFastPathUnionAlgebraicOperations solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
+// rightIter gives the iterator for the recursive TTU.
+func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, recursiveTTURewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
 	defer span.End()
 
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
-	userType := tuple.GetType(req.GetTupleKey().GetUser())
-	_, rewrites := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
-
 	leftChannelBuilder := func(subCtx context.Context) (chan usersetMessage, func(), error) {
-		arr := make([]chan *iteratorMsg, 0, len(rewrites))
-		for _, rewrite := range rewrites {
-			chanIterators, err := c.fastPathRewrite(subCtx, req, rewrite)
-			if err != nil {
-				return nil, func() {}, err
-			}
-			arr = append(arr, chanIterators)
+		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
+		userType := tuple.GetType(req.GetTupleKey().GetUser())
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
+		_, operands := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
+
+		outChannel := make(chan usersetMessage, 1)
+		defer close(outChannel)
+		pool := concurrency.NewPool(subCtx, len(operands))
+
+		for _, operand := range operands {
+			pool.Go(func(ctx context.Context) error {
+				newReq := req.clone()
+				newReq.TupleKey.Relation = operand.RelationName
+				chanIterator, err := c.fastPathRewrite(subCtx, newReq, operand.Rewrite)
+				if err != nil {
+					return err
+				}
+				for iteratorMessage := range chanIterator {
+					if iteratorMessage.err != nil {
+						return iteratorMessage.err
+					}
+					for {
+						t, err := iteratorMessage.iter.Next(ctx)
+						if err != nil {
+							iteratorMessage.iter.Stop()
+							if storage.IterIsDoneOrCancelled(err) {
+								break
+							}
+							return err
+						}
+						userset := t.GetObject()
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
+					}
+				}
+				return nil
+			})
 		}
 
-		leftHandChannel := fanInIteratorChannelsToUsersetChannel(subCtx, arr, ObjectMapper())
-		return leftHandChannel, func() {}, nil
+		err := pool.Wait()
+		if err != nil {
+			return nil, func() {}, err
+		}
+
+		return outChannel, func() {}, nil
 	}
 
-	rightTTURelation := ttuRewrite.GetTupleToUserset().GetTupleset().GetRelation()
+	rightTTURelation := recursiveTTURewrite.GetTupleToUserset().GetTupleset().GetRelation()
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             TTUKind,

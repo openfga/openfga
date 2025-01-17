@@ -10,13 +10,18 @@ import (
 // This file contains methods to detect whether an authorization model exhibits certain characteristics.
 // This information can then be used to increase performance of a Check request.
 
+type ResultingRelation struct {
+	Rewrite      *openfgav1.Userset
+	RelationName string
+}
+
 // IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
 // - node[objectType#relation].weights[userType] = infinite
 // - node[objectType#relation] has only 1 edge, and it's to an OR node
 // - The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // - Any other edge leaving the OR node has weight 1 for the terminal type.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (bool, []*openfgav1.Userset) {
-	usersets := make([]*openfgav1.Userset, 0)
+func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (bool, []ResultingRelation) {
+	usersets := make([]ResultingRelation, 0)
 	if t.authzWeightedGraph == nil {
 		return false, usersets
 	}
@@ -67,8 +72,18 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 			if ok && w == 1 {
 				nodeLabel := edgeFromUnionNode.GetTo().GetLabel()
 				objType, rel := tuple.SplitObjectRelation(nodeLabel)
-				getRelation, _ := t.GetRelation(objType, rel)
-				usersets = append(usersets, getRelation.GetRewrite())
+				if rel != "" {
+					getRelation, _ := t.GetRelation(objType, rel)
+					usersets = append(usersets, ResultingRelation{
+						Rewrite:      getRelation.GetRewrite(),
+						RelationName: rel,
+					})
+				} else {
+					usersets = append(usersets, ResultingRelation{
+						Rewrite:      This(),
+						RelationName: relation,
+					})
+				}
 			}
 			if !ok || w != 1 {
 				restOfEdgesAreWeight1 = false
