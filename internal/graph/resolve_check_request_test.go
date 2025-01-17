@@ -205,11 +205,12 @@ func TestNewResolveCheckRequest(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := NewResolveCheckRequest(tc.params)
+			req, err := NewResolveCheckRequest(tc.params)
 			if tc.error {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
+				require.NotEmpty(t, req.GetInvariantCacheKey())
 			}
 		})
 	}

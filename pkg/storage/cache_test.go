@@ -889,12 +889,12 @@ func TestWriteCheckCacheKey(t *testing.T) {
 	}
 }
 
-// TupleCacheKey is calculated on every invocation of check, potentially multiple times
-// per request.
-func BenchmarkTupleCacheKey(b *testing.B) {
+func BenchmarkWriteCheckCacheKey(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
 
+	// The TupleKey portion of the cache key is calculated on every invocation of check,
+	// potentially multiple times per request.
 	params := &CheckCacheKeyParams{
 		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 	}
@@ -906,7 +906,7 @@ func BenchmarkTupleCacheKey(b *testing.B) {
 	}
 }
 
-// The invariant cache key is calculated once per check request. Any sub-problems re-use this key.
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this portion of the key.
 func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
@@ -932,7 +932,7 @@ func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
 	}
 }
 
-// The invariant cache key is calculated once per check request. Any sub-problems re-use this key.
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this portion of the key.
 func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
 	var err error
 	writer := &strings.Builder{}
@@ -957,24 +957,6 @@ func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		err = WriteInvariantCheckCacheKey(writer, params)
-		require.NoError(b, err)
-		writer.Reset()
-	}
-}
-
-func BenchmarkCheckRequestCacheKey(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	var err error
-	writer := &strings.Builder{}
-
-	for n := 0; n < b.N; n++ {
-		err = WriteCheckCacheKey(writer, &CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		})
 		require.NoError(b, err)
 		writer.Reset()
 	}
