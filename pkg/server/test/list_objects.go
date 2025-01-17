@@ -481,7 +481,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
 
-			// arrange: write tuples
+			// arrange: write tuples in random order
+			test.tuples = testutils.Shuffle(test.tuples)
 			err = ds.Write(context.Background(), storeID, nil, test.tuples)
 			require.NoError(t, err)
 
@@ -628,6 +629,8 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 
 			numberObjectsAccesible++
 		}
+
+		tuples = testutils.Shuffle(tuples)
 
 		err := ds.Write(context.Background(), storeID, nil, tuples)
 		require.NoError(b, err)
