@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190)
+- Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 
 ## [1.8.4] - 2025-01-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
