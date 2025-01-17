@@ -94,6 +94,9 @@ func (s *iteratorStreams) getActiveStreams(ctx context.Context) ([]*iteratorStre
 	return s.streams, nil
 }
 
+// fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
+// It returns a channel with one element, and then closes the channel.
+// The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 func (c *LocalChecker) fastPathDirect(ctx context.Context,
 	req *ResolveCheckRequest) (chan *iteratorMsg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -486,6 +489,9 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 	}
 }
 
+// fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
+// Each element is an iterator.
+// The caller must wait until the channel is closed.
 func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op setOperatorType, children ...*openfgav1.Userset) (chan *iteratorMsg, error) {
 	iterStreams := make([]*iteratorStream, 0, len(children))
 	for idx, child := range children {
@@ -511,6 +517,8 @@ func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveC
 	return outChan, nil
 }
 
+// fastPathRewrite returns a channel that will contain an unknown but finite number of elements.
+// The channel is closed at the end.
 func (c *LocalChecker) fastPathRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,

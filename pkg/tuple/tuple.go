@@ -11,6 +11,52 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type TupleKeys []*openfgav1.TupleKey
+
+// Len is a method that is required to implement the
+// sort.Interface interface. Len returns the number
+// of elements in the slice.
+func (tk TupleKeys) Len() int {
+	return len(tk)
+}
+
+// Less is a method that is required to implement the
+// sort.Interface interface. Less returns true when the
+// value at index i is less than the value at index j.
+// Tuples are compared first by their object, then their
+// relation, then their user, and finally their condition.
+// If Less(i, j) returns false and Less(j, i) returns false,
+// then the tuples are equal.
+func (tk TupleKeys) Less(i, j int) bool {
+	if tk[i].GetObject() != tk[j].GetObject() {
+		return tk[i].GetObject() < tk[j].GetObject()
+	}
+
+	if tk[i].GetRelation() != tk[j].GetRelation() {
+		return tk[i].GetRelation() < tk[j].GetRelation()
+	}
+
+	if tk[i].GetUser() != tk[j].GetUser() {
+		return tk[i].GetUser() < tk[j].GetUser()
+	}
+
+	cond1 := tk[i].GetCondition()
+	cond2 := tk[j].GetCondition()
+	if (cond1 != nil || cond2 != nil) && cond1.GetName() != cond2.GetName() {
+		return cond1.GetName() < cond2.GetName()
+	}
+	// Note: conditions also optionally have context structs, but we aren't sorting by context
+
+	return true
+}
+
+// Swap is a method that is required to implement the
+// sort.Interface interface. Swap exchanges the values
+// at slice indexes i and j.
+func (tk TupleKeys) Swap(i, j int) {
+	tk[i], tk[j] = tk[j], tk[i]
+}
+
 type TupleWithCondition interface {
 	TupleWithoutCondition
 	GetCondition() *openfgav1.RelationshipCondition

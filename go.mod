@@ -8,7 +8,7 @@ require (
 	github.com/Yiling-J/theine-go v0.6.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/docker/docker v27.4.1+incompatible
+	github.com/docker/docker v27.5.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/go-sql-driver/mysql v1.8.1
@@ -24,9 +24,9 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20241230191130-b61b4ea28b71
+	github.com/openfga/api/proto v0.0.0-20250107154247-c22e6db5c4f5
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20241115164311-10e575c8e47c
-	github.com/pressly/goose/v3 v3.24.0
+	github.com/pressly/goose/v3 v3.24.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rs/cors v1.11.1
 	github.com/sourcegraph/conc v0.3.0
@@ -48,8 +48,8 @@ require (
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e
 	golang.org/x/sync v0.10.0
 	gonum.org/v1/gonum v0.15.1
-	google.golang.org/grpc v1.69.2
-	google.golang.org/protobuf v1.36.1
+	google.golang.org/grpc v1.69.4
+	google.golang.org/protobuf v1.36.2
 	modernc.org/sqlite v1.34.4
 	sigs.k8s.io/yaml v1.4.0
 )
