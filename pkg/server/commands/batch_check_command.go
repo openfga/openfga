@@ -175,7 +175,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
-				ContextualTuples: check.GetContextualTuples(),
+				ContextualTuples: check.GetContextualTuples().GetTupleKeys(),
 				Context:          check.GetContext(),
 				Consistency:      params.Consistency,
 			}

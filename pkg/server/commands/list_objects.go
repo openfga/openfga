@@ -344,7 +344,7 @@ func (q *ListObjectsQuery) evaluate(
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-							ContextualTuples: req.GetContextualTuples(),
+							ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
 						})
