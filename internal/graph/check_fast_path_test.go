@@ -102,7 +102,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
@@ -114,8 +114,6 @@ func TestFastPathDirect(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
-		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -129,9 +127,9 @@ func TestFastPathDirect(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
+		checker := NewLocalChecker()
 		c, err := checker.fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -152,7 +150,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
@@ -164,8 +162,6 @@ func TestFastPathDirect(t *testing.T) {
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).MaxTimes(1).Return(nil, errors.New("boom"))
-		checker := NewLocalChecker()
-		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -179,9 +175,9 @@ func TestFastPathDirect(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
+		checker := NewLocalChecker()
 		_, err = checker.fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
@@ -212,7 +208,7 @@ func TestFastPathComputed(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = setRequestContext(ctx, ts, nil, nil)
 
 		_, err = checker.fastPathComputed(ctx, &ResolveCheckRequest{
 			StoreID:  ulid.Make().String(),
@@ -1059,12 +1055,12 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 
 			storeID := ulid.Make().String()
 
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			for _, mock := range tt.readMocks {
-				ds.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
 			}
 
 			model := parser.MustTransformDSLToProto(`
@@ -1087,8 +1083,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 
 			checker := NewLocalChecker()
 			mapping := &recursiveMapping{
@@ -1162,9 +1157,10 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			storeID := ulid.Make().String()
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
@@ -1172,7 +1168,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readTuples {
-				ds.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
 			}
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
@@ -1186,8 +1182,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 			checker := NewLocalChecker()
 			result, err := checker.recursiveTTUFastPath(ctx, req, rel.GetRewrite(), storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{Object: "group:2", Relation: "parent", User: "group:1"}}))
 			require.Equal(t, tt.expectedError, err)
@@ -1317,11 +1312,9 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			storeID := ulid.Make().String()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
@@ -1329,7 +1322,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readUsersetTuples[1:] {
-				ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 			}
 			model := parser.MustTransformDSLToProto(`
 						model
@@ -1343,7 +1336,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 			req := &ResolveCheckRequest{
 				StoreID:              storeID,
@@ -1376,12 +1369,8 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 		defer ctrl.Finish()
 
 		storeID := ulid.Make().String()
-		ds := mocks.NewMockRelationshipTupleReader(ctrl)
-
-		ctx := context.Background()
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 				{
 					Key: tuple.NewTupleKey("group:bad", "member", "user:maria"),
@@ -1389,7 +1378,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			}), nil)
 
 		for i := 1; i < 26; i++ {
-			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					{
 						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i+1), "member", "group:"+strconv.Itoa(i)+"#member"),
@@ -1409,7 +1398,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 		req := &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1428,14 +1417,10 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 }
 
 func TestBuildRecursiveMapper(t *testing.T) {
+	storeID := ulid.Make().String()
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-	storeID := ulid.Make().String()
-	ctx := context.Background()
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -1447,7 +1432,8 @@ func TestBuildRecursiveMapper(t *testing.T) {
 	ts, err := typesystem.New(model)
 	require.NoError(t, err)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+	mockDatastore := mocks.NewMockRelationshipTupleReader(mockController)
+	ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 	checker := NewLocalChecker()
 
 	t.Run("recursive_userset", func(t *testing.T) {
