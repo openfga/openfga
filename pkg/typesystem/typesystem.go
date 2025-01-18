@@ -314,6 +314,7 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgav1.Rela
 
 // GetRelation retrieves a specific Relation from the TypeSystem
 // based on the provided objectType and relation strings.
+// It can return ErrObjectTypeUndefined and ErrRelationUndefined.
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relation, error) {
 	relations, err := t.GetRelations(objectType)
 	if err != nil {

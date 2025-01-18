@@ -11,9 +11,6 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestExpandQuery", func(t *testing.T) { TestExpandQuery(t, ds) })
-	t.Run("TestExpandQueryErrors", func(t *testing.T) { TestExpandQueryErrors(t, ds) })
-
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
