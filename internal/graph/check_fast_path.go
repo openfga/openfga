@@ -751,20 +751,6 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iteratorMsg) chan 
 	return out
 }
 
-type TupleKeyMapper func(t *openfgav1.TupleKey) string
-
-func UserMapper() TupleKeyMapper {
-	return func(t *openfgav1.TupleKey) string {
-		return t.GetUser()
-	}
-}
-
-func ObjectMapper() TupleKeyMapper {
-	return func(t *openfgav1.TupleKey) string {
-		return t.GetObject()
-	}
-}
-
 // Note that visited does not necessary means that there are cycles.  For the following model,
 // type user
 // type group
@@ -947,11 +933,11 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
 
-	userToUsersetMessageChan, leftChanCloser, err := leftChanBuilder(cancellableCtx)
+	userToUsersetMessageChan, userToUsersetMessageChanCloser, err := leftChanBuilder(cancellableCtx)
 	if err != nil {
 		return nil, err
 	}
-	defer leftChanCloser()
+	defer userToUsersetMessageChanCloser()
 
 	userToUsersetDone := false
 	objectToUsersetDone := false
@@ -1104,7 +1090,6 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	}
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:                        UsersetKind,
 		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
