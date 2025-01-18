@@ -10,7 +10,7 @@ import (
 // This file contains methods to detect whether an authorization model exhibits certain characteristics.
 // This information can then be used to increase performance of a Check request.
 
-type ResultingRelation struct {
+type Operand struct {
 	Rewrite      *openfgav1.Userset
 	RelationName string
 }
@@ -20,8 +20,9 @@ type ResultingRelation struct {
 // - node[objectType#relation] has only 1 edge, and it's to an OR node
 // - The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // - Any other edge leaving the OR node has weight 1 for the terminal type.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (bool, []ResultingRelation) {
-	usersets := make([]ResultingRelation, 0)
+// If true, it returns an array containing all the other operands leaving the OR.
+func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (bool, []Operand) {
+	usersets := make([]Operand, 0)
 	if t.authzWeightedGraph == nil {
 		return false, usersets
 	}
@@ -71,17 +72,17 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 			w, ok := edgeFromUnionNode.GetWeight(userType)
 			if ok && w == 1 {
 				nodeLabel := edgeFromUnionNode.GetTo().GetLabel()
-				objType, rel := tuple.SplitObjectRelation(nodeLabel)
-				if rel != "" {
-					getRelation, _ := t.GetRelation(objType, rel)
-					usersets = append(usersets, ResultingRelation{
+				objType, relationName := tuple.SplitObjectRelation(nodeLabel)
+				if relationName != "" {
+					getRelation, _ := t.GetRelation(objType, relationName)
+					usersets = append(usersets, Operand{
 						Rewrite:      getRelation.GetRewrite(),
-						RelationName: rel,
+						RelationName: relationName,
 					})
 				} else {
-					usersets = append(usersets, ResultingRelation{
+					usersets = append(usersets, Operand{
 						Rewrite:      This(),
-						RelationName: relation,
+						RelationName: relationName,
 					})
 				}
 			}

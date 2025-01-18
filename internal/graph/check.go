@@ -952,8 +952,8 @@ type usersetMessage struct {
 	err     error
 }
 
-// streamedLookupUsersetFromIterator streams the userset that are assigned to
-// the object to the usersetMessageChan channel.
+// streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
+// It closes the channel in the end.
 func streamedLookupUsersetFromIterator(ctx context.Context, iter TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
