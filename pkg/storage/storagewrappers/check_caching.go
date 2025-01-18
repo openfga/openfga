@@ -1,4 +1,4 @@
-package graph
+package storagewrappers
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -27,6 +28,8 @@ import (
 )
 
 var (
+	tracer = otel.Tracer("openfga/pkg/storagewrappers/check_caching")
+
 	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
 	tuplesCacheTotalCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -71,6 +74,8 @@ func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
 	}
 }
 
+// CachedDatastore is a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
@@ -91,6 +96,7 @@ type CachedDatastore struct {
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests, where the iterators _always_ have object/relation defined.
 func NewCachedDatastore(
 	ctx context.Context,
 	inner storage.RelationshipTupleReader,
@@ -145,7 +151,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
 	)
 
-	// NOTE: while `storagewrapper` is only used in Check there is no need to limit the length of this
+	// NOTE: while CachedDatastore is only used in Check there is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
@@ -253,6 +259,11 @@ func (c *CachedDatastore) Read(
 	return c.newCachedIteratorByObjectRelation(ctx, "Read", store, iter, b.String(), tupleKey.GetObject(), tupleKey.GetRelation())
 }
 
+// findInCache tries to find a key in the cache.
+// It returns true if and only if:
+// the key is present, and
+// the cache key satisfies TS(key) >= TS(store), and
+// all of the invalidEntityKeys satisfy TS(key) >= TS(invalid).
 func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string, logger logger.Logger) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
 	var ok bool
@@ -610,7 +621,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	return true
 }
 
-// flush will store copy of buffered tuples into cache.
+// flush will store copy of buffered tuples into cache and delete invalidEntityKeys from the cache.
 func (c *cachedIterator) flush() {
 	if c.tuples == nil || c.ctx.Err() != nil {
 		c.logger.Debug("cachedIterator flush noop due to empty tuples or c.ctx.Err",
