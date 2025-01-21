@@ -2320,7 +2320,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 				ObjectIDs:  objectIDs,
 			}, storage.ReadStartingWithUserOptions{
-				WithObjectIDsSortedAscending: false,
+				WithResultsSortedAscending: false,
 				Consistency: storage.ConsistencyOptions{
 					Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 				}},

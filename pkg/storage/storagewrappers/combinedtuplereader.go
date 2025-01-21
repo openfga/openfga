@@ -160,7 +160,7 @@ func (c *CombinedTupleReader) ReadStartingWithUser(
 		return nil, err
 	}
 
-	if options.WithObjectIDsSortedAscending {
+	if options.WithResultsSortedAscending {
 		// Note that both iter1 and iter2 return sorted by object ID
 		return storage.NewOrderedCombinedIterator(storage.ObjectMapper(), iter1, iter2), nil
 	}

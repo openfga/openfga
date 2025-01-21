@@ -344,7 +344,7 @@ func Test_combinedTupleReader_ReadStartingWithUser(t *testing.T) {
 					},
 				},
 				options: storage.ReadStartingWithUserOptions{
-					WithObjectIDsSortedAscending: true,
+					WithResultsSortedAscending: true,
 				},
 			},
 			setups: func() {
