@@ -51,7 +51,7 @@ var (
 	iteratorCacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_iterator_cache_invalidation_count",
-		Help:      "The total number of cache hits from cachecontroller requests.",
+		Help:      "The total number of invalidations of the iterator cache.",
 	})
 
 	checkQueryCacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
