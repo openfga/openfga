@@ -59,6 +59,12 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation"})
+
+	tuplesInvalidCacheHit = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "tuples_iterator_cache_invalid_hit",
+		Help:      "The total number of times we hit an invalid tuple iterator cache entry.",
+	})
 )
 
 // iterFunc is a function closure that returns an iterator
@@ -287,11 +293,14 @@ func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEnt
 			if ok {
 				invalidEntryLastModifiedTime = invalidEntry.LastModified
 			}
+
+			tuplesInvalidCacheHit.Inc()
 			logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
 				zap.String("store_id", store),
 				zap.String("key", key),
 				zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
 				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
+
 			return nil, false
 		}
 	}
@@ -303,12 +312,15 @@ func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEnt
 				if ok {
 					invalidEntryLastModifiedTime = invalidEntry.LastModified
 				}
+
+				tuplesInvalidCacheHit.Inc()
 				logger.Debug("CachedDatastore findInCache but has expired for invalidEntry",
 					zap.String("store_id", store),
 					zap.String("key", key),
 					zap.String("invalidEntityKey", invalidEntityKey),
 					zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
 					zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
+
 				return nil, false
 			}
 		}
