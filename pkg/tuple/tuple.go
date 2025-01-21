@@ -11,6 +11,34 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type Tuple openfgav1.TupleKey
+
+func (t *Tuple) GetObject() string {
+	return (*openfgav1.TupleKey)(t).GetObject()
+}
+
+func (t *Tuple) GetRelation() string {
+	return (*openfgav1.TupleKey)(t).GetRelation()
+}
+
+func (t *Tuple) GetUser() string {
+	return (*openfgav1.TupleKey)(t).GetUser()
+}
+
+func (t *Tuple) String() string {
+	tk := (*openfgav1.TupleKey)(t)
+
+	return tk.GetObject() +
+		"#" +
+		tk.GetRelation() +
+		"@" +
+		tk.GetUser()
+}
+
+func From(tk *openfgav1.TupleKey) *Tuple {
+	return (*Tuple)(tk)
+}
+
 type TupleKeys []*openfgav1.TupleKey
 
 // Len is a method that is required to implement the
