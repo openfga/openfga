@@ -985,7 +985,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPath")
 	defer span.End()
 
-	leftChannelBuilder := &recursiveObjectProvider{}
+	leftChannelBuilder := &simpleRecursiveObjectProvider{}
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -999,19 +999,19 @@ type objectProvider interface {
 	build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
 }
 
-type recursiveObjectProvider struct {
+type simpleRecursiveObjectProvider struct {
 	mapper storage.TupleMapper
 }
 
-var _ objectProvider = &recursiveObjectProvider{}
+var _ objectProvider = &simpleRecursiveObjectProvider{}
 
-func (s *recursiveObjectProvider) close() {
+func (s *simpleRecursiveObjectProvider) close() {
 	if s.mapper != nil {
 		s.mapper.Stop()
 	}
 }
 
-func (s *recursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (s *simpleRecursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
@@ -1029,15 +1029,15 @@ func (s *recursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRe
 	return userToUsersetMessageChan, nil
 }
 
-type nonRecursiveObjectIDProvider struct {
+type complexRecursiveObjectProvider struct {
 }
 
-var _ objectProvider = &nonRecursiveObjectIDProvider{}
+var _ objectProvider = &complexRecursiveObjectProvider{}
 
-func (c *nonRecursiveObjectIDProvider) close() {
+func (c *complexRecursiveObjectProvider) close() {
 }
 
-func (c *nonRecursiveObjectIDProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (c *complexRecursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -1090,7 +1090,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
 	defer span.End()
 
-	leftChannelBuilder := &nonRecursiveObjectIDProvider{}
+	leftChannelBuilder := &complexRecursiveObjectProvider{}
 
 	rightTTURelation := recursiveTTURewrite.GetTupleToUserset().GetTupleset().GetRelation()
 
@@ -1106,7 +1106,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	leftChannelBuilder := &recursiveObjectProvider{}
+	leftChannelBuilder := &simpleRecursiveObjectProvider{}
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
