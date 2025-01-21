@@ -542,7 +542,7 @@ func (c *LocalChecker) fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Int("sources", len(leftChans)),
 		attribute.Bool("allowed", false),
@@ -690,7 +690,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 		}, nil
 	}
 
-	return c.resolveFastPath(ctx, leftChans, wrapIterator(UsersetKind, iter))
+	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -720,7 +720,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}, nil
 	}
 
-	return c.resolveFastPath(ctx, leftChans, wrapIterator(TTUKind, iter))
+	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
@@ -897,7 +897,7 @@ ConsumerLoop:
 }
 
 type recursiveMapping struct {
-	kind                        TupleMapperKind
+	kind                        storage.TupleMapperKind
 	tuplesetRelation            string
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
@@ -911,7 +911,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	objectToUsersetIter := wrapIterator(mapping.kind, iter)
+	objectToUsersetIter := storage.WrapIterator(mapping.kind, iter)
 	defer objectToUsersetIter.Stop()
 	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
@@ -940,7 +940,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	if err != nil {
 		return nil, err
 	}
-	usersetFromUserIter := wrapIterator(ObjectIDKind, userIter)
+	usersetFromUserIter := storage.WrapIterator(storage.ObjectIDKind, userIter)
 	defer usersetFromUserIter.Stop()
 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
 
@@ -993,7 +993,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	defer span.End()
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
-		kind:             TTUKind,
+		kind:             storage.TTUKind,
 		tuplesetRelation: rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
 	})
 }
@@ -1006,12 +1006,12 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
-		kind:                        UsersetKind,
+		kind:                        storage.UsersetKind,
 		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 	})
 }
 
-func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (TupleMapper, error) {
+func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
 	var iter storage.TupleIterator
 	var err error
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -1020,13 +1020,13 @@ func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveChe
 		Preference: req.GetConsistency(),
 	}
 	switch mapping.kind {
-	case UsersetKind:
+	case storage.UsersetKind:
 		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:                      req.GetTupleKey().GetObject(),
 			Relation:                    req.GetTupleKey().GetRelation(),
 			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
-	case TTUKind:
+	case storage.TTUKind:
 		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
 			storage.ReadOptions{Consistency: consistencyOpts})
 	default:
@@ -1042,5 +1042,5 @@ func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveChe
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	)
-	return wrapIterator(mapping.kind, filteredIter), nil
+	return storage.WrapIterator(mapping.kind, filteredIter), nil
 }

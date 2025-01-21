@@ -954,7 +954,7 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
