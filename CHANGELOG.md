@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Improve `Check` performance for sub-problems when caching is enabled [#2193](https://github.com/openfga/openfga/pull/2193).
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and contextual tuples are involved. [#2150](https://github.com/openfga/openfga/pull/2150)
+- Added metrics to track invalid cache hits: `check_cache_invalid_hit_count` and `tuples_iterator_cache_invalid_hit_count` [#2222](https://github.com/openfga/openfga/pull/2222).
 
 ### Fixed
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
