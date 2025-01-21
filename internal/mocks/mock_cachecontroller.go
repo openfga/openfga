@@ -40,16 +40,16 @@ func (m *MockCacheController) EXPECT() *MockCacheControllerMockRecorder {
 	return m.recorder
 }
 
-// DetermineInvalidation mocks base method.
-func (m *MockCacheController) DetermineInvalidation(ctx context.Context, storeID string) time.Time {
+// DetermineInvalidationTime mocks base method.
+func (m *MockCacheController) DetermineInvalidationTime(ctx context.Context, storeID string) time.Time {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DetermineInvalidation", ctx, storeID)
+	ret := m.ctrl.Call(m, "DetermineInvalidationTime", ctx, storeID)
 	ret0, _ := ret[0].(time.Time)
 	return ret0
 }
 
-// DetermineInvalidation indicates an expected call of DetermineInvalidation.
-func (mr *MockCacheControllerMockRecorder) DetermineInvalidation(ctx, storeID any) *gomock.Call {
+// DetermineInvalidationTime indicates an expected call of DetermineInvalidationTime.
+func (mr *MockCacheControllerMockRecorder) DetermineInvalidationTime(ctx, storeID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineInvalidation", reflect.TypeOf((*MockCacheController)(nil).DetermineInvalidation), ctx, storeID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineInvalidationTime", reflect.TypeOf((*MockCacheController)(nil).DetermineInvalidationTime), ctx, storeID)
 }
