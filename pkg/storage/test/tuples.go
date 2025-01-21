@@ -1486,7 +1486,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
-			storage.ReadStartingWithUserOptions{},
+			storage.ReadStartingWithUserOptions{
+				WithResultsSortedAscending: true,
+			},
 		)
 		require.NoError(t, err)
 
@@ -1534,7 +1536,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 					},
 				},
 			},
-			storage.ReadStartingWithUserOptions{},
+			storage.ReadStartingWithUserOptions{
+				WithResultsSortedAscending: true,
+			},
 		)
 		require.NoError(t, err)
 
@@ -1588,7 +1592,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 				},
 				ObjectIDs: objectIDs,
 			},
-			storage.ReadStartingWithUserOptions{},
+			storage.ReadStartingWithUserOptions{
+				WithResultsSortedAscending: true,
+			},
 		)
 		require.NoError(t, err)
 
