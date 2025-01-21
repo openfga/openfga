@@ -466,7 +466,7 @@
                 "enabled": {
                     "description": "enable/disable prometheus metrics on the '/metrics' endpoint",
                     "type": "boolean",
-                    "default": "true",
+                    "default": true,
                     "x-env-variable": "OPENFGA_METRICS_ENABLED"
                 },
                 "addr": {
@@ -478,7 +478,7 @@
                 "enableRPCHistograms": {
                     "description": "enables prometheus histogram metrics for RPC latency distributions",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
                 }
             }
@@ -500,7 +500,7 @@
                 "enabled": {
                     "description": "enable caching of datastore iterators. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"
                 },
                 "maxResults": {
@@ -524,7 +524,7 @@
                 "enabled": {
                     "description": "enable caching of Check requests. The key is a string representing a query, and the value is a boolean. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
                 },
                 "limit": {
@@ -548,7 +548,7 @@
                 "enabled": {
                     "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
                 },
                 "ttl": {
@@ -566,7 +566,7 @@
                 "enabled": {
                     "description": "enable throttling when check request's number of dispatches is high",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
@@ -596,7 +596,7 @@
                 "enabled": {
                     "description": "enable throttling when list objects request's number of dispatches is high",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
@@ -626,7 +626,7 @@
                 "enabled": {
                     "description": "enable throttling when list users request's number of dispatches is high",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
