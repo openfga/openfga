@@ -902,7 +902,7 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, leftChanBuilder leftSideChannelBuilder) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, leftChanBuilder objectProvider) (*ResolveCheckResponse, error) {
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
 
@@ -985,7 +985,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPath")
 	defer span.End()
 
-	leftChannelBuilder := &recursiveLeftSideChannelBuilder{}
+	leftChannelBuilder := &recursiveObjectProvider{}
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:             TTUKind,
@@ -993,24 +993,25 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	}, leftChannelBuilder)
 }
 
-type leftSideChannelBuilder interface {
+// objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
+type objectProvider interface {
 	close()
 	build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
 }
 
-type recursiveLeftSideChannelBuilder struct {
+type recursiveObjectProvider struct {
 	mapper TupleMapper
 }
 
-var _ leftSideChannelBuilder = &recursiveLeftSideChannelBuilder{}
+var _ objectProvider = &recursiveObjectProvider{}
 
-func (s *recursiveLeftSideChannelBuilder) close() {
+func (s *recursiveObjectProvider) close() {
 	if s.mapper != nil {
 		s.mapper.Stop()
 	}
 }
 
-func (s *recursiveLeftSideChannelBuilder) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (s *recursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
@@ -1028,15 +1029,15 @@ func (s *recursiveLeftSideChannelBuilder) build(ctx context.Context, req *Resolv
 	return userToUsersetMessageChan, nil
 }
 
-type unionLeftSideChannelBuilder struct {
+type nonRecursiveObjectIDProvider struct {
 }
 
-var _ leftSideChannelBuilder = &unionLeftSideChannelBuilder{}
+var _ objectProvider = &nonRecursiveObjectIDProvider{}
 
-func (c *unionLeftSideChannelBuilder) close() {
+func (c *nonRecursiveObjectIDProvider) close() {
 }
 
-func (c *unionLeftSideChannelBuilder) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (c *nonRecursiveObjectIDProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -1089,7 +1090,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
 	defer span.End()
 
-	leftChannelBuilder := &unionLeftSideChannelBuilder{}
+	leftChannelBuilder := &nonRecursiveObjectIDProvider{}
 
 	rightTTURelation := recursiveTTURewrite.GetTupleToUserset().GetTupleset().GetRelation()
 
@@ -1105,7 +1106,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	leftChannelBuilder := &recursiveLeftSideChannelBuilder{}
+	leftChannelBuilder := &recursiveObjectProvider{}
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
