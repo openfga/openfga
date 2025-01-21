@@ -10274,7 +10274,7 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
-  - name: recursive_ttu_union_one_algebraic_operation
+  - name: recursive_ttu_union_algebraic_operations_with_wildcard
     stages:
       - model: |
           model
@@ -10304,7 +10304,7 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
-  - name: recursive_ttu_union_two_algebraic_operation
+  - name: recursive_ttu_union_two_algebraic_operations
     stages:
       - model: |
           model
