@@ -102,7 +102,7 @@ func fastPathDirect(ctx context.Context,
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
-	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil)
+	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1014,9 +1014,11 @@ func (s *recursiveLeftSideChannelBuilder) build(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
+	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
+	// since the consumer is using hashsets to check for intersection.
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
-		nil)
+		nil, false)
 	if err != nil {
 		return nil, err
 	}

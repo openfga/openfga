@@ -205,6 +205,16 @@ type doc
 		})
 		require.NoError(t, err)
 	})
+
+	t.Run("fails_if_store_id_is_missing", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  "",
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.Error(t, err)
+	})
 }
 
 func TestCheckCommandErrorToServerError(t *testing.T) {
