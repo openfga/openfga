@@ -368,7 +368,7 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 				ObjectIDs:  objectIDs,
 			}
 			expectedOpts := storage.ReadStartingWithUserOptions{
-				WithContextualTuplesOrderedByObjectAscending: true,
+				WithObjectIDsSortedAscending: true,
 				Consistency: storage.ConsistencyOptions{
 					Preference: req.GetConsistency(),
 				},

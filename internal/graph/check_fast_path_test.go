@@ -109,7 +109,7 @@ func TestFastPathDirect(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -157,7 +157,7 @@ func TestFastPathDirect(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -1541,7 +1541,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -1553,7 +1553,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -1628,7 +1628,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
@@ -1640,7 +1640,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
-			WithContextualTuplesOrderedByObjectAscending: true,
+			WithObjectIDsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
