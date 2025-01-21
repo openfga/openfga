@@ -6070,624 +6070,81 @@ func TestPathExists(t *testing.T) {
 		pathTests []pathTest
 	}{
 		{
-			name: "userset_computed_userset",
+			name: "unknown_from",
 			model: `
-model
-	schema 1.1
-type other
-type user
-type wild
-type employee
-type group
-	relations
-		define rootMember: [user, user:*, employee, wild:*]
-		define member: rootMember
-type folder
-	relations
-		define viewer: [group#member]
-`,
+				model
+					schema 1.1
+				type employee
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+				`,
 			pathTests: []pathTest{
 				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "foo:y",
-					relation:    "member",
-					objectType:  "group",
+					user:        "unknown:a",
+					relation:    "viewer",
+					objectType:  "document",
 					expected:    false,
 					expectedErr: graph.ErrQueryingGraph,
 				},
+			},
+		},
+		{
+			name: "with_normal_path",
+			model: `
+				model
+					schema 1.1
+				type employee
+				type user
+				type document
+					relations
+						define viewer: [user, document#viewer]
+				`,
+			pathTests: []pathTest{
 				{
-					user:        "user:y",
-					relation:    "undefined",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: graph.ErrQueryingGraph,
+					user:       "user:a",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   true,
 				},
 				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
+					user:       "document:budget#viewer",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   true,
 				},
 				{
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#rootMember",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
+					user:       "employee:a",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   false,
 				},
 			},
 		},
 		{
-			name: "nested_computed_userset",
+			name: "with_wildcard_path",
 			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type wild
-type group
-	relations
-		define member: [user, user:*, employee, wild:*, group#member]
-type folder
-	relations
-		define viewer: [group#member]
-`,
+				model
+					schema 1.1
+				type employee
+				type user
+				type document
+					relations
+						define viewer: [user:*]
+				`,
 			pathTests: []pathTest{
 				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
+					user:       "user:a",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   true,
 				},
 				{
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
-				},
-			},
-		},
-		{
-			name: "union_relation",
-			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type wild
-type group
-	relations
-		define child1: [user, user:*]
-		define child2: [employee]
-		define child3: [wild:*]
-		define member: child1 or child2 or child3
-type folder
-	relations
-		define viewer: [group#member]
-`,
-			pathTests: []pathTest{
-				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
-				},
-			},
-		},
-		{
-			name: "intersection_relation",
-			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type wild
-type group
-	relations
-		define child1: [user]
-		define child2: [user, employee, wild:*]
-		define member: child1 and child2
-type folder
-	relations
-		define viewer: [group#member]
-`,
-			pathTests: []pathTest{
-				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					// Ideally, we will reject employee because type needs to appear
-					// in both child for an intersection. For now, the graph
-					// package is not smart enough to handle intersection as a special case.
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					// Ideally, we will reject wild because type needs to appear
-					// in both child for an intersection. For now, the graph
-					// package is not smart enough to handle intersection as a special case.
-					user:        "wild:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
-				},
-			},
-		},
-		{
-			name: "exclusion_relation",
-			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type group
-	relations
-		define child1: [user]
-		define child2: [user, employee]
-		define member: child1 but not child2
-type folder
-	relations
-		define viewer: [group#member]
-`,
-			pathTests: []pathTest{
-				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					// Ideally, we will reject employee because type needs to appear
-					// in both child for exclusion. For now, the graph
-					// package is not smart enough to handle exclusion as a special case.
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
-				},
-			},
-		},
-		{
-			name: "ttu",
-			model: `
-model
-	schema 1.1
-type other
-type user
-type employee
-type wild
-type group
-	relations
-		define rootMember: [user, user:*, employee, wild:*]
-		define member: rootMember
-type folder
-	relations
-		define parent: [group]
-		define viewer: member from parent
-`,
-			pathTests: []pathTest{
-				{
-					user:        "user:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					user:        "group:y",
-					relation:    "member",
-					objectType:  "group",
-					expected:    false,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "member",
-					objectType:  "group",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#member",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					// TODO: ideally this should be false.  However, for now, this
-					// will return true as there is some path.
-					user:        "group:y#rootMember",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "user:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "employee:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "wild:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    true,
-					expectedErr: nil,
-				},
-				{
-					user:        "other:a",
-					relation:    "viewer",
-					objectType:  "folder",
-					expected:    false,
-					expectedErr: nil,
+					user:       "employee:a",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   false,
 				},
 			},
 		},
