@@ -412,7 +412,7 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 type OrderedCombinedIterator struct {
 	mu          *sync.Mutex
 	once        *sync.Once
-	mapper      TupleMapper
+	mapper      TupleMapperFunc
 	pending     []TupleIterator  // GUARDED_BY(mu)
 	lastHead    *openfgav1.Tuple // GUARDED_BY(mu)
 	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
@@ -420,25 +420,10 @@ type OrderedCombinedIterator struct {
 
 var _ TupleIterator = (*OrderedCombinedIterator)(nil)
 
-// TODO(miparnisari): this interface & impls belong, conceptually, in internal/graph/tuplemapper.go, but i don't want to have storage import graph.
-type TupleMapper func(t *openfgav1.Tuple) string
-
-func UserMapper() TupleMapper {
-	return func(t *openfgav1.Tuple) string {
-		return t.GetKey().GetUser()
-	}
-}
-
-func ObjectMapper() TupleMapper {
-	return func(t *openfgav1.Tuple) string {
-		return t.GetKey().GetObject()
-	}
-}
-
 // NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
 // All the input iterators must be individually ordered already according to mapper.
 // Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
-func NewOrderedCombinedIterator(mapper TupleMapper, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
 	pending := make([]TupleIterator, 0, len(sortedIters))
 	for _, sortedIter := range sortedIters {
 		if sortedIter != nil {
