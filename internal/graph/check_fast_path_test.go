@@ -129,8 +129,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		checker := NewLocalChecker()
-		c, err := checker.fastPathDirect(ctx, &ResolveCheckRequest{
+		c, err := fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -177,8 +176,7 @@ func TestFastPathDirect(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		checker := NewLocalChecker()
-		_, err = checker.fastPathDirect(ctx, &ResolveCheckRequest{
+		_, err = fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -193,7 +191,6 @@ func TestFastPathComputed(t *testing.T) {
 	})
 
 	t.Run("should_return_error_if_computed_relation_doesnt_exist", func(t *testing.T) {
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -210,7 +207,7 @@ func TestFastPathComputed(t *testing.T) {
 
 		ctx = setRequestContext(ctx, ts, nil, nil)
 
-		_, err = checker.fastPathComputed(ctx, &ResolveCheckRequest{
+		_, err = fastPathComputed(ctx, &ResolveCheckRequest{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
@@ -1434,7 +1431,6 @@ func TestBuildRecursiveMapper(t *testing.T) {
 
 	mockDatastore := mocks.NewMockRelationshipTupleReader(mockController)
 	ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-	checker := NewLocalChecker()
 
 	t.Run("recursive_userset", func(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
@@ -1455,7 +1451,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		}
-		res, err := checker.buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
@@ -1477,7 +1473,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 			tuplesetRelation: "parent",
 			kind:             TTUKind,
 		}
-		res, err := checker.buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),

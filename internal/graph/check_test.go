@@ -3765,8 +3765,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			checker := NewLocalChecker()
-			mapper, err := checker.buildRecursiveMapper(ctx, req, &recursiveMapping{
+			mapper, err := buildRecursiveMapper(ctx, req, &recursiveMapping{
 				kind:                        UsersetKind,
 				allowedUserTypeRestrictions: restrictions,
 			})

@@ -96,7 +96,7 @@ func (s *iteratorStreams) getActiveStreams(ctx context.Context) ([]*iteratorStre
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
-func (c *LocalChecker) fastPathDirect(ctx context.Context,
+func fastPathDirect(ctx context.Context,
 	req *ResolveCheckRequest) (chan *iteratorMsg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
@@ -114,7 +114,7 @@ func (c *LocalChecker) fastPathDirect(ctx context.Context,
 	return iterChan, nil
 }
 
-func (c *LocalChecker) fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iteratorMsg, error) {
+func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iteratorMsg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	computedRelation := rewrite.GetComputedUserset().GetRelation()
 
@@ -127,7 +127,7 @@ func (c *LocalChecker) fastPathComputed(ctx context.Context, req *ResolveCheckRe
 		return nil, err
 	}
 
-	return c.fastPathRewrite(ctx, childRequest, rel.GetRewrite())
+	return fastPathRewrite(ctx, childRequest, rel.GetRewrite())
 }
 
 func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<- *iteratorMsg) {
@@ -489,10 +489,10 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 // fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op setOperatorType, children ...*openfgav1.Userset) (chan *iteratorMsg, error) {
+func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op setOperatorType, children ...*openfgav1.Userset) (chan *iteratorMsg, error) {
 	iterStreams := make([]*iteratorStream, 0, len(children))
 	for idx, child := range children {
-		producerChan, err := c.fastPathRewrite(ctx, req, child)
+		producerChan, err := fastPathRewrite(ctx, req, child)
 		if err != nil {
 			return nil, err
 		}
@@ -516,22 +516,22 @@ func (c *LocalChecker) fastPathOperationSetup(ctx context.Context, req *ResolveC
 
 // fastPathRewrite returns a channel that will contain an unknown but finite number of elements.
 // The channel is closed at the end.
-func (c *LocalChecker) fastPathRewrite(
+func fastPathRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) (chan *iteratorMsg, error) {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return c.fastPathDirect(ctx, req)
+		return fastPathDirect(ctx, req)
 	case *openfgav1.Userset_ComputedUserset:
-		return c.fastPathComputed(ctx, req, rewrite)
+		return fastPathComputed(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.fastPathOperationSetup(ctx, req, unionSetOperator, rw.Union.GetChild()...)
+		return fastPathOperationSetup(ctx, req, unionSetOperator, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.fastPathOperationSetup(ctx, req, intersectionSetOperator, rw.Intersection.GetChild()...)
+		return fastPathOperationSetup(ctx, req, intersectionSetOperator, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.fastPathOperationSetup(ctx, req, exclusionSetOperator, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return fastPathOperationSetup(ctx, req, exclusionSetOperator, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		return nil, ErrUnknownSetOperator
 	}
@@ -638,7 +638,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	return res, ctx.Err()
 }
 
-func (c *LocalChecker) constructLeftChannels(ctx context.Context,
+func constructLeftChannels(ctx context.Context,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc) ([]chan *iteratorMsg, error) {
@@ -659,7 +659,7 @@ func (c *LocalChecker) constructLeftChannels(ctx context.Context,
 			// other paths can be reachable
 			continue
 		}
-		leftChan, err := c.fastPathRewrite(ctx, r, rel.GetRewrite())
+		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {
 			return nil, err
 		}
@@ -679,7 +679,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -709,7 +709,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+	leftChans, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -794,7 +794,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		}
 		newReq := req.clone()
 		newReq.TupleKey = tuple.NewTupleKey(userset, relation, user)
-		mapper, err := c.buildRecursiveMapper(ctx, newReq, mapping)
+		mapper, err := buildRecursiveMapper(ctx, newReq, mapping)
 
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
@@ -1013,7 +1013,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	})
 }
 
-func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (TupleMapper, error) {
+func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (TupleMapper, error) {
 	var iter storage.TupleIterator
 	var err error
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
