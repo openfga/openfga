@@ -250,14 +250,14 @@
                     "description": "the maximum amount of time a connection to the datastore may be idle",
                     "type": "string",
                     "format": "duration",
-                    "default": "connections are not closed due to idle time - database/sql default",
+                    "default": "",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME"
                 },
                 "connMaxLifetime": {
                     "description": "the maximum amount of time a connection to the datastore may be reused",
                     "type": "string",
                     "format": "duration",
-                    "default": "connections are not closed due to connection's age - database/sql default",
+                    "default": "",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 },
                 "metrics": {
@@ -319,6 +319,7 @@
                         },
                         "key": {
                             "description": "The (absolute) file path of the TLS key that should be used for the TLS connection.",
+                            "type": "string",
                             "x-env-variable": "OPENFGA_GRPC_TLS_KEY"
                         }
                     },
@@ -369,6 +370,7 @@
                     "x-env-variable": "OPENFGA_HTTP_UPSTREAM_TIMEOUT"
                 },
                 "corsAllowedOrigins": {
+                    "description": "List of allowed origins for CORS requests",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -377,6 +379,7 @@
                     "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_ORIGINS"
                 },
                 "corsAllowedHeaders": {
+                    "description": "List of allowed headers for CORS requests",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -418,7 +421,7 @@
                 "enabled": {
                     "description": "Enable tracing.",
                     "type": "boolean",
-                    "default": "false",
+                    "default": false,
                     "x-env-variable": "OPENFGA_TRACE_ENABLED"
                 },
                 "otlp": {
@@ -700,6 +703,7 @@
             "type": "object",
             "properties": {
                 "keys": {
+                    "description": "List of preshared keys used for authentication",
                     "type": "array",
                     "items": {
                         "type": "string"
