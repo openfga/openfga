@@ -3766,7 +3766,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 			}
 
 			mapper, err := buildRecursiveMapper(ctx, req, &recursiveMapping{
-				kind:                        UsersetKind,
+				kind:                        storage.UsersetKind,
 				allowedUserTypeRestrictions: restrictions,
 			})
 			if tt.readUsersetTuplesError != nil {
