@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve `Check` performance for sub-problems when caching is enabled [#2193](https://github.com/openfga/openfga/pull/2193).
 - Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and contextual tuples are involved. [#2150](https://github.com/openfga/openfga/pull/2150)
+- Move Check performance optimizations out of experimental mode: shortcutting based on path and recursive userset fast path. [#2236](https://github.com/openfga/openfga/pull/2236)
 
 ### Fixed
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
