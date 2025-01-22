@@ -63,7 +63,7 @@ var (
 	tuplesInvalidCacheHit = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "tuples_iterator_cache_invalid_hit_count",
-		Help:      "The total number of times we hit an invalid tuple iterator cache entry.",
+		Help:      "The total number of cache hits for a cached iterator that were discarded because they were invalidated.",
 	})
 )
 

@@ -42,7 +42,7 @@ var (
 	checkCacheInvalidHit = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "check_cache_invalid_hit_count",
-		Help:      "The total number of cache attempts which hit an invalid entry.",
+		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
 	})
 )
 
