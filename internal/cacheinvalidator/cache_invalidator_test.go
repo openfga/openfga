@@ -1,4 +1,4 @@
-package cachecontroller
+package cacheinvalidator
 
 import (
 	"context"
@@ -18,14 +18,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestNoopCacheController_DetermineInvalidation(t *testing.T) {
+func TestNoopCacheInvalidator_GetLastWriteAndInvalidate(t *testing.T) {
 	t.Run("returns_zero_time", func(t *testing.T) {
-		ctrl := NewNoopCacheController()
-		require.Zero(t, ctrl.DetermineInvalidation(context.Background(), ""))
+		ctrl := NewNoopCacheInvalidator()
+		require.Zero(t, ctrl.GetLastWriteAndInvalidate(context.Background(), ""))
 	})
 }
 
-func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
+func TestInMemoryCacheInvalidator_GetLastWriteAndInvalidate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -34,7 +34,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 	cache := mocks.NewMockInMemoryCache[any](ctrl)
 	ds := mocks.NewMockOpenFGADatastore(ctrl)
 
-	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+	cacheInvalidator := NewCacheInvalidator(ds, cache, 10*time.Second, 10*time.Second)
 	storeID := "id"
 	expectedReadChangesOpts := storage.ReadChangesOptions{
 		SortDesc: true,
@@ -47,7 +47,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
 			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 
-		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		invalidationTime := cacheInvalidator.GetLastWriteAndInvalidate(ctx, storeID)
 		require.NotZero(t, invalidationTime)
 	})
 	t.Run("cache_miss", func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 			}),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
-		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		invalidationTime := cacheInvalidator.GetLastWriteAndInvalidate(ctx, storeID)
 		require.Equal(t, time.Time{}, invalidationTime)
 	})
 }
@@ -91,7 +91,7 @@ func generateChanges(object, relation, user string, count int) []*openfgav1.Tupl
 	return changes
 }
 
-func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
+func TestInMemoryCacheInvalidator_findChangesAndInvalidate(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -333,7 +333,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, span := tracer.Start(context.Background(), "cachecontroller_test")
+			_, span := tracer.Start(context.Background(), "cacheinvalidator_test")
 			defer span.End()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -343,7 +343,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 
 			test.setMocks(mockCache, mockDatastore)
 
-			cacheController := &InMemoryCacheController{
+			cacheInvalidator := &InMemoryCacheInvalidator{
 				ds:                    mockDatastore,
 				cache:                 mockCache,
 				ttl:                   10 * time.Second,
@@ -352,7 +352,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				inflightInvalidations: sync.Map{},
 				logger:                logger.NewNoopLogger(),
 			}
-			cacheController.findChangesAndInvalidate(context.Background(), test.storeID, span)
+			cacheInvalidator.findChangesAndInvalidate(context.Background(), test.storeID, span)
 		})
 	}
 }

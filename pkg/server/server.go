@@ -419,17 +419,17 @@ func WithCheckCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
-// WithCacheControllerEnabled enables cache invalidation of different cache entities.
-func WithCacheControllerEnabled(enabled bool) OpenFGAServiceV1Option {
+// WithCacheInvalidatorEnabled enables cache invalidation of different cache entities.
+func WithCacheInvalidatorEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.CacheControllerEnabled = enabled
+		s.cacheSettings.CacheInvalidatorEnabled = enabled
 	}
 }
 
-// WithCacheControllerTTL sets the frequency for the controller to execute.
-func WithCacheControllerTTL(ttl time.Duration) OpenFGAServiceV1Option {
+// WithCacheInvalidatorTTL sets the frequency for the invalidator to execute.
+func WithCacheInvalidatorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.CacheControllerTTL = ttl
+		s.cacheSettings.CacheInvalidatorTTL = ttl
 	}
 }
 

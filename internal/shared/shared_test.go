@@ -8,7 +8,7 @@ import (
 	"go.uber.org/mock/gomock"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/cacheinvalidator"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 )
@@ -31,8 +31,8 @@ func TestSharedCheckResources(t *testing.T) {
 		require.Equal(t, sharedSf, s.SingleflightGroup)
 		require.Nil(t, s.CheckCache)
 		require.NotNil(t, s.WaitGroup)
-		require.NotNil(t, s.CacheController)
-		_, ok := s.CacheController.(*cachecontroller.NoopCacheController)
+		require.NotNil(t, s.CacheInvalidator)
+		_, ok := s.CacheInvalidator.(*cacheinvalidator.NoopCacheInvalidator)
 		require.True(t, ok)
 	})
 
@@ -53,15 +53,15 @@ func TestSharedCheckResources(t *testing.T) {
 		settings := config.CacheSettings{
 			CheckCacheLimit:           1,
 			CheckIteratorCacheEnabled: true,
-			CacheControllerEnabled:    true,
+			CacheInvalidatorEnabled:   true,
 		}
 
 		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
 		require.NoError(t, err)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.CacheController)
-		_, ok := s.CacheController.(*cachecontroller.InMemoryCacheController)
+		require.NotNil(t, s.CacheInvalidator)
+		_, ok := s.CacheInvalidator.(*cacheinvalidator.InMemoryCacheInvalidator)
 		require.True(t, ok)
 	})
 }

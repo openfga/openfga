@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/cacheinvalidator"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -29,7 +29,7 @@ type SharedCheckResources struct {
 	WaitGroup         *sync.WaitGroup
 	ServerCtx         context.Context
 	CheckCache        storage.InMemoryCache[any]
-	CacheController   cachecontroller.CacheController
+	CacheInvalidator  cacheinvalidator.CacheInvalidator
 	Logger            logger.Logger
 }
 
@@ -38,7 +38,7 @@ func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.G
 		WaitGroup:         &sync.WaitGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
-		CacheController:   cachecontroller.NewNoopCacheController(),
+		CacheInvalidator:  cacheinvalidator.NewNoopCacheInvalidator(),
 		Logger:            logger.NewNoopLogger(),
 	}
 
@@ -56,8 +56,8 @@ func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.G
 		}
 	}
 
-	if settings.ShouldCreateCacheController() {
-		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+	if settings.ShouldCreateCacheInvalidator() {
+		s.CacheInvalidator = cacheinvalidator.NewCacheInvalidator(ds, s.CheckCache, settings.CacheInvalidatorTTL, settings.CheckIteratorCacheTTL, cacheinvalidator.WithLogger(s.Logger))
 	}
 
 	return s, nil

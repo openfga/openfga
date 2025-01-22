@@ -36,8 +36,8 @@ const (
 
 	DefaultCheckCacheLimit = 10000
 
-	DefaultCacheControllerEnabled = false
-	DefaultCacheControllerTTL     = 10 * time.Second
+	DefaultCacheInvalidatorEnabled = false
+	DefaultCacheInvalidatorTTL     = 10 * time.Second
 
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
@@ -45,9 +45,6 @@ const (
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
-
-	DefaultCacheControllerConfigEnabled = false
-	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -227,9 +224,9 @@ type CheckIteratorCacheConfig struct {
 	TTL        time.Duration
 }
 
-// CacheControllerConfig defines configuration to manage cache invalidation dynamically by observing whether
+// CacheInvalidatorConfig defines configuration to manage cache invalidation dynamically by observing whether
 // there are recent tuple changes to specified store.
-type CacheControllerConfig struct {
+type CacheInvalidatorConfig struct {
 	Enabled bool
 	TTL     time.Duration
 }
@@ -345,7 +342,7 @@ type Config struct {
 	CheckCache                    CheckCacheConfig
 	CheckIteratorCache            CheckIteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
-	CacheController               CacheControllerConfig
+	CacheController               CacheInvalidatorConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
@@ -687,9 +684,9 @@ func DefaultConfig() *Config {
 		CheckCache: CheckCacheConfig{
 			Limit: DefaultCheckCacheLimit,
 		},
-		CacheController: CacheControllerConfig{
-			Enabled: DefaultCacheControllerConfigEnabled,
-			TTL:     DefaultCacheControllerConfigTTL,
+		CacheController: CacheInvalidatorConfig{
+			Enabled: DefaultCacheInvalidatorEnabled,
+			TTL:     DefaultCacheInvalidatorTTL,
 		},
 		CheckDispatchThrottling: DispatchThrottlingConfig{
 			Enabled:      DefaultCheckDispatchThrottlingEnabled,

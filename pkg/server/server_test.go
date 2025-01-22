@@ -28,7 +28,7 @@ import (
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/cachecontroller"
+	"github.com/openfga/openfga/internal/cacheinvalidator"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -2176,7 +2176,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-			WithCacheControllerEnabled(true),
+			WithCacheInvalidatorEnabled(true),
 		)
 
 		t.Cleanup(func() {
@@ -2184,8 +2184,8 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
-		_, ok := s.sharedCheckResources.CacheController.(*cachecontroller.NoopCacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheInvalidator)
+		_, ok := s.sharedCheckResources.CacheInvalidator.(*cacheinvalidator.NoopCacheInvalidator)
 		require.True(t, ok)
 	})
 
@@ -2196,7 +2196,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-			WithCacheControllerEnabled(true),
+			WithCacheInvalidatorEnabled(true),
 			WithCheckQueryCacheEnabled(true),
 		)
 
@@ -2205,7 +2205,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheInvalidator)
 	})
 
 	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
@@ -2215,7 +2215,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
-			WithCacheControllerEnabled(true),
+			WithCacheInvalidatorEnabled(true),
 			WithCheckIteratorCacheEnabled(true),
 		)
 
@@ -2224,7 +2224,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheInvalidator)
 	})
 }
 

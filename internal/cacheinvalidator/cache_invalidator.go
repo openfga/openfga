@@ -1,4 +1,7 @@
-package cachecontroller
+// Package cacheinvalidator contains logic to invalidate the server cache.
+//
+//go:generate mockgen -source cache_invalidator.go -destination ../../internal/mocks/mock_cacheinvalidator.go -package mocks
+package cacheinvalidator
 
 import (
 	"context"
@@ -24,7 +27,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("internal/cachecontroller")
+	tracer = otel.Tracer("internal/cacheinvalidator")
 
 	cacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
@@ -49,38 +52,38 @@ var (
 	}, []string{"invalidation_required", "changes_size"})
 )
 
-type CacheController interface {
-	// DetermineInvalidation returns the timestamp of the last write for the specified store.
+type CacheInvalidator interface {
+	// GetLastWriteAndInvalidate returns the timestamp of the last write for the specified store.
 	// It may return a cached timestamp.
-	DetermineInvalidation(ctx context.Context, storeID string) time.Time
+	GetLastWriteAndInvalidate(ctx context.Context, storeID string) time.Time
 }
 
-type NoopCacheController struct{}
+type NoopCacheInvalidator struct{}
 
-func (c *NoopCacheController) DetermineInvalidation(_ context.Context, _ string) time.Time {
+func (c *NoopCacheInvalidator) GetLastWriteAndInvalidate(_ context.Context, _ string) time.Time {
 	return time.Time{}
 }
 
-func NewNoopCacheController() CacheController {
-	return &NoopCacheController{}
+func NewNoopCacheInvalidator() CacheInvalidator {
+	return &NoopCacheInvalidator{}
 }
 
-// InMemoryCacheControllerOpt defines an option that can be used to change the behavior of InMemoryCacheController
-// instance.
-type InMemoryCacheControllerOpt func(*InMemoryCacheController)
+// InMemoryCacheInvalidatorOpt defines an option that can be used to change the behavior
+// of InMemoryCacheInvalidator instance.
+type InMemoryCacheInvalidatorOpt func(invalidator *InMemoryCacheInvalidator)
 
-// WithLogger sets the logger for InMemoryCacheController.
-func WithLogger(logger logger.Logger) InMemoryCacheControllerOpt {
-	return func(inm *InMemoryCacheController) {
+// WithLogger sets the logger for InMemoryCacheInvalidator.
+func WithLogger(logger logger.Logger) InMemoryCacheInvalidatorOpt {
+	return func(inm *InMemoryCacheInvalidator) {
 		inm.logger = logger
 	}
 }
 
-// InMemoryCacheController will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
+// InMemoryCacheInvalidator will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
 // that are more recent than the last write for the specified store.
 // Note that the invalidation is done asynchronously, and only after a Check request is received.
 // It will be eventually consistent.
-type InMemoryCacheController struct {
+type InMemoryCacheInvalidator struct {
 	ds    storage.OpenFGADatastore
 	cache storage.InMemoryCache[any]
 
@@ -92,8 +95,8 @@ type InMemoryCacheController struct {
 	logger                logger.Logger
 }
 
-func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration, opts ...InMemoryCacheControllerOpt) CacheController {
-	c := &InMemoryCacheController{
+func NewCacheInvalidator(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration, opts ...InMemoryCacheInvalidatorOpt) CacheInvalidator {
+	c := &InMemoryCacheInvalidator{
 		ds:                    ds,
 		cache:                 cache,
 		ttl:                   ttl,
@@ -110,20 +113,20 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 	return c
 }
 
-// DetermineInvalidation returns the timestamp of the last write for the specified store.
+// GetLastWriteAndInvalidate returns the timestamp of the last write for the specified store.
 // It may return a cached timestamp.
 // If the timestamp is not known, it will asynchronously find the last Write and store it, and also invalidate some or all entries in the cache.
-func (c *InMemoryCacheController) DetermineInvalidation(
+func (c *InMemoryCacheInvalidator) GetLastWriteAndInvalidate(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
+	_, span := tracer.Start(ctx, "cacheInvalidator.GetLastWriteAndInvalidate", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
-	c.logger.Debug("InMemoryCacheController DetermineInvalidation cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
+	c.logger.Debug("InMemoryCacheInvalidator GetLastWriteAndInvalidate cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
@@ -150,7 +153,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	return time.Time{}
 }
 
-func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
+func (c *InMemoryCacheInvalidator) findChangesDescending(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
 		Pagination: storage.PaginationOptions{
@@ -160,9 +163,9 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string, parentSpan trace.Span) {
+func (c *InMemoryCacheInvalidator) findChangesAndInvalidate(ctx context.Context, storeID string, parentSpan trace.Span) {
 	start := time.Now()
-	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
+	ctx, span := tracer.Start(ctx, "cacheInvalidator.findChangesAndInvalidate")
 	defer span.End()
 
 	link := trace.LinkFromContext(ctx)
@@ -207,7 +210,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
-		c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation as entry.LastModified before last verified",
+		c.logger.Debug("InMemoryCacheInvalidator findChangesAndInvalidate invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
 			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
@@ -251,7 +254,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		}
 	}
 
-	c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation",
+	c.logger.Debug("InMemoryCacheInvalidator findChangesAndInvalidate invalidation",
 		zap.String("store_id", storeID),
 		zap.Time("entry.LastModified", entry.LastModified),
 		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
@@ -262,19 +265,19 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 
 // invalidateIteratorCache writes a new key to the cache with a very long TTL.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
-func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
+func (c *InMemoryCacheInvalidator) invalidateIteratorCache(storeID string) {
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
 // invalidateIteratorCacheByObjectRelation writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
-func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
+func (c *InMemoryCacheInvalidator) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
 	// GetInvalidIteratorByObjectRelationCacheKeys returns only 1 instance
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
 // invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
-func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
+func (c *InMemoryCacheInvalidator) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
