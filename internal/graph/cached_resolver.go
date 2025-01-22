@@ -38,6 +38,12 @@ var (
 		Name:      "check_cache_hit_count",
 		Help:      "The total number of cache hits for ResolveCheck.",
 	})
+
+	checkCacheInvalidHit = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_invalid_hit_count",
+		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
+	})
 )
 
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
@@ -163,6 +169,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 				// return a copy to avoid races across goroutines
 				return res.CheckResponse.clone(), nil
 			}
+
+			// we tried the cache and hit an invalid entry
+			checkCacheInvalidHit.Inc()
 		} else {
 			c.logger.Debug("CachedCheckResolver not found cache key",
 				zap.String("store_id", req.GetStoreID()),
