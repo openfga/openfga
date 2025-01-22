@@ -48,7 +48,6 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     uint32
-	maxConcurrentReads   uint32
 	usersetBatchSize     int
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -77,13 +76,6 @@ func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
 	}
 }
 
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck.
-func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.maxConcurrentReads = limit
-	}
-}
-
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
@@ -104,7 +96,6 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
-		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
@@ -1186,7 +1177,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 					} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 					}
@@ -1425,7 +1415,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 			}
