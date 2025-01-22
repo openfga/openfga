@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -18,12 +19,13 @@ import (
 
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const (
+	accessControlKey = "access_control"
+
 	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
 	MaxModulesInRequest = 1
 
@@ -73,12 +75,9 @@ const (
 )
 
 var (
-	ErrUnauthorizedResponse                  = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
-	ErrBadRequestMaxModulesInRequestExceeded = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request", MaxModulesInRequest))
-	ErrUnknownAPIMethod                      = errors.New("unknown API method")
-
-	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
-	tracer         = otel.Tracer("internal/authz")
+	ErrUnauthorizedResponse = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
+	SystemObjectID          = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
+	tracer                  = otel.Tracer("internal/authz")
 )
 
 type StoreIDType string
@@ -109,14 +108,13 @@ type AuthorizerInterface interface {
 	AuthorizeCreateStore(ctx context.Context) error
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
-	GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
+	GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error)
 	AccessControlStoreID() string
-	IsNoop() bool
 }
 
 type NoopAuthorizer struct{}
 
-func NewAuthorizerNoop(config *Config, server ServerInterface, logger logger.Logger) *NoopAuthorizer {
+func NewAuthorizerNoop() *NoopAuthorizer {
 	return &NoopAuthorizer{}
 }
 
@@ -136,16 +134,12 @@ func (a *NoopAuthorizer) ListAuthorizedStores(ctx context.Context) ([]string, er
 	return nil, nil
 }
 
-func (a *NoopAuthorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+func (a *NoopAuthorizer) GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
 	return nil, nil
 }
 
 func (a *NoopAuthorizer) AccessControlStoreID() string {
 	return ""
-}
-
-func (a *NoopAuthorizer) IsNoop() bool {
-	return true
 }
 
 type Authorizer struct {
@@ -162,16 +156,12 @@ func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger)
 	}
 }
 
-type AuthorizationError struct {
-	Err error
+type authorizationError struct {
+	Cause string
 }
 
-func (e *AuthorizationError) Error() string {
-	return fmt.Sprintf("error authorizing the call: %s", e.Err)
-}
-
-func (e *AuthorizationError) Unwrap() error {
-	return e.Err
+func (e *authorizationError) Error() string {
+	return e.Cause
 }
 
 func (a *Authorizer) getRelation(apiMethod string) (string, error) {
@@ -207,7 +197,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	case ReadChanges:
 		return CanCallReadChanges, nil
 	default:
-		return "", AuthorizationError{Err: ErrUnknownAPIMethod}.Err
+		return "", errors.New("unknown API method")
 	}
 }
 
@@ -218,18 +208,17 @@ func (a *Authorizer) AccessControlStoreID() string {
 	return ""
 }
 
-func (a *Authorizer) IsNoop() bool {
-	return false
-}
-
 // Authorize checks if the user has access to the resource.
 func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
-	ctx, span := tracer.Start(ctx, "Authorize", trace.WithAttributes(
+	methodName := "Authorize"
+	ctx, span := tracer.Start(ctx, methodName, trace.WithAttributes(
 		attribute.String("storeID", storeID),
 		attribute.String("apiMethod", apiMethod),
 		attribute.String("modules", strings.Join(modules, ",")),
 	))
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -238,7 +227,7 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
-		return err
+		return &authorizationError{Cause: fmt.Sprintf("error getting relation: %v", err)}
 	}
 
 	contextualTuples := openfgav1.ContextualTupleKeys{
@@ -257,7 +246,7 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		// If there is no top level authorization, but the max modules limit is exceeded, return an error regarding that limit
 		// Having a limit helps ensure we do not run too many checks on every write when there are modules
 		if len(modules) > MaxModulesInRequest {
-			return fmt.Errorf("%v (modules in request: %v)", ErrBadRequestMaxModulesInRequestExceeded, len(modules))
+			return &authorizationError{Cause: fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request (modules in request: %v)", MaxModulesInRequest, len(modules))}
 		}
 
 		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
@@ -269,8 +258,11 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 // AuthorizeCreateStore checks if the user has access to create a store.
 func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "AuthorizeCreateStore")
+	methodName := "AuthorizeCreateStore"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -287,8 +279,11 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 
 // AuthorizeListStores checks if the user has access to list stores.
 func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "AuthorizeListStores")
+	methodName := "AuthorizeListStores"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -305,8 +300,11 @@ func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
 
 // ListAuthorizedStores returns the list of store IDs that the user has access to.
 func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "ListAuthorizedStores")
+	methodName := "ListAuthorizedStores"
+	ctx, span := tracer.Start(ctx, methodName)
 	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
 
 	claims, err := checkAuthClaims(ctx)
 	if err != nil {
@@ -325,7 +323,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.ListObjects(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, &authorizationError{Cause: fmt.Sprintf("list objects returned error: %v", err)}
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))
@@ -340,7 +338,13 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 // GetModulesForWriteRequest returns the modules that should be checked for the write request.
 // If we encounter a type with no attached module, we should break and return no modules so that the authz check will be against the store
 // Otherwise we return a list of unique modules encountered so that FGA on FGA can check them after.
-func (a *Authorizer) GetModulesForWriteRequest(req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+func (a *Authorizer) GetModulesForWriteRequest(ctx context.Context, req *openfgav1.WriteRequest, typesys *typesystem.TypeSystem) ([]string, error) {
+	methodName := "GetModulesForWriteRequest"
+	ctx, span := tracer.Start(ctx, methodName)
+	defer span.End()
+
+	grpc_ctxtags.Extract(ctx).Set(accessControlKey, methodName)
+
 	tuples := make([]TupleKeyInterface, len(req.GetWrites().GetTupleKeys())+len(req.GetDeletes().GetTupleKeys()))
 	var index int
 	for _, tuple := range req.GetWrites().GetTupleKeys() {
@@ -381,7 +385,7 @@ func extractModulesFromTuples[T TupleKeyInterface](tupleKeys []T, typesys *types
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)
 		if !ok {
-			return nil, serverErrors.TypeNotFound(objType)
+			return nil, &authorizationError{Cause: fmt.Sprintf("type '%s' not found", objType)}
 		}
 		module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
 		if err != nil {
@@ -419,11 +423,11 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.Check(ctx, req)
 	if err != nil {
-		return fmt.Errorf("error authorizing the call: %w", err)
+		return &authorizationError{Cause: fmt.Sprintf("check returned error: %v", err)}
 	}
 
 	if !resp.GetAllowed() {
-		return ErrUnauthorizedResponse
+		return &authorizationError{Cause: "check returned not allowed"}
 	}
 
 	return nil
@@ -481,7 +485,7 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
 	claims, found := authclaims.AuthClaimsFromContext(ctx)
 	if !found || claims.ClientID == "" {
-		return nil, status.Error(codes.InvalidArgument, "client ID not found in context")
+		return nil, &authorizationError{Cause: "client ID not found in context or is empty"}
 	}
 	return claims, nil
 }

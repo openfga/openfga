@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
@@ -3831,7 +3832,351 @@ func TestUsersetCanFastPath(t *testing.T) {
 	}
 }
 
-func TestTTUCanUseFastTrack(t *testing.T) {
+func TestUsersetCanFastPathWeight2(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		objectType string
+		relation   string
+		userType   string
+		expected   bool
+	}{
+		{
+			name: "simple_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "multiple_userset_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define member: [user]
+						define allowed: [group#member, folder#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_reference_itself",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user,group#member]`,
+			objectType: "group",
+			relation:   "member",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "complex_userset_member_is_public",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user:*]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "complex_userset_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define exclude: [user]
+						define member: [user]
+						define complexMember: [user] but not exclude
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_union",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: [user]
+						define complexMember: [user] or owner
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_intersection",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define allowed: [user]
+						define member: [user]
+						define complexMember: [user] and allowed
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "multiple_assignment",
+			model: `
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group
+					relations
+						define member: [user1, user2]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user1",
+			expected:   true,
+		},
+		{
+			name: "multiple_relation_references",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "nested_computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: owner
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "parent_public_assignable",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [user, user:*]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "conditional_relation_parent",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member with x_less_than]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "conditional_relation_in_child",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user with x_less_than]
+				type folder
+					relations
+						define allowed: [group#member]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_ttu_mixture",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type role
+				  	relations
+						define assignee: [user]
+				type permission
+					relations
+						define assignee: assignee from role
+						define role: [role]
+				type job
+					relations
+						define can_read: [permission#assignee]`,
+			objectType: "job",
+			relation:   "can_read",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "nested_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define testers: [employee]
+						define assignee: [user, group#testers]
+			    type folder
+				  	relations
+						define allowed: [group#assignee]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "employee",
+			expected:   false,
+		},
+		{
+			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
+			model: `
+				model
+				  	schema 1.1
+				type user
+				type group
+				  	relations
+						define member: [user, user with x_bigger_than]
+						define user_in_context: [user]
+						define reader: member
+						define assignee: reader
+				type tier
+					relations
+						define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
+
+				condition x_bigger_than(x: int) {
+					x > 100
+                }
+				condition user_in_context(x: int) {
+					x > 100
+                }`,
+			objectType: "tier",
+			relation:   "assignee",
+			userType:   "user",
+			expected:   true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
+			require.NoError(t, err)
+			result := typeSystem.UsersetCanFastPathWeight2(test.objectType, test.relation, test.userType, directlyRelated)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestTTUCanFastPath(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string
@@ -4355,6 +4700,591 @@ func TestTTUCanUseFastTrack(t *testing.T) {
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 			actual := typesys.TTUCanFastPath(test.objectType, test.tuplesetRelation, test.computedRelation)
+			require.Equal(t, test.expectCanFastPath, actual)
+		})
+	}
+}
+
+func TestTTUCanFastPathWeight2(t *testing.T) {
+	tests := []struct {
+		name              string
+		model             string
+		objectType        string
+		relation          string
+		tuplesetRelation  string
+		computedRelation  string
+		expectCanFastPath bool
+	}{
+		{
+			name: "simple_ttu_references",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "complex_tupleset_relation_union",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define owner: [user]
+								define member: [user] or owner
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "complex_tupleset_relation_intersection",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define owner: [user]
+								define member: [user] and owner
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent`,
+
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+							
+						type folder
+							relations
+								define can_view: editor
+								define editor: [user]
+
+						type document
+							relations
+								define parent: [folder]
+								define viewer: can_view from parent`,
+
+			objectType:        "document",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
+			expectCanFastPath: true,
+		},
+		{
+			name: "nested_computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type folder
+							relations
+								define owner: [user]
+								define can_view: editor
+								define editor: owner
+
+						type document
+							relations
+								define parent: [folder]
+								define viewer: can_view from parent`,
+
+			objectType:        "document",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_view",
+			expectCanFastPath: true,
+		},
+		{
+			name: "tupleset_relation_public",
+			model: `
+						model
+							schema 1.1
+						type user
+
+						type group
+							relations
+								define member: [user, user:*]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "tupleset_relation_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user, group#member]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "tupleset_relation_condition",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group with x_less_than]
+								define viewer: member from parent
+		                condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_child_multiple_directly_assignable_types",
+			model: `
+						model
+							schema 1.1
+						type user
+						type user2
+						type group
+							relations
+								define member: [user, user2]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "multiple_ttu_references",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group1
+							relations
+								define member: [user]
+						type group2
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group1, group2]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "multiple_ttu_references_to_multiple_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type user2
+				type group1
+					relations
+						define member: [user, user2]
+				type group2
+					relations
+						define member: [user, user2]
+				type folder
+					relations
+						define owner: [group1, group2]
+						define viewer: member from owner`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+
+			name: "multiple_ttu_references_only_one_has_tupleset_relation",
+			model: `
+				model
+					schema 1.1
+				type user
+				type user2
+				type group1
+					relations
+						define member: [user, user2]
+				type group2
+				type folder
+					relations
+						define owner: [group1, group2]
+						define viewer: member from owner`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "multiple_ttu_references_different_terminal_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+					define owner: [user]
+					define viewer: [user, user:*] or owner
+				type document
+					relations
+					define can_read: viewer from parent
+					define parent: [document, folder]
+					define viewer: [user, user:*]`,
+			objectType:        "document",
+			relation:          "can_read",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
+			expectCanFastPath: false,
+		},
+		{
+			name: "only_some_parent_have_relations",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group_without_member
+							relations
+								define owner: [user]
+						type group_with_member
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group_without_member, group_with_member]
+								define viewer: member from parent
+					`,
+			// notice that group_without_member does not have member.  However, we should
+			// still allow because group_with_member has member
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_child_is_computed_in_intersection",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define allowed: [user]
+								define member: [user] and allowed
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_child_has_condition",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user with x_less_than]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+		                condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_relation_with_and_without_condition",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user with x_less_than]
+				type folder
+					relations
+						define parent: [group]
+						define viewer: member from parent
+				condition x_less_than(x: int) {
+					x < 100
+				}
+			`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_relation_with_multiple_conditions",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user with x_less_than, user with x_greater_than]
+				type folder
+					relations
+						define parent: [group]
+						define viewer: member from parent
+				condition x_less_than(x: int) {
+					x < 100
+				}
+
+				condition x_greater_than(x: int) {
+					x > 100
+				}
+			`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{
+			name: "ttu_child_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define parent: [group]
+								define member: [user, group#admin]
+								define admin: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "ttu_child_recursive_userset",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define parent: [group]
+								define member: [user, group#member]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+		                condition x_less_than(x: int) {
+		                    x < 100
+		                }
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "bad_object_type",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "undefined_type",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "bad_tupleset_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "group",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "bad_computed_relation",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent
+					`,
+			objectType:        "group",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "multiple_parent_types_with_conditions_multiple_child_types_with_conditions_or_wildcard",
+			model: `
+						model
+							schema 1.1
+						type user
+						type employee
+						type company
+						  relations
+							define member: [user, employee, user:*]
+						type group
+						  relations
+							define member: [user, user with x_greater_than]
+						type license
+						  relations
+							define holder_member: member from owner
+							define owner: [company, group, group with x_condition]
+						condition x_greater_than(x: int) {x > 1}
+						condition x_condition(x: int) {x > 1}
+					`,
+			objectType:        "license",
+			relation:          "holder_member",
+			tuplesetRelation:  "owner",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{
+			name: "composed_of_set_operations",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define parent: [group]
+								define member: [user, group#admin]
+								define admin: [user]
+						type folder
+							relations
+								define parent: [group]
+								define viewer: member from parent or admin from parent
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "admin",
+			expectCanFastPath: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			actual := typesys.TTUCanFastPathWeight2(test.objectType, test.relation, "user",
+				&openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: test.tuplesetRelation,
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: test.computedRelation,
+					},
+				})
 			require.Equal(t, test.expectCanFastPath, actual)
 		})
 	}
@@ -5122,6 +6052,663 @@ type group
 			require.NoError(t, err)
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestPathExists(t *testing.T) {
+	type pathTest struct {
+		user        string
+		relation    string
+		objectType  string
+		expected    bool
+		expectedErr error
+	}
+	tests := []struct {
+		name      string
+		model     string
+		pathTests []pathTest
+	}{
+		{
+			name: "userset_computed_userset",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type wild
+type employee
+type group
+	relations
+		define rootMember: [user, user:*, employee, wild:*]
+		define member: rootMember
+type folder
+	relations
+		define viewer: [group#member]
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "foo:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: graph.ErrQueryingGraph,
+				},
+				{
+					user:        "user:y",
+					relation:    "undefined",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: graph.ErrQueryingGraph,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#rootMember",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+		{
+			name: "nested_computed_userset",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type wild
+type group
+	relations
+		define member: [user, user:*, employee, wild:*, group#member]
+type folder
+	relations
+		define viewer: [group#member]
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+		{
+			name: "union_relation",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type wild
+type group
+	relations
+		define child1: [user, user:*]
+		define child2: [employee]
+		define child3: [wild:*]
+		define member: child1 or child2 or child3
+type folder
+	relations
+		define viewer: [group#member]
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+		{
+			name: "intersection_relation",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type wild
+type group
+	relations
+		define child1: [user]
+		define child2: [user, employee, wild:*]
+		define member: child1 and child2
+type folder
+	relations
+		define viewer: [group#member]
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					// Ideally, we will reject employee because type needs to appear
+					// in both child for an intersection. For now, the graph
+					// package is not smart enough to handle intersection as a special case.
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					// Ideally, we will reject wild because type needs to appear
+					// in both child for an intersection. For now, the graph
+					// package is not smart enough to handle intersection as a special case.
+					user:        "wild:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+		{
+			name: "exclusion_relation",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type group
+	relations
+		define child1: [user]
+		define child2: [user, employee]
+		define member: child1 but not child2
+type folder
+	relations
+		define viewer: [group#member]
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					// Ideally, we will reject employee because type needs to appear
+					// in both child for exclusion. For now, the graph
+					// package is not smart enough to handle exclusion as a special case.
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+		{
+			name: "ttu",
+			model: `
+model
+	schema 1.1
+type other
+type user
+type employee
+type wild
+type group
+	relations
+		define rootMember: [user, user:*, employee, wild:*]
+		define member: rootMember
+type folder
+	relations
+		define parent: [group]
+		define viewer: member from parent
+`,
+			pathTests: []pathTest{
+				{
+					user:        "user:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					user:        "group:y",
+					relation:    "member",
+					objectType:  "group",
+					expected:    false,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "member",
+					objectType:  "group",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#member",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					// TODO: ideally this should be false.  However, for now, this
+					// will return true as there is some path.
+					user:        "group:y#rootMember",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "user:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "employee:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "wild:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    true,
+					expectedErr: nil,
+				},
+				{
+					user:        "other:a",
+					relation:    "viewer",
+					objectType:  "folder",
+					expected:    false,
+					expectedErr: nil,
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			for _, individualPathTest := range test.pathTests {
+				t.Run(individualPathTest.objectType+"#"+individualPathTest.relation+"@"+individualPathTest.user, func(t *testing.T) {
+					actual, err := typesys.PathExists(individualPathTest.user, individualPathTest.relation, individualPathTest.objectType)
+					if individualPathTest.expectedErr == nil {
+						require.NoError(t, err)
+					} else {
+						require.ErrorIs(t, err, individualPathTest.expectedErr)
+					}
+					require.Equal(t, individualPathTest.expected, actual)
+				})
+			}
 		})
 	}
 }

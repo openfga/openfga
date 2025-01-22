@@ -49,11 +49,16 @@ func NewOrderedCheckResolvers(opts ...CheckResolverOrderedBuilderOpt) *CheckReso
 //		LocalChecker    ----------------------------^
 //
 // The returned CheckResolverCloser should be used to close all resolvers involved in the list.
-func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverCloser) {
+func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverCloser, error) {
 	c.resolvers = []CheckResolver{}
 
 	if c.cachedCheckResolverEnabled {
-		c.resolvers = append(c.resolvers, NewCachedCheckResolver(c.cachedCheckResolverOptions...))
+		cachedCheckResolver, err := NewCachedCheckResolver(c.cachedCheckResolverOptions...)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		c.resolvers = append(c.resolvers, cachedCheckResolver)
 	}
 
 	if c.dispatchThrottlingCheckResolverEnabled {
@@ -70,7 +75,7 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 		resolver.SetDelegate(c.resolvers[i+1])
 	}
 
-	return c.resolvers[0], c.close
+	return c.resolvers[0], c.close, nil
 }
 
 // close will ensure all the CheckResolver constructed are closed.

@@ -7,11 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -24,29 +22,33 @@ func TestResolveCheckFromCache(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	req := &ResolveCheckRequest{
+	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
-		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-		RequestMetadata:      NewCheckRequestMetadata(20),
-	}
+		TupleKey: &openfgav1.TupleKey{
+			Object:   "document:abc",
+			Relation: "reader",
+			User:     "user:XYZ",
+		},
+	})
+	require.NoError(t, err)
+
 	result := &ResolveCheckResponse{Allowed: true}
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
 		name                string
-		initialReq          *ResolveCheckRequest
-		subsequentReq       *ResolveCheckRequest
+		initialReqParams    *ResolveCheckRequestParams
+		subsequentReqParams *ResolveCheckRequestParams
 		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
 		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
 	}{
 		{
 			name: "same_request_returns_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -57,11 +59,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_returns_results_from_cache_when_minimize_latency_requested",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -73,11 +74,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_returns_results_from_cache_when_no_consistency_requested",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 				Consistency:          openfgav1.ConsistencyPreference_UNSPECIFIED,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -89,11 +89,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "same_request_does_not_use_cache_if_higher_consistency_requested",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -105,18 +104,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "result_added_to_cache_when_higher_consistency_requested",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 				Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 				Consistency:          openfgav1.ConsistencyPreference_MINIMIZE_LATENCY,
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
@@ -128,11 +125,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_store_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "22",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -143,11 +139,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_model_id_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -158,11 +153,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_object_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -173,11 +167,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_relation_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -188,11 +181,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_for_different_tuple_user_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -203,18 +195,19 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "request_with_different_contextual_tuple_does_not_return_results_from_cache",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -225,11 +218,10 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "response_with_error_not_cached",
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				RequestMetadata:      NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(nil, fmt.Errorf("Mock error"))
@@ -240,41 +232,43 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "identical_contextual_tuples_return_results_from_cache",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -285,41 +279,43 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "different_order_contextual_tuples_results_in_cache_hit",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -330,31 +326,33 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "separates_tuple_key_and_contextual_tuples",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:pre"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "fix:1",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "fix:1",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:prefi"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "x:1",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "x:1",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -365,46 +363,48 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "extra_contextual_tuples_does_not_return_results_from_cache",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:yyy",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:yyy",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -415,30 +415,30 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			name: "first_contextual_tuples_then_no_contextual_tuples_does_not_return_results_from_cache",
-			initialReq: &ResolveCheckRequest{
+			initialReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples: []*openfgav1.TupleKey{
-					{
-						Object:   "document:aaa",
-						Relation: "reader",
-						User:     "user:XYZ",
-					},
-					{
-						Object:   "document:xxx",
-						Relation: "reader",
-						User:     "user:XYZ",
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: []*openfgav1.TupleKey{
+						{
+							Object:   "document:aaa",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
+						{
+							Object:   "document:xxx",
+							Relation: "reader",
+							User:     "user:XYZ",
+						},
 					},
 				},
-				RequestMetadata: NewCheckRequestMetadata(20),
 			},
-			subsequentReq: &ResolveCheckRequest{
+			subsequentReqParams: &ResolveCheckRequestParams{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
-				ContextualTuples:     []*openfgav1.TupleKey{},
-				RequestMetadata:      NewCheckRequestMetadata(20),
+				ContextualTuples:     &openfgav1.ContextualTupleKeys{},
 			},
 			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(gomock.Any(), request).Times(1).Return(result, nil)
@@ -458,14 +458,16 @@ func TestResolveCheckFromCache(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			mockResolver := NewMockCheckResolver(ctrl)
-			dut := NewCachedCheckResolver()
+			dut, err := NewCachedCheckResolver()
+			require.NoError(t, err)
 			defer dut.Close()
 			dut.SetDelegate(mockResolver)
 
 			// make assertions on initial call
 			initialReq := req
-			if test.initialReq != nil {
-				initialReq = test.initialReq
+			if test.initialReqParams != nil {
+				initialReq, err = NewResolveCheckRequest(*test.initialReqParams)
+				require.NoError(t, err)
 			}
 			test.setInitialResult(mockResolver, initialReq)
 			actualResult, err := dut.ResolveCheck(ctx, initialReq)
@@ -473,9 +475,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 				require.Equal(t, result.Allowed, actualResult.Allowed)
 			}
 
-			// make assertions on subsequent call
-			test.setTestExpectations(mockResolver, test.subsequentReq)
-			actualResult, err = dut.ResolveCheck(ctx, test.subsequentReq)
+			subsequentRequest, err := NewResolveCheckRequest(*test.subsequentReqParams)
+			require.NoError(t, err)
+
+			test.setTestExpectations(mockResolver, subsequentRequest)
+			actualResult, err = dut.ResolveCheck(ctx, subsequentRequest)
 			require.NoError(t, err)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
 		})
@@ -492,7 +496,8 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 
 	mockCheckResolver := NewMockCheckResolver(ctrl)
 
-	dut := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(10 * time.Second))
+	require.NoError(t, err)
 	t.Cleanup(dut.Close)
 
 	dut.SetDelegate(mockCheckResolver)
@@ -503,7 +508,7 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 			Allowed: true,
 		}, nil)
 
-	_, err := dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+	_, err = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 
 	// run multiple times to increase probability of ensuring we detect the race
@@ -543,12 +548,8 @@ func TestResolveCheckExpired(t *testing.T) {
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
-		TupleKey: &openfgav1.TupleKey{
-			Object:   "document:abc",
-			Relation: "reader",
-			User:     "user:XYZ",
-		},
-		RequestMetadata: NewCheckRequestMetadata(20),
+		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+		RequestMetadata:      NewCheckRequestMetadata(),
 	}
 
 	result := &ResolveCheckResponse{Allowed: true}
@@ -556,7 +557,8 @@ func TestResolveCheckExpired(t *testing.T) {
 	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(1 * time.Microsecond))
+	require.NoError(t, err)
 	defer dut.Close()
 
 	dut.SetDelegate(initialMockResolver)
@@ -587,7 +589,7 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 			Relation: "reader",
 			User:     "user:XYZ",
 		},
-		RequestMetadata:           NewCheckRequestMetadata(20),
+		RequestMetadata:           NewCheckRequestMetadata(),
 		LastCacheInvalidationTime: time.Now().Add(5 * time.Minute),
 	}
 
@@ -596,7 +598,8 @@ func TestResolveCheckLastChangelogRecent(t *testing.T) {
 	initialMockResolver.EXPECT().ResolveCheck(gomock.Any(), req).Times(2).Return(result, nil)
 
 	// expect first call to result in actual resolve call
-	dut := NewCachedCheckResolver(WithCacheTTL(1 * time.Hour))
+	dut, err := NewCachedCheckResolver(WithCacheTTL(1 * time.Hour))
+	require.NoError(t, err)
 	defer dut.Close()
 
 	dut.SetDelegate(initialMockResolver)
@@ -614,7 +617,8 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	cachedCheckResolver := NewCachedCheckResolver()
+	cachedCheckResolver, err := NewCachedCheckResolver()
+	require.NoError(t, err)
 	defer cachedCheckResolver.Close()
 
 	mockCtrl := gomock.NewController(t)
@@ -643,288 +647,18 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 }
 
-func TestCachedCheckResolver_ResolveCheck_After_Stop_DoesNotPanic(t *testing.T) {
-	cachedCheckResolver := NewCachedCheckResolver(WithExistingCache(nil)) // create cache inside
-
-	mockCtrl := gomock.NewController(t)
-	t.Cleanup(mockCtrl.Finish)
-
-	mockCheckResolver := NewMockCheckResolver(mockCtrl)
-	cachedCheckResolver.SetDelegate(mockCheckResolver)
-
-	mockCheckResolver.EXPECT().
-		ResolveCheck(gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(&ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: ResolveCheckResponseMetadata{
-				CycleDetected: true,
-			},
-		}, nil)
-
-	cachedCheckResolver.Close()
-	_, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-	require.NoError(t, err)
-}
-
-func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
-		ContextualTuples: []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+func TestBuildCacheKey(t *testing.T) {
+	req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+		StoreID: "abc123",
+		TupleKey: &openfgav1.TupleKey{
+			Object:   "document:abc",
+			Relation: "reader",
+			User:     "user:XYZ",
 		},
-		RequestMetadata: NewCheckRequestMetadata(25),
+		AuthorizationModelID: "def456",
 	})
 	require.NoError(t, err)
 
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{
-		"key1": true,
-	})
-	require.NoError(t, err)
-
-	key3, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
-		Context:              contextStruct,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	// two Check request cache keys should not overlap if contextual tuples are
-	// provided in one and not the other and/or if context is provided in one
-	// and not the other
-	require.NotEqual(t, key1, key2)
-	require.NotEqual(t, key2, key3)
-	require.NotEqual(t, key1, key3)
-}
-
-func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	tuples1 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-		tuple.NewTupleKey("document:2", "admin", "user:jon"),
-	}
-
-	tuples2 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:2", "admin", "user:jon"),
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-	}
-
-	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
-
-	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     tuples1,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     tuples2,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, key1, key2)
-}
-
-func TestCheckCacheKey_ContextualTuplesWithConditionsOrdering(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	tuples1 := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
-	}
-
-	tuples2 := []*openfgav1.TupleKey{
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_other_condition", nil),
-		tuple.NewTupleKeyWithCondition("document:2", "admin", "user:jon", "some_condition", nil),
-		tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-	}
-
-	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
-
-	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     tuples1,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples:     tuples2,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, key1, key2)
-}
-
-func TestCheckCacheKeyWithContext(t *testing.T) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	struct1, err := structpb.NewStruct(map[string]interface{}{
-		"key1": "foo",
-		"key2": "bar",
-	})
-	require.NoError(t, err)
-
-	struct2, err := structpb.NewStruct(map[string]interface{}{
-		"key2": "bar",
-		"key1": "foo",
-	})
-	require.NoError(t, err)
-
-	struct3, err := structpb.NewStruct(map[string]interface{}{
-		"key2": "x",
-		"key1": "foo",
-	})
-	require.NoError(t, err)
-
-	struct4, err := structpb.NewStruct(map[string]interface{}{
-		"key2": "x",
-		"key1": true,
-	})
-	require.NoError(t, err)
-
-	key1, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		Context:              struct1,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key2, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		Context:              struct2,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key3, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		Context:              struct3,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	key4, err := CheckRequestCacheKey(&ResolveCheckRequest{
-		StoreID:              storeID,
-		AuthorizationModelID: modelID,
-		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		Context:              struct4,
-		RequestMetadata:      NewCheckRequestMetadata(25),
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, key1, key2)
-	require.NotEqual(t, key1, key3)
-	require.NotEqual(t, key1, key4)
-	require.NotEqual(t, key3, key4)
-}
-
-func BenchmarkCheckRequestCacheKey(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	var err error
-
-	for n := 0; n < b.N; n++ {
-		_, err = CheckRequestCacheKey(&ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			RequestMetadata:      NewCheckRequestMetadata(25),
-		})
-		require.NoError(b, err)
-	}
-}
-
-func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	var err error
-
-	tuples := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:x", "viewer", "user:x"),
-		tuple.NewTupleKey("document:y", "viewer", "user:y"),
-		tuple.NewTupleKey("document:z", "viewer", "user:z"),
-	}
-
-	for n := 0; n < b.N; n++ {
-		_, err = CheckRequestCacheKey(&ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			ContextualTuples:     tuples,
-			RequestMetadata:      NewCheckRequestMetadata(25),
-		})
-		require.NoError(b, err)
-	}
-}
-
-func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	var err error
-
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{
-		"boolKey":   true,
-		"stringKey": "hello",
-		"numberKey": 1.2,
-		"nullKey":   nil,
-		"structKey": map[string]interface{}{
-			"key1": "value1",
-		},
-		"listKey": []interface{}{"item1", "item2"},
-	})
-	require.NoError(b, err)
-
-	for n := 0; n < b.N; n++ {
-		_, err = CheckRequestCacheKey(&ResolveCheckRequest{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			Context:              contextStruct,
-			RequestMetadata:      NewCheckRequestMetadata(25),
-		})
-		require.NoError(b, err)
-	}
+	result := BuildCacheKey(*req)
+	require.NotEmpty(t, result)
 }

@@ -74,6 +74,7 @@ func (s *Server) ListUsers(
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	listUsersQuery := listusers.NewListUsersQuery(s.datastore,
+		req.GetContextualTuples(),
 		listusers.WithResolveNodeLimit(s.resolveNodeLimit),
 		listusers.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		listusers.WithListUsersQueryLogger(s.logger),

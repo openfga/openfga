@@ -13,7 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestNestedUsersetTupleMapper(t *testing.T) {
+func TestUsersetTupleMapper(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -24,7 +24,7 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := wrapIterator(NestedUsersetKind, innerIter)
+	mapper := wrapIterator(UsersetKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 
@@ -49,7 +49,7 @@ func TestNestedUsersetTupleMapper(t *testing.T) {
 	})
 }
 
-func TestNestedTTUTupleMapper(t *testing.T) {
+func TestTTUTupleMapper(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -59,7 +59,7 @@ func TestNestedTTUTupleMapper(t *testing.T) {
 
 	innerIter := storage.NewStaticTupleKeyIterator(tks)
 
-	mapper := wrapIterator(NestedTTUKind, innerIter)
+	mapper := wrapIterator(TTUKind, innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 

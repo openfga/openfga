@@ -107,10 +107,7 @@ func DuplicateTupleInWrite(tk tuple.TupleWithoutCondition) error {
 }
 
 func WriteFailedDueToInvalidInput(err error) error {
-	if err != nil {
-		return status.Error(codes.Code(openfgav1.ErrorCode_write_failed_due_to_invalid_input), err.Error())
-	}
-	return status.Error(codes.Code(openfgav1.ErrorCode_write_failed_due_to_invalid_input), "Write failed due to invalid input")
+	return status.Error(codes.Code(openfgav1.ErrorCode_write_failed_due_to_invalid_input), err.Error())
 }
 
 func InvalidAuthorizationModelInput(err error) error {
@@ -121,10 +118,6 @@ func InvalidAuthorizationModelInput(err error) error {
 // Use `public` if you want to return a useful error message to the user.
 func HandleError(public string, err error) error {
 	switch {
-	case errors.Is(err, storage.ErrTransactionalWriteFailed):
-		return status.Error(codes.Aborted, err.Error())
-	case errors.Is(err, storage.ErrInvalidWriteInput):
-		return WriteFailedDueToInvalidInput(err)
 	case errors.Is(err, storage.ErrInvalidContinuationToken):
 		return ErrInvalidContinuationToken
 	case errors.Is(err, storage.ErrInvalidStartTime):

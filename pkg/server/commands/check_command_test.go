@@ -11,15 +11,16 @@ import (
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/condition"
 	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -115,7 +116,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
-			Return(nil, nil)
+			Return(&graph.ResolveCheckResponse{}, nil)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
@@ -129,7 +130,8 @@ type doc
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				_, _ = cmd.datastore.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
 				return &graph.ResolveCheckResponse{}, nil
 			})
 		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
@@ -138,6 +140,26 @@ type doc
 		})
 		require.NoError(t, err)
 		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
+	})
+
+	t.Run("sets_context", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				tsFromContext, ok := typesystem.TypesystemFromContext(ctx)
+				require.True(t, ok)
+				require.Equal(t, ts, tsFromContext)
+
+				_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+				require.True(t, ok)
+				return &graph.ResolveCheckResponse{}, nil
+			})
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.NoError(t, err)
 	})
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
@@ -154,7 +176,7 @@ type doc
 		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Zero(t, req.GetLastCacheInvalidationTime())
-			return nil, nil
+			return &graph.ResolveCheckResponse{}, nil
 		})
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:     ulid.Make().String(),
@@ -168,10 +190,13 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCacheController(cacheController))
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedCheckResources{
+			CacheController: cacheController,
+			Logger:          logger.NewNoopLogger(),
+		}, config.CacheSettings{}))
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
-			return nil, nil
+			return &graph.ResolveCheckResponse{}, nil
 		})
 		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
@@ -180,42 +205,16 @@ type doc
 		})
 		require.NoError(t, err)
 	})
-}
 
-func TestBuildCheckContext(t *testing.T) {
-	model := parser.MustTransformDSLToProto(`
-model
-	schema 1.1
-type user
-type doc
-	relations
-		define viewer: [user]
-`)
-	ts, err := typesystem.New(model)
-	require.NoError(t, err)
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	contextualTuples := []*openfgav1.TupleKey{}
-	ctx := context.Background()
+	t.Run("fails_if_store_id_is_missing", func(t *testing.T) {
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
 
-	// act
-	actualContext := buildCheckContext(ctx, ts, mockDatastore, 1, contextualTuples)
-
-	// assert
-	tsFromContext, ok := typesystem.TypesystemFromContext(actualContext)
-	require.True(t, ok)
-	require.Equal(t, ts, tsFromContext)
-
-	dsFromContext, ok := storage.RelationshipTupleReaderFromContext(actualContext)
-	require.True(t, ok)
-	// first layer is the concurrency tuple reader
-	bctr, ok := dsFromContext.(*storagewrappers.BoundedConcurrencyTupleReader)
-	require.True(t, ok)
-
-	// second layer is the combined tuple reader
-	_, ok = bctr.RelationshipTupleReader.(*storagewrappers.CombinedTupleReader)
-	require.True(t, ok)
+		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+			StoreID:  "",
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+		require.Error(t, err)
+	})
 }
 
 func TestCheckCommandErrorToServerError(t *testing.T) {

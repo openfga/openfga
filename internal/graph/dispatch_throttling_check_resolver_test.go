@@ -41,7 +41,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
@@ -77,7 +77,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
@@ -113,7 +113,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(0)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(190)
 
 		ctx := context.Background()
@@ -149,7 +149,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1)
 		mockThrottler.EXPECT().Throttle(gomock.Any()).Times(1)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(201)
 
 		ctx := context.Background()
@@ -189,7 +189,7 @@ func TestDispatchThrottlingCheckResolver(t *testing.T) {
 		ctx := context.Background()
 		ctx = dispatch.ContextWithThrottlingThreshold(ctx, 1000)
 
-		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata(10)}
+		req := &ResolveCheckRequest{RequestMetadata: NewCheckRequestMetadata()}
 		req.GetRequestMetadata().DispatchCounter.Store(301)
 
 		_, err := dut.ResolveCheck(ctx, req)

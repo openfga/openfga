@@ -162,7 +162,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 		require.NoError(b, err)
 
-		// arrange: write tuples
+		// arrange: write tuples in random order
 		tuples := bm.tupleGenerator()
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey
@@ -173,6 +173,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				tuplesToWrite = append(tuplesToWrite, tuples[i])
 				i++
 			}
+			tuplesToWrite = testutils.Shuffle(tuplesToWrite)
 			err = ds.Write(context.Background(), storeID, nil, tuplesToWrite)
 			require.NoError(b, err)
 		}
@@ -183,6 +184,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				resp, err := listusers.NewListUsersQuery(ds,
+					bm.inputRequest.GetContextualTuples(),
 					listusers.WithListUsersMaxResults(bm.inputConfigMaxResults),
 					listusers.WithListUsersMaxConcurrentReads(50)).
 					ListUsers(ctx, bm.inputRequest)

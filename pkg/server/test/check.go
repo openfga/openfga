@@ -369,8 +369,8 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 		require.NoError(b, err)
 
-		// create and write necessary tuples
-		tuples := bm.tupleGenerator()
+		// create and write necessary tuples in random order
+		tuples := testutils.Shuffle(bm.tupleGenerator())
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey
 			for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
@@ -389,7 +389,6 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			graph.NewLocalChecker(graph.WithOptimizations(true)),
 			typeSystem,
 			commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
-			commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 		)
 
 		b.Run(name, func(b *testing.B) {
@@ -443,6 +442,8 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	// one userset gets access to document:budget
 	tuples = append(tuples, &openfgav1.TupleKey{Object: "document:budget", Relation: "viewer", User: "group:999#member"})
 
+	tuples = testutils.Shuffle(tuples)
+
 	// now actually write the tuples
 	for i := 0; i < len(tuples); {
 		var tuplesToWrite []*openfgav1.TupleKey
@@ -482,7 +483,6 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 		graph.NewLocalChecker(graph.WithOptimizations(true)),
 		typeSystemTwo,
 		commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
-		commands.WithCheckCommandResolveNodeLimit(config.DefaultResolveNodeLimit),
 	)
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
