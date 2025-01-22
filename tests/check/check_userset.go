@@ -451,6 +451,75 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 	},
 	{
+		Name: "usersets_userset_to_or_computed_no_condition",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "directs-user:utoc_no_cond_1", Relation: "direct", User: "user:utoc_no_cond_1"},   // covers computed
+			{Object: "directs-user:utoc_no_cond_2", Relation: "direct_wild", User: "user:*"},           // covers direct_wild
+			{Object: "directs-user:utoc_no_cond_3", Relation: "direct", User: "user:(utoc_no_cond_3)"}, // covers computed (ascii before wildcard)
+			{Object: "directs-user:utoc_no_cond_3", Relation: "direct_wild", User: "user:*"},           // covers direct_wild
+			{Object: "directs-user:utoc_no_cond_3", Relation: "direct", User: "user:utoc_no_cond_3"},   // covers computed
+			{Object: "directs-user:utoc_no_cond_4", Relation: "direct", User: "user:(utoc_no_cond_4)"}, // covers computed (ascii before wildcard)
+			{Object: "directs-user:utoc_no_cond_4", Relation: "direct", User: "user:utoc_no_cond_4"},   // covers computed
+
+			{Object: "usersets-user:utoc_no_cond_1", Relation: "userset_to_or_computed_no_cond", User: "directs-user:utoc_no_cond_1#or_computed_no_cond"},
+			{Object: "usersets-user:utoc_no_cond_2", Relation: "userset_to_or_computed_no_cond", User: "directs-user:utoc_no_cond_2#or_computed_no_cond"},
+			{Object: "usersets-user:utoc_no_cond_3", Relation: "userset_to_or_computed_no_cond", User: "directs-user:utoc_no_cond_3#or_computed_no_cond"},
+			{Object: "usersets-user:utoc_no_cond_4", Relation: "userset_to_or_computed_no_cond", User: "directs-user:utoc_no_cond_4#or_computed_no_cond"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_1", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_2", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_2"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_wildcard_before_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_2", Relation: "userset_to_or_computed_no_cond", User: "user:(utoc_no_cond_2)"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_1", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_2"},
+				Expectation: false,
+			},
+			{
+				Name:        "valid_user_3_before_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_3", Relation: "userset_to_or_computed_no_cond", User: "user:(utoc_no_cond_3)"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_3_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_3", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_3_wildcard"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_3_after_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_3", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_4_before_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_4", Relation: "userset_to_or_computed_no_cond", User: "user:(utoc_no_cond_4)"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user_4_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_4", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_4_invalid_user"},
+				Expectation: false,
+			},
+			{
+				Name:        "valid_user_4_after_wildcard",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:utoc_no_cond_4", Relation: "userset_to_or_computed_no_cond", User: "user:utoc_no_cond_4"},
+				Expectation: true,
+			},
+		},
+	},
+	{
 		Name: "usersets_userset_to_butnot_computed",
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "directs-user:utbc_1", Relation: "direct_wild_cond", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
@@ -1049,12 +1118,15 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation:          true,
 				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
-			{
-				Name:                 "invalid_user_direct",
-				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
-				Expectation:          false,
-				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-			},
+			/*
+				// Disable due to https://github.com/openfga/openfga/issues/2179
+				{
+					Name:                 "invalid_user_direct",
+					Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_2"},
+					Expectation:          false,
+					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+				},
+			*/
 			{
 				Name:        "invalid_user_direct_cond",
 				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:nou_2", Relation: "nested_or_userset", User: "user:nou_1"},

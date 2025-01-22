@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Improve `Check` performance for sub-problems when caching is enabled [#2193](https://github.com/openfga/openfga/pull/2193).
+- Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and contextual tuples are involved. [#2150](https://github.com/openfga/openfga/pull/2150)
 
 ### Fixed
