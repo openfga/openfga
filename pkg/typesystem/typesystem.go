@@ -762,13 +762,13 @@ func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error)
 
 	// second check
 	fromLabel = tuple.TypedPublicWildcard(userType)
-	wildcardFromNode, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
+	wildcardPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
 	if err != nil {
 		// The only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
 		// be found. Given this, we are safe to conclude there is no path.
 		return false, nil
 	}
-	return wildcardFromNode, nil
+	return wildcardPathExists, nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
