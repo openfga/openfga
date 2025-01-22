@@ -250,14 +250,14 @@
                     "description": "the maximum amount of time a connection to the datastore may be idle",
                     "type": "string",
                     "format": "duration",
-                    "default": "",
+                    "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME"
                 },
                 "connMaxLifetime": {
                     "description": "the maximum amount of time a connection to the datastore may be reused",
                     "type": "string",
                     "format": "duration",
-                    "default": "",
+                    "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 },
                 "metrics": {
