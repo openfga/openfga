@@ -18,14 +18,14 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func TestNoopCacheController_DetermineInvalidation(t *testing.T) {
+func TestNoopCacheController_DetermineInvalidationTime(t *testing.T) {
 	t.Run("returns_zero_time", func(t *testing.T) {
 		ctrl := NewNoopCacheController()
-		require.Zero(t, ctrl.DetermineInvalidation(context.Background(), ""))
+		require.Zero(t, ctrl.DetermineInvalidationTime(context.Background(), ""))
 	})
 }
 
-func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
+func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -47,7 +47,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
 			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 
-		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
 	})
 	t.Run("cache_miss", func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestInMemoryCacheController_DetermineInvalidation(t *testing.T) {
 			}),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
 		)
-		invalidationTime := cacheController.DetermineInvalidation(ctx, storeID)
+		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Equal(t, time.Time{}, invalidationTime)
 	})
 }

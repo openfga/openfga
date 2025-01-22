@@ -50,14 +50,14 @@ var (
 )
 
 type CacheController interface {
-	// DetermineInvalidation returns the timestamp of the last write for the specified store.
+	// DetermineInvalidationTime returns the timestamp of the last write for the specified store.
 	// It may return a cached timestamp.
-	DetermineInvalidation(ctx context.Context, storeID string) time.Time
+	DetermineInvalidationTime(ctx context.Context, storeID string) time.Time
 }
 
 type NoopCacheController struct{}
 
-func (c *NoopCacheController) DetermineInvalidation(_ context.Context, _ string) time.Time {
+func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) time.Time {
 	return time.Time{}
 }
 
@@ -110,20 +110,20 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 	return c
 }
 
-// DetermineInvalidation returns the timestamp of the last write for the specified store.
+// DetermineInvalidationTime returns the timestamp of the last write for the specified store.
 // It may return a cached timestamp.
 // If the timestamp is not known, it will asynchronously find the last Write and store it, and also invalidate some or all entries in the cache.
-func (c *InMemoryCacheController) DetermineInvalidation(
+func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
+	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
-	c.logger.Debug("InMemoryCacheController DetermineInvalidation cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
+	c.logger.Debug("InMemoryCacheController DetermineInvalidationTime cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
