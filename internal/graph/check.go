@@ -521,6 +521,8 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 // [group#owner][1, 3].
 type usersetsMapType map[string]storage.SortedSet
 
+// checkAssociatedObjects returns true if there is an intersection in the set of object IDs returned by an iterator built for objectRel,
+// and the set "objectIDs".
 func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objectRel string, objectIDs storage.SortedSet) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "checkAssociatedObjects")
 	defer span.End()
@@ -528,7 +530,7 @@ func checkAssociatedObjects(ctx context.Context, req *ResolveCheckRequest, objec
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs)
+	iter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objectRel, objectIDs, false)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -945,7 +947,7 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator streams the userset that are assigned to
 // the object to the usersetMessageChan channel.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
@@ -1174,8 +1176,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if len(req.ContextualTuples) == 0 && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						// TODO: Add support for contextual tuples - since these are injected without order
+					} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						// TODO: Add support for wildcard - we are doing exact matches
 						resolver = c.checkUsersetFastPathV2
 						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
@@ -1414,8 +1415,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			} else if len(req.ContextualTuples) == 0 && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				// TODO: Add support for contextual tuples - since these are injected without order
+			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				// TODO: Add support for wildcard - we are doing exact matches
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
