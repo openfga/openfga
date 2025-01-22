@@ -328,8 +328,8 @@ func (c *CachedDatastore) newCachedIteratorByObjectRelation(
 	relation string,
 ) (storage.TupleIterator, error) {
 	objectType, objectID := tuple.SplitObject(object)
-	invalidEntityKeys := storage.GetInvalidIteratorByObjectRelationCacheKeys(store, object, relation)
-	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, objectID, relation, "")
+	invalidEntityKey := storage.GetInvalidIteratorByObjectRelationCacheKey(store, object, relation)
+	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, []string{invalidEntityKey}, objectType, objectID, relation, "")
 }
 
 func (c *CachedDatastore) newCachedIteratorByUserObjectType(
