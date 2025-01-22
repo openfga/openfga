@@ -739,9 +739,9 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 // - the `user` type is a userset e.g. `group#member`, and there is a path from `group#member` to `objectType#relation`.
 func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
 	userType, _, userRelation := tuple.ToUserParts(user)
+	isUserset := userRelation != ""
 	userTypeRelation := userType
-	if userRelation != "" {
-		// this is a userset
+	if isUserset {
 		userTypeRelation = tuple.ToObjectRelationString(userType, userRelation)
 	}
 
@@ -754,6 +754,10 @@ func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error)
 	}
 	if normalPathExists {
 		return true, nil
+	}
+	// skip second check in case it's a userset because it will always return false
+	if isUserset {
+		return false, nil
 	}
 
 	// second check

@@ -6074,11 +6074,10 @@ func TestPathExists(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-				type employee
 				type user
 				type document
 					relations
-						define viewer: [user, document#viewer]
+						define viewer: [user]
 				`,
 			pathTests: []pathTest{
 				{
@@ -6091,7 +6090,7 @@ func TestPathExists(t *testing.T) {
 			},
 		},
 		{
-			name: "with_normal_path",
+			name: "normal_path",
 			model: `
 				model
 					schema 1.1
@@ -6099,7 +6098,7 @@ func TestPathExists(t *testing.T) {
 				type user
 				type document
 					relations
-						define viewer: [user, document#viewer]
+						define viewer: [user]
 				`,
 			pathTests: []pathTest{
 				{
@@ -6142,6 +6141,29 @@ func TestPathExists(t *testing.T) {
 				},
 				{
 					user:       "employee:a",
+					relation:   "viewer",
+					objectType: "document",
+					expected:   false,
+				},
+			},
+		},
+		{
+			name: "no_wildcard_check_if_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user]
+				`,
+			pathTests: []pathTest{
+
+				{
+					user:       "group:fga#member",
 					relation:   "viewer",
 					objectType: "document",
 					expected:   false,
