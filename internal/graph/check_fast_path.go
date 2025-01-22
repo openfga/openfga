@@ -638,7 +638,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	return res, ctx.Err()
 }
 
-func (c *LocalChecker) constructLeftChannels(ctx context.Context,
+func constructLeftChannels(ctx context.Context,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc) ([]chan *iteratorMsg, error) {
@@ -679,7 +679,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -709,7 +709,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := c.constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+	leftChans, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -794,7 +794,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		}
 		newReq := req.clone()
 		newReq.TupleKey = tuple.NewTupleKey(userset, relation, user)
-		mapper, err := c.buildRecursiveMapper(ctx, newReq, mapping)
+		mapper, err := buildRecursiveMapper(ctx, newReq, mapping)
 
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
@@ -1115,7 +1115,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	}, leftChannelBuilder)
 }
 
-func (c *LocalChecker) buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
+func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
 	var iter storage.TupleIterator
 	var err error
 	typesys, _ := typesystem.TypesystemFromContext(ctx)

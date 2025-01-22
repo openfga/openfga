@@ -3905,7 +3905,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
-			expected:   false,
+			expected:   true,
 		},
 		{
 			name: "complex_userset_exclusion",
@@ -4842,7 +4842,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			relation:          "viewer",
 			tuplesetRelation:  "parent",
 			computedRelation:  "member",
-			expectCanFastPath: false,
+			expectCanFastPath: true,
 		},
 		{
 			name: "tupleset_relation_userset",
@@ -4995,7 +4995,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			relation:          "can_read",
 			tuplesetRelation:  "parent",
 			computedRelation:  "viewer",
-			expectCanFastPath: false,
+			expectCanFastPath: true,
 		},
 		{
 			name: "only_some_parent_have_relations",
@@ -5246,7 +5246,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			relation:          "holder_member",
 			tuplesetRelation:  "owner",
 			computedRelation:  "member",
-			expectCanFastPath: false,
+			expectCanFastPath: true,
 		},
 		{
 			name: "composed_of_set_operations",

@@ -314,6 +314,7 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgav1.Rela
 
 // GetRelation retrieves a specific Relation from the TypeSystem
 // based on the provided objectType and relation strings.
+// It can return ErrObjectTypeUndefined and ErrRelationUndefined.
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relation, error) {
 	relations, err := t.GetRelations(objectType)
 	if err != nil {
@@ -578,9 +579,6 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 	if !ok {
 		return false
 	}
-	if len(node.GetWildcards()) != 0 {
-		return false
-	}
 
 	w, ok := node.GetWeight(userType)
 	if !ok {
@@ -623,9 +621,6 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 			// each edge must belong to one of the directly assignable userset types AND each one of them
 			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
 			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
-				if len(edge.GetWildcards()) != 0 {
-					return false
-				}
 				if w, ok := edge.GetWeight(userType); ok && w > 2 {
 					return false
 				}
@@ -649,9 +644,6 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	computedRelation := ttu.GetComputedUserset().GetRelation()
 	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
 	if !ok {
-		return false
-	}
-	if len(node.GetWildcards()) != 0 {
 		return false
 	}
 	// node.weight(userType) is the maximum weight to get to "userType".
