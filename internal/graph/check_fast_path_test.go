@@ -1087,7 +1087,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			checker := NewLocalChecker()
 			mapping := &recursiveMapping{
-				kind:             TTUKind,
+				kind:             storage.TTUKind,
 				tuplesetRelation: "parent",
 			}
 			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
@@ -1450,7 +1450,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 		}).Times(1)
 
 		mapping := &recursiveMapping{
-			kind: UsersetKind,
+			kind: storage.UsersetKind,
 			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
@@ -1462,7 +1462,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*UsersetMapper)
+		_, ok := res.(*storage.UsersetMapper)
 		require.True(t, ok)
 	})
 
@@ -1475,7 +1475,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 
 		mapping := &recursiveMapping{
 			tuplesetRelation: "parent",
-			kind:             TTUKind,
+			kind:             storage.TTUKind,
 		}
 		res, err := checker.buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
@@ -1484,7 +1484,7 @@ func TestBuildRecursiveMapper(t *testing.T) {
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*TTUMapper)
+		_, ok := res.(*storage.TTUMapper)
 		require.True(t, ok)
 	})
 }
