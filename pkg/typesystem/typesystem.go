@@ -756,7 +756,7 @@ func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error)
 	if normalPathExists {
 		return true, nil
 	}
-	// skip second check in case it's a userset because it will always return false
+	// skip second check in case it's a userset, since a userset cannot have public wildcard
 	if isUserset {
 		return false, nil
 	}
