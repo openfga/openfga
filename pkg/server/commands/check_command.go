@@ -96,20 +96,23 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, params.StoreID)
 	}
 
-	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              params.StoreID,
-		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
-		Context:              params.Context,
-		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(),
-		Consistency:          params.Consistency,
-		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: cacheInvalidationTime,
+	resolveCheckRequest, err := graph.NewResolveCheckRequest(
+		graph.ResolveCheckRequestParams{
+			StoreID:                   params.StoreID,
+			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+			Context:                   params.Context,
+			ContextualTuples:          params.ContextualTuples,
+			Consistency:               params.Consistency,
+			LastCacheInvalidationTime: cacheInvalidationTime,
+			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
+		},
+	)
+
+	if err != nil {
+		return nil, nil, err
 	}
 
 	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings, c.logger)
@@ -118,7 +121,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
 
 	startTime := time.Now()
-	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
+
+	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, nil, &ThrottledError{Cause: err}

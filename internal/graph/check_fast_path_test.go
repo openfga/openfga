@@ -19,11 +19,21 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+// setRequestContext creates the correct storage wrappers in the request. NOTE: "ds" can be a mock.
+func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader, ctxTuples []*openfgav1.TupleKey) context.Context {
+	rsw := storagewrappers.NewRequestStorageWrapperForCheckAPI(ds, ctxTuples, config.DefaultMaxConcurrentReadsForCheck, nil, config.CacheSettings{}, nil)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+	return ctx
+}
 
 func TestIteratorStreams(t *testing.T) {
 	t.Run("getActiveStreams", func(t *testing.T) {
@@ -92,19 +102,18 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
-		checker := NewLocalChecker()
-		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -118,10 +127,9 @@ func TestFastPathDirect(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		c, err := checker.fastPathDirect(ctx, &ResolveCheckRequest{
+		c, err := fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -141,19 +149,18 @@ func TestFastPathDirect(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "admin",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
 			}},
 		).MaxTimes(1).Return(nil, errors.New("boom"))
-		checker := NewLocalChecker()
-		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -167,10 +174,9 @@ func TestFastPathDirect(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
-		_, err = checker.fastPathDirect(ctx, &ResolveCheckRequest{
+		_, err = fastPathDirect(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -185,7 +191,6 @@ func TestFastPathComputed(t *testing.T) {
 	})
 
 	t.Run("should_return_error_if_computed_relation_doesnt_exist", func(t *testing.T) {
-		checker := NewLocalChecker()
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -200,9 +205,9 @@ func TestFastPathComputed(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = setRequestContext(ctx, ts, nil, nil)
 
-		_, err = checker.fastPathComputed(ctx, &ResolveCheckRequest{
+		_, err = fastPathComputed(ctx, &ResolveCheckRequest{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
 		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
@@ -1047,12 +1052,12 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 
 			storeID := ulid.Make().String()
 
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			for _, mock := range tt.readMocks {
-				ds.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
 			}
 
 			model := parser.MustTransformDSLToProto(`
@@ -1075,12 +1080,11 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 
 			checker := NewLocalChecker()
 			mapping := &recursiveMapping{
-				kind:             TTUKind,
+				kind:             storage.TTUKind,
 				tuplesetRelation: "parent",
 			}
 			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
@@ -1150,9 +1154,10 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
 			storeID := ulid.Make().String()
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
@@ -1160,7 +1165,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readTuples {
-				ds.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
 			}
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
@@ -1174,8 +1179,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
 			checker := NewLocalChecker()
 			result, err := checker.recursiveTTUFastPath(ctx, req, rel.GetRewrite(), storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{Object: "group:2", Relation: "parent", User: "group:1"}}))
 			require.Equal(t, tt.expectedError, err)
@@ -1305,11 +1309,9 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			storeID := ulid.Make().String()
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
@@ -1317,7 +1319,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readUsersetTuples[1:] {
-				ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 			}
 			model := parser.MustTransformDSLToProto(`
 						model
@@ -1331,7 +1333,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 			req := &ResolveCheckRequest{
 				StoreID:              storeID,
@@ -1364,12 +1366,8 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 		defer ctrl.Finish()
 
 		storeID := ulid.Make().String()
-		ds := mocks.NewMockRelationshipTupleReader(ctrl)
-
-		ctx := context.Background()
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		ds.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 				{
 					Key: tuple.NewTupleKey("group:bad", "member", "user:maria"),
@@ -1377,7 +1375,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 			}), nil)
 
 		for i := 1; i < 26; i++ {
-			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
 				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 					{
 						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i+1), "member", "group:"+strconv.Itoa(i)+"#member"),
@@ -1397,7 +1395,7 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
-		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 		req := &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1416,14 +1414,10 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 }
 
 func TestBuildRecursiveMapper(t *testing.T) {
+	storeID := ulid.Make().String()
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-	storeID := ulid.Make().String()
-	ctx := context.Background()
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
 
 	model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -1435,8 +1429,8 @@ func TestBuildRecursiveMapper(t *testing.T) {
 	ts, err := typesystem.New(model)
 	require.NoError(t, err)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, ts)
-	checker := NewLocalChecker()
+	mockDatastore := mocks.NewMockRelationshipTupleReader(mockController)
+	ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 	t.Run("recursive_userset", func(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
@@ -1452,19 +1446,19 @@ func TestBuildRecursiveMapper(t *testing.T) {
 		}).Times(1)
 
 		mapping := &recursiveMapping{
-			kind: UsersetKind,
+			kind: storage.UsersetKind,
 			allowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		}
-		res, err := checker.buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*UsersetMapper)
+		_, ok := res.(*storage.UsersetMapper)
 		require.True(t, ok)
 	})
 
@@ -1477,16 +1471,772 @@ func TestBuildRecursiveMapper(t *testing.T) {
 
 		mapping := &recursiveMapping{
 			tuplesetRelation: "parent",
-			kind:             TTUKind,
+			kind:             storage.TTUKind,
 		}
-		res, err := checker.buildRecursiveMapper(ctx, &ResolveCheckRequest{
+		res, err := buildRecursiveMapper(ctx, &ResolveCheckRequest{
 			StoreID:     storeID,
 			TupleKey:    tuple.NewTupleKey("document:1", "viewer", "user:maria"),
 			Context:     testutils.MustNewStruct(t, map[string]interface{}{"x": "2"}),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		}, mapping)
 		require.NoError(t, err)
-		_, ok := res.(*TTUMapper)
+		_, ok := res.(*storage.TTUMapper)
 		require.True(t, ok)
+	})
+}
+
+func TestCheckUsersetFastPathV2(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("non_public_wildcard_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
+		}), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define viewer: [group#all]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:1#all",
+			Relation: "viewer",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkUsersetFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.True(t, val.GetAllowed())
+	})
+	t.Run("non_public_wildcard_union_not_match", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
+		}), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define viewer: [group#all]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:1#all",
+			Relation: "viewer",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkUsersetFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.True(t, val.GetAllowed())
+	})
+	t.Run("public_wildcard_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
+		}), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define viewer: [group#all]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:1#all",
+			Relation: "viewer",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkUsersetFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.True(t, val.GetAllowed())
+	})
+	t.Run("public_wildcard_union_not_match", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
+		}), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define viewer: [group#all]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:2#all",
+			Relation: "viewer",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkUsersetFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.False(t, val.GetAllowed())
+	})
+
+	t.Run("with_contextual_tuples_unsorted_works", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member1: [user]
+					define member2: [user]
+					define intersect: member1 and member2
+			type folder
+				relations
+					define target: [group#intersect]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		// left-hand side tuples returned by contextual tuples (unsorted) and DB (sorted)
+		contextualTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:3", "member1", "user:maria"),
+			tuple.NewTupleKey("group:2", "member1", "user:maria"),
+			tuple.NewTupleKey("group:1", "member1", "user:maria"),
+		}
+		dbTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:1", "member2", "user:maria"),
+			tuple.NewTupleKey("group:2", "member2", "user:maria"),
+			tuple.NewTupleKey("group:3", "member2", "user:maria"),
+		}
+
+		// right-hand side tuples returned by DB
+		usersetTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("folder:target", "target", "group:1#intersect"),
+		}
+		usersetIterator := storage.NewStaticTupleKeyIterator(usersetTuples)
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member1",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).Times(1).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member2",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).Times(1).
+			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples)), nil)
+
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
+
+		checker := NewLocalChecker()
+		checkResult, err := checker.checkUsersetFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
+		}, usersetIterator)
+		require.NoError(t, err)
+		require.NotNil(t, checkResult)
+		require.True(t, checkResult.GetAllowed())
+	})
+}
+
+func TestCheckTTUFastPathV2(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("non_public_wildcard_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
+		}), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define parent: [group]
+					define viewer: all from parent
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:1",
+			Relation: "parent",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkTTUFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, typesystem.TupleToUserset("parent", "all"), iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.True(t, val.GetAllowed())
+	})
+
+	t.Run("public_wildcard_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
+		}), nil)
+
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define parent: [group]
+					define viewer: all from parent
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:1",
+			Relation: "parent",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkTTUFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, typesystem.TupleToUserset("parent", "all"), iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.True(t, val.GetAllowed())
+	})
+
+	t.Run("non_public_wildcard_union_not_match", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "members", "user:1")},
+		}), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define parent: [group]
+					define viewer: all from parent
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:2",
+			Relation: "parent",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkTTUFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, typesystem.TupleToUserset("parent", "all"), iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.False(t, val.GetAllowed())
+	})
+
+	t.Run("public_wildcard_union_not_match", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "members",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "public",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:1"},
+				{Object: tuple.TypedPublicWildcard("user")},
+			},
+			ObjectIDs: nil,
+		}, storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			},
+			WithResultsSortedAscending: true,
+		},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("group:1", "public", "user:*")},
+		}), nil)
+
+		checker := NewLocalChecker()
+		ctx := context.Background()
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define members: [user]
+					define public: [user, user:*]
+					define all: members or public
+			type document
+				relations
+					define parent: [group]
+					define viewer: all from parent
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User:     "group:2",
+			Relation: "parent",
+			Object:   "document:1",
+		}})
+		val, err := checker.checkTTUFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		}, typesystem.TupleToUserset("parent", "all"), iter)
+		require.NoError(t, err)
+		require.NotNil(t, val)
+		require.False(t, val.GetAllowed())
+	})
+	t.Run("with_contextual_tuples_unsorted_works", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type group
+				relations
+					define member1: [user]
+					define member2: [user]
+					define intersect: member1 and member2
+			type folder
+				relations
+					define parent: [group]
+					define target: intersect from parent
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+		ttuRewrite := typesystem.TupleToUserset("parent", "intersect")
+
+		// left-hand side tuples (computed relation of TTU) returned by contextual tuples (unsorted) and DB (sorted)
+		contextualTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:3", "member1", "user:maria"),
+			tuple.NewTupleKey("group:2", "member1", "user:maria"),
+			tuple.NewTupleKey("group:1", "member1", "user:maria"),
+		}
+		dbTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:1", "member2", "user:maria"),
+			tuple.NewTupleKey("group:2", "member2", "user:maria"),
+			tuple.NewTupleKey("group:3", "member2", "user:maria"),
+		}
+
+		// right-hand side tuples (tupleset of TTU) returned by DB
+		tuplesets := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("folder:target", "parent", "group:1"),
+		}
+		rightHandSideIterator := storage.NewStaticTupleKeyIterator(tuplesets)
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member1",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).Times(1).
+			Return(storage.NewStaticTupleIterator(nil), nil)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "group",
+			Relation:   "member2",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+			ObjectIDs:  nil,
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).Times(1).
+			Return(storage.NewStaticTupleIterator(testutils.ConvertTuplesKeysToTuples(dbTuples)), nil)
+
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, contextualTuples)
+
+		checker := NewLocalChecker()
+
+		checkResult, err := checker.checkTTUFastPathV2(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
+		}, ttuRewrite, rightHandSideIterator)
+		require.NoError(t, err)
+		require.NotNil(t, checkResult)
+		require.True(t, checkResult.GetAllowed())
 	})
 }

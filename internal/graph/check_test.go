@@ -789,12 +789,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
-
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
@@ -833,12 +828,7 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
-
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
@@ -894,12 +884,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
-
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:         storeID,
@@ -950,11 +935,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		for i := 0; i < 2000; i++ {
 			// subtract branch resolves to {allowed: true} even though the base branch
@@ -1000,11 +981,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 		for i := 0; i < 2000; i++ {
 			// base should resolve to {allowed: false} even though the subtract branch
@@ -1062,11 +1039,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	ts, err := typesystem.New(model)
 	require.NoError(t, err)
 
-	ctx := typesystem.ContextWithTypesystem(
-		context.Background(),
-		ts,
-	)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+	ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:         storeID,
@@ -1133,8 +1106,7 @@ func TestCheckConditions(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+	ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
 	conditionContext, err := structpb.NewStruct(map[string]interface{}{
 		"param1": "notok",
@@ -1174,7 +1146,6 @@ func TestCheckConditions(t *testing.T) {
 
 func TestCheckDispatchCount(t *testing.T) {
 	ds := memory.New()
-	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 
 	t.Run("dispatch_count_ttu", func(t *testing.T) {
 		storeID := ulid.Make().String()
@@ -1196,7 +1167,7 @@ func TestCheckDispatchCount(t *testing.T) {
 					define parent: [folder]
 			`)
 
-		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
 			tuple.NewTupleKey("folder:B", "parent", "folder:C"),
 			tuple.NewTupleKey("folder:A", "parent", "folder:B"),
@@ -1212,7 +1183,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 
 		checkRequestMetadata := NewCheckRequestMetadata()
 
@@ -1225,7 +1196,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(3), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
 			checkRequestMetadata := NewCheckRequestMetadata()
@@ -1262,7 +1233,7 @@ func TestCheckDispatchCount(t *testing.T) {
 					define viewer: [group#member]
 			`)
 
-		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("group:1", "member", "user:jon"),
 			tuple.NewTupleKey("group:eng", "member", "group:1#member"),
 			tuple.NewTupleKey("group:eng", "member", "group:2#member"),
@@ -1279,7 +1250,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 		checkRequestMetadata := NewCheckRequestMetadata()
 
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
@@ -1322,7 +1293,7 @@ func TestCheckDispatchCount(t *testing.T) {
 					define owner: [user]
 					define editor: [user] or owner`)
 
-		err := ds.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			tuple.NewTupleKey("document:2", "editor", "user:will"),
 		})
@@ -1336,7 +1307,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx := setRequestContext(context.Background(), typesys, ds, nil)
 		checkRequestMetadata := NewCheckRequestMetadata()
 		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 			StoreID:              storeID,
@@ -1718,7 +1689,7 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	ts, err := typesystem.NewAndValidate(context.Background(), model)
 	require.NoError(t, err)
 
-	ctx := typesystem.ContextWithTypesystem(storage.ContextWithRelationshipTupleReader(context.Background(), ds), ts)
+	ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 	newL, _ := logger.NewLogger(logger.WithFormat("text"), logger.WithLevel("debug"))
 	checker := NewLocalChecker(WithUsersetBatchSize(usersetBatchSize), WithLocalCheckerLogger(newL), WithOptimizations(true), WithMaxResolutionDepth(20))
@@ -1779,7 +1750,53 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	}
 }
 
-func TestCycleDetection(t *testing.T) {
+func TestResolveCheckCallsPathExists(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define x: y
+					define y: x
+		`)
+
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	ctx := setRequestContext(context.Background(), ts, ds, nil)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+		RequestMetadata:      NewCheckRequestMetadata(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
+
+	// Without PathExists check, this would cycle
+	require.False(t, resp.GetCycleDetected())
+}
+
+func TestResolveCheckCallsCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
@@ -1814,7 +1831,7 @@ func TestCycleDetection(t *testing.T) {
 		require.NotNil(t, resp.ResolutionMetadata)
 	})
 
-	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
+	t.Run("returns_true_if_cycle_exists", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -1828,38 +1845,18 @@ func TestCycleDetection(t *testing.T) {
 		ts, err := typesystem.New(model)
 		require.NoError(t, err)
 
-		ctx := typesystem.ContextWithTypesystem(
-			context.Background(),
-			ts,
-		)
+		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
-		t.Run("disconnected_types_in_query", func(t *testing.T) {
-			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-			})
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.False(t, resp.GetAllowed())
-			require.True(t, resp.GetCycleDetected())
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+			RequestMetadata:      NewCheckRequestMetadata(),
 		})
-
-		t.Run("connected_types_in_query", func(t *testing.T) {
-			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-			})
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.False(t, resp.GetAllowed())
-			require.True(t, resp.GetCycleDetected())
-		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
 	})
 }
 
@@ -2338,6 +2335,7 @@ func TestCheckAssociatedObjects(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			storeID := ulid.Make().String()
 			objectIDs := storage.NewSortedSet()
 			for _, objectID := range tt.objectIDs {
 				objectIDs.Add(objectID)
@@ -2346,24 +2344,32 @@ func TestCheckAssociatedObjects(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			t.Cleanup(ctrl.Finish)
 
-			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ds.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: "group",
+				Relation:   "member",
+				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+				ObjectIDs:  objectIDs,
+			}, storage.ReadStartingWithUserOptions{
+				WithResultsSortedAscending: false,
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+				}},
+			).Times(1).
+				Return(storage.NewStaticTupleIterator(tt.tuples), tt.dsError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
-			ctx := context.Background()
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
 
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
 
 			result, err := checkAssociatedObjects(ctx, &ResolveCheckRequest{
-				StoreID:              ulid.Make().String(),
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-				Context:              contextStruct,
+				StoreID:         storeID,
+				TupleKey:        tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				RequestMetadata: NewCheckRequestMetadata(),
+				Context:         contextStruct,
 			}, "group#member", objectIDs)
 			if tt.expectedError {
 				require.Error(t, err)
@@ -2688,8 +2694,7 @@ func TestConsumeUsersets(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
+			ctx = setRequestContext(ctx, ts, ds, nil)
 
 			usersetsChannelItems := usersetsChannelFromUsersetsChannelStruct(tt.usersetsChannelResult)
 
@@ -3745,8 +3750,6 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 			defer ctrl.Finish()
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 			model := parser.MustTransformDSLToProto(`
 					model
@@ -3760,7 +3763,8 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+			ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 			restrictions, err := ts.DirectlyRelatedUsersets("group", "member")
 			require.NoError(t, err)
@@ -3792,9 +3796,8 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 				defer cancelFunc()
 			}
 
-			checker := NewLocalChecker()
-			mapper, err := checker.buildRecursiveMapper(ctx, req, &recursiveMapping{
-				kind:                        UsersetKind,
+			mapper, err := buildRecursiveMapper(ctx, req, &recursiveMapping{
+				kind:                        storage.UsersetKind,
 				allowedUserTypeRestrictions: restrictions,
 			})
 			if tt.readUsersetTuplesError != nil {
@@ -3954,8 +3957,7 @@ func TestCheckTTU(t *testing.T) {
 			RequestMetadata: NewCheckRequestMetadata(),
 		}
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
-		ctx = storage.ContextWithRelationshipTupleReader(ctx, mockDatastore)
+		ctx := setRequestContext(context.Background(), typesys, mockDatastore, nil)
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "parent", ""), gomock.Any()).
 			Times(1).
@@ -4071,15 +4073,13 @@ func TestCheckDirectUserTuple(t *testing.T) {
 			defer ctrl.Finish()
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 			ds.EXPECT().ReadUserTuple(gomock.Any(), storeID, tt.reqTupleKey, gomock.Any()).Times(1).Return(tt.readUserTuple, tt.readUserTupleError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
 
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := setRequestContext(context.Background(), ts, ds, nil)
 
 			contextStruct, err := structpb.NewStruct(tt.context)
 			require.NoError(t, err)
@@ -4402,14 +4402,11 @@ func TestCheckPublicAssignable(t *testing.T) {
 
 			storeID := ulid.Make().String()
 			ds := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
-
 			ds.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(tt.readUsersetTuples), tt.readUsersetTuplesError)
 
 			ts, err := typesystem.New(tt.model)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := setRequestContext(context.Background(), ts, ds, nil)
 			checker := NewLocalChecker()
 
 			contextStruct, err := structpb.NewStruct(tt.context)

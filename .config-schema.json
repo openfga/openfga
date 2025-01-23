@@ -1,4 +1,6 @@
 {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "$id": "https://raw.githubusercontent.com/openfga/openfga/refs/heads/main/.config-schema.json",
     "properties": {
         "maxTuplesPerWrite": {
             "description": "The maximum allowed number of tuples per Write transaction.",
@@ -246,14 +248,16 @@
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",
-                    "type": "duration",
-                    "default": "connections are not closed due to idle time - database/sql default",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME"
                 },
                 "connMaxLifetime": {
                     "description": "the maximum amount of time a connection to the datastore may be reused",
-                    "type": "duration",
-                    "default": "connections are not closed due to connection's age - database/sql default",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 },
                 "metrics": {
@@ -315,6 +319,7 @@
                         },
                         "key": {
                             "description": "The (absolute) file path of the TLS key that should be used for the TLS connection.",
+                            "type": "string",
                             "x-env-variable": "OPENFGA_GRPC_TLS_KEY"
                         }
                     },
@@ -365,6 +370,7 @@
                     "x-env-variable": "OPENFGA_HTTP_UPSTREAM_TIMEOUT"
                 },
                 "corsAllowedOrigins": {
+                    "description": "List of allowed origins for CORS requests",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -373,6 +379,7 @@
                     "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_ORIGINS"
                 },
                 "corsAllowedHeaders": {
+                    "description": "List of allowed headers for CORS requests",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -413,8 +420,8 @@
             "properties": {
                 "enabled": {
                     "description": "Enable tracing.",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_TRACE_ENABLED"
                 },
                 "otlp": {
@@ -441,7 +448,7 @@
                 },
                 "sampleRatio": {
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
-                    "type": "float",
+                    "type": "number",
                     "default": "0.2",
                     "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
                 },
@@ -458,8 +465,8 @@
             "properties": {
                 "enabled": {
                     "description": "enable/disable prometheus metrics on the '/metrics' endpoint",
-                    "type": "bool",
-                    "default": "true",
+                    "type": "boolean",
+                    "default": true,
                     "x-env-variable": "OPENFGA_METRICS_ENABLED"
                 },
                 "addr": {
@@ -470,8 +477,8 @@
                 },
                 "enableRPCHistograms": {
                     "description": "enables prometheus histogram metrics for RPC latency distributions",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
                 }
             }
@@ -492,8 +499,8 @@
             "properties": {
                 "enabled": {
                     "description": "enable caching of datastore iterators. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED"
                 },
                 "maxResults": {
@@ -516,8 +523,8 @@
             "properties": {
                 "enabled": {
                     "description": "enable caching of Check requests. The key is a string representing a query, and the value is a boolean. For example, if you have a relation `define viewer: owner or editor`, and the query is Check(user:anne, viewer, doc:1), we'll evaluate the `owner` relation and the `editor` relation and cache both results: (user:anne, viewer, doc:1) -> allowed=true and (user:anne, owner, doc:1) -> allowed=true. The cache is stored in-memory; the cached values are overwritten on every change in the result, and cleared after the configured TTL. This flag improves latency, but turns Check and ListObjects into eventually consistent APIs. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
                 },
                 "limit": {
@@ -540,8 +547,8 @@
             "properties": {
                 "enabled": {
                     "description": "enabling dynamic invalidation of check query cache and check iterator cache based on whether there are recent tuple writes. If enabled, cache will be invalidated when either 1) there are tuples written to the store OR 2) the check query cache or check iterator cache TTL has expired.",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_ENABLED"
                 },
                 "ttl": {
@@ -558,13 +565,14 @@
             "properties": {
                 "enabled": {
                     "description": "enable throttling when check request's number of dispatches is high",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
                     "description": "the frequency period that the deprioritized throttling queue is evaluated for a check request. A higher value will result in more aggressive throttling",
-                    "type": "duration",
+                    "type": "string",
+                    "format": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY"
                 },
@@ -587,13 +595,14 @@
             "properties": {
                 "enabled": {
                     "description": "enable throttling when list objects request's number of dispatches is high",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
                     "description": "the frequency period that the deprioritized throttling queue is evaluated for a list objects request. A higher value will result in more aggressive throttling",
-                    "type": "duration",
+                    "type": "string",
+                    "format": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY"
                 },
@@ -616,13 +625,14 @@
             "properties": {
                 "enabled": {
                     "description": "enable throttling when list users request's number of dispatches is high",
-                    "type": "bool",
-                    "default": "false",
+                    "type": "boolean",
+                    "default": false,
                     "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED"
                 },
                 "frequency": {
                     "description": "the frequency period that the deprioritized throttling queue is evaluated for a list users request. A higher value will result in more aggressive throttling",
-                    "type": "duration",
+                    "type": "string",
+                    "format": "duration",
                     "default": "10µs",
                     "x-env-variable": "OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY"
                 },
@@ -642,7 +652,8 @@
         },
         "requestTimeout": {
             "description": "The timeout duration for a request.",
-            "type": "duration",
+            "type": "string",
+            "format": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
         }
@@ -692,6 +703,7 @@
             "type": "object",
             "properties": {
                 "keys": {
+                    "description": "List of preshared keys used for authentication",
                     "type": "array",
                     "items": {
                         "type": "string"

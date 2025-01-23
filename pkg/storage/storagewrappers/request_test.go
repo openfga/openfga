@@ -8,7 +8,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
@@ -41,13 +40,12 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
 		require.True(t, ok)
 
-		c, ok := b.RelationshipTupleReader.(*graph.CachedDatastore)
+		c, ok := b.RelationshipTupleReader.(*CachedDatastore)
 		// require.Equal(t, mockCache, c.cache)
 		// require.Equal(t, sf, c.sf)
 		// require.Equal(t, 1000, c.maxResultSize)
@@ -73,7 +71,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
@@ -98,7 +95,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		// assert on the chain
 		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
-		require.Equal(t, requestContextualTuples, a.contextualTuples)
 		require.True(t, ok)
 
 		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)

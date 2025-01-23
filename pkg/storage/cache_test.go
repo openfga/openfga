@@ -452,18 +452,29 @@ func TestInMemoryCache(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func MustGetCheckCacheKey(params *CheckCacheKeyParams) string {
+	w := &strings.Builder{}
+
+	err := WriteCheckCacheKey(w, params)
+	if err == nil {
+		return w.String()
+	}
+
+	panic(err)
+}
+
 func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
@@ -471,20 +482,18 @@ func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		},
 	})
-	require.NoError(t, err)
 
 	contextStruct, err := structpb.NewStruct(map[string]interface{}{
 		"key1": true,
 	})
 	require.NoError(t, err)
 
-	key3, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key3 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
 		Context:              contextStruct,
 	})
-	require.NoError(t, err)
 
 	// two Check request cache keys should not overlap if contextual tuples are
 	// provided in one and not the other and/or if context is provided in one
@@ -505,22 +514,20 @@ func TestCheckCacheKeyConsidersContextualTuples(t *testing.T) {
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
 	// has contextual tuples
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     contextualTuples,
 	})
-	require.NoError(t, err)
 
 	// does not have contextual tuples
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     nil,
 	})
-	require.NoError(t, err)
 
 	require.NotEqual(t, key1, key2)
 }
@@ -541,21 +548,19 @@ func TestCheckCacheKeyContextualTuplesOrdering(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
 	})
-	require.NoError(t, err)
 
 	require.Equal(t, key1, key2)
 }
@@ -574,21 +579,19 @@ func TestCheckCacheKeyConsidersCondition(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples1,
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     tuples2,
 	})
-	require.NoError(t, err)
 
 	require.NotEqual(t, key1, key2)
 }
@@ -626,21 +629,19 @@ func TestCheckCacheKeyConsidersConditionContext(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne},
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo},
 	})
-	require.NoError(t, err)
 
 	require.NotEqual(t, key1, key2)
 }
@@ -679,21 +680,19 @@ func TestCheckCacheKeyConditionContextOrderAgnostic(t *testing.T) {
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{jonContextOne, jonContextTwo},
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{jonContextTwo, jonContextOne},
 	})
-	require.NoError(t, err)
 
 	require.Equal(t, key1, key2)
 }
@@ -708,15 +707,14 @@ func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T)
 
 	tupleKey := tuple.NewTupleKey("document:x", "viewer", "user:jon")
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
 		ContextualTuples:     []*openfgav1.TupleKey{anne, jonCondOne, jonCondTwo},
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tupleKey,
@@ -724,7 +722,6 @@ func TestCheckCacheKeyContextualTuplesConditionsOrderDoesNotMatter(t *testing.T)
 		// same tuples, conditions are in different order
 		ContextualTuples: []*openfgav1.TupleKey{anne, jonCondTwo, jonCondOne},
 	})
-	require.NoError(t, err)
 
 	require.Equal(t, key1, key2)
 }
@@ -757,37 +754,33 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	key1, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key1 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct1,
 	})
-	require.NoError(t, err)
 
-	key2, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key2 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct2,
 	})
-	require.NoError(t, err)
 
-	key3, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key3 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct3,
 	})
-	require.NoError(t, err)
 
-	key4, err := GetCheckCacheKey(&CheckCacheKeyParams{
+	key4 := MustGetCheckCacheKey(&CheckCacheKeyParams{
 		StoreID:              storeID,
 		AuthorizationModelID: modelID,
 		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		Context:              struct4,
 	})
-	require.NoError(t, err)
 
 	require.Equal(t, key1, key2)
 	require.NotEqual(t, key1, key3)
@@ -795,27 +788,128 @@ func TestCheckCacheKeyWithContext(t *testing.T) {
 	require.NotEqual(t, key3, key4)
 }
 
-func BenchmarkCheckRequestCacheKey(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
+func TestWriteInvariantCheckCacheKey(t *testing.T) {
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{"key1": true})
+	require.NoError(t, err)
 
-	var err error
+	var validWriter strings.Builder
+	var cases = map[string]struct {
+		writer ResetableStringWriter
+		params *CheckCacheKeyParams
+		output string
+		error  bool
+	}{
+		"writes_cache_key": {
+			writer: &validWriter,
+			params: &CheckCacheKeyParams{
+				AuthorizationModelID: "fake_model_id",
+				StoreID:              "fake_store_id",
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "document:1",
+					Relation: "can_view",
+					User:     "user:anne",
+				},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "condition_name", contextStruct),
+				},
+				Context: contextStruct,
+			},
+			output: " sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+			error:  false,
+		},
+		"writer_error": {
+			writer: &ErrorStringWriter{TriggerAt: 0},
+			params: &CheckCacheKeyParams{},
+			output: "",
+			error:  true,
+		},
+	}
 
-	for n := 0; n < b.N; n++ {
-		_, err = GetCheckCacheKey(&CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := WriteInvariantCheckCacheKey(test.writer, test.params)
+			if test.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.output, test.writer.String())
+			}
 		})
-		require.NoError(b, err)
 	}
 }
 
-func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
+func TestWriteCheckCacheKey(t *testing.T) {
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{"key1": true})
+	require.NoError(t, err)
 
+	var cases = map[string]struct {
+		writer ResetableStringWriter
+		params *CheckCacheKeyParams
+		output string
+		error  bool
+	}{
+		"errors_if_first_write_fails": {
+			writer: &ErrorStringWriter{TriggerAt: 0},
+			params: &CheckCacheKeyParams{},
+			error:  true,
+		},
+		"errors_if_second_write_fails": {
+			writer: &ErrorStringWriter{TriggerAt: 1},
+			params: &CheckCacheKeyParams{},
+			error:  true,
+		},
+		"writes_full_cache_key": {
+			writer: &strings.Builder{},
+			params: &CheckCacheKeyParams{
+				AuthorizationModelID: "fake_model_id",
+				StoreID:              "fake_store_id",
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "document:1",
+					Relation: "can_view",
+					User:     "user:anne",
+				},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:anne", "condition_name", contextStruct),
+				},
+				Context: contextStruct,
+			},
+			output: "document:1#can_view@user:anne sp.fake_store_id/fake_model_id/document:1#viewer with condition_name 'key1:'true,@user:anne'key1:'true,",
+		},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			err := WriteCheckCacheKey(test.writer, test.params)
+			if test.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.output, test.writer.String())
+			}
+		})
+	}
+}
+
+func BenchmarkWriteCheckCacheKey(b *testing.B) {
 	var err error
+	writer := &strings.Builder{}
+
+	// The TupleKey portion of the cache key is calculated on every invocation of check,
+	// potentially multiple times per request.
+	params := &CheckCacheKeyParams{
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	}
+
+	for n := 0; n < b.N; n++ {
+		err = WriteCheckCacheKey(writer, params)
+		require.NoError(b, err)
+		writer.Reset()
+	}
+}
+
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this portion of the key.
+func BenchmarkInvariantCacheKeyWithContextualTuples(b *testing.B) {
+	var err error
+	writer := &strings.Builder{}
 
 	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:x", "viewer", "user:x"),
@@ -823,22 +917,25 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 		tuple.NewTupleKey("document:z", "viewer", "user:z"),
 	}
 
+	require.NoError(b, err)
+
+	params := &CheckCacheKeyParams{
+		AuthorizationModelID: ulid.Make().String(),
+		StoreID:              ulid.Make().String(),
+		ContextualTuples:     tuples,
+	}
+
 	for n := 0; n < b.N; n++ {
-		_, err = GetCheckCacheKey(&CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			ContextualTuples:     tuples,
-		})
+		err = WriteInvariantCheckCacheKey(writer, params)
 		require.NoError(b, err)
+		writer.Reset()
 	}
 }
 
-func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
-	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
-
+// The invariant cache key is calculated once per check request. Any sub-problems re-use this portion of the key.
+func BenchmarkInvariantCacheKeyWithContext(b *testing.B) {
 	var err error
+	writer := &strings.Builder{}
 
 	contextStruct, err := structpb.NewStruct(map[string]interface{}{
 		"boolKey":   true,
@@ -852,14 +949,16 @@ func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
 	})
 	require.NoError(b, err)
 
+	params := &CheckCacheKeyParams{
+		AuthorizationModelID: ulid.Make().String(),
+		StoreID:              ulid.Make().String(),
+		Context:              contextStruct,
+	}
+
 	for n := 0; n < b.N; n++ {
-		_, err = GetCheckCacheKey(&CheckCacheKeyParams{
-			StoreID:              storeID,
-			AuthorizationModelID: modelID,
-			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			Context:              contextStruct,
-		})
+		err = WriteInvariantCheckCacheKey(writer, params)
 		require.NoError(b, err)
+		writer.Reset()
 	}
 }
 

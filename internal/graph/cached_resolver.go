@@ -2,8 +2,10 @@ package graph
 
 import (
 	"context"
+	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,6 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
@@ -34,6 +37,12 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "check_cache_hit_count",
 		Help:      "The total number of cache hits for ResolveCheck.",
+	})
+
+	checkCacheInvalidHit = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_invalid_hit_count",
+		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
 	})
 )
 
@@ -139,12 +148,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	span := trace.SpanFromContext(ctx)
 
-	cacheKey, err := CheckRequestCacheKey(req)
-	if err != nil {
-		c.logger.Error("cache key computation failed with error", zap.Error(err))
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
+	cacheKey := BuildCacheKey(*req)
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
@@ -165,6 +169,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 				// return a copy to avoid races across goroutines
 				return res.CheckResponse.clone(), nil
 			}
+
+			// we tried the cache and hit an invalid entry
+			checkCacheInvalidHit.Inc()
 		} else {
 			c.logger.Debug("CachedCheckResolver not found cache key",
 				zap.String("store_id", req.GetStoreID()),
@@ -186,14 +193,14 @@ func (c *CachedCheckResolver) ResolveCheck(
 	return resp, nil
 }
 
-func CheckRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	params := &storage.CheckCacheKeyParams{
-		StoreID:              req.GetStoreID(),
-		AuthorizationModelID: req.GetAuthorizationModelID(),
-		TupleKey:             req.GetTupleKey(),
-		ContextualTuples:     req.GetContextualTuples(),
-		Context:              req.GetContext(),
-	}
+func BuildCacheKey(req ResolveCheckRequest) string {
+	tup := tuple.From(req.GetTupleKey())
+	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
 
-	return storage.GetCheckCacheKey(params)
+	hasher := xxhash.New()
+
+	// Digest.WriteString returns int and a nil error, ignoring
+	_, _ = hasher.WriteString(cacheKeyString)
+
+	return strconv.FormatUint(hasher.Sum64(), 10)
 }
