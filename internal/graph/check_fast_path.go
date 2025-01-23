@@ -195,11 +195,11 @@ func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<-
 		for idx, iterIdx := range itersWithEqualObject {
 			t, err := iterStreams[iterIdx].buffer.Next(ctx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					iterStreams[iterIdx].buffer.Stop()
-					iterStreams[iterIdx].buffer = nil
-					continue
-				}
+				// We are relying on the fact that we have called .Head(ctx) earlier
+				// and no one else should have called the iterator (especially since it is
+				// protected by mutex). Therefore, it is impossible for the iterator to return
+				// Done here. Hence, any error received here should be considered as legitimate
+				// errors.
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
 			}
@@ -287,11 +287,11 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			for idx, iterIdx := range itersWithEqualObject {
 				t, err := iterStreams[iterIdx].buffer.Next(ctx)
 				if err != nil {
-					if storage.IterIsDoneOrCancelled(err) {
-						iterStreams[iterIdx].buffer.Stop()
-						iterStreams[iterIdx].buffer = nil
-						break
-					}
+					// We are relying on the fact that we have called .Head(ctx) earlier
+					// and no one else should have called the iterator (especially since it is
+					// protected by mutex). Therefore, it is impossible for the iterator to return
+					// Done here. Hence, any error received here should be considered as legitimate
+					// errors.
 					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 					return
 				}
@@ -312,12 +312,11 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 		for _, stream := range iterStreams {
 			t, err := stream.buffer.Head(ctx)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					// this is highly unlikely due to the previous check
-					stream.buffer.Stop()
-					stream.buffer = nil
-					continue
-				}
+				// We are relying on the fact that we have called .Head(ctx) earlier
+				// and no one else should have called the iterator (especially since it is
+				// protected by mutex). Therefore, it is impossible for the iterator to return
+				// Done here. Hence, any error received here should be considered as legitimate
+				// errors.
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
 			}
@@ -402,6 +401,7 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 				_, err := stream.buffer.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
+						// TODO: check whether we can treat all done as errors
 						stream.buffer.Stop()
 						stream.buffer = nil
 						break

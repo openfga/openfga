@@ -446,6 +446,123 @@ func TestFastPathUnion(t *testing.T) {
 			})
 		}
 	})
+	t.Run("large_than_single_batch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		res := make(chan *iteratorMsg)
+		const numStream = 2
+		producers := make([]*iteratorStream, 0, numStream)
+		ctx := context.Background()
+
+		const numItems = 2000
+
+		for i := 0; i < numStream; i++ {
+			producer := make(chan *iteratorMsg, 1)
+			var keys []*openfgav1.TupleKey
+			for j := 0; j < numItems; j++ {
+				keys = append(keys, &openfgav1.TupleKey{Object: strconv.Itoa(j)})
+			}
+			producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+			close(producer)
+			producers = append(producers, &iteratorStream{source: producer})
+		}
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+
+		ids := make([]string, 0)
+		for msg := range res {
+			require.NoError(t, msg.err)
+			for {
+				tk, err := msg.iter.Next(ctx)
+				if err != nil {
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					require.NoError(t, err)
+				}
+				ids = append(ids, tk.GetObject())
+			}
+		}
+		err := pool.Wait()
+		require.NoError(t, err)
+		var expectedObjects []string
+		for j := 0; j < numItems; j++ {
+			expectedObjects = append(expectedObjects, strconv.Itoa(j))
+		}
+		require.Equal(t, expectedObjects, ids)
+	})
+	t.Run("should_return_error_get_active_stream_error", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "2",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		err := pool.Wait()
+		require.NoError(t, err)
+	})
+	t.Run("should_drain_next_error", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
+			Object: "0",
+		}, nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+
+		iter1.EXPECT().Stop().Times(1)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "0",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		_, ok = <-res
+		require.False(t, ok)
+		err := pool.Wait()
+		require.NoError(t, err)
+	})
 }
 
 func TestFastPathIntersection(t *testing.T) {
@@ -685,6 +802,207 @@ func TestFastPathIntersection(t *testing.T) {
 				require.Equal(t, tt.expected, ids)
 			})
 		}
+	})
+	t.Run("large_than_single_batch", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		res := make(chan *iteratorMsg)
+		const numStream = 2
+		producers := make([]*iteratorStream, 0, numStream)
+		ctx := context.Background()
+
+		const numItems = 2000
+
+		for i := 0; i < numStream; i++ {
+			producer := make(chan *iteratorMsg, 1)
+			var keys []*openfgav1.TupleKey
+			for j := 0; j < numItems; j++ {
+				keys = append(keys, &openfgav1.TupleKey{Object: strconv.Itoa(j)})
+			}
+			producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+			close(producer)
+			producers = append(producers, &iteratorStream{source: producer})
+		}
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+
+		ids := make([]string, 0)
+		for msg := range res {
+			require.NoError(t, msg.err)
+			for {
+				tk, err := msg.iter.Next(ctx)
+				if err != nil {
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					require.NoError(t, err)
+				}
+				ids = append(ids, tk.GetObject())
+			}
+		}
+		err := pool.Wait()
+		require.NoError(t, err)
+		var expectedObjects []string
+		for j := 0; j < numItems; j++ {
+			expectedObjects = append(expectedObjects, strconv.Itoa(j))
+		}
+		require.Equal(t, expectedObjects, ids)
+	})
+	t.Run("should_return_error_get_active_stream_error", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "2",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		err := pool.Wait()
+		require.NoError(t, err)
+	})
+	t.Run("should_drain_next_error", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
+			Object: "0",
+		}, nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+
+		iter1.EXPECT().Stop().Times(1)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "0",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		_, ok = <-res
+		require.False(t, ok)
+		err := pool.Wait()
+		require.NoError(t, err)
+	})
+	t.Run("should_drain_head_error_when_removing_smaller_item", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
+			Object: "1",
+		}, nil)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+
+		iter1.EXPECT().Stop().Times(1)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "2",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		_, ok = <-res
+		require.False(t, ok)
+		err := pool.Wait()
+		require.NoError(t, err)
+	})
+	t.Run("should_drain_next_error_when_removing_smaller_item", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		// the first two times of Head() is to remove the first item (1)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return(&openfgav1.TupleKey{
+			Object: "1",
+		}, nil)
+		// this is to simulate successful remove of item 1
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
+			Object: "1",
+		}, nil)
+		// the next get Head() is bad
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, fmt.Errorf("bad_head"))
+
+		iter1.EXPECT().Stop().Times(1)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{iter: iter1}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "2",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		_, ok = <-res
+		require.False(t, ok)
+		err := pool.Wait()
+		require.NoError(t, err)
 	})
 }
 
