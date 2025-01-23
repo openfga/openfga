@@ -27,13 +27,13 @@ const DifferenceIndex = 1
 type fastPathSetHandler func(context.Context, *iteratorStreams, chan<- *iteratorMsg)
 
 type iteratorMsg struct {
-	iter storage.TupleKeyIterator
+	iter storage.IObjectMapper
 	err  error
 }
 
 type iteratorStream struct {
 	idx    int
-	buffer storage.TupleKeyIterator
+	buffer storage.IObjectMapper
 	done   bool
 	source chan *iteratorMsg
 }
@@ -131,12 +131,12 @@ func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *op
 }
 
 func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<- *iteratorMsg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -175,13 +175,13 @@ func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<-
 			}
 			// initialize
 			if idx == 0 {
-				minObject = v.GetObject()
+				minObject = v
 			}
 
-			if minObject == v.GetObject() {
+			if minObject == v {
 				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if minObject > v.GetObject() {
-				minObject = v.GetObject()
+			} else if minObject > v {
+				minObject = v
 				itersWithEqualObject = []int{idx}
 			}
 		}
@@ -209,19 +209,19 @@ func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<-
 			}
 		}
 		if len(batch) > IteratorMinBatchThreshold {
-			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-			batch = make([]*openfgav1.TupleKey, 0)
+			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
+			batch = make([]string, 0)
 		}
 	}
 }
 
 func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan chan<- *iteratorMsg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -266,13 +266,13 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			}
 
 			if idx == 0 {
-				maxObject = v.GetObject()
+				maxObject = v
 			}
 
-			if maxObject == v.GetObject() {
+			if maxObject == v {
 				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if maxObject < v.GetObject() {
-				maxObject = v.GetObject()
+			} else if maxObject < v {
+				maxObject = v
 				itersWithEqualObject = []int{idx}
 			}
 		}
@@ -302,8 +302,8 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 			}
 
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
+				batch = make([]string, 0)
 			}
 			continue
 		}
@@ -321,7 +321,7 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
 			}
-			tmpKey := t.GetObject()
+			tmpKey := t
 			for tmpKey < maxObject {
 				_, _ = stream.buffer.Next(ctx)
 				t, err := stream.buffer.Head(ctx)
@@ -334,19 +334,19 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 					return
 				}
-				tmpKey = t.GetObject()
+				tmpKey = t
 			}
 		}
 	}
 }
 
 func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan chan<- *iteratorMsg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -384,10 +384,10 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 				return
 			}
 			if idx == BaseIndex {
-				base = v.GetObject()
+				base = v
 			}
 			if idx == DifferenceIndex {
-				diff = v.GetObject()
+				diff = v
 			}
 		}
 
@@ -426,8 +426,8 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 			}
 			batch = append(batch, t)
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
+				batch = make([]string, 0)
 			}
 			continue
 		}
@@ -446,7 +446,7 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
 			}
-			diff = t.GetObject()
+			diff = t
 		}
 	}
 
@@ -474,8 +474,8 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 				batch = append(batch, t)
 			}
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticObjectMapper(batch)}, outChan)
+				batch = make([]string, 0)
 			}
 			iterStreams, err = streams.getActiveStreams(ctx)
 			if err != nil {
@@ -613,7 +613,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 					}
 					return nil, err
 				}
-				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
+				if processUsersetMessage(t, leftSet, rightSet) {
 					msg.iter.Stop()
 					res.Allowed = true
 					span.SetAttributes(attribute.Bool("allowed", true))
@@ -936,15 +936,14 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 
 	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
 	// since we are using hashsets to check for intersection.
-	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
+	objectIDMapper, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 		nil, false)
 	if err != nil {
 		return nil, err
 	}
-	usersetFromUserIter := storage.WrapIterator(storage.ObjectIDKind, userIter)
-	defer usersetFromUserIter.Stop()
-	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
+	defer objectIDMapper.Stop()
+	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectIDMapper)
 
 	userToUsersetDone := false
 	objectToUsersetDone := false

@@ -1,5 +1,7 @@
 package storage
 
+//go:generate mockgen -source tuple_mappers.go -destination ../../internal/mocks/mock_tuple_mappers.go -package mocks
+
 import (
 	"context"
 	"fmt"
@@ -38,6 +40,62 @@ const (
 // TupleMapper is an iterator that, on calls to Next and Head, returns a mapping of the tuple.
 type TupleMapper interface {
 	Iterator[string]
+}
+
+// IObjectMapper is an iterator that, on calls to Next and Head, returns an object (type + id).
+type IObjectMapper interface {
+	TupleMapper
+}
+
+var _ IObjectMapper = (*StaticObjectMapper)(nil)
+
+type StaticObjectMapper struct {
+	items []string // GUARDED_BY(mu)
+	mu    *sync.Mutex
+}
+
+// NewStaticObjectMapper is an iterator over objects (type + id).
+func NewStaticObjectMapper(items []string) *StaticObjectMapper {
+	return &StaticObjectMapper{items: items, mu: &sync.Mutex{}}
+}
+
+func (s *StaticObjectMapper) Next(ctx context.Context) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.items) == 0 {
+		return "", ErrIteratorDone
+	}
+
+	next, rest := s.items[0], s.items[1:]
+	s.items = rest
+
+	return next, nil
+}
+
+func (s *StaticObjectMapper) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = nil
+}
+
+func (s *StaticObjectMapper) Head(ctx context.Context) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(s.items) == 0 {
+		return "", ErrIteratorDone
+	}
+
+	return s.items[0], nil
 }
 
 type UsersetMapper struct {
@@ -117,6 +175,11 @@ type ObjectIDMapper struct {
 }
 
 var _ TupleMapper = (*ObjectIDMapper)(nil)
+var _ IObjectMapper = (*ObjectIDMapper)(nil)
+
+func NewObjectMapper(iter TupleKeyIterator) *ObjectIDMapper {
+	return &ObjectIDMapper{iter: iter, once: &sync.Once{}}
+}
 
 func (n ObjectIDMapper) Next(ctx context.Context) (string, error) {
 	tupleRes, err := n.iter.Next(ctx)
@@ -151,7 +214,7 @@ func WrapIterator(kind TupleMapperKind, iter TupleKeyIterator) TupleMapper {
 	case TTUKind:
 		return &TTUMapper{iter: iter, once: &sync.Once{}}
 	case ObjectIDKind:
-		return &ObjectIDMapper{iter: iter, once: &sync.Once{}}
+		return NewObjectMapper(iter)
 	}
 	return nil
 }

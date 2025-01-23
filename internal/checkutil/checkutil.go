@@ -39,17 +39,17 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 	}
 }
 
-// ObjectIDInSortedSet returns whether any of the object IDs in the tuples given by the iterator is in the input set of objectIDs.
-func ObjectIDInSortedSet(ctx context.Context, iter storage.TupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
+// ObjectIDInSortedSet returns whether any of the object in the iterator given by the iterator is in the input set of objectIDs.
+func ObjectIDInSortedSet(ctx context.Context, iter storage.IObjectMapper, objectIDs storage.SortedSet) (bool, error) {
 	for {
-		t, err := iter.Next(ctx)
+		obj, err := iter.Next(ctx)
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return false, nil
 		}
 		if err != nil {
 			return false, err
 		}
-		_, objectID := tuple.SplitObject(t.GetObject())
+		_, objectID := tuple.SplitObject(obj)
 		if objectIDs.Exists(objectID) {
 			return true, nil
 		}
@@ -92,7 +92,7 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	req resolveCheckRequest,
 	objectRel string,
 	objectIDs storage.SortedSet,
-	sortContextualTuples bool) (storage.TupleKeyIterator, error) {
+	sortContextualTuples bool) (storage.IObjectMapper, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
@@ -122,13 +122,13 @@ func IteratorReadStartingFromUser(ctx context.Context,
 		return nil, err
 	}
 
-	return storage.NewConditionsFilteredTupleKeyIterator(
+	return storage.NewObjectMapper(storage.NewConditionsFilteredTupleKeyIterator(
 		storage.NewFilteredTupleKeyIterator(
 			storage.NewTupleKeyIteratorFromTupleIterator(iter),
 			validation.FilterInvalidTuples(typesys),
 		),
 		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	), nil
+	)), nil
 }
 
 func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
