@@ -40,7 +40,9 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -314,7 +316,7 @@ func run(_ *cobra.Command, _ []string) {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level, config.Log.TimestampFormat)
-
+	log.SetLogger(klog.Background())
 	serverCtx := &ServerContext{Logger: logger}
 	if err := serverCtx.Run(context.Background(), config); err != nil {
 		panic(err)

@@ -50,6 +50,7 @@ require (
 	gonum.org/v1/gonum v0.15.1
 	google.golang.org/grpc v1.69.4
 	google.golang.org/protobuf v1.36.2
+	k8s.io/klog/v2 v2.130.1
 	modernc.org/sqlite v1.34.4
 	sigs.k8s.io/controller-runtime v0.19.4
 	sigs.k8s.io/yaml v1.4.0
@@ -153,7 +154,6 @@ require (
 	k8s.io/api v0.31.0 // indirect
 	k8s.io/apimachinery v0.31.0 // indirect
 	k8s.io/client-go v0.31.0 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
