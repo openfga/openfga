@@ -196,7 +196,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					}, "", nil),
 					cache.EXPECT().Get(storage.GetChangelogCacheKey("5")).Return(nil),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("5"), gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKeys("5", "test:5", "viewer")[0], gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("5", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("5", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
 				)
 			},
@@ -246,7 +246,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 					}, "", nil),
 					cache.EXPECT().Get(storage.GetChangelogCacheKey("6")).Return(nil),
 					cache.EXPECT().Set(storage.GetChangelogCacheKey("6"), gomock.Any(), gomock.Any()),
-					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKeys("6", "test:5", "viewer")[0], gomock.Any(), gomock.Any()),
+					cache.EXPECT().Set(storage.GetInvalidIteratorByObjectRelationCacheKey("6", "test:5", "viewer"), gomock.Any(), gomock.Any()),
 					cache.EXPECT().Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys("6", []string{"test"}, "test")[0], gomock.Any(), gomock.Any()),
 				)
 			},

@@ -478,16 +478,14 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	if c.optimizationsEnabled {
-		hasPath, err := typesys.PathExists(tupleKey.GetUser(), relation, objectType)
-		if err != nil {
-			return nil, err
-		}
-		if !hasPath {
-			return &ResolveCheckResponse{
-				Allowed: false,
-			}, nil
-		}
+	hasPath, err := typesys.PathExists(tupleKey.GetUser(), relation, objectType)
+	if err != nil {
+		return nil, err
+	}
+	if !hasPath {
+		return &ResolveCheckResponse{
+			Allowed: false,
+		}, nil
 	}
 
 	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
@@ -1170,13 +1168,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
 					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
-				} else if c.optimizationsEnabled {
+				} else {
 					userType := tuple.GetType(reqTupleKey.GetUser())
 					if typesys.RecursiveUsersetCanFastPath(
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					} else if c.optimizationsEnabled && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 						resolver = c.checkUsersetFastPathV2
 						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 					}
@@ -1410,17 +1408,15 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if c.optimizationsEnabled {
-			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-				resolver = c.recursiveTTUFastPath
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			} else if ok, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
-				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
-			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.checkTTUFastPathV2
-				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-			}
+		if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+			resolver = c.recursiveTTUFastPath
+			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
+		} else if ok, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok && c.optimizationsEnabled {
+			resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
+			span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+		} else if c.optimizationsEnabled && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			resolver = c.checkTTUFastPathV2
+			span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
