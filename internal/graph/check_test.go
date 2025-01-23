@@ -1196,7 +1196,7 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, resp.Allowed)
 
-		require.Equal(t, uint32(3), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
 
 		t.Run("direct_lookup_requires_no_dispatch", func(t *testing.T) {
 			checkRequestMetadata := NewCheckRequestMetadata()
@@ -1750,7 +1750,53 @@ func TestCheckWithFastPathOptimization(t *testing.T) {
 	}
 }
 
-func TestCycleDetection(t *testing.T) {
+func TestResolveCheckCallsPathExists(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	checker := NewLocalChecker()
+	t.Cleanup(checker.Close)
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockDelegate := NewMockCheckResolver(ctrl)
+	checker.SetDelegate(mockDelegate)
+
+	// assert that we never call dispatch
+	mockDelegate.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+
+	storeID := ulid.Make().String()
+	model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define x: y
+					define y: x
+		`)
+
+	ts, err := typesystem.New(model)
+	require.NoError(t, err)
+
+	ctx := setRequestContext(context.Background(), ts, ds, nil)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
+		RequestMetadata:      NewCheckRequestMetadata(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.GetAllowed())
+
+	// Without PathExists check, this would cycle
+	require.False(t, resp.GetCycleDetected())
+}
+
+func TestResolveCheckCallsCycleDetection(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 
@@ -1785,7 +1831,7 @@ func TestCycleDetection(t *testing.T) {
 		require.NotNil(t, resp.ResolutionMetadata)
 	})
 
-	t.Run("returns_true_if_computed_userset", func(t *testing.T) {
+	t.Run("returns_true_if_cycle_exists", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		model := testutils.MustTransformDSLToProtoWithID(`
 			model
@@ -1801,31 +1847,16 @@ func TestCycleDetection(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), ts, ds, nil)
 
-		t.Run("disconnected_types_in_query", func(t *testing.T) {
-			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("document:1", "y", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-			})
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.False(t, resp.GetAllowed())
-			require.True(t, resp.GetCycleDetected())
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: model.GetId(),
+			TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
+			RequestMetadata:      NewCheckRequestMetadata(),
 		})
-
-		t.Run("connected_types_in_query", func(t *testing.T) {
-			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: model.GetId(),
-				TupleKey:             tuple.NewTupleKey("document:1", "y", "document:2#x"),
-				RequestMetadata:      NewCheckRequestMetadata(),
-			})
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.False(t, resp.GetAllowed())
-			require.True(t, resp.GetCycleDetected())
-		})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.False(t, resp.GetAllowed())
+		require.True(t, resp.GetCycleDetected())
 	})
 }
 

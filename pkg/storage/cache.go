@@ -123,8 +123,8 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 	return invalidIteratorCachePrefix + storeID
 }
 
-func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation string) []string {
-	return []string{invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation}
+func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
+	return invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
