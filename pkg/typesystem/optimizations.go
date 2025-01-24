@@ -76,34 +76,30 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 				// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
 				return nil, false
 			}
-			usersets, ok = populateUsersetsMap(t, edgeFromUnionNode, usersets, relation)
-			if !ok {
-				return nil, false
-			}
+			usersets = populateUsersetsMap(t, edgeFromUnionNode, usersets, relation)
 		}
 	}
 
 	satisfies := ttuEdgeSatisfiesCond && len(usersets) >= 1
-	if !satisfies {
-		usersets = nil
-	}
 	return usersets, satisfies
 }
 
-func populateUsersetsMap(t *TypeSystem, edgeFromUnionNode *graph.WeightedAuthorizationModelEdge, usersets Operands, relation string) (Operands, bool) {
+func populateUsersetsMap(t *TypeSystem, edgeFromUnionNode *graph.WeightedAuthorizationModelEdge, usersets Operands, relation string) Operands {
 	toNode := edgeFromUnionNode.GetTo()
 	switch toNode.GetNodeType() {
 	case graph.SpecificTypeWildcard, graph.SpecificType:
 		// If there are two edges leaving the OR, e.g. one to node `userType` and one to node `userType:*`, only one Operand will be returned
 		// because the caller (fastPathDirect) knows how to do the read for both.
 		usersets[relation] = This()
-	case graph.SpecificTypeAndRelation:
+	default:
 		nodeLabel := toNode.GetLabel()
 		objType, relationName := tuple.SplitObjectRelation(nodeLabel)
 		getRelation, _ := t.GetRelation(objType, relationName)
+		if relationName == "" {
+			// if it's a relation such as `define viewer: (a or b) or ...`, (a or b) is an anonymous relation, so set it to "viewer"
+			relationName = relation
+		}
 		usersets[relationName] = getRelation.GetRewrite()
-	default:
-		return usersets, false
 	}
-	return usersets, true
+	return usersets
 }

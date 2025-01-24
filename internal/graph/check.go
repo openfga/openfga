@@ -1416,6 +1416,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTUFastPath
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 		}
+		if choice1 && !choice2 {
+			panic("ahg!")
+		}
 		if c.optimizationsEnabled && choice2 {
 			// Note: this is a generalization of choice1.
 			resolver = c.recursiveTTUFastPathUnionAlgebraicOperations

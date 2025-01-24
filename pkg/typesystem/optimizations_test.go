@@ -11,12 +11,12 @@ import (
 
 func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 	tests := map[string]struct {
-		model                   string
-		objectType              string
-		relation                string
-		userType                string
-		expected                bool
-		expectedCountOfRewrites int
+		model                string
+		objectType           string
+		relation             string
+		userType             string
+		expected             bool
+		assertOnResultingMap func(t *testing.T, resultMap Operands)
 	}{
 		`recursive_ttu_or_computed_weight_one_1`: {
 			model: `
@@ -32,11 +32,14 @@ type document
     define rel4: [user]
     define rel5: [user]
 `,
-			objectType:              "document",
-			relation:                "rel1",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 1, // computed
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "rel2")
+			},
 		},
 		`recursive_ttu_or_computed_weight_one_2`: {
 			model: `
@@ -52,11 +55,15 @@ type document
     define rel4: [user]
     define rel5: [user]
 `,
-			objectType:              "document",
-			relation:                "rel1",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 2, // direct and computed
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 2)
+				require.Contains(t, resultMap, "rel2")
+				require.Contains(t, resultMap, "rel1")
+			},
 		},
 		`recursive_ttu_or_computed_weight_one_3`: {
 			model: `
@@ -73,11 +80,15 @@ type document
     define rel5: [user]
     define rel6: [user]
 `,
-			objectType:              "document",
-			relation:                "rel1",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 2, // 2 computed
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 2)
+				require.Contains(t, resultMap, "rel2")
+				require.Contains(t, resultMap, "rel6")
+			},
 		},
 		`recursive_ttu_or_computed_weight_one_infinity`: {
 			model: `
@@ -108,11 +119,14 @@ type document
             relations
               define parent: [folder]
               define viewer: [user] or viewer from parent`,
-			objectType:              "folder",
-			relation:                "viewer",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 1, // direct
+			objectType: "folder",
+			relation:   "viewer",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "viewer")
+			},
 		},
 		`recursive_ttu_or_wildcard`: {
 			model: `
@@ -123,11 +137,14 @@ type document
             relations
               define parent: [folder]
               define viewer: [user, user:*] or viewer from parent`,
-			objectType:              "folder",
-			relation:                "viewer",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 1, // 1 (direct and wildcard are represented in one)
+			objectType: "folder",
+			relation:   "viewer",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "viewer")
+			},
 		},
 		`complex_ttu_multiple_parent_types`: {
 			model: `
@@ -241,11 +258,14 @@ type document
     define rel4: [user:*]
     define rel5: [user]
 `,
-			objectType:              "document",
-			relation:                "rel1",
-			userType:                "user",
-			expected:                true,
-			expectedCountOfRewrites: 1, // computed
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "rel2")
+			},
 		},
 		`two_ttus`: {
 			model: `
@@ -266,6 +286,44 @@ type document
 			userType:   "user",
 			expected:   false,
 		},
+		`ttu_or_intersection`: {
+			model: `
+model
+  schema 1.1
+type user
+type document
+  relations
+    define rel1: (rel2 and rel3) or rel1 from parent
+    define parent: [document]
+    define rel2: [user]
+    define rel3: [user]
+`,
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "rel1")
+			},
+		},
+		`ttu_or_intersection_that_is_weight_2`: {
+			model: `
+model
+  schema 1.1
+type user
+type document
+  relations
+    define rel1: (rel2 and rel3) or rel1 from parent
+    define parent: [document]
+    define rel2: rel3 from parent
+    define rel3: [user]
+`,
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   false,
+		},
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {
@@ -275,7 +333,7 @@ type document
 			resultMap, is := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
 			require.Equal(t, test.expected, is)
 			if test.expected {
-				require.Len(t, resultMap, test.expectedCountOfRewrites)
+				test.assertOnResultingMap(t, resultMap)
 			} else {
 				require.Empty(t, resultMap)
 			}

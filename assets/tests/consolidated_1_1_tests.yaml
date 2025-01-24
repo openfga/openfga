@@ -10355,3 +10355,34 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
+  - name: asd
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: (rel2 and rel3) or rel1 from parent
+              define parent: [document]
+              define rel2: [user]
+              define rel3: [user]
+        tuples:
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel2
+            object: document:parent
+          - user: user:maria
+            relation: rel2
+            object: document:x
+          - user: user:maria
+            relation: rel3
+            object: document:x
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
