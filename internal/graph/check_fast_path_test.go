@@ -2240,3 +2240,55 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		require.True(t, checkResult.GetAllowed())
 	})
 }
+
+func TestResolveFastPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("calls_stop_on_all_input_iterators", func(t *testing.T) {
+		ctx := context.Background()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		// Build first argument of resolveFastPath: an array of channels, where each channel has one iterator
+		// iter1 will cause an intersection of objects to occur, so we exit early, but even then
+		// iter2 and iter3 should still be closed.
+		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1.EXPECT().Next(gomock.Any()).Times(1).Return(&openfgav1.TupleKey{Object: "group:1"}, nil)
+		iter1.EXPECT().Stop().Times(1)
+
+		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter2.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{Object: "group:2"}, nil)
+		iter2.EXPECT().Stop().Times(1)
+
+		iter3 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter3.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{Object: "group:3"}, nil)
+		iter3.EXPECT().Stop().Times(1)
+
+		leftChans := make([]chan *iteratorMsg, 3)
+		leftChans[0] = make(chan *iteratorMsg, 1)
+		leftChans[1] = make(chan *iteratorMsg, 1)
+		leftChans[2] = make(chan *iteratorMsg, 1)
+		go func() {
+			leftChans[0] <- &iteratorMsg{iter: iter1}
+			leftChans[1] <- &iteratorMsg{iter: iter2}
+			leftChans[2] <- &iteratorMsg{iter: iter3}
+			close(leftChans[0])
+			close(leftChans[1])
+			close(leftChans[2])
+		}()
+
+		// Build second argument of resolveFastPath
+		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			User: "group:1#viewer",
+		}})
+
+		// Call resolveFastPath, it should call Stop on all input iterators
+		checkResponse, err := resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
+		require.NoError(t, err)
+		require.NotNil(t, checkResponse)
+		require.True(t, checkResponse.GetAllowed())
+	})
+}
