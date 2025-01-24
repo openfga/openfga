@@ -43,6 +43,9 @@ func (s *SimpleRecursiveObjectProvider) End() {
 
 //nolint:revive // TODO make usersetMessage an exported struct
 func (s *SimpleRecursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+	if req == nil {
+		return nil, fmt.Errorf("%w: nil request", openfgaErrors.ErrUnknown)
+	}
 	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
 	// since the consumer is using hashsets to check for intersection.
 	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, s.ts, s.ds, req,
@@ -53,6 +56,8 @@ func (s *SimpleRecursiveObjectProvider) Begin(ctx context.Context, req *ResolveC
 	}
 	usersetFromUserIter := storage.WrapIterator(storage.ObjectIDKind, userIter)
 	s.mapper = usersetFromUserIter
+
+	// note: this function will close the channel
 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, usersetFromUserIter)
 
 	return userToUsersetMessageChan, nil
@@ -89,7 +94,7 @@ func (c *ComplexRecursiveObjectProvider) Begin(ctx context.Context, req *Resolve
 		return nil, fmt.Errorf("%w: unsupported model", openfgaErrors.ErrUnknown)
 	}
 
-	outChannel := make(chan usersetMessage, 1)
+	outChannel := make(chan usersetMessage, len(operands)) // buffered so that the first writes don't block on the caller reading from the channel
 	pool := concurrency.NewPool(ctx, max(int(c.concurrencyLimit), len(operands)))
 
 	c.wg.Add(1)
