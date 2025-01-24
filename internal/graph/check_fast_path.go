@@ -902,7 +902,7 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, leftChanBuilder objectProvider) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
 
@@ -931,11 +931,11 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 		usersetFromObject.Add(objectToUsersetMessage.userset)
 	}
 
-	userToUsersetMessageChan, err := leftChanBuilder.build(cancellableCtx, req)
+	userToUsersetMessageChan, err := objectProvider.begin(cancellableCtx, req)
 	if err != nil {
 		return nil, err
 	}
-	defer leftChanBuilder.close()
+	defer objectProvider.end()
 
 	userToUsersetDone := false
 	objectToUsersetDone := false
@@ -994,9 +994,10 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 }
 
 // objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
+// It must close the channel when there are no more results.
 type objectProvider interface {
-	close()
-	build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
+	end()
+	begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
 }
 
 type simpleRecursiveObjectProvider struct {
@@ -1005,13 +1006,13 @@ type simpleRecursiveObjectProvider struct {
 
 var _ objectProvider = (*simpleRecursiveObjectProvider)(nil)
 
-func (s *simpleRecursiveObjectProvider) close() {
+func (s *simpleRecursiveObjectProvider) end() {
 	if s.mapper != nil {
 		s.mapper.Stop()
 	}
 }
 
-func (s *simpleRecursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (s *simpleRecursiveObjectProvider) begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
@@ -1031,57 +1032,61 @@ func (s *simpleRecursiveObjectProvider) build(ctx context.Context, req *ResolveC
 
 type complexRecursiveObjectProvider struct {
 	concurrencyLimit uint32
+	wg               sync.WaitGroup
 }
 
 var _ objectProvider = (*complexRecursiveObjectProvider)(nil)
 
-func (c *complexRecursiveObjectProvider) close() {
+func (c *complexRecursiveObjectProvider) end() {
+	c.wg.Wait()
 }
 
-func (c *complexRecursiveObjectProvider) build(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (c *complexRecursiveObjectProvider) begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	operands, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
 
-	// TODO cap this
-	outChannel := make(chan usersetMessage, 100000)
-	defer close(outChannel)
+	outChannel := make(chan usersetMessage, 1)
 	pool := concurrency.NewPool(ctx, max(int(c.concurrencyLimit), len(operands)))
 
-	for operandRelationName, operandRewrite := range operands {
-		pool.Go(func(ctx context.Context) error {
-			newReq := req.clone()
-			newReq.TupleKey.Relation = operandRelationName
-			chanIterator, err := fastPathRewrite(ctx, newReq, operandRewrite)
-			if err != nil {
-				return err
-			}
-			for iteratorMessage := range chanIterator {
-				if iteratorMessage.err != nil {
-					return iteratorMessage.err
-				}
-				for {
-					t, err2 := iteratorMessage.iter.Next(ctx)
-					if err2 != nil {
-						iteratorMessage.iter.Stop()
-						if storage.IterIsDoneOrCancelled(err2) {
-							break
-						}
-						return err2
-					}
-					userset := t.GetObject()
-					concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
-				}
-			}
-			return nil
-		})
-	}
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			_ = pool.Wait()
+			close(outChannel)
+			c.wg.Done()
+		}()
 
-	err := pool.Wait()
-	if err != nil {
-		return nil, err
-	}
+		for operandRelationName, operandRewrite := range operands {
+			pool.Go(func(ctx context.Context) error {
+				newReq := req.clone()
+				newReq.TupleKey.Relation = operandRelationName
+				chanIterator, err := fastPathRewrite(ctx, newReq, operandRewrite)
+				if err != nil {
+					return err
+				}
+				for iteratorMessage := range chanIterator {
+					if iteratorMessage.err != nil {
+						return iteratorMessage.err
+					}
+					for {
+						t, err2 := iteratorMessage.iter.Next(ctx)
+						if err2 != nil {
+							iteratorMessage.iter.Stop()
+							if storage.IterIsDoneOrCancelled(err2) {
+								break
+							}
+							return err2
+						}
+						userset := t.GetObject()
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
+					}
+				}
+				return nil
+			})
+		}
+	}()
 
 	return outChannel, nil
 }
