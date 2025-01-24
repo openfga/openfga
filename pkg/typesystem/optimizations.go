@@ -64,11 +64,14 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 			ttuEdge := edgeFromUnionNode
 			w, ok := ttuEdge.GetWeight(userType)
 			if ok && w == graph.Infinite && ttuEdge.GetTo() == objRelNode {
+				// the OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 				ttuEdgeSatisfiesCond = true
 			}
 		} else {
 			w, ok := edgeFromUnionNode.GetWeight(userType)
 			if ok && w == 1 {
+				// any other edge leaving the OR node has weight 1 for the terminal type, so
+				// now we populate the resulting map
 				toNode := edgeFromUnionNode.GetTo()
 				switch toNode.GetNodeType() {
 				case graph.SpecificTypeWildcard, graph.SpecificType:
