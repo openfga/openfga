@@ -1408,13 +1408,21 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+		choice1 := typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType)
+		_, choice2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
+		choice3 := typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset())
+
+		if choice1 {
 			resolver = c.recursiveTTUFastPath
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-		} else if ok, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok && c.optimizationsEnabled {
+		}
+		if c.optimizationsEnabled && choice2 {
+			// TODO if choice1 was applicable, we're still going thru choice2 because it's a generalization of choice1.
+			// Is that desired? It passes all tests, but i'm scared
 			resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
-		} else if c.optimizationsEnabled && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+		}
+		if c.optimizationsEnabled && choice3 {
 			resolver = c.checkTTUFastPathV2
 			span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 		}

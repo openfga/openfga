@@ -25,19 +25,15 @@ model
 type user
 type document
   relations
-    define rel1a: rel2 or rel1a from parent 
-    define rel1b: [user] or rel2 or rel1b from parent 
-    define rel1c: rel2 or rel6 or rel1c from parent
-    define noapplyrel: rel1a or noapplyrel from parent
+    define rel1: rel2 or rel1 from parent 
     define parent: [document]
     define rel2: [user] and rel3
     define rel3: rel4 but not rel5
     define rel4: [user]
     define rel5: [user]
-    define rel6: [user]
 `,
 			objectType:              "document",
-			relation:                "rel1a",
+			relation:                "rel1",
 			userType:                "user",
 			expected:                true,
 			expectedCountOfRewrites: 1, // computed
@@ -49,19 +45,15 @@ model
 type user
 type document
   relations
-    define rel1a: rel2 or rel1a from parent 
-    define rel1b: [user] or rel2 or rel1b from parent 
-    define rel1c: rel2 or rel6 or rel1c from parent
-    define noapplyrel: rel1a or noapplyrel from parent
+    define rel1: [user] or rel2 or rel1 from parent 
     define parent: [document]
     define rel2: [user] and rel3
     define rel3: rel4 but not rel5
     define rel4: [user]
     define rel5: [user]
-    define rel6: [user]
 `,
 			objectType:              "document",
-			relation:                "rel1b",
+			relation:                "rel1",
 			userType:                "user",
 			expected:                true,
 			expectedCountOfRewrites: 2, // direct and computed
@@ -73,10 +65,7 @@ model
 type user
 type document
   relations
-    define rel1a: rel2 or rel1a from parent 
-    define rel1b: [user] or rel2 or rel1b from parent 
-    define rel1c: rel2 or rel6 or rel1c from parent
-    define noapplyrel: rel1a or noapplyrel from parent
+    define rel1: rel2 or rel6 or rel1 from parent
     define parent: [document]
     define rel2: [user] and rel3
     define rel3: rel4 but not rel5
@@ -85,7 +74,7 @@ type document
     define rel6: [user]
 `,
 			objectType:              "document",
-			relation:                "rel1c",
+			relation:                "rel1",
 			userType:                "user",
 			expected:                true,
 			expectedCountOfRewrites: 2, // 2 computed
@@ -97,16 +86,13 @@ model
 type user
 type document
   relations
-    define rel1a: rel2 or rel1a from parent 
-    define rel1b: [user] or rel2 or rel1b from parent 
-    define rel1c: rel2 or rel6 or rel1c from parent
-    define noapplyrel: rel1a or noapplyrel from parent
+    define rel1: rel2 or rel1 from parent 
+    define noapplyrel: rel1 or noapplyrel from parent
     define parent: [document]
     define rel2: [user] and rel3
     define rel3: rel4 but not rel5
     define rel4: [user]
     define rel5: [user]
-    define rel6: [user]
 `,
 			objectType: "document",
 			relation:   "noapplyrel",
@@ -127,6 +113,21 @@ type document
 			userType:                "user",
 			expected:                true,
 			expectedCountOfRewrites: 1, // direct
+		},
+		`recursive_ttu_or_wildcard`: {
+			model: `
+		model
+            schema 1.1
+          type user
+          type folder
+            relations
+              define parent: [folder]
+              define viewer: [user, user:*] or viewer from parent`,
+			objectType:              "folder",
+			relation:                "viewer",
+			userType:                "user",
+			expected:                true,
+			expectedCountOfRewrites: 1, // 1 (direct and wildcard are represented in one)
 		},
 		`complex_ttu_multiple_parent_types`: {
 			model: `
@@ -226,7 +227,7 @@ type document
 			userType:   "user",
 			expected:   false,
 		},
-		`wildcard`: {
+		`nested_wildcard`: {
 			model: `
 model
   schema 1.1
@@ -271,12 +272,12 @@ type document
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			result, arr := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
-			require.Equal(t, test.expected, result)
+			resultMap, is := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
+			require.Equal(t, test.expected, is)
 			if test.expected {
-				require.Len(t, arr, test.expectedCountOfRewrites)
+				require.Len(t, resultMap, test.expectedCountOfRewrites)
 			} else {
-				require.Empty(t, arr)
+				require.Empty(t, resultMap)
 			}
 		})
 	}

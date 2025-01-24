@@ -1003,7 +1003,7 @@ type simpleRecursiveObjectProvider struct {
 	mapper storage.TupleMapper
 }
 
-var _ objectProvider = &simpleRecursiveObjectProvider{}
+var _ objectProvider = (*simpleRecursiveObjectProvider)(nil)
 
 func (s *simpleRecursiveObjectProvider) close() {
 	if s.mapper != nil {
@@ -1030,9 +1030,10 @@ func (s *simpleRecursiveObjectProvider) build(ctx context.Context, req *ResolveC
 }
 
 type complexRecursiveObjectProvider struct {
+	concurrencyLimit uint32
 }
 
-var _ objectProvider = &complexRecursiveObjectProvider{}
+var _ objectProvider = (*complexRecursiveObjectProvider)(nil)
 
 func (c *complexRecursiveObjectProvider) close() {
 }
@@ -1041,17 +1042,18 @@ func (c *complexRecursiveObjectProvider) build(ctx context.Context, req *Resolve
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	_, operands := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
+	operands, _ := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
 
-	outChannel := make(chan usersetMessage, 1)
+	// TODO cap this
+	outChannel := make(chan usersetMessage, 100000)
 	defer close(outChannel)
-	pool := concurrency.NewPool(ctx, len(operands))
+	pool := concurrency.NewPool(ctx, max(int(c.concurrencyLimit), len(operands)))
 
-	for _, operand := range operands {
+	for operandRelationName, operandRewrite := range operands {
 		pool.Go(func(ctx context.Context) error {
 			newReq := req.clone()
-			newReq.TupleKey.Relation = operand.RelationName
-			chanIterator, err := fastPathRewrite(ctx, newReq, operand.Rewrite)
+			newReq.TupleKey.Relation = operandRelationName
+			chanIterator, err := fastPathRewrite(ctx, newReq, operandRewrite)
 			if err != nil {
 				return err
 			}
@@ -1060,13 +1062,13 @@ func (c *complexRecursiveObjectProvider) build(ctx context.Context, req *Resolve
 					return iteratorMessage.err
 				}
 				for {
-					t, err := iteratorMessage.iter.Next(ctx)
-					if err != nil {
+					t, err2 := iteratorMessage.iter.Next(ctx)
+					if err2 != nil {
 						iteratorMessage.iter.Stop()
-						if storage.IterIsDoneOrCancelled(err) {
+						if storage.IterIsDoneOrCancelled(err2) {
 							break
 						}
-						return err
+						return err2
 					}
 					userset := t.GetObject()
 					concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
@@ -1090,7 +1092,9 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
 	defer span.End()
 
-	leftChannelBuilder := &complexRecursiveObjectProvider{}
+	leftChannelBuilder := &complexRecursiveObjectProvider{
+		concurrencyLimit: c.concurrencyLimit,
+	}
 
 	rightTTURelation := recursiveTTURewrite.GetTupleToUserset().GetTupleset().GetRelation()
 
