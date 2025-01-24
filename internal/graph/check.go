@@ -1417,8 +1417,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 		}
 		if c.optimizationsEnabled && choice2 {
-			// TODO if choice1 was applicable, we're still going thru choice2 because it's a generalization of choice1.
-			// Is that desired? It passes all tests, but i'm scared
+			// Note: this is a generalization of choice1.
 			resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 		}
