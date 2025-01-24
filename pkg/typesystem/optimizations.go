@@ -18,7 +18,7 @@ type Operands map[string]*openfgav1.Userset
 // - node[objectType#relation] has only 1 edge, and it's to an OR node
 // - The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // - Any other edge leaving the OR node has weight 1 for the terminal type.
-// If true, it returns a map containing all the other operands leaving the OR.
+// If true, it returns a map of Operands (edges) leaving the OR.
 func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (Operands, bool) {
 	usersets := make(Operands)
 	if t.authzWeightedGraph == nil {
@@ -72,6 +72,8 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 				toNode := edgeFromUnionNode.GetTo()
 				switch toNode.GetNodeType() {
 				case graph.SpecificTypeWildcard, graph.SpecificType:
+					// If there are two edges leaving the OR, e.g. one to node `userType` and one to node `userType:*`, only one Operand will be returned
+					// because the caller (fastPathDirect) knows how to do the read for both.
 					usersets[relation] = This()
 				case graph.SpecificTypeAndRelation:
 					nodeLabel := toNode.GetLabel()
