@@ -902,7 +902,7 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider ObjectProvider) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
 
@@ -988,7 +988,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := NewSimpleRecursiveObjectProvider(typesys, ds)
+	objectProvider, err := newSimpleRecursiveObjectProvider(typesys, ds)
 	if err != nil {
 		return nil, err
 	}
@@ -1007,7 +1007,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	objectProvider, err := NewComplexRecursiveObjectProvider(c.concurrencyLimit, typesys)
+	objectProvider, err := newComplexRecursiveObjectProvider(c.concurrencyLimit, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -1027,7 +1027,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := NewSimpleRecursiveObjectProvider(typesys, ds)
+	objectProvider, err := newSimpleRecursiveObjectProvider(typesys, ds)
 	if err != nil {
 		return nil, err
 	}
