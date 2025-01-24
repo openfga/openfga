@@ -14,10 +14,10 @@ import (
 type Operands map[string]*openfgav1.Userset
 
 // IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
-// - node[objectType#relation].weights[userType] = infinite
-// - node[objectType#relation] has only 1 edge, and it's to an OR node
-// - The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-// - Any other edge leaving the OR node has weight 1 for the terminal type.
+// 1. Node[objectType#relation].weights[userType] = infinite
+// 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
+// 3. The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
 // If true, it returns a map of Operands (edges) leaving the OR.
 func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (Operands, bool) {
 	usersets := make(Operands)
@@ -32,16 +32,19 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 
 	w, ok := objRelNode.GetWeight(userType)
 	if !ok || w != graph.Infinite {
+		// 1. node[objectType#relation].weights[userType] = infinite
 		return usersets, false
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesByNode(objRelNode)
 	if !ok || len(edges) != 1 {
+		// 2. node[objectType#relation] has only 1 edge
 		return usersets, false
 	}
 
 	edge := edges[0]
 	if edge.GetTo().GetLabel() != graph.UnionOperator {
+		// 2. node[objectType#relation] has 1 edge to an OR node
 		return usersets, false
 	}
 
@@ -52,51 +55,55 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		return usersets, false
 	}
 
-	ttuEdgeSatisfiesCond, restOfEdgesAreWeight1, ttuEdgeCount := false, true, 0
+	ttuEdgeSatisfiesCond, ttuEdgeCount := false, 0
 
 	for _, edgeFromUnionNode := range edgesFromUnionNode {
 		if edgeFromUnionNode.GetEdgeType() == graph.TTUEdge {
 			ttuEdgeCount++
 			if ttuEdgeCount > 1 {
-				ttuEdgeSatisfiesCond = false
-				break // only one TTU edge must be leaving the union node
+				// 3. The OR node has one TTU edge
+				return nil, false
 			}
 			ttuEdge := edgeFromUnionNode
 			w, ok := ttuEdge.GetWeight(userType)
 			if ok && w == graph.Infinite && ttuEdge.GetTo() == objRelNode {
-				// the OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+				// 3. The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 				ttuEdgeSatisfiesCond = true
 			}
 		} else {
 			w, ok := edgeFromUnionNode.GetWeight(userType)
-			if ok && w == 1 {
-				// any other edge leaving the OR node has weight 1 for the terminal type, so
-				// now we populate the resulting map
-				toNode := edgeFromUnionNode.GetTo()
-				switch toNode.GetNodeType() {
-				case graph.SpecificTypeWildcard, graph.SpecificType:
-					// If there are two edges leaving the OR, e.g. one to node `userType` and one to node `userType:*`, only one Operand will be returned
-					// because the caller (fastPathDirect) knows how to do the read for both.
-					usersets[relation] = This()
-				case graph.SpecificTypeAndRelation:
-					nodeLabel := toNode.GetLabel()
-					objType, relationName := tuple.SplitObjectRelation(nodeLabel)
-					getRelation, _ := t.GetRelation(objType, relationName)
-					usersets[relationName] = getRelation.GetRewrite()
-				default:
-					return nil, false
-				}
-			}
 			if !ok || w != 1 {
-				restOfEdgesAreWeight1 = false
-				break
+				// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
+				return nil, false
+			}
+			usersets, ok = populateUsersetsMap(t, edgeFromUnionNode, usersets, relation)
+			if !ok {
+				return nil, false
 			}
 		}
 	}
 
-	satisfies := ttuEdgeSatisfiesCond && restOfEdgesAreWeight1
+	satisfies := ttuEdgeSatisfiesCond && len(usersets) >= 1
 	if !satisfies {
 		usersets = nil
 	}
 	return usersets, satisfies
+}
+
+func populateUsersetsMap(t *TypeSystem, edgeFromUnionNode *graph.WeightedAuthorizationModelEdge, usersets Operands, relation string) (Operands, bool) {
+	toNode := edgeFromUnionNode.GetTo()
+	switch toNode.GetNodeType() {
+	case graph.SpecificTypeWildcard, graph.SpecificType:
+		// If there are two edges leaving the OR, e.g. one to node `userType` and one to node `userType:*`, only one Operand will be returned
+		// because the caller (fastPathDirect) knows how to do the read for both.
+		usersets[relation] = This()
+	case graph.SpecificTypeAndRelation:
+		nodeLabel := toNode.GetLabel()
+		objType, relationName := tuple.SplitObjectRelation(nodeLabel)
+		getRelation, _ := t.GetRelation(objType, relationName)
+		usersets[relationName] = getRelation.GetRewrite()
+	default:
+		return usersets, false
+	}
+	return usersets, true
 }
