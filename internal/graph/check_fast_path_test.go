@@ -35,62 +35,6 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 	return ctx
 }
 
-func TestIteratorStreams(t *testing.T) {
-	t.Run("getActiveStreams", func(t *testing.T) {
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		t.Run("should_exit_on_context_cancelled", func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			stream := iteratorStreams{streams: []*iteratorStream{{done: false}}}
-			_, err := stream.getActiveStreams(ctx)
-			require.Equal(t, context.Canceled, err)
-		})
-		t.Run("should_error_out_with_producer_errors", func(t *testing.T) {
-			ctx := context.Background()
-			c := make(chan *iteratorMsg, 1)
-			expectedErr := errors.New("boom")
-			c <- &iteratorMsg{err: expectedErr}
-			stream := iteratorStreams{streams: []*iteratorStream{{done: true}, {done: false, source: c}}}
-			_, err := stream.getActiveStreams(ctx)
-			require.Equal(t, expectedErr, err)
-		})
-		t.Run("should_filter_out_drained_producers", func(t *testing.T) {
-			ctx := context.Background()
-			streams := make([]*iteratorStream, 0)
-			expectedLen := 0
-			for i := 0; i < 5; i++ {
-				c := make(chan *iteratorMsg, 1)
-				producer := &iteratorStream{source: c}
-				if i%2 == 0 {
-					close(c)
-				} else {
-					expectedLen++
-					c <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(nil)}
-				}
-				streams = append(streams, producer)
-			}
-			stream := iteratorStreams{streams: streams}
-			res, err := stream.getActiveStreams(ctx)
-			require.NoError(t, err)
-			require.Len(t, res, expectedLen)
-		})
-		t.Run("should_return_empty_when_fully_drained", func(t *testing.T) {
-			ctx := context.Background()
-			streams := make([]*iteratorStream, 0)
-			for i := 0; i < 5; i++ {
-				producer := &iteratorStream{buffer: nil, done: true}
-				streams = append(streams, producer)
-			}
-			stream := iteratorStreams{streams: streams}
-			res, err := stream.getActiveStreams(ctx)
-			require.NoError(t, err)
-			require.Empty(t, res)
-		})
-	})
-}
-
 func TestFastPathDirect(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1252,6 +1196,36 @@ func TestFastPathDifference(t *testing.T) {
 				require.Equal(t, tt.expected, ids)
 			})
 		}
+	})
+	t.Run("should_return_error_get_active_stream_error", func(t *testing.T) {
+		ctx := context.Background()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		res := make(chan *iteratorMsg)
+		producers := make([]*iteratorStream, 0)
+		producer1 := make(chan *iteratorMsg, 1)
+		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		close(producer1)
+		producers = append(producers, &iteratorStream{source: producer1})
+
+		producer2 := make(chan *iteratorMsg, 1)
+		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+			Object: "2",
+		}})}
+		close(producer2)
+		producers = append(producers, &iteratorStream{source: producer2})
+
+		pool := concurrency.NewPool(ctx, 1)
+		pool.Go(func(ctx context.Context) error {
+			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			return nil
+		})
+		msg, ok := <-res
+		require.True(t, ok)
+		require.Error(t, msg.err)
+		err := pool.Wait()
+		require.NoError(t, err)
 	})
 }
 

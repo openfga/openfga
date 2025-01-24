@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
@@ -29,68 +28,6 @@ type fastPathSetHandler func(context.Context, *iteratorStreams, chan<- *iterator
 type iteratorMsg struct {
 	iter storage.TupleKeyIterator
 	err  error
-}
-
-type iteratorStream struct {
-	idx    int
-	buffer storage.TupleKeyIterator
-	done   bool
-	source chan *iteratorMsg
-}
-
-type iteratorStreams struct {
-	streams []*iteratorStream
-}
-
-// getActiveStreamsCount will return the active streams from the last time getActiveStreams was called.
-func (s *iteratorStreams) getActiveStreamsCount() int {
-	return len(s.streams)
-}
-
-// Stop will drain all streams completely to avoid leaving dangling resources
-// NOTE: caller should consider running this in a goroutine to not block.
-func (s *iteratorStreams) Stop() {
-	for _, stream := range s.streams {
-		if stream.buffer != nil {
-			stream.buffer.Stop()
-		}
-		for msg := range stream.source {
-			if msg.iter != nil {
-				msg.iter.Stop()
-			}
-		}
-	}
-}
-
-// getActiveStreams will return a list of the remaining active streams.
-// To be considered active your source channel must still be open.
-func (s *iteratorStreams) getActiveStreams(ctx context.Context) ([]*iteratorStream, error) {
-	for _, stream := range s.streams {
-		if stream.buffer != nil || stream.done {
-			// no need to poll further
-			continue
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case i, ok := <-stream.source:
-			if !ok {
-				stream.done = true
-				break
-			}
-			if i.err != nil {
-				return nil, i.err
-			}
-			stream.buffer = i.iter
-		}
-	}
-	// TODO: in go1.23 compare performance vs slices.Collect
-	// clean up all empty entries that are both done and drained
-	s.streams = slices.DeleteFunc(s.streams, func(entry *iteratorStream) bool {
-		return entry.done && entry.buffer == nil
-	})
-	return s.streams, nil
 }
 
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
@@ -310,30 +247,10 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 
 		// move all iterators to less than the MAX to be >= than MAX
 		for _, stream := range iterStreams {
-			t, err := stream.buffer.Head(ctx)
+			err = stream.skipToTarget(ctx, maxObject)
 			if err != nil {
-				// We are relying on the fact that we have called .Head(ctx) earlier
-				// and no one else should have called the iterator (especially since it is
-				// protected by mutex). Therefore, it is impossible for the iterator to return
-				// Done here. Hence, any error received here should be considered as legitimate
-				// errors.
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 				return
-			}
-			tmpKey := t.GetObject()
-			for tmpKey < maxObject {
-				_, _ = stream.buffer.Next(ctx)
-				t, err := stream.buffer.Head(ctx)
-				if err != nil {
-					if storage.IterIsDoneOrCancelled(err) {
-						stream.buffer.Stop()
-						stream.buffer = nil
-						break
-					}
-					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-					return
-				}
-				tmpKey = t.GetObject()
 			}
 		}
 	}
@@ -400,12 +317,11 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 			for _, stream := range iterStreams {
 				_, err := stream.buffer.Next(ctx)
 				if err != nil {
-					if storage.IterIsDoneOrCancelled(err) {
-						// TODO: check whether we can treat all done as errors
-						stream.buffer.Stop()
-						stream.buffer = nil
-						break
-					}
+					// We are relying on the fact that we have called .Head(ctx) earlier
+					// and no one else should have called the iterator (especially since it is
+					// protected by mutex). Therefore, it is impossible for the iterator to return
+					// Done here. Hence, any error received here should be considered as legitimate
+					// errors.
 					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
 					return
 				}
@@ -417,6 +333,7 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 			t, err := iterStreams[BaseIndex].buffer.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
+					// TODO: check to see if this is possible?
 					iterStreams[BaseIndex].buffer.Stop()
 					iterStreams[BaseIndex].buffer = nil
 					break
@@ -433,20 +350,10 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 		}
 
 		// diff < base, then move the diff to catch up with base
-		for diff < base {
-			_, _ = iterStreams[DifferenceIndex].buffer.Next(ctx)
-			t, err := iterStreams[DifferenceIndex].buffer.Head(ctx)
-
-			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					iterStreams[DifferenceIndex].buffer.Stop()
-					iterStreams[DifferenceIndex].buffer = nil
-					break
-				}
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-				return
-			}
-			diff = t.GetObject()
+		err = iterStreams[DifferenceIndex].skipToTarget(ctx, base)
+		if err != nil {
+			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
+			return
 		}
 	}
 
