@@ -67,6 +67,24 @@ func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *op
 	return fastPathRewrite(ctx, childRequest, rel.GetRewrite())
 }
 
+// add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
+// If nextItemInSliceStreams has error, will also send message to specified outChan.
+func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iteratorStream, streamsToProcess []int, batch []*openfgav1.TupleKey, outChan chan<- *iteratorMsg) ([]*openfgav1.TupleKey, error) {
+	item, err := nextItemInSliceStreams(ctx, streamSlices, streamsToProcess)
+	if err != nil {
+		concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
+		return nil, err
+	}
+	if item != nil {
+		batch = append(batch, item)
+	}
+	if len(batch) > IteratorMinBatchThreshold {
+		concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+		batch = make([]*openfgav1.TupleKey, 0)
+	}
+	return batch, nil
+}
+
 func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<- *iteratorMsg) {
 	batch := make([]*openfgav1.TupleKey, 0)
 
@@ -129,25 +147,14 @@ func fastPathUnion(ctx context.Context, streams *iteratorStreams, outChan chan<-
 		}
 
 		// all iterators with the same value move forward
-		for idx, iterIdx := range itersWithEqualObject {
-			t, err := iterStreams[iterIdx].buffer.Next(ctx)
-			if err != nil {
-				// We are relying on the fact that we have called .Head(ctx) earlier
-				// and no one else should have called the iterator (especially since it is
-				// protected by mutex). Therefore, it is impossible for the iterator to return
-				// Done here. Hence, any error received here should be considered as legitimate
-				// errors.
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-				return
-			}
-			// only have to send the value once
-			if idx == 0 {
-				batch = append(batch, t)
-			}
-		}
-		if len(batch) > IteratorMinBatchThreshold {
-			concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-			batch = make([]*openfgav1.TupleKey, 0)
+		batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, itersWithEqualObject, batch, outChan)
+		if err != nil {
+			// We are relying on the fact that we have called .Head(ctx) earlier
+			// and no one else should have called the iterator (especially since it is
+			// protected by mutex). Therefore, it is impossible for the iterator to return
+			// Done here. Hence, any error received here should be considered as legitimate
+			// errors.
+			return
 		}
 	}
 }
@@ -221,26 +228,14 @@ func fastPathIntersection(ctx context.Context, streams *iteratorStreams, outChan
 		// all children have the same value
 		if len(itersWithEqualObject) == childrenTotal {
 			// all iterators have the same value thus flush entry and move iterators
-			for idx, iterIdx := range itersWithEqualObject {
-				t, err := iterStreams[iterIdx].buffer.Next(ctx)
-				if err != nil {
-					// We are relying on the fact that we have called .Head(ctx) earlier
-					// and no one else should have called the iterator (especially since it is
-					// protected by mutex). Therefore, it is impossible for the iterator to return
-					// Done here. Hence, any error received here should be considered as legitimate
-					// errors.
-					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-					return
-				}
-				// only have to send the value once
-				if idx == 0 {
-					batch = append(batch, t)
-				}
-			}
-
-			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
+			batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, itersWithEqualObject, batch, outChan)
+			if err != nil {
+				// We are relying on the fact that we have called .Head(ctx) earlier
+				// and no one else should have called the iterator (especially since it is
+				// protected by mutex). Therefore, it is impossible for the iterator to return
+				// Done here. Hence, any error received here should be considered as legitimate
+				// errors.
+				return
 			}
 			continue
 		}
@@ -314,37 +309,28 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 
 		// move both iterator heads
 		if base == diff {
-			for _, stream := range iterStreams {
-				_, err := stream.buffer.Next(ctx)
-				if err != nil {
-					// We are relying on the fact that we have called .Head(ctx) earlier
-					// and no one else should have called the iterator (especially since it is
-					// protected by mutex). Therefore, it is impossible for the iterator to return
-					// Done here. Hence, any error received here should be considered as legitimate
-					// errors.
-					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-					return
-				}
+			_, err = nextItemInSliceStreams(ctx, iterStreams, []int{BaseIndex, DifferenceIndex})
+			if err != nil {
+				// We are relying on the fact that we have called .Head(ctx) earlier
+				// and no one else should have called the iterator (especially since it is
+				// protected by mutex). Therefore, it is impossible for the iterator to return
+				// Done here. Hence, any error received here should be considered as legitimate
+				// errors.
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
+				return
 			}
 			continue
 		}
 
 		if diff > base {
-			t, err := iterStreams[BaseIndex].buffer.Next(ctx)
+			batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, []int{BaseIndex}, batch, outChan)
 			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					// TODO: check to see if this is possible?
-					iterStreams[BaseIndex].buffer.Stop()
-					iterStreams[BaseIndex].buffer = nil
-					break
-				}
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
+				// We are relying on the fact that we have called .Head(ctx) earlier
+				// and no one else should have called the iterator (especially since it is
+				// protected by mutex). Therefore, it is impossible for the iterator to return
+				// Done here. Hence, any error received here should be considered as legitimate
+				// errors.
 				return
-			}
-			batch = append(batch, t)
-			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
 			}
 			continue
 		}
@@ -367,19 +353,12 @@ func fastPathDifference(ctx context.Context, streams *iteratorStreams, outChan c
 	if len(iterStreams) == 1 && iterStreams[BaseIndex].idx == BaseIndex {
 		for len(iterStreams) == 1 {
 			stream := iterStreams[BaseIndex]
-			for {
-				t, err := stream.buffer.Next(ctx)
-				if err != nil {
-					if storage.IterIsDoneOrCancelled(err) {
-						stream.buffer.Stop()
-						stream.buffer = nil
-						break
-					}
-					concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
-					return
-				}
-				batch = append(batch, t)
+			items, err := stream.drain(ctx)
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{err: err}, outChan)
+				return
 			}
+			batch = append(batch, items...)
 			if len(batch) > IteratorMinBatchThreshold {
 				concurrency.TrySendThroughChannel(ctx, &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
 				batch = make([]*openfgav1.TupleKey, 0)
