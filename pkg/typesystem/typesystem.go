@@ -12,7 +12,6 @@ import (
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
-	"gonum.org/v1/gonum/graph/topo"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
@@ -589,7 +588,7 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 		return true
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesByNode(node)
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
 	if !ok {
 		return false
 	}
@@ -611,7 +610,7 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 		for _, edge := range edges {
 			// edge is a set operator thus we have to inspect each node of the operator
 			if edge.GetEdgeType() == graph.RewriteEdge {
-				operationalEdges, ok := t.authzWeightedGraph.GetEdgesByNode(edge.GetTo())
+				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
 				if !ok {
 					return false
 				}
@@ -658,7 +657,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 		return true
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesByNode(node)
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
 	if !ok {
 		return false
 	}
@@ -672,7 +671,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 		for _, edge := range edges {
 			// edge is a set operator thus we have to inspect each node of the operator
 			if edge.GetEdgeType() == graph.RewriteEdge {
-				operationalEdges, ok := t.authzWeightedGraph.GetEdgesByNode(edge.GetTo())
+				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
 				if !ok {
 					return false
 				}
@@ -726,32 +725,42 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
+// PathExists returns true if:
+// - the `user` type is a subject e.g. `user`, and there is a path from `user` to `objectType#relation`, or there is a path from `user:*` to `objectType#relation`
+// or
+// - the `user` type is a userset e.g. `group#member`, and there is a path from `group#member` to `objectType#relation`.
 func (t *TypeSystem) PathExists(user, relation, objectType string) (bool, error) {
 	userType, _, userRelation := tuple.ToUserParts(user)
+	isUserset := userRelation != ""
 	userTypeRelation := userType
-	if userRelation != "" {
-		// this is an userset
+	if isUserset {
 		userTypeRelation = tuple.ToObjectRelationString(userType, userRelation)
 	}
-	fromNode, err := t.authorizationModelGraph.GetNodeByLabel(userTypeRelation)
+
+	// first check
+	fromLabel := userTypeRelation
+	toLabel := tuple.ToObjectRelationString(objectType, relation)
+	normalPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
 	if err != nil {
 		return false, err
 	}
-	toNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.ToObjectRelationString(objectType, relation))
-	if err != nil {
-		return false, err
-	}
-	normalPathExists := topo.PathExistsIn(t.authorizationModelGraph, fromNode, toNode)
 	if normalPathExists {
 		return true, nil
 	}
-	wildcardFromNode, err := t.authorizationModelGraph.GetNodeByLabel(tuple.TypedPublicWildcard(userType))
-	if err != nil {
-		// the only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
-		// be found.  Given this, we are safe to conclude there is no path.
+	// skip second check in case it's a userset, since a userset cannot have public wildcard
+	if isUserset {
 		return false, nil
 	}
-	return topo.PathExistsIn(t.authorizationModelGraph, wildcardFromNode, toNode), nil
+
+	// second check
+	fromLabel = tuple.TypedPublicWildcard(userType)
+	wildcardPathExists, err := t.authorizationModelGraph.PathExists(fromLabel, toLabel)
+	if err != nil {
+		// The only possible error is graph.ErrQueryingGraph, which means the wildcard node cannot
+		// be found. Given this, we are safe to conclude there is no path.
+		return false, nil
+	}
+	return wildcardPathExists, nil
 }
 
 // IsPubliclyAssignable checks if the provided objectType is part
