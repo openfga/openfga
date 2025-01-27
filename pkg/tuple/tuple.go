@@ -349,7 +349,11 @@ func GetUserTypeFromUser(user string) UserType {
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters).
 func TupleKeyToString(tk TupleWithoutCondition) string {
-	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
+	return tk.GetObject() +
+		"#" +
+		tk.GetRelation() +
+		"@" +
+		tk.GetUser()
 }
 
 // TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid

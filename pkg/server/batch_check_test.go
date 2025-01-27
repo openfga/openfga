@@ -137,6 +137,16 @@ func TestBatchCheckValidatesInboundRequest(t *testing.T) {
 			},
 			errorContains: "invalid BatchCheckRequest.Checks",
 		},
+		`test_empty_tuple_key`: {
+			request: &openfgav1.BatchCheckRequest{
+				Checks: []*openfgav1.BatchCheckItem{
+					{
+						TupleKey: nil,
+					},
+				},
+			},
+			errorContains: "invalid BatchCheckItem.TupleKey",
+		},
 	}
 
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
