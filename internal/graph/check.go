@@ -1174,9 +1174,14 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
 						resolver = c.recursiveUsersetFastPath
 						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if c.optimizationsEnabled && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						resolver = c.checkUsersetFastPathV2
-						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+					} else if c.optimizationsEnabled {
+						if _, ok := typesystem.IsRelationWithRecursiveUsersetAndAlgebraicOperations(typesys, objectType, relation, userType); ok {
+							resolver = c.recursiveUsersetFastPathUnionAlgebraicOperations
+							span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+						} else if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+							resolver = c.checkUsersetFastPathV2
+							span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+						}
 					}
 				}
 			}
@@ -1414,7 +1419,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		} else if c.optimizationsEnabled {
 			// TODO when the "if" below is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath above,
 			// since this code is a generalization of the code above
-			if _, ok := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
+			if _, ok := typesystem.IsRelationWithRecursiveTTUAndAlgebraicOperations(typesys, objectType, relation, userType); ok {
 				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {

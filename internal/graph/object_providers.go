@@ -13,6 +13,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type operandProvider func(t *typesystem.TypeSystem, objectType, relation, userType string) (typesystem.Operands, bool)
+
 // objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
 // It must close the channel when there are no more results.
 type objectProvider interface {
@@ -66,13 +68,14 @@ type complexRecursiveObjectProvider struct {
 	concurrencyLimit uint32
 	wg               sync.WaitGroup
 	ts               *typesystem.TypeSystem
+	operandProvider  operandProvider
 }
 
-func newComplexRecursiveObjectProvider(concurrencyLimit uint32, ts *typesystem.TypeSystem) (*complexRecursiveObjectProvider, error) {
-	if ts == nil {
-		return nil, fmt.Errorf("%w: nil typesystem", openfgaErrors.ErrUnknown)
+func newComplexRecursiveObjectProvider(concurrencyLimit uint32, ts *typesystem.TypeSystem, operandProvider operandProvider) (*complexRecursiveObjectProvider, error) {
+	if ts == nil || operandProvider == nil {
+		return nil, fmt.Errorf("%w: nil typesystem or operandProvider", openfgaErrors.ErrUnknown)
 	}
-	return &complexRecursiveObjectProvider{concurrencyLimit: concurrencyLimit, wg: sync.WaitGroup{}, ts: ts}, nil
+	return &complexRecursiveObjectProvider{concurrencyLimit: concurrencyLimit, wg: sync.WaitGroup{}, ts: ts, operandProvider: operandProvider}, nil
 }
 
 var _ objectProvider = (*complexRecursiveObjectProvider)(nil)
@@ -87,7 +90,7 @@ func (c *complexRecursiveObjectProvider) Begin(ctx context.Context, req *Resolve
 	}
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
-	operands, ok := c.ts.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
+	operands, ok := c.operandProvider(c.ts, objectType, relation, userType)
 	if !ok {
 		return nil, fmt.Errorf("%w: unsupported model", openfgaErrors.ErrUnknown)
 	}

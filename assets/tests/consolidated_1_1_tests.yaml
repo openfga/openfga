@@ -10386,3 +10386,31 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
+  - name: recursive_userset_union_parenthesis
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: [document#rel1] or rel2
+              define rel2: rel3 and rel4
+              define rel3: [user]
+              define rel4: [user]
+        tuples:
+          - user: document:parent#rel1
+            relation: rel1
+            object: document:x
+          - user: user:maria
+            relation: rel3
+            object: document:parent
+          - user: user:maria
+            relation: rel4
+            object: document:parent
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true

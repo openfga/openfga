@@ -999,6 +999,26 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	}, objectProvider)
 }
 
+// recursiveUsersetFastPathUnionAlgebraicOperations solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive userset}"
+// rightIter gives the iterator for the recursive userset.
+func (c *LocalChecker) recursiveUsersetFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveUsersetFastPathUnionAlgebraicOperations")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	objectProvider, err := newComplexRecursiveObjectProvider(c.concurrencyLimit, typesys, typesystem.IsRelationWithRecursiveUsersetAndAlgebraicOperations)
+	if err != nil {
+		return nil, err
+	}
+
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
+	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
+		kind:                        storage.UsersetKind,
+		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+	}, objectProvider)
+}
+
 // recursiveTTUFastPathUnionAlgebraicOperations solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
 func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, recursiveTTURewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -1007,7 +1027,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	objectProvider, err := newComplexRecursiveObjectProvider(c.concurrencyLimit, typesys)
+	objectProvider, err := newComplexRecursiveObjectProvider(c.concurrencyLimit, typesys, typesystem.IsRelationWithRecursiveTTUAndAlgebraicOperations)
 	if err != nil {
 		return nil, err
 	}
