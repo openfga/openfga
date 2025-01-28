@@ -36,7 +36,7 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		return usersets, false
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesByNode(objRelNode)
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
 	if !ok || len(edges) != 1 {
 		// 2. node[objectType#relation] has only 1 edge
 		return usersets, false
@@ -50,7 +50,7 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 
 	unionNode := edge.GetTo()
 
-	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesByNode(unionNode)
+	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesFromNode(unionNode)
 	if !ok {
 		return usersets, false
 	}
