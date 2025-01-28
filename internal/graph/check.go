@@ -1408,23 +1408,21 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		choice1 := typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType)
-		_, choice2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
-		choice3 := typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset())
-
-		if choice1 {
+		if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 			resolver = c.recursiveTTUFastPath
 			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
+		} else if c.optimizationsEnabled {
+			// TODO when the "if" below is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath above,
+			// since this code is a generalization of the code above
+			if _, ok := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
+				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				resolver = c.checkTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+			}
 		}
-		if c.optimizationsEnabled && choice2 {
-			// Note: this is a generalization of choice1.
-			resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
-			span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
-		}
-		if c.optimizationsEnabled && choice3 {
-			resolver = c.checkTTUFastPathV2
-			span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-		}
+
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
 }
