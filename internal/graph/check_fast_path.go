@@ -560,7 +560,9 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
+		c.goroutineWaiter.Add(1)
 		go func() {
+			defer c.goroutineWaiter.Done()
 			for msg := range leftChan {
 				if msg.iter != nil {
 					msg.iter.Stop()
