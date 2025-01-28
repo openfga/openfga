@@ -66,6 +66,9 @@ linters-settings:
       - default # Default section: contains all imports that could not be matched to another section type.
       - prefix(github.com/openfga)  # Custom section: groups all imports with the specified Prefix.
       - localmodule
+  perfsprint:
+    errorf: false
+    err-error: false
 
 issues:
   exclude-use-default: false

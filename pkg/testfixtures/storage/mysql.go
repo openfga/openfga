@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -97,7 +96,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		Tmpfs:           map[string]string{"/var/lib/mysql": ""},
 	}
 
-	name := fmt.Sprintf("mysql-%s", ulid.Make().String())
+	name := "mysql-" + ulid.Make().String()
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
@@ -125,12 +124,12 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	}
 
 	mySQLTestContainer := &mySQLTestContainer{
-		addr:     fmt.Sprintf("localhost:%s", p[0].HostPort),
+		addr:     "localhost:" + p[0].HostPort,
 		username: "root",
 		password: "secret",
 	}
 
-	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
+	uri := mySQLTestContainer.username + ":" + mySQLTestContainer.password + "@tcp(" + mySQLTestContainer.addr + ")/defaultdb?parseTime=true"
 
 	err = mysql.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
@@ -166,15 +165,10 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 func (m *mySQLTestContainer) GetConnectionURI(includeCredentials bool) string {
 	creds := ""
 	if includeCredentials {
-		creds = fmt.Sprintf("%s:%s@", m.username, m.password)
+		creds = m.username + ":" + m.password + "@"
 	}
 
-	return fmt.Sprintf(
-		"%stcp(%s)/%s?parseTime=true",
-		creds,
-		m.addr,
-		"defaultdb",
-	)
+	return creds + "tcp(" + m.addr + ")/defaultdb?parseTime=true"
 }
 
 func (m *mySQLTestContainer) GetUsername() string {
