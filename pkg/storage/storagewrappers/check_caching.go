@@ -3,7 +3,6 @@ package storagewrappers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -163,7 +162,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 	for _, objectRel := range filter.UserFilter {
 		subject := tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
 		subjects = append(subjects, subject)
-		b.WriteString(fmt.Sprintf("/%s", subject))
+		b.WriteString("/" + subject)
 	}
 
 	if filter.ObjectIDs != nil {
@@ -174,7 +173,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 			}
 		}
 
-		b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
+		b.WriteString("/" + strconv.FormatUint(hasher.Sum64(), 10))
 	}
 
 	return c.newCachedIteratorByUserObjectType(ctx, "ReadStartingWithUser", store, iter, b.String(), subjects, filter.ObjectType)
@@ -212,10 +211,10 @@ func (c *CachedDatastore) ReadUsersetTuples(
 
 	for _, userset := range filter.AllowedUserTypeRestrictions {
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			rb.WriteString(fmt.Sprintf("/%s#%s", userset.GetType(), userset.GetRelation()))
+			rb.WriteString("/" + userset.GetType() + "#" + userset.GetRelation())
 		}
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			wb.WriteString(fmt.Sprintf("/%s:*", userset.GetType()))
+			wb.WriteString("/" + userset.GetType() + ":*")
 		}
 	}
 
