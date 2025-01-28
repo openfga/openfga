@@ -369,8 +369,8 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 		require.NoError(b, err)
 
-		// create and write necessary tuples in random order
-		tuples := testutils.Shuffle(bm.tupleGenerator())
+		// create and write necessary tuples in deterministic order (to make runs comparable)
+		tuples := bm.tupleGenerator()
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey
 			for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
@@ -441,8 +441,6 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 
 	// one userset gets access to document:budget
 	tuples = append(tuples, &openfgav1.TupleKey{Object: "document:budget", Relation: "viewer", User: "group:999#member"})
-
-	tuples = testutils.Shuffle(tuples)
 
 	// now actually write the tuples
 	for i := 0; i < len(tuples); {
