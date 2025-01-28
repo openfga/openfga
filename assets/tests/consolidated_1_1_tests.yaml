@@ -10355,7 +10355,7 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
-  - name: asd
+  - name: recursive_ttu_union_parenthesis_of_algebraic_operations
     stages:
       - model: |
           model
