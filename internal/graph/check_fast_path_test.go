@@ -18,6 +18,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -81,9 +82,9 @@ func TestFastPathDirect(t *testing.T) {
 		require.NoError(t, err)
 		msg, ok := <-c
 		require.True(t, ok)
-		require.NoError(t, msg.err)
-		require.NotNil(t, msg.iter)
-		msg.iter.Stop()
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
 		_, ok = <-c
 		require.False(t, ok)
 	})
@@ -168,20 +169,20 @@ func TestFastPathUnion(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producer := make(chan *iteratorMsg, 1)
-		producer <- &iteratorMsg{iter: iter1}
+		producer := make(chan *iterator.Msg, 1)
+		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
-		producers = append(producers, &iteratorStream{source: producer})
+		producers = append(producers, iterator.NewStream(0, producer))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathUnion(cancellableCtx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -194,31 +195,31 @@ func TestFastPathUnion(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: iter2}
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -227,68 +228,68 @@ func TestFastPathUnion(t *testing.T) {
 	t.Run("should_calculate_union", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0, 4)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0, 4)
 
 		ctx := context.Background()
 
-		producer1 := make(chan *iteratorMsg, 3)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 := make(chan *iterator.Msg, 3)
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "5",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "6",
 		}})}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
-		producer3 := make(chan *iteratorMsg, 4)
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 := make(chan *iterator.Msg, 4)
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "0",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "3",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "8",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "9",
 		}})}
 		close(producer3)
-		producers = append(producers, &iteratorStream{source: producer3})
+		producers = append(producers, iterator.NewStream(0, producer3))
 
-		producer4 := make(chan *iteratorMsg, 2)
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer4 := make(chan *iterator.Msg, 2)
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "4",
 		}})}
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "8",
 		}})}
 		close(producer4)
-		producers = append(producers, &iteratorStream{source: producer4})
+		producers = append(producers, iterator.NewStream(0, producer4))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -350,31 +351,31 @@ func TestFastPathUnion(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				res := make(chan *iteratorMsg)
-				producers := make([]*iteratorStream, 0, len(tt.objects))
+				res := make(chan *iterator.Msg)
+				producers := make([]*iterator.Stream, 0, len(tt.objects))
 				ctx := context.Background()
 
 				for _, objs := range tt.objects {
-					producer := make(chan *iteratorMsg, 1)
+					producer := make(chan *iterator.Msg, 1)
 					var keys []*openfgav1.TupleKey
 					for _, obj := range objs {
 						keys = append(keys, &openfgav1.TupleKey{Object: obj})
 					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 					close(producer)
-					producers = append(producers, &iteratorStream{source: producer})
+					producers = append(producers, iterator.NewStream(0, producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+					fastPathUnion(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
 				ids := make([]string, 0)
 				for msg := range res {
-					require.NoError(t, msg.err)
+					require.NoError(t, msg.Err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						tk, err := msg.Iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
@@ -393,34 +394,34 @@ func TestFastPathUnion(t *testing.T) {
 	t.Run("large_than_single_batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
+		res := make(chan *iterator.Msg)
 		const numStream = 2
-		producers := make([]*iteratorStream, 0, numStream)
+		producers := make([]*iterator.Stream, 0, numStream)
 		ctx := context.Background()
 
 		const numItems = 2000
 
 		for i := 0; i < numStream; i++ {
-			producer := make(chan *iteratorMsg, 1)
+			producer := make(chan *iterator.Msg, 1)
 			var keys []*openfgav1.TupleKey
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, &openfgav1.TupleKey{Object: strconv.Itoa(j)})
 			}
-			producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 			close(producer)
-			producers = append(producers, &iteratorStream{source: producer})
+			producers = append(producers, iterator.NewStream(0, producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -443,28 +444,28 @@ func TestFastPathUnion(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
@@ -473,8 +474,8 @@ func TestFastPathUnion(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
 			Object: "0",
@@ -482,26 +483,26 @@ func TestFastPathUnion(t *testing.T) {
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "0",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -517,20 +518,20 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producer := make(chan *iteratorMsg, 1)
-		producer <- &iteratorMsg{iter: iter1}
+		producer := make(chan *iterator.Msg, 1)
+		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
-		producers = append(producers, &iteratorStream{source: producer})
+		producers = append(producers, iterator.NewStream(0, producer))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathIntersection(cancellableCtx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -543,29 +544,29 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: iter2}
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -574,77 +575,77 @@ func TestFastPathIntersection(t *testing.T) {
 	t.Run("should_calculate_intersection", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0, 4)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0, 4)
 
 		ctx := context.Background()
 
-		producer1 := make(chan *iteratorMsg, 3)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 := make(chan *iterator.Msg, 3)
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "5",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "6",
 		}})}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 2)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 2)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
-		producer3 := make(chan *iteratorMsg, 6)
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 := make(chan *iterator.Msg, 6)
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "0",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "3",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "8",
 		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer3 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "9",
 		}})}
 		close(producer3)
-		producers = append(producers, &iteratorStream{source: producer3})
+		producers = append(producers, iterator.NewStream(0, producer3))
 
-		producer4 := make(chan *iteratorMsg, 2)
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer4 := make(chan *iterator.Msg, 2)
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer4 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "4",
 		}})}
 		close(producer4)
-		producers = append(producers, &iteratorStream{source: producer4})
+		producers = append(producers, iterator.NewStream(0, producer4))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -707,31 +708,31 @@ func TestFastPathIntersection(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				res := make(chan *iteratorMsg)
-				producers := make([]*iteratorStream, 0, len(tt.objects))
+				res := make(chan *iterator.Msg)
+				producers := make([]*iterator.Stream, 0, len(tt.objects))
 				ctx := context.Background()
 
 				for _, objs := range tt.objects {
-					producer := make(chan *iteratorMsg, 1)
+					producer := make(chan *iterator.Msg, 1)
 					var keys []*openfgav1.TupleKey
 					for _, obj := range objs {
 						keys = append(keys, &openfgav1.TupleKey{Object: obj})
 					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 					close(producer)
-					producers = append(producers, &iteratorStream{source: producer})
+					producers = append(producers, iterator.NewStream(0, producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+					fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
 				ids := make([]string, 0)
 				for msg := range res {
-					require.NoError(t, msg.err)
+					require.NoError(t, msg.Err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						tk, err := msg.Iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
@@ -750,34 +751,34 @@ func TestFastPathIntersection(t *testing.T) {
 	t.Run("large_than_single_batch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
+		res := make(chan *iterator.Msg)
 		const numStream = 2
-		producers := make([]*iteratorStream, 0, numStream)
+		producers := make([]*iterator.Stream, 0, numStream)
 		ctx := context.Background()
 
 		const numItems = 2000
 
 		for i := 0; i < numStream; i++ {
-			producer := make(chan *iteratorMsg, 1)
+			producer := make(chan *iterator.Msg, 1)
 			var keys []*openfgav1.TupleKey
 			for j := 0; j < numItems; j++ {
 				keys = append(keys, &openfgav1.TupleKey{Object: strconv.Itoa(j)})
 			}
-			producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 			close(producer)
-			producers = append(producers, &iteratorStream{source: producer})
+			producers = append(producers, iterator.NewStream(0, producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -800,28 +801,28 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
@@ -830,8 +831,8 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
 			Object: "0",
@@ -839,26 +840,26 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "0",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -869,8 +870,8 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{
 			Object: "1",
@@ -878,26 +879,26 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -908,8 +909,8 @@ func TestFastPathIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		// the first two times of Head() is to remove the first item (1)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return(&openfgav1.TupleKey{
@@ -923,26 +924,26 @@ func TestFastPathIntersection(t *testing.T) {
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, fmt.Errorf("bad_head"))
 
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -958,28 +959,28 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: iter2}
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathDifference(cancellableCtx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -992,29 +993,29 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter2.EXPECT().Stop().Times(1)
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: iter2}
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -1023,60 +1024,60 @@ func TestFastPathDifference(t *testing.T) {
 	t.Run("should_calculate_difference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0, 2)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0, 2)
 
 		ctx := context.Background()
 
-		producer1 := make(chan *iteratorMsg, 6)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 := make(chan *iterator.Msg, 6)
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "3",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "6",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "8",
 		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "9",
 		}})}
 		close(producer1)
-		producers = append(producers, &iteratorStream{idx: BaseIndex, source: producer1})
+		producers = append(producers, iterator.NewStream(BaseIndex, producer1))
 
-		producer2 := make(chan *iteratorMsg, 6)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 6)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "0",
 		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "5",
 		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "6",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{idx: DifferenceIndex, source: producer2})
+		producers = append(producers, iterator.NewStream(DifferenceIndex, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -1157,31 +1158,31 @@ func TestFastPathDifference(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
-				res := make(chan *iteratorMsg)
-				producers := make([]*iteratorStream, 0, len(tt.objects))
+				res := make(chan *iterator.Msg)
+				producers := make([]*iterator.Stream, 0, len(tt.objects))
 				ctx := context.Background()
 
 				for idx, objs := range tt.objects {
-					producer := make(chan *iteratorMsg, 1)
+					producer := make(chan *iterator.Msg, 1)
 					var keys []*openfgav1.TupleKey
 					for _, obj := range objs {
 						keys = append(keys, &openfgav1.TupleKey{Object: obj})
 					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 					close(producer)
-					producers = append(producers, &iteratorStream{idx: idx, source: producer})
+					producers = append(producers, iterator.NewStream(idx, producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+					fastPathDifference(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
 				ids := make([]string, 0)
 				for msg := range res {
-					require.NoError(t, msg.err)
+					require.NoError(t, msg.Err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						tk, err := msg.Iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
@@ -1202,35 +1203,35 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{err: fmt.Errorf("mock error")}
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
 	t.Run("should_able_to_handle_larger_than_batch_size", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		res := make(chan *iteratorMsg)
+		res := make(chan *iterator.Msg)
 
 		numItems := 2002
 		var object1 []string
@@ -1240,30 +1241,30 @@ func TestFastPathDifference(t *testing.T) {
 		object2 := []string{"0"}
 		objects := [][]string{object1, object2}
 
-		producers := make([]*iteratorStream, 0, len(objects))
+		producers := make([]*iterator.Stream, 0, len(objects))
 		ctx := context.Background()
 
 		for idx, objs := range objects {
-			producer := make(chan *iteratorMsg, 1)
+			producer := make(chan *iterator.Msg, 1)
 			var keys []*openfgav1.TupleKey
 			for _, obj := range objs {
 				keys = append(keys, &openfgav1.TupleKey{Object: obj})
 			}
-			producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+			producer <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(keys)}
 			close(producer)
-			producers = append(producers, &iteratorStream{idx: idx, source: producer})
+			producers = append(producers, iterator.NewStream(idx, producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
 		ids := make([]string, 0)
 		for msg := range res {
-			require.NoError(t, msg.err)
+			require.NoError(t, msg.Err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				tk, err := msg.Iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
@@ -1286,32 +1287,32 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return(&openfgav1.TupleKey{
 			Object: "1",
 		}, nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producers = append(producers, iterator.NewStream(0, producer1))
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "1",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -1322,32 +1323,32 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return(&openfgav1.TupleKey{
 			Object: "1",
 		}, nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: iter1}
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		producers = append(producers, iterator.NewStream(0, producer1))
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
@@ -1358,15 +1359,15 @@ func TestFastPathDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		res := make(chan *iteratorMsg)
-		producers := make([]*iteratorStream, 0)
-		producer1 := make(chan *iteratorMsg, 1)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+		res := make(chan *iterator.Msg)
+		producers := make([]*iterator.Stream, 0)
+		producer1 := make(chan *iterator.Msg, 1)
+		producer1 <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
 			Object: "2",
 		}})}
 
 		close(producer1)
-		producers = append(producers, &iteratorStream{source: producer1})
+		producers = append(producers, iterator.NewStream(0, producer1))
 		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return(&openfgav1.TupleKey{
 			Object: "1",
@@ -1376,18 +1377,18 @@ func TestFastPathDifference(t *testing.T) {
 		}, nil)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
-		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: iter1}
+		producer2 := make(chan *iterator.Msg, 1)
+		producer2 <- &iterator.Msg{Iter: iter1}
 		close(producer2)
-		producers = append(producers, &iteratorStream{source: producer2})
+		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, &iteratorStreams{streams: producers}, res)
+			fastPathDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
 		require.True(t, ok)
-		require.Error(t, msg.err)
+		require.Error(t, msg.Err)
 		_, ok = <-res
 		require.False(t, ok)
 		err := pool.Wait()
