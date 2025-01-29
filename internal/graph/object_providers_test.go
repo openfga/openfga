@@ -183,6 +183,38 @@ func TestComplexRecursiveObjectProvider(t *testing.T) {
 			require.ErrorContains(t, err, "unsupported model")
 		})
 
+		t.Run("on_unsupported_request_returns_error", func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define admin: [user]
+			`)
+
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+
+			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "document:abc",
+					Relation: "admin",
+					User:     "document:target#viewer",
+				},
+			})
+			require.NoError(t, err)
+
+			c, err := newComplexRecursiveObjectProvider(1, ts)
+			require.NoError(t, err)
+			t.Cleanup(c.End)
+
+			_, err = c.Begin(context.Background(), req)
+			require.ErrorContains(t, err, "unsupported request")
+		})
+
 		t.Run("on_supported_model", func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model

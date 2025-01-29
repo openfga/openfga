@@ -1397,7 +1397,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.checkTTUSlowPath
 
-		if c.optimizationsEnabled {
+		// TODO: optimize the case where user is an userset.
+		// If the user is a userset, we will not be able to use the shortcut because the algo
+		// will look up the objects associated with user.
+		isUserset := tuple.IsObjectRelation(tk.GetUser())
+
+		if c.optimizationsEnabled && !isUserset {
 			// more common
 			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.checkTTUFastPathV2
@@ -1410,10 +1415,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			}
 		} else {
-			// TODO: optimize the case where user is an userset.
-			// If the user is a userset, we will not be able to use the shortcut because the algo
-			// will look up the objects associated with user.
-			if !tuple.IsObjectRelation(tk.GetUser()) {
+			if !isUserset {
 				if canFastPath := typesys.TTUCanFastPath(
 					tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
 					resolver = c.checkTTUFastPath

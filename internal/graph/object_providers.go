@@ -85,6 +85,9 @@ func (c *complexRecursiveObjectProvider) Begin(ctx context.Context, req *Resolve
 	if req == nil {
 		return nil, fmt.Errorf("%w: nil request", openfgaErrors.ErrUnknown)
 	}
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+		return nil, fmt.Errorf("%w: unsupported request", openfgaErrors.ErrUnknown)
+	}
 	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 	userType := tuple.GetType(req.GetTupleKey().GetUser())
 	operands, ok := c.ts.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
