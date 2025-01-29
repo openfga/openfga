@@ -113,14 +113,14 @@ func (c *complexRecursiveObjectProvider) Begin(ctx context.Context, req *Resolve
 					return err
 				}
 				for iteratorMessage := range chanIterator {
-					if iteratorMessage.err != nil {
+					if iteratorMessage.Err != nil {
 						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-						return iteratorMessage.err
+						return iteratorMessage.Err
 					}
 					for {
-						t, err := iteratorMessage.iter.Next(ctx)
+						t, err := iteratorMessage.Iter.Next(ctx)
 						if err != nil {
-							iteratorMessage.iter.Stop()
+							iteratorMessage.Iter.Stop()
 							if storage.IterIsDoneOrCancelled(err) {
 								break
 							}
