@@ -40,10 +40,10 @@ func TestIteratorStream(t *testing.T) {
 			err := stream.fetchSource(context.Background())
 			// notice there is no error even when there is no source
 			require.NoError(t, err)
-			require.False(t, stream.done)
+			require.False(t, stream.sourceIsClosed)
 		})
 		t.Run("done_should_not_fetch", func(t *testing.T) {
-			stream := &Stream{done: true}
+			stream := &Stream{sourceIsClosed: true}
 			err := stream.fetchSource(context.Background())
 			// notice there is no error
 			require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestIteratorStream(t *testing.T) {
 				}})}
 			err := stream.fetchSource(context.Background())
 			require.NoError(t, err)
-			require.False(t, stream.done)
+			require.False(t, stream.sourceIsClosed)
 			require.NotNil(t, stream.buffer)
 		})
 		t.Run("fetch_from_source_has_error", func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestIteratorStream(t *testing.T) {
 			close(c)
 			err := stream.fetchSource(context.Background())
 			require.NoError(t, err)
-			require.True(t, stream.done)
+			require.True(t, stream.sourceIsClosed)
 			require.Nil(t, stream.buffer)
 		})
 	})
@@ -89,29 +89,29 @@ func TestIteratorStream(t *testing.T) {
 	t.Run("isDone", func(t *testing.T) {
 		t.Run("non_empty_buffer_not_done", func(t *testing.T) {
 			dut := Stream{
-				done:   false,
-				buffer: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}),
+				sourceIsClosed: false,
+				buffer:         storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}),
 			}
 			require.False(t, dut.isDone())
 		})
-		t.Run("is_done", func(t *testing.T) {
+		t.Run("source_is_closed", func(t *testing.T) {
 			dut := Stream{
-				done:   true,
-				buffer: nil,
+				sourceIsClosed: true,
+				buffer:         nil,
 			}
 			require.True(t, dut.isDone())
 		})
 		t.Run("buffer_empty_only", func(t *testing.T) {
 			dut := Stream{
-				buffer: nil,
-				done:   false,
+				buffer:         nil,
+				sourceIsClosed: false,
 			}
 			require.False(t, dut.isDone())
 		})
 		t.Run("non_empty_buffer_but_done", func(t *testing.T) {
 			dut := Stream{
-				done:   true,
-				buffer: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}),
+				sourceIsClosed: true,
+				buffer:         storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{}),
 			}
 			require.False(t, dut.isDone())
 		})
@@ -450,7 +450,7 @@ func TestIteratorStreams(t *testing.T) {
 		t.Run("should_exit_on_context_cancelled", func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			stream := NewStreams([]*Stream{{done: false}})
+			stream := NewStreams([]*Stream{{sourceIsClosed: false}})
 			_, err := stream.CleanDone(ctx)
 			require.Equal(t, context.Canceled, err)
 		})
@@ -459,7 +459,7 @@ func TestIteratorStreams(t *testing.T) {
 			c := make(chan *Msg, 1)
 			expectedErr := errors.New("boom")
 			c <- &Msg{Err: expectedErr}
-			stream := NewStreams([]*Stream{{done: true}, {done: false, source: c}})
+			stream := NewStreams([]*Stream{{sourceIsClosed: true}, {sourceIsClosed: false, source: c}})
 			_, err := stream.CleanDone(ctx)
 			require.Equal(t, expectedErr, err)
 		})
@@ -488,7 +488,7 @@ func TestIteratorStreams(t *testing.T) {
 			ctx := context.Background()
 			streams := make([]*Stream, 0)
 			for i := 0; i < 5; i++ {
-				producer := &Stream{buffer: nil, done: true}
+				producer := &Stream{buffer: nil, sourceIsClosed: true}
 				streams = append(streams, producer)
 			}
 			stream := NewStreams(streams)

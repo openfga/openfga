@@ -18,10 +18,10 @@ type Msg struct {
 
 // Stream aggregates multiple iterators that are sent to a source channel into one iterator.
 type Stream struct {
-	idx    int
-	buffer storage.TupleKeyIterator
-	done   bool // done is set when the buffer is Done and all the source are exhausted
-	source chan *Msg
+	idx            int
+	buffer         storage.TupleKeyIterator
+	sourceIsClosed bool // sourceIsClosed is set when the buffer is Done and all the source are exhausted
+	source         chan *Msg
 }
 
 func NewStream(idx int, source chan *Msg) *Stream {
@@ -35,7 +35,7 @@ func (s *Stream) Idx() int {
 	return s.idx
 }
 
-// Head returns the first item in the buffer.  If the Head is done or
+// Head returns the first item in the buffer.  If the Head is sourceIsClosed or
 // cancelled, it will stop the buffer and set the buffer to nil.
 func (s *Stream) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 	if s.buffer == nil {
@@ -124,7 +124,7 @@ func (s *Stream) Drain(ctx context.Context) ([]*openfgav1.TupleKey, error) {
 }
 
 func (s *Stream) fetchSource(ctx context.Context) error {
-	if s.buffer != nil || s.done {
+	if s.buffer != nil || s.sourceIsClosed {
 		// no need to poll further
 		return nil
 	}
@@ -134,7 +134,7 @@ func (s *Stream) fetchSource(ctx context.Context) error {
 		return ctx.Err()
 	case i, ok := <-s.source:
 		if !ok {
-			s.done = true
+			s.sourceIsClosed = true
 			break
 		}
 		if i.Err != nil {
@@ -146,7 +146,7 @@ func (s *Stream) fetchSource(ctx context.Context) error {
 }
 
 func (s *Stream) isDone() bool {
-	return s.done && s.buffer == nil
+	return s.sourceIsClosed && s.buffer == nil
 }
 
 // NextItemInSliceStreams will advance all streamSlices specified in streamToProcess and return the item advanced.
@@ -186,7 +186,7 @@ func (s *Streams) Stop() {
 	}
 }
 
-// CleanDone will clean up the done iterator streams and return a list of the remaining active streams.
+// CleanDone will clean up the sourceIsClosed iterator streams and return a list of the remaining active streams.
 // To be considered active your source channel must still be open.
 func (s *Streams) CleanDone(ctx context.Context) ([]*Stream, error) {
 	for _, stream := range s.streams {
@@ -196,7 +196,7 @@ func (s *Streams) CleanDone(ctx context.Context) ([]*Stream, error) {
 		}
 	}
 	// TODO: in go1.23 compare performance vs slices.Collect
-	// clean up all empty entries that are both done and drained
+	// clean up all empty entries that are both sourceIsClosed and drained
 	s.streams = slices.DeleteFunc(s.streams, func(entry *Stream) bool {
 		return entry.isDone()
 	})
