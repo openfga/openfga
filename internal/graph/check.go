@@ -1419,7 +1419,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					resolver = c.checkTTUFastPath
 					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
 				}
-			} else if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+			}
+			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			}
