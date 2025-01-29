@@ -1409,8 +1409,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		if c.optimizationsEnabled {
-			// TODO when the "if" below is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath above,
-			// since this code is a generalization of the code above
+			// TODO when the "if" below is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath,
+			// since this code is a generalization of it.
 			if _, ok := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
 				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))

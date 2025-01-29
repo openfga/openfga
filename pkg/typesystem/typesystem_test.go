@@ -6055,6 +6055,7 @@ type group
 			require.Equal(t, test.expected, result)
 			if test.expected {
 				obj, rel := tuple.SplitObjectRelation(test.objectTypeRelation)
+				// every time RecursiveTTUCanFastPath returns true, IsRelationWithRecursiveTTUAndAlgebraicOperations must also
 				_, v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(obj, rel, test.userType)
 				require.True(t, v2)
 			}
