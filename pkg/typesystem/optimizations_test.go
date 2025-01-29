@@ -330,7 +330,54 @@ type document
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			resultMap, is := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
+			resultMap, is := IsRelationWithRecursiveTTUAndAlgebraicOperations(typesys, test.objectType, test.relation, test.userType)
+			require.Equal(t, test.expected, is)
+			if test.expected {
+				test.assertOnResultingMap(t, resultMap)
+			} else {
+				require.Empty(t, resultMap)
+			}
+		})
+	}
+}
+
+func TestIsRelationWithRecursiveUsersetAndAlgebraicOperations(t *testing.T) {
+	tests := map[string]struct {
+		model                string
+		objectType           string
+		relation             string
+		userType             string
+		expected             bool
+		assertOnResultingMap func(t *testing.T, resultMap Operands)
+	}{
+		`recursive_userset_or_computed_weight_one_1`: {
+			model: `
+				model
+				  schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [document#rel1] or rel2
+						define rel2: rel3 and rel4
+						define rel3: [user]
+						define rel4: [user]
+`,
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 1)
+				require.Contains(t, resultMap, "rel2")
+			},
+		},
+	}
+	for testName, test := range tests {
+		t.Run(testName, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			resultMap, is := IsRelationWithRecursiveUsersetAndAlgebraicOperations(typesys, test.objectType, test.relation, test.userType)
 			require.Equal(t, test.expected, is)
 			if test.expected {
 				test.assertOnResultingMap(t, resultMap)

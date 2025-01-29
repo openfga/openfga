@@ -19,7 +19,7 @@ type Operands map[string]*openfgav1.Userset
 // 3. The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge leaving the OR node has weight 1 for the terminal type.
 // If true, it returns a map of Operands (edges) leaving the OR.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (Operands, bool) {
+func IsRelationWithRecursiveTTUAndAlgebraicOperations(t *TypeSystem, objectType, relation, userType string) (Operands, bool) {
 	usersets := make(Operands)
 	if t.authzWeightedGraph == nil {
 		return usersets, false
@@ -102,4 +102,68 @@ func populateUsersetsMap(t *TypeSystem, edgeFromUnionNode *graph.WeightedAuthori
 		usersets[relationName] = getRelation.GetRewrite()
 	}
 	return usersets
+}
+
+// IsRelationWithRecursiveUsersetAndAlgebraicOperations returns true if all these conditions apply:
+// 1. Node[objectType#relation].weights[userType] = infinite
+// 2. Node[objectType#relation] has only 1 outgoing edge, and it's to an OR node
+// 3. The OR node has one edge to Node[objectType#relation]
+// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
+// If true, it returns a map of Operands (edges) leaving the OR.
+func IsRelationWithRecursiveUsersetAndAlgebraicOperations(t *TypeSystem, objectType, relation, userType string) (Operands, bool) {
+	usersets := make(Operands)
+	if t.authzWeightedGraph == nil {
+		return usersets, false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	objRelNode, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return usersets, false
+	}
+
+	w, ok := objRelNode.GetWeight(userType)
+	if !ok || w != graph.Infinite {
+		// 1. Node[objectType#relation].weights[userType] = infinite
+		return usersets, false
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
+	if !ok || len(edges) != 1 {
+		// 2. Node[objectType#relation] has only 1 outgoing edge, and it's to an OR node
+		return usersets, false
+	}
+
+	edge := edges[0]
+	if edge.GetTo().GetLabel() != graph.UnionOperator {
+		// 2. Node[objectType#relation] has only 1 outgoing edge, and it's to an OR node
+		return usersets, false
+	}
+
+	unionNode := edge.GetTo()
+
+	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesFromNode(unionNode)
+	if !ok {
+		return usersets, false
+	}
+
+	condOneCount := 0
+
+	for _, edgeFromUnionNode := range edgesFromUnionNode {
+		if edgeFromUnionNode.GetTo() == objRelNode {
+			condOneCount++
+			if condOneCount > 1 {
+				// 3. The OR node has one edge to Node[objectType#relation]
+				return nil, false
+			}
+		} else {
+			w, ok := edgeFromUnionNode.GetWeight(userType)
+			if !ok || w != 1 {
+				// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
+				return nil, false
+			}
+			usersets = populateUsersetsMap(t, edgeFromUnionNode, usersets, relation)
+		}
+	}
+
+	return usersets, true
 }
