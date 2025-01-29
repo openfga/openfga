@@ -521,7 +521,7 @@ func TestIteratorStreams(t *testing.T) {
 		dut := NewStreams(streams)
 		dut.Stop()
 		for _, stream := range streams {
-			_, err := stream.buffer.Head(context.Background())
+			_, err := stream.Head(context.Background())
 			require.ErrorIs(t, err, storage.ErrIteratorDone)
 		}
 	})

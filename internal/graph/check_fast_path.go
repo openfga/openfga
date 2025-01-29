@@ -29,8 +29,7 @@ type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterato
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
-func fastPathDirect(ctx context.Context,
-	req *ResolveCheckRequest) (chan *iterator.Msg, error) {
+func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	tk := req.GetTupleKey()
