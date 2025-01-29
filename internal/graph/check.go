@@ -1397,29 +1397,29 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.checkTTUSlowPath
 
-		// TODO: optimize the case where user is an userset.
-		// If the user is a userset, we will not be able to use the shortcut because the algo
-		// will look up the objects associated with user.
-		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canFastPath := typesys.TTUCanFastPath(
-				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
-				resolver = c.checkTTUFastPath
-				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
-			}
-		}
-
 		if c.optimizationsEnabled {
-			// TODO when the "if" below is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath,
-			// since this code is a generalization of it.
-			if _, ok := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
-				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
-			} else if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			// more common
+			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+			} else if _, ok := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType); ok {
+				// less common
+				// TODO when this "if" is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath,
+				// since this code is a generalization of it.
+				resolver = c.recursiveTTUFastPathUnionAlgebraicOperations
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			}
 		} else {
-			if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+			// TODO: optimize the case where user is an userset.
+			// If the user is a userset, we will not be able to use the shortcut because the algo
+			// will look up the objects associated with user.
+			if !tuple.IsObjectRelation(tk.GetUser()) {
+				if canFastPath := typesys.TTUCanFastPath(
+					tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
+					resolver = c.checkTTUFastPath
+					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
+				}
+			} else if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
 				resolver = c.recursiveTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			}
