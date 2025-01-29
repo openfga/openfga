@@ -12,6 +12,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type relationDetails struct {
@@ -6052,6 +6053,11 @@ type group
 			require.NoError(t, err)
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
+			if test.expected {
+				obj, rel := tuple.SplitObjectRelation(test.objectTypeRelation)
+				_, v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(obj, rel, test.userType)
+				require.True(t, v2)
+			}
 		})
 	}
 }

@@ -16,8 +16,8 @@ type Operands map[string]*openfgav1.Userset
 // IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
-// 3. The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
+// 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+// 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // If true, it returns a map of Operands (edges) leaving the OR.
 func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) (Operands, bool) {
 	usersets := make(Operands)
@@ -55,32 +55,34 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		return usersets, false
 	}
 
-	ttuEdgeSatisfiesCond, ttuEdgeCount := false, 0
+	ttuEdgeSatisfiesCond, ttuEdgeCount := true, 0
 
 	for _, edgeFromUnionNode := range edgesFromUnionNode {
 		if edgeFromUnionNode.GetEdgeType() == graph.TTUEdge {
 			ttuEdgeCount++
-			if ttuEdgeCount > 1 {
-				// 3. The OR node has one TTU edge
-				return nil, false
-			}
 			ttuEdge := edgeFromUnionNode
 			w, ok := ttuEdge.GetWeight(userType)
-			if ok && w == graph.Infinite && ttuEdge.GetTo() == objRelNode {
-				// 3. The OR node has one TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-				ttuEdgeSatisfiesCond = true
+			if !ok || w != graph.Infinite || ttuEdge.GetTo() != objRelNode {
+				// 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+				ttuEdgeSatisfiesCond = false
 			}
 		} else {
 			w, ok := edgeFromUnionNode.GetWeight(userType)
-			if !ok || w != 1 {
-				// 4. Any other edge leaving the OR node has weight 1 for the terminal type.
+			if !ok {
+				continue
+			}
+			if w != 1 {
+				// 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 				return nil, false
 			}
 			usersets = populateUsersetsMap(t, edgeFromUnionNode, usersets, relation)
 		}
 	}
 
-	satisfies := ttuEdgeSatisfiesCond && len(usersets) >= 1
+	satisfies := ttuEdgeSatisfiesCond && ttuEdgeCount >= 1
+	if !satisfies {
+		usersets = nil
+	}
 	return usersets, satisfies
 }
 
