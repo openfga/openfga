@@ -151,60 +151,48 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 }
 
 func TestObjectIDInSortedSet(t *testing.T) {
-	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
-		if tupleKey.GetCondition().GetName() == "condition1" {
-			return true, nil
-		}
-		return false, fmt.Errorf("condition not found")
-	}
-
 	tests := []struct {
-		name          string
-		tuples        []*openfgav1.TupleKey
-		objectIDs     []string
-		expectedError bool
-		expected      bool
+		name              string
+		iteratorObjectIDs func(ctrl *gomock.Controller) storage.IObjectMapper
+		objectIDs         storage.SortedSet
+		expectedError     bool
+		expected          bool
 	}{
 		{
 			name: "no_match",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc2", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "group:2#member", "condition1", nil),
+			iteratorObjectIDs: func(_ *gomock.Controller) storage.IObjectMapper {
+				return storage.NewStaticObjectMapper([]string{"document:doc1", "document:doc2", "document:doc3"})
 			},
-			objectIDs:     []string{"doc0", "doc5", "doc6"},
+			objectIDs:     storage.NewSortedSet("doc0", "doc5", "doc6"),
 			expected:      false,
 			expectedError: false,
 		},
 		{
 			name: "match",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc2", "viewer", "group:2#member", "condition1", nil),
-				tuple.NewTupleKeyWithCondition("document:doc3", "viewer", "group:2#member", "condition1", nil),
+			iteratorObjectIDs: func(_ *gomock.Controller) storage.IObjectMapper {
+				return storage.NewStaticObjectMapper([]string{"document:doc1", "document:doc2", "document:doc3"})
 			},
-			objectIDs:     []string{"doc0", "doc2", "doc6"},
+			objectIDs:     storage.NewSortedSet("doc0", "doc2", "doc6"),
 			expected:      true,
 			expectedError: false,
 		},
 		{
-			name: "error",
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "viewer", "group:2#member", "badCondition", nil),
+			name: "error_thrown_by_iterator",
+			iteratorObjectIDs: func(_ *gomock.Controller) storage.IObjectMapper {
+				asd := mocks.NewMockIObjectMapper(gomock.NewController(t))
+				asd.EXPECT().Next(gomock.Any()).Return("", fmt.Errorf("error")).Times(1)
+				return asd
 			},
-			objectIDs:     []string{"doc0", "doc2", "doc6"},
+			objectIDs:     storage.NewSortedSet("doc0", "doc2", "doc6"),
 			expected:      false,
 			expectedError: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			objectIDs := storage.NewSortedSet()
-			for _, item := range tt.objectIDs {
-				objectIDs.Add(item)
-			}
-			result, err := ObjectIDInSortedSet(context.Background(), iter, objectIDs)
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
+			result, err := ObjectIDInSortedSet(context.Background(), tt.iteratorObjectIDs(ctrl), tt.objectIDs)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {

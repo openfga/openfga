@@ -2,15 +2,93 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+func TestStaticObjectMapper(t *testing.T) {
+	t.Run("next", func(t *testing.T) {
+		expected := []string{"document:doc1", "document:doc2"}
+
+		iter := NewStaticObjectMapper(expected)
+		defer iter.Stop()
+
+		var actual []string
+		for {
+			objectRes, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+
+			actual = append(actual, objectRes)
+		}
+
+		require.Equal(t, expected, actual)
+	})
+	t.Run("head_empty", func(t *testing.T) {
+		var expected []string
+		iter := NewStaticObjectMapper(expected)
+		defer iter.Stop()
+
+		objectRes, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+		require.Empty(t, objectRes)
+	})
+	t.Run("head_not_empty", func(t *testing.T) {
+		expected := []string{"document:doc1", "document:doc2"}
+		iter := NewStaticObjectMapper(expected)
+		defer iter.Stop()
+		objectRes, err := iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, expected[0], objectRes)
+
+		// Ensure the iterator does not increment.
+		objectRes, err = iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, expected[0], objectRes)
+	})
+	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
+		objects := make([]string, 100)
+		for i := 0; i < 100; i++ {
+			objects[i] = "document:doc" + strconv.Itoa(i)
+		}
+		iter := NewStaticObjectMapper(objects)
+		defer iter.Stop()
+
+		var wg errgroup.Group
+		for i := 0; i < 101; i++ {
+			wg.Go(func() error {
+				_, err := iter.Head(context.Background())
+				return err
+			})
+		}
+
+		err := wg.Wait()
+		require.NoError(t, err)
+
+		for i := 0; i < 101; i++ {
+			wg.Go(func() error {
+				_, err := iter.Next(context.Background())
+				return err
+			})
+		}
+
+		err = wg.Wait()
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+}
 
 func TestTupleMappers(t *testing.T) {
 	tk := &openfgav1.Tuple{
@@ -96,7 +174,7 @@ func TestObjectIDTupleMapper(t *testing.T) {
 
 	innerIter := NewStaticTupleKeyIterator(tks)
 
-	mapper := WrapIterator(ObjectIDKind, innerIter)
+	mapper := NewObjectMapper(innerIter)
 	require.NotNil(t, mapper)
 	defer mapper.Stop()
 

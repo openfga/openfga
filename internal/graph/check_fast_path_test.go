@@ -67,7 +67,7 @@ func TestIteratorStreams(t *testing.T) {
 					close(c)
 				} else {
 					expectedLen++
-					c <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(nil)}
+					c <- &iteratorMsg{iter: storage.NewStaticObjectMapper(nil)}
 				}
 				streams = append(streams, producer)
 			}
@@ -226,7 +226,7 @@ func TestFastPathUnion(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
 		iter1.EXPECT().Stop().Times(1)
 		producer := make(chan *iteratorMsg, 1)
 		producer <- &iteratorMsg{iter: iter1}
@@ -252,15 +252,15 @@ func TestFastPathUnion(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iteratorMsg, 1)
 		producer1 <- &iteratorMsg{iter: iter1}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
 
-		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter2 := mocks.NewMockTupleMapper(ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iteratorMsg, 1)
 		producer2 <- &iteratorMsg{iter: iter2}
@@ -289,48 +289,28 @@ func TestFastPathUnion(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iteratorMsg, 3)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "5",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "6",
-		}})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"5"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"6"})}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
 
 		producer2 := make(chan *iteratorMsg, 1)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "2",
-		}})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"2"})}
 		close(producer2)
 		producers = append(producers, &iteratorStream{source: producer2})
 
 		producer3 := make(chan *iteratorMsg, 4)
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "0",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "3",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "8",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "9",
-		}})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"0"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"3"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"8"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"9"})}
 		close(producer3)
 		producers = append(producers, &iteratorStream{source: producer3})
 
 		producer4 := make(chan *iteratorMsg, 2)
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "4",
-		}})}
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "8",
-		}})}
+		producer4 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"4"})}
+		producer4 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"8"})}
 		close(producer4)
 		producers = append(producers, &iteratorStream{source: producer4})
 
@@ -344,14 +324,14 @@ func TestFastPathUnion(t *testing.T) {
 		for msg := range res {
 			require.NoError(t, msg.err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				objectID, err := msg.iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
 					}
 					require.NoError(t, err)
 				}
-				ids = append(ids, tk.GetObject())
+				ids = append(ids, objectID)
 			}
 		}
 		err := pool.Wait()
@@ -412,11 +392,7 @@ func TestFastPathUnion(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iteratorMsg, 1)
-					var keys []*openfgav1.TupleKey
-					for _, obj := range objs {
-						keys = append(keys, &openfgav1.TupleKey{Object: obj})
-					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iteratorMsg{iter: storage.NewStaticObjectMapper(objs)}
 					close(producer)
 					producers = append(producers, &iteratorStream{source: producer})
 				}
@@ -430,14 +406,14 @@ func TestFastPathUnion(t *testing.T) {
 				for msg := range res {
 					require.NoError(t, msg.err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						objectID, err := msg.iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
 							}
 							require.NoError(t, err)
 						}
-						ids = append(ids, tk.GetObject())
+						ids = append(ids, objectID)
 					}
 				}
 				err := pool.Wait()
@@ -458,7 +434,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
 		iter1.EXPECT().Stop().Times(1)
 		producer := make(chan *iteratorMsg, 1)
 		producer <- &iteratorMsg{iter: iter1}
@@ -484,14 +460,14 @@ func TestFastPathIntersection(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iteratorMsg, 1)
 		producer1 <- &iteratorMsg{iter: iter1}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
-		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter2 := mocks.NewMockTupleMapper(ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iteratorMsg, 1)
 		producer2 <- &iteratorMsg{iter: iter2}
@@ -519,57 +495,31 @@ func TestFastPathIntersection(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iteratorMsg, 3)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "5",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "6",
-		}})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"5"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"6"})}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
 
 		producer2 := make(chan *iteratorMsg, 2)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "2",
-		}})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"2"})}
 		close(producer2)
 		producers = append(producers, &iteratorStream{source: producer2})
 
 		producer3 := make(chan *iteratorMsg, 6)
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "0",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "2",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "3",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "8",
-		}})}
-		producer3 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "9",
-		}})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"0"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"2"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"3"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"8"})}
+		producer3 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"9"})}
 		close(producer3)
 		producers = append(producers, &iteratorStream{source: producer3})
 
 		producer4 := make(chan *iteratorMsg, 2)
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer4 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "4",
-		}})}
+		producer4 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer4 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"4"})}
 		close(producer4)
 		producers = append(producers, &iteratorStream{source: producer4})
 
@@ -583,14 +533,14 @@ func TestFastPathIntersection(t *testing.T) {
 		for msg := range res {
 			require.NoError(t, msg.err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				objectID, err := msg.iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
 					}
 					require.NoError(t, err)
 				}
-				ids = append(ids, tk.GetObject())
+				ids = append(ids, objectID)
 			}
 		}
 		err := pool.Wait()
@@ -652,11 +602,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iteratorMsg, 1)
-					var keys []*openfgav1.TupleKey
-					for _, obj := range objs {
-						keys = append(keys, &openfgav1.TupleKey{Object: obj})
-					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iteratorMsg{iter: storage.NewStaticObjectMapper(objs)}
 					close(producer)
 					producers = append(producers, &iteratorStream{source: producer})
 				}
@@ -670,14 +616,14 @@ func TestFastPathIntersection(t *testing.T) {
 				for msg := range res {
 					require.NoError(t, msg.err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						objectID, err := msg.iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
 							}
 							require.NoError(t, err)
 						}
-						ids = append(ids, tk.GetObject())
+						ids = append(ids, objectID)
 					}
 				}
 				err := pool.Wait()
@@ -699,14 +645,14 @@ func TestFastPathDifference(t *testing.T) {
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
 
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iteratorMsg, 1)
 		producer1 <- &iteratorMsg{iter: iter1}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
 
-		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter2 := mocks.NewMockTupleMapper(ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iteratorMsg, 1)
 		producer2 <- &iteratorMsg{iter: iter2}
@@ -732,14 +678,14 @@ func TestFastPathDifference(t *testing.T) {
 
 		res := make(chan *iteratorMsg)
 		producers := make([]*iteratorStream, 0)
-		iter1 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return(nil, errors.New("boom"))
+		iter1 := mocks.NewMockIObjectMapper(ctrl)
+		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iteratorMsg, 1)
 		producer1 <- &iteratorMsg{iter: iter1}
 		close(producer1)
 		producers = append(producers, &iteratorStream{source: producer1})
-		iter2 := mocks.NewMockIterator[*openfgav1.TupleKey](ctrl)
+		iter2 := mocks.NewMockTupleMapper(ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iteratorMsg, 1)
 		producer2 <- &iteratorMsg{iter: iter2}
@@ -767,40 +713,20 @@ func TestFastPathDifference(t *testing.T) {
 		ctx := context.Background()
 
 		producer1 := make(chan *iteratorMsg, 6)
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "2",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "3",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "6",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "8",
-		}})}
-		producer1 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "9",
-		}})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"2"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"3"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"6"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"8"})}
+		producer1 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"9"})}
 		close(producer1)
 		producers = append(producers, &iteratorStream{idx: BaseIndex, source: producer1})
 
 		producer2 := make(chan *iteratorMsg, 6)
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "0",
-		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "1",
-		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "5",
-		}})}
-		producer2 <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-			Object: "6",
-		}})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"0"})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"1"})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"5"})}
+		producer2 <- &iteratorMsg{iter: storage.NewStaticObjectMapper([]string{"6"})}
 		close(producer2)
 		producers = append(producers, &iteratorStream{idx: DifferenceIndex, source: producer2})
 
@@ -814,14 +740,14 @@ func TestFastPathDifference(t *testing.T) {
 		for msg := range res {
 			require.NoError(t, msg.err)
 			for {
-				tk, err := msg.iter.Next(ctx)
+				objectID, err := msg.iter.Next(ctx)
 				if err != nil {
 					if storage.IterIsDoneOrCancelled(err) {
 						break
 					}
 					require.NoError(t, err)
 				}
-				ids = append(ids, tk.GetObject())
+				ids = append(ids, objectID)
 			}
 		}
 		err := pool.Wait()
@@ -901,11 +827,7 @@ func TestFastPathDifference(t *testing.T) {
 
 				for idx, objs := range tt.objects {
 					producer := make(chan *iteratorMsg, 1)
-					var keys []*openfgav1.TupleKey
-					for _, obj := range objs {
-						keys = append(keys, &openfgav1.TupleKey{Object: obj})
-					}
-					producer <- &iteratorMsg{iter: storage.NewStaticTupleKeyIterator(keys)}
+					producer <- &iteratorMsg{iter: storage.NewStaticObjectMapper(objs)}
 					close(producer)
 					producers = append(producers, &iteratorStream{idx: idx, source: producer})
 				}
@@ -919,14 +841,14 @@ func TestFastPathDifference(t *testing.T) {
 				for msg := range res {
 					require.NoError(t, msg.err)
 					for {
-						tk, err := msg.iter.Next(ctx)
+						objectID, err := msg.iter.Next(ctx)
 						if err != nil {
 							if storage.IterIsDoneOrCancelled(err) {
 								break
 							}
 							require.NoError(t, err)
 						}
-						ids = append(ids, tk.GetObject())
+						ids = append(ids, objectID)
 					}
 				}
 				err := pool.Wait()
