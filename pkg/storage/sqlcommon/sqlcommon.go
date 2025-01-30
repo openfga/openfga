@@ -690,12 +690,16 @@ func ReadAuthorizationModel(
 
 // IsReady returns true if the connection to the datastore is successful
 // and the datastore has the latest migration applied.
-func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
+func IsReady(ctx context.Context, db *sql.DB, dialect string) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
 		return storage.ReadinessStatus{}, err
+	}
+
+	if err := goose.SetDialect(dialect); err != nil {
+		return storage.ReadinessStatus{}, fmt.Errorf("failed to set database dialect: %w", err)
 	}
 
 	revision, err := goose.GetDBVersion(db)

@@ -1033,7 +1033,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db)
+	return sqlcommon.IsReady(ctx, s.db, "sqlite")
 }
 
 // HandleSQLError processes an SQL error and converts it into a more
