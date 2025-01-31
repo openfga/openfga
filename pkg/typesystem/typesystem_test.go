@@ -4736,6 +4736,30 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			expectCanFastPath: true,
 		},
 		{
+			name: "complex_ttu_algebraic_wildcard",
+			model: `
+						model
+							schema 1.1
+						type user
+						type group
+							relations
+								define member: [user, user:*]
+								define admin: [user]
+								define viewer: member or admin
+								define superadmin: [user, group#superadmin]
+						type folder
+							relations
+								define parent: [group]
+								define superadmin: superadmin from parent
+								define viewer: viewer from parent or superadmin
+					`,
+			objectType:        "folder",
+			relation:          "viewer",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
+			expectCanFastPath: true,
+		},
+		{
 			name: "complex_tupleset_relation_union",
 			model: `
 						model
