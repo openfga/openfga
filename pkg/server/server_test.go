@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -25,7 +26,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
-	sq "github.com/Masterminds/squirrel"
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
