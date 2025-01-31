@@ -3,14 +3,17 @@ package graph
 import (
 	"context"
 	"fmt"
+
+	"github.com/sourcegraph/conc/pool"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/sourcegraph/conc/pool"
 )
 
 // objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
@@ -66,7 +69,6 @@ type complexRecursiveTTUObjectProvider struct {
 	concurrencyLimit uint32
 	ts               *typesystem.TypeSystem
 	rewrite          *openfgav1.Userset
-	outChannel       chan usersetMessage
 	cancel           context.CancelFunc
 	pool             *pool.ContextPool
 }

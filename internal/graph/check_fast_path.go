@@ -26,7 +26,7 @@ const DifferenceIndex = 1
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func fastPathNoop(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
+func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg, error) {
 	iterChan := make(chan *iterator.Msg)
 	close(iterChan)
 	return iterChan, nil
