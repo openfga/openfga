@@ -683,9 +683,6 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-				if len(edge.GetWildcards()) != 0 {
-					return false
-				}
 				if w, ok := edge.GetWeight(userType); ok && w > 2 {
 					return false
 				}
