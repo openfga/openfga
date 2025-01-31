@@ -395,7 +395,6 @@ type DBInfo struct {
 	db             *sql.DB
 	stbl           sq.StatementBuilderType
 	HandleSQLError errorHandlerFn
-	dialect        string
 }
 
 type errorHandlerFn func(error, ...interface{}) error
@@ -719,7 +718,6 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 		}, nil
 
 	}
-
 	return storage.ReadinessStatus{
 		IsReady: true,
 	}, nil
