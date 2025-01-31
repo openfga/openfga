@@ -113,6 +113,7 @@ func (c *complexRecursiveTTUObjectProvider) Begin(ctx context.Context, req *Reso
 	c.pool.Go(func(ctx context.Context) error {
 		leftOpen := true
 		defer func() {
+			close(outChannel)
 			if !leftOpen {
 				return
 			}

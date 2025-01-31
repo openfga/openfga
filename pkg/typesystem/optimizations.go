@@ -58,7 +58,7 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 			}
 		}
 		// everything else must comply with being weight = 1
-		if w, ok := edge.GetWeight(userType); !ok || w > 1 {
+		if w, ok := edge.GetWeight(userType); ok && w > 1 {
 			return false
 		}
 	}
