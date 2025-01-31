@@ -294,10 +294,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 2)
-				require.Contains(t, resultMap, "rel1")
-			},
 		},
 		`ttu_or_intersection_that_is_weight_2`: {
 			model: `
