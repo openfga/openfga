@@ -135,6 +135,10 @@ func (c *complexRecursiveTTUObjectProvider) Begin(ctx context.Context, req *Reso
 				leftOpen = false
 				return nil
 			}
+			if msg.Err != nil {
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, outChannel)
+				return msg.Err
+			}
 			t, err := msg.Iter.Next(ctx)
 			if err != nil {
 				msg.Iter.Stop()

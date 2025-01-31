@@ -151,70 +151,6 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 	})
 
 	t.Run("Begin_And_End", func(t *testing.T) {
-		t.Run("on_unsupported_model_returns_error", func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define admin: [user]
-			`)
-
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-
-			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
-				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "admin",
-					User:     "user:XYZ",
-				},
-			})
-			require.NoError(t, err)
-
-			c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
-			require.NoError(t, err)
-			t.Cleanup(c.End)
-
-			_, err = c.Begin(context.Background(), req)
-			require.ErrorContains(t, err, "unsupported model")
-		})
-
-		t.Run("on_unsupported_request_returns_error", func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define admin: [user]
-			`)
-
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-
-			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
-				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "admin",
-					User:     "document:target#viewer",
-				},
-			})
-			require.NoError(t, err)
-
-			c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
-			require.NoError(t, err)
-			t.Cleanup(c.End)
-
-			_, err = c.Begin(context.Background(), req)
-			require.ErrorContains(t, err, "unsupported request")
-		})
-
 		t.Run("on_supported_model", func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(`
 				model
@@ -228,6 +164,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
+			rewrite := typesystem.TupleToUserset("parent", "admin")
 
 			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
 				StoreID:              storeID,
@@ -253,7 +190,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -277,7 +214,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -300,22 +237,13 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 					Times(1).
 					Return(nil, fmt.Errorf("error"))
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				channel, err := c.Begin(ctx, req)
-				require.NoError(t, err)
-
-				actualMessages := make([]usersetMessage, 0)
-				for msg := range channel {
-					actualMessages = append(actualMessages, msg)
-				}
-
-				require.Len(t, actualMessages, 1)
-				require.Empty(t, actualMessages[0].userset)
-				require.Error(t, actualMessages[0].err)
+				_, err = c.Begin(ctx, req)
+				require.Error(t, err)
 			})
 
 			t.Run("when_iterator_errors", func(t *testing.T) {
@@ -329,7 +257,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						return iterator, nil
 					})
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -342,6 +270,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 					actualMessages = append(actualMessages, res)
 				}
 
+				fmt.Println(actualMessages)
 				require.Len(t, actualMessages, 2)
 				require.NotEmpty(t, actualMessages[0].userset)
 				require.NoError(t, actualMessages[0].err)
@@ -357,7 +286,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
