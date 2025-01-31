@@ -25,6 +25,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/openfga/openfga/cmd/migrate"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
@@ -233,6 +234,12 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 				WithExperimentals(ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
 			)
+		})
+	})
+
+	t.Run("invalid_dialect", func(t *testing.T) {
+		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
+			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
 		})
 	})
 }
