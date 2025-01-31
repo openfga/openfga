@@ -39,6 +39,7 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 type Datastore struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -111,10 +112,12 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite")
 
 	return &Datastore{
 		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -1033,7 +1036,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db, "sqlite")
+	return sqlcommon.IsReady(ctx, s.db)
 }
 
 // HandleSQLError processes an SQL error and converts it into a more

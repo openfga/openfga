@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -395,12 +395,17 @@ type DBInfo struct {
 	db             *sql.DB
 	stbl           sq.StatementBuilderType
 	HandleSQLError errorHandlerFn
+	dialect        string
 }
 
 type errorHandlerFn func(error, ...interface{}) error
 
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialect string) *DBInfo {
+	if err := goose.SetDialect(dialect); err != nil {
+		panic("failed to set database dialect: " + err.Error())
+	}
+
 	return &DBInfo{
 		db:             db,
 		stbl:           stbl,
@@ -690,16 +695,12 @@ func ReadAuthorizationModel(
 
 // IsReady returns true if the connection to the datastore is successful
 // and the datastore has the latest migration applied.
-func IsReady(ctx context.Context, db *sql.DB, dialect string) (storage.ReadinessStatus, error) {
+func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
 		return storage.ReadinessStatus{}, err
-	}
-
-	if err := goose.SetDialect(dialect); err != nil {
-		return storage.ReadinessStatus{}, fmt.Errorf("failed to set database dialect: %w", err)
 	}
 
 	revision, err := goose.GetDBVersion(db)
@@ -709,9 +710,14 @@ func IsReady(ctx context.Context, db *sql.DB, dialect string) (storage.Readiness
 
 	if revision < build.MinimumSupportedDatastoreSchemaRevision {
 		return storage.ReadinessStatus{
-			Message: fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'. Run 'openfga migrate'.", revision, build.MinimumSupportedDatastoreSchemaRevision),
+			Message: "datastore requires migrations: at revision '" +
+				strconv.FormatInt(revision, 10) +
+				"', but requires '" +
+				strconv.FormatInt(build.MinimumSupportedDatastoreSchemaRevision, 10) +
+				"'. Run 'openfga migrate'.",
 			IsReady: false,
 		}, nil
+
 	}
 
 	return storage.ReadinessStatus{

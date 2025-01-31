@@ -116,7 +116,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "mysql")
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -791,7 +791,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db, "mysql")
+	return sqlcommon.IsReady(ctx, s.db)
 }
 
 // HandleSQLError processes an SQL error and converts it into a more
