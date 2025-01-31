@@ -890,7 +890,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	objectProvider, err := newComplexTTURecursiveObjectProvider(c.concurrencyLimit, typesys, recursiveTTURewrite)
+	objectProvider, err := newComplexTTURecursiveObjectProvider(typesys, recursiveTTURewrite)
 	if err != nil {
 		return nil, err
 	}

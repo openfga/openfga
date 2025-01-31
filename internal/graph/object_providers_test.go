@@ -146,8 +146,14 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 	t.Run("New", func(t *testing.T) {
-		_, err := newComplexTTURecursiveObjectProvider(1, nil, nil)
-		require.Error(t, err)
+		_, err := newComplexTTURecursiveObjectProvider(nil, typesystem.This())
+		require.ErrorContains(t, err, "nil typesystem")
+
+		_, err = newComplexTTURecursiveObjectProvider(&typesystem.TypeSystem{}, nil)
+		require.Error(t, err, "nil rewrite")
+
+		_, err = newComplexTTURecursiveObjectProvider(&typesystem.TypeSystem{}, typesystem.This())
+		require.Error(t, err, "rewrite must be a tupletouserset")
 	})
 
 	t.Run("Begin_And_End", func(t *testing.T) {
@@ -178,7 +184,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("when_empty_req", func(t *testing.T) {
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, nil)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -186,11 +192,31 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 				require.Error(t, err)
 			})
 
+			t.Run("when_invalid_req", func(t *testing.T) {
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				require.NoError(t, err)
+				t.Cleanup(c.End)
+
+				invalidReq, err := NewResolveCheckRequest(ResolveCheckRequestParams{
+					StoreID:              storeID,
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "unknown:abc",
+						Relation: "admin",
+						User:     "user:XYZ",
+					},
+				})
+				require.NoError(t, err)
+
+				_, err = c.Begin(context.Background(), invalidReq)
+				require.Error(t, err)
+			})
+
 			t.Run("when_empty_iterator", func(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -214,7 +240,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -237,7 +263,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 					Times(1).
 					Return(nil, fmt.Errorf("error"))
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -257,7 +283,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						return iterator, nil
 					})
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -265,17 +291,15 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 				channel, err := c.Begin(ctx, req)
 				require.NoError(t, err)
 
-				actualMessages := make([]usersetMessage, 0, 2)
+				actualMessages := make([]usersetMessage, 0, 1)
 				for res := range channel {
 					actualMessages = append(actualMessages, res)
 				}
 
 				fmt.Println(actualMessages)
-				require.Len(t, actualMessages, 2)
-				require.NotEmpty(t, actualMessages[0].userset)
-				require.NoError(t, actualMessages[0].err)
-				require.Empty(t, actualMessages[1].userset)
-				require.Error(t, actualMessages[1].err)
+				require.Len(t, actualMessages, 1)
+				require.Empty(t, actualMessages[0].userset)
+				require.Error(t, actualMessages[0].err)
 			})
 
 			t.Run("when_context_cancelled", func(t *testing.T) {
@@ -286,24 +310,21 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(1, ts, rewrite)
+				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
 				cancel()
 				channel, err := c.Begin(ctx, req)
-				require.NoError(t, err)
-
-				actualMessages := make([]usersetMessage, 0, 1)
-				for res := range channel {
-					actualMessages = append(actualMessages, res)
-				}
-
-				require.LessOrEqual(t, len(actualMessages), 1)
-				if len(actualMessages) == 1 {
-					require.Empty(t, actualMessages[0].userset)
-					require.Error(t, actualMessages[0].err)
+				if err != nil {
+					require.ErrorIs(t, err, context.Canceled)
+				} else {
+					actualMessages := make([]usersetMessage, 0, 1)
+					for res := range channel {
+						actualMessages = append(actualMessages, res)
+					}
+					require.Empty(t, actualMessages)
 				}
 			})
 		})
