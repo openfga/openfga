@@ -716,7 +716,6 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 				"'. Run 'openfga migrate'.",
 			IsReady: false,
 		}, nil
-
 	}
 	return storage.ReadinessStatus{
 		IsReady: true,
