@@ -286,7 +286,7 @@ type document
 			userType:   "user",
 			expected:   false,
 		},
-		`ttu_or_intersection`: {
+		`ttu_or_intersection_1`: {
 			model: `
 model
   schema 1.1
@@ -307,6 +307,29 @@ type document
 				require.Contains(t, resultMap, "rel1")
 			},
 		},
+		`ttu_or_intersection_2`: {
+			model: `
+model
+  schema 1.1
+type user
+type document
+  relations
+    define rel1: (rel2 and rel3) or (rel4 and rel5) or rel1 from parent
+    define parent: [document]
+    define rel2: [user]
+    define rel3: [user]
+    define rel4: [user]
+    define rel5: [user]
+`,
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   true,
+			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
+				require.Len(t, resultMap, 2)
+				require.Contains(t, resultMap, "rel1")
+			},
+		},
 		`ttu_or_intersection_that_is_weight_2`: {
 			model: `
 model
@@ -318,6 +341,28 @@ type document
     define parent: [document]
     define rel2: rel3 from parent
     define rel3: [user]
+`,
+			objectType: "document",
+			relation:   "rel1",
+			userType:   "user",
+			expected:   false,
+		},
+		`multiple_parents_in_ttu`: {
+			model: `
+model
+  schema 1.1
+type user
+type group
+	relations
+		define rel1: [user]
+type document
+  relations
+    define rel1: rel2 or rel1 from parent 
+    define parent: [document, group]
+    define rel2: [user] and rel3
+    define rel3: rel4 but not rel5
+    define rel4: [user]
+    define rel5: [user]
 `,
 			objectType: "document",
 			relation:   "rel1",
