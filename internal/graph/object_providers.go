@@ -3,14 +3,14 @@ package graph
 import (
 	"context"
 	"fmt"
-	"sync"
-
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/sourcegraph/conc/pool"
 )
 
 // objectProvider is an interface that abstracts the building of a channel that holds object IDs or usersets.
@@ -62,82 +62,90 @@ func (s *simpleRecursiveObjectProvider) Begin(ctx context.Context, req *ResolveC
 	return userToUsersetMessageChan, nil
 }
 
-type complexRecursiveObjectProvider struct {
+type complexRecursiveTTUObjectProvider struct {
 	concurrencyLimit uint32
-	wg               sync.WaitGroup
 	ts               *typesystem.TypeSystem
+	rewrite          *openfgav1.Userset
+	outChannel       chan usersetMessage
+	cancel           context.CancelFunc
+	pool             *pool.ContextPool
 }
 
-func newComplexRecursiveObjectProvider(concurrencyLimit uint32, ts *typesystem.TypeSystem) (*complexRecursiveObjectProvider, error) {
+func newComplexTTURecursiveObjectProvider(concurrencyLimit uint32, ts *typesystem.TypeSystem, rewrite *openfgav1.Userset) (*complexRecursiveTTUObjectProvider, error) {
 	if ts == nil {
 		return nil, fmt.Errorf("%w: nil typesystem", openfgaErrors.ErrUnknown)
 	}
-	return &complexRecursiveObjectProvider{concurrencyLimit: concurrencyLimit, wg: sync.WaitGroup{}, ts: ts}, nil
+	return &complexRecursiveTTUObjectProvider{concurrencyLimit: concurrencyLimit, ts: ts, rewrite: rewrite}, nil
 }
 
-var _ objectProvider = (*complexRecursiveObjectProvider)(nil)
+var _ objectProvider = (*complexRecursiveTTUObjectProvider)(nil)
 
-func (c *complexRecursiveObjectProvider) End() {
-	c.wg.Wait()
+func (c *complexRecursiveTTUObjectProvider) End() {
+	if c.cancel != nil {
+		c.cancel()
+		_ = c.pool.Wait()
+	}
 }
 
-func (c *complexRecursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
+func (c *complexRecursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: nil request", openfgaErrors.ErrUnknown)
 	}
-	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return nil, fmt.Errorf("%w: unsupported request", openfgaErrors.ErrUnknown)
-	}
-	objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
-	userType := tuple.GetType(req.GetTupleKey().GetUser())
-	operands, ok := c.ts.IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType)
-	if !ok {
-		return nil, fmt.Errorf("%w: unsupported model", openfgaErrors.ErrUnknown)
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+	tuplesetRelation := c.rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+	computedRelation := c.rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+
+	possibleParents, err := c.ts.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+	if err != nil {
+		return nil, err
 	}
 
-	outChannel := make(chan usersetMessage, len(operands)) // buffered so that the first writes don't block on the caller reading from the channel
-	pool := concurrency.NewPool(ctx, max(int(c.concurrencyLimit), len(operands)))
+	leftChannels, err := constructLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+	if err != nil {
+		return nil, err
+	}
+	outChannel := make(chan usersetMessage, len(leftChannels))
+	leftChannel := fanInIteratorChannels(ctx, leftChannels)
+	poolCtx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
 
-	c.wg.Add(1)
-	go func() {
+	c.pool = concurrency.NewPool(poolCtx, 1)
+	c.pool.Go(func(ctx context.Context) error {
+		leftOpen := true
 		defer func() {
-			_ = pool.Wait()
-			close(outChannel)
-			c.wg.Done()
+			if !leftOpen {
+				return
+			}
+			go func() {
+				for msg := range leftChannel {
+					if msg.Iter != nil {
+						msg.Iter.Stop()
+					}
+				}
+			}()
 		}()
-
-		for operandRelationName, operandRewrite := range operands {
-			pool.Go(func(ctx context.Context) error {
-				newReq := req.clone()
-				newReq.TupleKey.Relation = operandRelationName
-				chanIterator, err := fastPathRewrite(ctx, newReq, operandRewrite)
-				if err != nil {
-					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-					return err
-				}
-				for iteratorMessage := range chanIterator {
-					if iteratorMessage.Err != nil {
-						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-						return iteratorMessage.Err
-					}
-					for {
-						t, err := iteratorMessage.Iter.Next(ctx)
-						if err != nil {
-							iteratorMessage.Iter.Stop()
-							if storage.IterIsDoneOrCancelled(err) {
-								break
-							}
-							concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-							return err
-						}
-						userset := t.GetObject()
-						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
-					}
-				}
+		select {
+		case <-ctx.Done():
+			return nil
+		case msg, ok := <-leftChannel:
+			if !ok {
+				leftOpen = false
 				return nil
-			})
+			}
+			t, err := msg.Iter.Next(ctx)
+			if err != nil {
+				msg.Iter.Stop()
+				if storage.IterIsDoneOrCancelled(err) {
+					break
+				}
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
+				return err
+			}
+			userset := t.GetObject()
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
 		}
-	}()
+		return nil
+	})
 
 	return outChannel, nil
 }

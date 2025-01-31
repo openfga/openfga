@@ -11,12 +11,11 @@ import (
 
 func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 	tests := map[string]struct {
-		model                string
-		objectType           string
-		relation             string
-		userType             string
-		expected             bool
-		assertOnResultingMap func(t *testing.T, resultMap Operands)
+		model      string
+		objectType string
+		relation   string
+		userType   string
+		expected   bool
 	}{
 		`recursive_ttu_or_computed_weight_one_1`: {
 			model: `
@@ -36,10 +35,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 1)
-				require.Contains(t, resultMap, "rel2")
-			},
 		},
 		`recursive_ttu_or_computed_weight_one_2`: {
 			model: `
@@ -59,11 +54,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 2)
-				require.Contains(t, resultMap, "rel2")
-				require.Contains(t, resultMap, "rel1")
-			},
 		},
 		`recursive_ttu_or_computed_weight_one_3`: {
 			model: `
@@ -84,11 +74,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 2)
-				require.Contains(t, resultMap, "rel2")
-				require.Contains(t, resultMap, "rel6")
-			},
 		},
 		`recursive_ttu_or_computed_weight_one_infinity`: {
 			model: `
@@ -123,10 +108,6 @@ type document
 			relation:   "viewer",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 1)
-				require.Contains(t, resultMap, "viewer")
-			},
 		},
 		`recursive_ttu_or_wildcard`: {
 			model: `
@@ -141,10 +122,6 @@ type document
 			relation:   "viewer",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 1)
-				require.Contains(t, resultMap, "viewer")
-			},
 		},
 		`complex_ttu_multiple_parent_types`: {
 			model: `
@@ -262,10 +239,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 1)
-				require.Contains(t, resultMap, "rel2")
-			},
 		},
 		`two_ttus`: {
 			model: `
@@ -302,10 +275,6 @@ type document
 			relation:   "rel1",
 			userType:   "user",
 			expected:   true,
-			assertOnResultingMap: func(t *testing.T, resultMap Operands) {
-				require.Len(t, resultMap, 1)
-				require.Contains(t, resultMap, "rel1")
-			},
 		},
 		`ttu_or_intersection_2`: {
 			model: `
@@ -375,13 +344,8 @@ type document
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			resultMap, is := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
-			require.Equal(t, test.expected, is)
-			if test.expected {
-				test.assertOnResultingMap(t, resultMap)
-			} else {
-				require.Empty(t, resultMap)
-			}
+			res := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType)
+			require.Equal(t, test.expected, res)
 		})
 	}
 }

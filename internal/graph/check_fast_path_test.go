@@ -2760,21 +2760,5 @@ func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
 			require.NotNil(t, val)
 			require.True(t, val.GetAllowed())
 		})
-
-		t.Run("check_against_specific_userset_returns_error", func(t *testing.T) {
-			mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
-			ctx := setRequestContext(context.Background(), ts, mockDatastore, []*openfgav1.TupleKey{nil})
-			iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
-				User:     "document:parent",
-				Relation: "parent",
-				Object:   "document:target",
-			}})
-			_, err := checker.recursiveTTUFastPathUnionAlgebraicOperations(ctx, &ResolveCheckRequest{
-				StoreID:              storeID,
-				AuthorizationModelID: ts.GetAuthorizationModelID(),
-				TupleKey:             tuple.NewTupleKey("document:target", "viewer", "document:parent#viewer"),
-			}, typesystem.TupleToUserset("parent", "viewer"), iter)
-			require.ErrorContains(t, err, "unsupported request")
-		})
 	})
 }

@@ -26,6 +26,12 @@ const DifferenceIndex = 1
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
+func fastPathNoop(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
+	iterChan := make(chan *iterator.Msg)
+	close(iterChan)
+	return iterChan, nil
+}
+
 // fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
@@ -407,6 +413,8 @@ func fastPathRewrite(
 		return fastPathOperationSetup(ctx, req, intersectionSetOperator, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
 		return fastPathOperationSetup(ctx, req, exclusionSetOperator, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+	case *openfgav1.Userset_TupleToUserset:
+		return fastPathNoop(ctx, req)
 	default:
 		return nil, ErrUnknownSetOperator
 	}
@@ -882,7 +890,7 @@ func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	objectProvider, err := newComplexRecursiveObjectProvider(c.concurrencyLimit, typesys)
+	objectProvider, err := newComplexTTURecursiveObjectProvider(c.concurrencyLimit, typesys, recursiveTTURewrite)
 	if err != nil {
 		return nil, err
 	}
