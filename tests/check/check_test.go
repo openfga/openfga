@@ -94,6 +94,7 @@ func TestServerLogs(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
+	cfg.ContextPropagationToDatastore = true
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
