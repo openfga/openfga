@@ -600,6 +600,9 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
+// fanInIteratorChannels aggregates the messages coming from the input channels into a single output channel.
+// It expects the input channels to be closed.
+// It closes the output channel. Callers must wait for the output channel to be closed.
 // NOTE: Can we make this generic and move it to concurrency pkg?
 func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan *iterator.Msg {
 	limit := len(chans)

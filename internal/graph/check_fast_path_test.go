@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/oklog/ulid/v2"
@@ -2698,4 +2699,33 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())
 	})
+}
+
+func TestFanInIteratorChannels(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctx := context.Background()
+
+	channels := make([]chan *iterator.Msg, 1)
+	channels[0] = make(chan *iterator.Msg, 1)
+	channels[0] <- &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{})}
+	close(channels[0])
+	res := fanInIteratorChannels(ctx, channels)
+
+	receivedCount := 0
+
+	for {
+		select {
+		case _, ok := <-res:
+			if !ok {
+				require.Equal(t, 1, receivedCount)
+				return
+			}
+			receivedCount++
+		case <-time.After(1 * time.Second):
+			require.Fail(t, "test timed out")
+		}
+	}
+
 }
