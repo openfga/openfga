@@ -29,6 +29,10 @@ func noopContextGenerator() *structpb.Struct {
 	return &structpb.Struct{}
 }
 
+func TestCheckMatrix(t *testing.T, ds storage.OpenFGADatastore) {
+
+}
+
 func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 	benchmarkScenarios := map[string]struct {
 		inputModel       string

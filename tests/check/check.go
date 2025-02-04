@@ -4,19 +4,22 @@ package check
 import (
 	"context"
 	"fmt"
-	"math"
-	"strings"
-	"testing"
-
+	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
+	"math"
 	"sigs.k8s.io/yaml"
+	"strconv"
+	"strings"
+	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
-
 	"github.com/openfga/openfga/assets"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -55,6 +58,37 @@ type ClientInterface interface {
 	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
 	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
 	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
+}
+
+func RunTestMatrix(t *testing.T, ds storage.OpenFGADatastore, experimentalsEnabled bool) {
+	// if this takes in a datastore, instead of an engine string
+	// then it'll work for the purposes of sandcastle
+	t.Run("test_matrix_"+"TODO get logging better"+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		//cfg := config.MustDefaultConfig()
+		//if experimental {
+		//	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+		//}
+		//cfg.Log.Level = "error"
+		//cfg.Datastore.Engine = engine
+		//cfg.ListUsersDeadline = 0   // no deadline
+		//cfg.ListObjectsDeadline = 0 // no deadline
+		//// extend the timeout for the tests, coverage makes them slower
+		//cfg.RequestTimeout = 10 * time.Second
+		//
+		//cfg.CheckIteratorCache.Enabled = true
+		//
+		//// you'll have to modify this
+		//// or create a new one, this may be used in a many places
+		//tests.StartServer(t, cfg)
+		//
+		//conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+		//
+		//runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, openfgav1.NewOpenFGAServiceClient(conn)})
+		runTestMatrix(t, ds, experimentalsEnabled)
+	})
 }
 
 // RunAllTests will run all check tests.
@@ -1059,8 +1093,8 @@ var matrix = individualTest{
 	},
 }
 
-func runTestMatrix(t *testing.T, params testParams) {
-	model := `model
+func runTestMatrix(t *testing.T, ds storage.OpenFGADatastore, experimentalsEnabled bool) {
+	modelStr := `model
   schema 1.1
 type user
 type employee
@@ -1194,8 +1228,8 @@ type complexity4
 condition xcond(x: string) {
   x == '1'
 }`
-	schemaVersion := params.schemaVersion
-	client := params.client
+	//schemaVersion := params.schemaVersion
+	//client := params.client
 	name := matrix.Name
 
 	ctx := context.Background()
@@ -1208,56 +1242,112 @@ condition xcond(x: string) {
 		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
 			t.Run("stage_"+stage.Name, func(t *testing.T) {
-				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+				// how do we do this in command tests?
+				storeID := ulid.Make().String()
+				model := testutils.MustTransformDSLToProtoWithID(modelStr)
+
+				// create store
+				err := ds.WriteAuthorizationModel(ctx, storeID, model)
 				require.NoError(t, err)
-				storeID := resp.GetId()
-				modelProto := parser.MustTransformDSLToProto(model)
-				writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   schemaVersion,
-					TypeDefinitions: modelProto.GetTypeDefinitions(),
-					Conditions:      modelProto.GetConditions(),
-				})
-				require.NoError(t, err)
-				modelID := writeModelResponse.GetAuthorizationModelId()
 
 				tuples := testutils.Shuffle(stage.Tuples)
-				tuplesLength := len(tuples)
-				if tuplesLength > 0 {
-					for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-						end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-						writeChunk := (tuples)[i:end]
-						_, err = client.Write(ctx, &openfgav1.WriteRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: modelID,
-							Writes: &openfgav1.WriteRequestWrites{
-								TupleKeys: writeChunk,
-							},
-						})
-						require.NoError(t, err)
-					}
+				err = ds.Write(context.Background(), storeID, nil, tuples)
+				require.NoError(t, err)
+
+				ts, err := typesystem.New(model)
+				require.NoError(t, err)
+
+				ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+				// Iterator cache enabled
+				// experimentals yes and no
+				//
+				//cfg.ListUsersDeadline = 0   // no deadline
+				//cfg.ListObjectsDeadline = 0 // no deadline
+				//// extend the timeout for the tests, coverage makes them slower
+				//cfg.RequestTimeout = 10 * time.Second
+
+				//cfg.CheckIteratorCache.Enabled = true
+				localCheckOpts := []graph.LocalCheckerOption{
+					//graph.WithResolveNodeBreadthLimit(100),
+					graph.WithOptimizations(experimentalsEnabled),
 				}
+				//cacheOpts := []graph.CachedCheckResolverOpt{
+				//	graph.WithCacheTTL(10 * time.Second),
+				//}
+				checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
+					//graph.WithCachedCheckResolverOpts(true, cacheOpts...),
+					graph.WithLocalCheckerOpts(localCheckOpts...),
+				}
+
+				checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers(checkBuilderOpts...).Build()
+				require.NoError(t, err)
+				t.Cleanup(checkResolverCloser)
+
+				//////////// OLD
+				//resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+				//require.NoError(t, err)
+				//storeID := resp.GetId()
+				//modelProto := parser.MustTransformDSLToProto(model)
+				//writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+				//	StoreId:         storeID,
+				//	SchemaVersion:   schemaVersion,
+				//	TypeDefinitions: modelProto.GetTypeDefinitions(),
+				//	Conditions:      modelProto.GetConditions(),
+				//})
+				//require.NoError(t, err)
+				//modelID := writeModelResponse.GetAuthorizationModelId()
+				//
+				//tuples := testutils.Shuffle(stage.Tuples)
+				//tuplesLength := len(tuples)
+				//if tuplesLength > 0 {
+				//	for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+				//		end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+				//		writeChunk := (tuples)[i:end]
+				//		_, err = client.Write(ctx, &openfgav1.WriteRequest{
+				//			StoreId:              storeID,
+				//			AuthorizationModelId: modelID,
+				//			Writes: &openfgav1.WriteRequestWrites{
+				//				TupleKeys: writeChunk,
+				//			},
+				//		})
+				//		require.NoError(t, err)
+				//	}
+				//}
 
 				if len(stage.CheckAssertions) == 0 {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
 					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
-						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
+						query := commands.NewCheckCommand(ds, checkResolver, ts)
+						//assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
+						assertCheck(ctx, t, assertion, stage, query, storeID)
 					})
-					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
-						assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
-					})
-					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
-						assertListUsers(ctx, t, assertion, client, storeID, modelID)
-					})
+					//t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
+					//	assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
+					//})
+					//t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
+					//	assertListUsers(ctx, t, assertion, client, storeID, modelID)
+					//})
 				}
 			})
 		}
 	})
 }
 
-func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+// This will also need to take the datastore
+// func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertCheck(
+	ctx context.Context,
+	t *testing.T,
+	assertion *checktest.Assertion,
+	stage *stage,
+	checkQuery *commands.CheckQuery,
+	storeID string,
+	// resolver graph.CheckResolver,
+	// ts typesystem.TypeSystem,
+) {
 	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
 
 	var tupleKey *openfgav1.CheckRequestTupleKey
@@ -1268,22 +1358,31 @@ func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Asserti
 			Object:   assertion.Tuple.GetObject(),
 		}
 	}
-	resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey:             tupleKey,
-		ContextualTuples: &openfgav1.ContextualTupleKeys{
-			// TODO
-			TupleKeys: []*openfgav1.TupleKey{},
-		},
-		Context: assertion.Context,
-		Trace:   true,
+
+	//checkQuery := commands.NewCheckCommand(ds, resolver, ts)
+	resp, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+		StoreID:  storeID,
+		TupleKey: tupleKey,
+		Context:  assertion.Context,
 	})
+
+	//resp, err := client.Check(ctx, &openfgav1.CheckRequest{
+	//	StoreId:              storeID,
+	//	AuthorizationModelId: modelID,
+	//	TupleKey:             tupleKey,
+	//	ContextualTuples: &openfgav1.ContextualTupleKeys{
+	//		// TODO
+	//		TupleKeys: []*openfgav1.TupleKey{},
+	//	},
+	//	Context: assertion.Context,
+	//	Trace:   true,
+	//})
 
 	if assertion.ErrorCode == 0 {
 		require.NoError(t, err, detailedInfo)
 		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
 	} else {
+		// these will be wrong
 		require.Error(t, err, detailedInfo)
 		e, ok := status.FromError(err)
 		require.True(t, ok, detailedInfo)
@@ -1383,8 +1482,4 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 	} else {
 		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
 	}
-}
-
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
-	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 }

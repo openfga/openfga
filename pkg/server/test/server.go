@@ -8,11 +8,18 @@ import (
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
+	RunMatrixTests(t, ds)
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
 	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
+}
+
+func RunMatrixTests(t *testing.T, ds storage.OpenFGADatastore) {
+	t.Run("TestCheckMatrix", func(t *testing.T) {
+		TestCheckMatrix(t, ds)
+	})
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

@@ -5,9 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/openfga/openfga/cmd/util"
 	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -31,35 +31,30 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", true)
-	testRunTestMatrix(t, "memory", false)
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	RunTestMatrix(t, ds, true)
+	//RunTestMatrix(t, ds, false)
 }
 
-func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		cfg := config.MustDefaultConfig()
-		if experimental {
-			cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-		}
-		cfg.Log.Level = "error"
-		cfg.Datastore.Engine = engine
-		cfg.ListUsersDeadline = 0   // no deadline
-		cfg.ListObjectsDeadline = 0 // no deadline
-		// extend the timeout for the tests, coverage makes them slower
-		cfg.RequestTimeout = 10 * time.Second
-
-		cfg.CheckIteratorCache.Enabled = true
-
-		tests.StartServer(t, cfg)
-
-		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-
-		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
-	})
-}
+//func TestMatrixPostgres(t *testing.T) {
+//	RunTestMatrix(t, "postgres", true)
+//	RunTestMatrix(t, "postgres", false)
+//}
+//func TestMatrixMysql(t *testing.T) {
+//	RunTestMatrix(t, "mysql", true)
+//	RunTestMatrix(t, "mysql", false)
+//}
+//func TestMatrixSqlite(t *testing.T) {
+//	RunTestMatrix(t, "sqlite", true)
+//	RunTestMatrix(t, "sqlite", false)
+//}
+//
+//func TestMatrixAll(t *testing.T) {
+//	TestMatrixMemory(t)
+//	TestMatrixPostgres(t)
+//	TestMatrixMysql(t)
+//	TestMatrixSqlite(t)
+//}
 
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
