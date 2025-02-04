@@ -11,7 +11,7 @@ permissions:
 jobs:
   semgrep:
     name: Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     container:
       image: returntocorp/semgrep
     if: (github.repository_owner == 'openfga' && github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
