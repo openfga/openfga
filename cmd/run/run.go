@@ -18,9 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-logr/logr"
-
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-logr/logr"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
