@@ -10241,3 +10241,148 @@ tests:
               relation: can_read
               object: job:1
             expectation: false
+  - name: recursive_ttu_union_algebraic_operations
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: rel2 or rel1 from parent
+              define parent: [document]
+              define rel2: [user] and rel3
+              define rel3: rel4 but not rel5
+              define rel4: [user]
+              define rel5: [user]
+        tuples:
+          - user: user:maria
+            relation: rel2
+            object: document:x
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel2
+            object: document:parent
+          - user: user:maria
+            relation: rel4
+            object: document:parent
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
+  - name: recursive_ttu_union_algebraic_operations_with_wildcard
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: rel2 or rel1 from parent
+              define parent: [document]
+              define rel2: [user] and rel3
+              define rel3: rel4 but not rel5
+              define rel4: [user:*]
+              define rel5: [user]
+        tuples:
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel2
+            object: document:parent
+          - user: user:*
+            relation: rel4
+            object: document:parent
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
+  - name: recursive_ttu_union_two_algebraic_operations
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: rel2 or rel6 or rel1 from parent
+              define parent: [document]
+              define rel2: [user] and rel3
+              define rel3: rel4 but not rel5
+              define rel4: [user:*]
+              define rel5: [user]
+              define rel6: [user]
+        tuples:
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel6
+            object: document:parent
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
+  - name: recursive_ttu_union_terminal_type
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: [user] or rel1 from parent
+              define parent: [document]
+        tuples:
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel1
+            object: document:parent
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
+  - name: recursive_ttu_union_parenthesis_intersection
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type document
+            relations
+              define rel1: (rel2 and rel3) or rel1 from parent
+              define parent: [document]
+              define rel2: [user]
+              define rel3: [user]
+        tuples:
+          - user: document:parent
+            relation: parent
+            object: document:x
+          - user: user:maria
+            relation: rel2
+            object: document:parent
+          - user: user:maria
+            relation: rel2
+            object: document:x
+          - user: user:maria
+            relation: rel3
+            object: document:x
+        checkAssertions:
+          - tuple:
+              user: user:maria
+              relation: rel1
+              object: document:x
+            expectation: true
