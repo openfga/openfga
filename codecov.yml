@@ -6,10 +6,10 @@ ignore:
   # the following folder contains helper test code
   - "pkg/testfixtures/storage"
 coverage:
-  range: 60..75
+  range: 70..85
   round: up
   precision: 2
   status:
     project:
       default:
-        target: 76%
+        target: 85%
