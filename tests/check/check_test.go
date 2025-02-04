@@ -94,7 +94,6 @@ func TestServerLogs(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
-	cfg.ContextPropagationToDatastore = true
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
@@ -337,6 +336,7 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.RequestTimeout = 10 * time.Second
 
 	cfg.CheckIteratorCache.Enabled = true
+	cfg.ContextPropagationToDatastore = true
 
 	// Some tests/stages are sensitive to the cache TTL,
 	// so we set it to a very low value to still exercise
