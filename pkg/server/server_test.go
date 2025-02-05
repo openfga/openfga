@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -233,6 +234,12 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 				WithExperimentals(ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
 			)
+		})
+	})
+
+	t.Run("invalid_dialect", func(t *testing.T) {
+		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
+			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
 		})
 	})
 }

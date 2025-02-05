@@ -130,7 +130,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres")
 
 	return &Datastore{
 		stbl:                   stbl,

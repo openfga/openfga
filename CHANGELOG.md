@@ -19,6 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
 
 ### Fixed
+- Optimized database dialect handling by setting it during initialization instead of per-call, fixing SQL syntax errors in MySQL [#2252](https://github.com/openfga/openfga/pull/2252)
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
 - Fixed incorrect types in configuration JSON schema [#2217](https://github.com/openfga/openfga/pull/2217), [#2228](https://github.com/openfga/openfga/pull/2228).
 - Fixed `BatchCheck` API to validate presence of the `tuple_key` property of a `BatchCheckItem` [#2242](https://github.com/openfga/openfga/issues/2242)

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -400,7 +400,11 @@ type DBInfo struct {
 type errorHandlerFn func(error, ...interface{}) error
 
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialect string) *DBInfo {
+	if err := goose.SetDialect(dialect); err != nil {
+		panic("failed to set database dialect: " + err.Error())
+	}
+
 	return &DBInfo{
 		db:             db,
 		stbl:           stbl,
@@ -705,11 +709,14 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 
 	if revision < build.MinimumSupportedDatastoreSchemaRevision {
 		return storage.ReadinessStatus{
-			Message: fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'. Run 'openfga migrate'.", revision, build.MinimumSupportedDatastoreSchemaRevision),
+			Message: "datastore requires migrations: at revision '" +
+				strconv.FormatInt(revision, 10) +
+				"', but requires '" +
+				strconv.FormatInt(build.MinimumSupportedDatastoreSchemaRevision, 10) +
+				"'. Run 'openfga migrate'.",
 			IsReady: false,
 		}, nil
 	}
-
 	return storage.ReadinessStatus{
 		IsReady: true,
 	}, nil
