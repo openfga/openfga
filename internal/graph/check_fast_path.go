@@ -619,14 +619,21 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
-			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case msg, ok := <-c:
+					if !ok {
+						return nil
+					}
+					if !concurrency.TrySendThroughChannel(ctx, msg, out) {
+						if msg.Iter != nil {
+							msg.Iter.Stop()
+						}
 					}
 				}
 			}
-			return nil
 		})
 	}
 
