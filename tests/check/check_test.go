@@ -336,6 +336,7 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.RequestTimeout = 10 * time.Second
 
 	cfg.CheckIteratorCache.Enabled = true
+	cfg.ContextPropagationToDatastore = true
 
 	// Some tests/stages are sensitive to the cache TTL,
 	// so we set it to a very low value to still exercise
