@@ -443,7 +443,9 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
+		c.goroutineWaiter.Add(1)
 		go func() {
+			defer c.goroutineWaiter.Done()
 			for msg := range leftChan {
 				if msg.Iter != nil {
 					msg.Iter.Stop()
@@ -606,6 +608,9 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
+// fanInIteratorChannels aggregates the messages coming from the input channels into a single output channel.
+// It expects the input channels to be closed.
+// It closes the output channel. Callers must wait for the output channel to be closed.
 // NOTE: Can we make this generic and move it to concurrency pkg?
 func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan *iterator.Msg {
 	limit := len(chans)
@@ -614,14 +619,21 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
-			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case msg, ok := <-c:
+					if !ok {
+						return nil
+					}
+					if !concurrency.TrySendThroughChannel(ctx, msg, out) {
+						if msg.Iter != nil {
+							msg.Iter.Stop()
+						}
 					}
 				}
 			}
-			return nil
 		})
 	}
 
