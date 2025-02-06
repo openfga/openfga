@@ -1,6 +1,7 @@
 package check
 
 import (
+	"github.com/openfga/openfga/internal/condition"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -206,12 +207,14 @@ var usersetCompleteTestingModelTest = []*stage{
 			{
 				Name:      "user_no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:utcwd_1", Relation: "userset_to_computed_wild_cond", User: "user:utwcd_1"},
+				Error:     condition.ErrEvaluationFailed,
 				ErrorCode: 2000,
 			},
 			{
 				Name:      "employee_no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:utcwd_2", Relation: "userset_to_computed_wild_cond", User: "employee:utwcd_2"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -251,6 +254,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uuc_1", Relation: "userset_cond", User: "user:uuc_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -287,9 +291,10 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 
 			{
-				Name:      "no_cond",
-				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uuctc_1", Relation: "userset_cond_to_computed", User: "user:uuctc_1"},
-				ErrorCode: 2000,
+				Name:  "no_cond",
+				Tuple: &openfgav1.TupleKey{Object: "usersets-user:uuctc_1", Relation: "userset_cond_to_computed", User: "user:uuctc_1"},
+				Error: condition.ErrEvaluationFailed,
+				//ErrorCode: 2000,
 			},
 		},
 	},
@@ -329,6 +334,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uuctcc_1", Relation: "userset_cond_to_computed_cond", User: "user:uuctcc_2"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -389,6 +395,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uuctcwc_1", Relation: "userset_cond_to_computed_wild_cond", User: "user:uuctcwc_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -441,12 +448,14 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_3"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:               "invalid_object",
 				Tuple:              &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
 				Expectation:        false,
 				ListUsersErrorCode: 2000,
+				Error:              condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -544,6 +553,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:utbc_1", Relation: "userset_to_butnot_computed", User: "user:utbc_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "but_not_case",
@@ -584,6 +594,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:utac_1", Relation: "userset_to_and_computed", User: "user:utac_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "invalid_user",
@@ -951,12 +962,14 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "valid_userset_directs-user_cond_no_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:userset_or_2", Relation: "or_userset", User: "user:uou_2"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 
 			{
 				Name:      "valid_userset_directs-employee_cond_ino_cond",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:userset_or_4", Relation: "or_userset", User: "employee:uou_4"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "invalid_userset",
@@ -1009,6 +1022,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:uau_1", Relation: "and_userset", User: "user:uau_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "invalid_object",
@@ -1074,6 +1088,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:bnu_1", Relation: "butnot_userset", User: "user:bnu_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -1137,6 +1152,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "user_direct_cond_no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:nou_2", Relation: "nested_or_userset", User: "user:nou_2"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "valid_user_butnot_computed",
@@ -1161,6 +1177,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "butnot_computed_no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:nou_4", Relation: "nested_or_userset", User: "user:nou_4"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -1197,6 +1214,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:nau_1", Relation: "nested_and_userset", User: "user:nau_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -1288,6 +1306,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:ttdcu_1", Relation: "ttu_direct_cond_userset", User: "user:ttdcu_1"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 
 			{
@@ -1351,6 +1370,7 @@ var usersetCompleteTestingModelTest = []*stage{
 				Name:      "user_direct_cond_no_condition",
 				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:ttuodu_3", Relation: "ttu_or_direct_userset", User: "user:ttuodu_3"},
 				ErrorCode: 2000,
+				Error:     condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -1378,9 +1398,9 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:      "no_condition",
-				Tuple:     &openfgav1.TupleKey{Object: "usersets-user:ttuadu_1", Relation: "ttu_and_direct_userset", User: "user:ttuadu_1"},
-				ErrorCode: 2000,
+				Name:  "no_condition",
+				Tuple: &openfgav1.TupleKey{Object: "usersets-user:ttuadu_1", Relation: "ttu_and_direct_userset", User: "user:ttuadu_1"},
+				Error: condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "invalid_user",

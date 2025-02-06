@@ -14,6 +14,7 @@ type Assertion struct {
 	Tuple       *openfgav1.TupleKey
 	Expectation bool
 	ErrorCode   int `json:"errorCode"`
+	Error       error
 	// For other APIs
 	ListObjectsErrorCode int
 	ListUsersErrorCode   int

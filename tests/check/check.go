@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -290,9 +291,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:valid"},
-					ErrorCode: 2000,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:               "invalid_user_no_cond",
@@ -395,6 +396,7 @@ var matrix = individualTest{
 					Name:      "valid_user_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:                 "not_public_id_no_cond",
@@ -406,6 +408,7 @@ var matrix = individualTest{
 					Name:      "self_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:*"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "self_valid_cond",
@@ -504,6 +507,7 @@ var matrix = individualTest{
 					Name:      "valid_userwithcond_user",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_validwithcond_user",
@@ -570,11 +574,13 @@ var matrix = individualTest{
 					Name:      "valid_user_not_public",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:      "valid_user_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_with_invalid_cond",
@@ -613,6 +619,7 @@ var matrix = individualTest{
 					Name:      "valid_user_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_invalid_cond",
@@ -692,6 +699,7 @@ var matrix = individualTest{
 					Name:      "valid_user_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -728,6 +736,7 @@ var matrix = individualTest{
 					Name:      "valid_user_no_cond_public",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_with_invalid_cond_public",
@@ -755,6 +764,7 @@ var matrix = individualTest{
 					Name:      "valid_user_no_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -816,6 +826,7 @@ var matrix = individualTest{
 					Name:      "valid_cond_missing",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_falsy",
@@ -877,6 +888,7 @@ var matrix = individualTest{
 					Name:      "valid_wildcard_cond_missing",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:*"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_wildcard_cond_truthy",
@@ -888,6 +900,7 @@ var matrix = individualTest{
 					Name:      "valid_cond_missing",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_truthy",
@@ -987,6 +1000,7 @@ var matrix = individualTest{
 					Name:      "path_2_without_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "path_2_with_cond_falsey",
@@ -1024,6 +1038,7 @@ var matrix = individualTest{
 					Name:      "user_valid_missing_cond",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "user_valid_cond_truthy",
@@ -1063,6 +1078,7 @@ var matrix = individualTest{
 					Name:      "base_err_diff_false",
 					Tuple:     &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
 					ErrorCode: 2000,
+					Error:     condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "base_false_diff_true",
@@ -1321,7 +1337,6 @@ condition xcond(x: string) {
 				for _, assertion := range stage.CheckAssertions {
 					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
 						query := commands.NewCheckCommand(ds, checkResolver, ts)
-						//assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 						assertCheck(ctx, t, assertion, stage, query, storeID)
 					})
 					//t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
@@ -1336,8 +1351,6 @@ condition xcond(x: string) {
 	})
 }
 
-// This will also need to take the datastore
-// func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
 func assertCheck(
 	ctx context.Context,
 	t *testing.T,
@@ -1345,8 +1358,6 @@ func assertCheck(
 	stage *stage,
 	checkQuery *commands.CheckQuery,
 	storeID string,
-	// resolver graph.CheckResolver,
-	// ts typesystem.TypeSystem,
 ) {
 	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
 
@@ -1359,34 +1370,24 @@ func assertCheck(
 		}
 	}
 
-	//checkQuery := commands.NewCheckCommand(ds, resolver, ts)
 	resp, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
 		StoreID:  storeID,
 		TupleKey: tupleKey,
 		Context:  assertion.Context,
 	})
 
-	//resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-	//	StoreId:              storeID,
-	//	AuthorizationModelId: modelID,
-	//	TupleKey:             tupleKey,
-	//	ContextualTuples: &openfgav1.ContextualTupleKeys{
-	//		// TODO
-	//		TupleKeys: []*openfgav1.TupleKey{},
-	//	},
-	//	Context: assertion.Context,
-	//	Trace:   true,
-	//})
-
-	if assertion.ErrorCode == 0 {
+	if assertion.Error == nil && assertion.ErrorCode == 0 {
 		require.NoError(t, err, detailedInfo)
 		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
 	} else {
 		// these will be wrong
 		require.Error(t, err, detailedInfo)
-		e, ok := status.FromError(err)
-		require.True(t, ok, detailedInfo)
-		require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+		t.Logf("Justin the err: %+v", err)
+		//t.Logf("Justin the err is: %t", errors.Is(err, condition.ErrEvaluationFailed))
+		require.ErrorIs(t, err, assertion.Error, detailedInfo)
+		//e, ok := status.FromError(err)
+		//require.True(t, ok, detailedInfo)
+		//require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 	}
 }
 
