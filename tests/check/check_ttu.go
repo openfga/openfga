@@ -1,6 +1,7 @@
 package check
 
 import (
+	"github.com/openfga/openfga/internal/condition"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -584,9 +585,9 @@ var ttuCompleteTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:      "missing_context_for_condition",
-				Tuple:     &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:1"},
-				ErrorCode: 2000,
+				Name:  "missing_context_for_condition",
+				Tuple: &openfgav1.TupleKey{Object: "ttus:14", Relation: "userset_cond_userset_comp_wild_cond_ch", User: "user:1"},
+				Error: condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "path_and_cond_true",

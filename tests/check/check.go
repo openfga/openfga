@@ -393,10 +393,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:                 "not_public_id_no_cond",
@@ -405,10 +404,9 @@ var matrix = individualTest{
 					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
-					Name:      "self_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:*"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "self_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wild_cond", User: "user:*"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "self_valid_cond",
@@ -504,10 +502,9 @@ var matrix = individualTest{
 					Expectation: false,
 				},
 				{
-					Name:      "valid_userwithcond_user",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_userwithcond_user",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:validwithcond"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_validwithcond_user",
@@ -571,16 +568,14 @@ var matrix = individualTest{
 					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
-					Name:      "valid_user_not_public",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_not_public",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_with_invalid_cond",
@@ -616,10 +611,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_invalid_cond",
@@ -696,10 +690,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -733,10 +726,9 @@ var matrix = individualTest{
 					Expectation: false,
 				},
 				{
-					Name:      "valid_user_no_cond_public",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond_public",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_user_with_invalid_cond_public",
@@ -761,10 +753,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_user_no_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_user_no_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -823,10 +814,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_cond_missing",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_cond_missing",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:computed_cond", Relation: "computed_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_falsy",
@@ -885,10 +875,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "valid_wildcard_cond_missing",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:*"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_wildcard_cond_missing",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:*"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_wildcard_cond_truthy",
@@ -897,10 +886,9 @@ var matrix = individualTest{
 					Expectation: true,
 				},
 				{
-					Name:      "valid_cond_missing",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "valid_cond_missing",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:computed_wild_cond", Relation: "computed_wild_cond", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_truthy",
@@ -997,10 +985,9 @@ var matrix = individualTest{
 					ListUsersErrorCode: 2000,
 				},
 				{
-					Name:      "path_2_without_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "path_2_without_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid2"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "path_2_with_cond_falsey",
@@ -1035,10 +1022,9 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:      "user_valid_missing_cond",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "user_valid_missing_cond",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:and_computed", Relation: "and_computed", User: "user:valid"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "user_valid_cond_truthy",
@@ -1075,10 +1061,9 @@ var matrix = individualTest{
 					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
-					Name:      "base_err_diff_false",
-					Tuple:     &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
-					ErrorCode: 2000,
-					Error:     condition.ErrEvaluationFailed,
+					Name:  "base_err_diff_false",
+					Tuple: &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:another"},
+					Error: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "base_false_diff_true",
@@ -1376,7 +1361,7 @@ func assertCheck(
 		Context:  assertion.Context,
 	})
 
-	if assertion.Error == nil && assertion.ErrorCode == 0 {
+	if assertion.Error == nil {
 		require.NoError(t, err, detailedInfo)
 		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
 	} else {
