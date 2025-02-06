@@ -96,12 +96,12 @@ func (r *internalListUsersRequest) GetContext() *structpb.Struct {
 	return r.Context
 }
 
-type listUsersResponse struct {
+type ListUsersResponse struct {
 	Users    []*openfgav1.User
-	Metadata listUsersResponseMetadata
+	Metadata ListUsersResponseMetadata
 }
 
-type listUsersResponseMetadata struct {
+type ListUsersResponseMetadata struct {
 	DatastoreQueryCount uint32
 
 	// The number of times we are recursively expanding to find users.
@@ -112,16 +112,16 @@ type listUsersResponseMetadata struct {
 	WasThrottled *atomic.Bool
 }
 
-func (r *listUsersResponse) GetUsers() []*openfgav1.User {
+func (r *ListUsersResponse) GetUsers() []*openfgav1.User {
 	if r == nil {
 		return []*openfgav1.User{}
 	}
 	return r.Users
 }
 
-func (r *listUsersResponse) GetMetadata() listUsersResponseMetadata {
+func (r *ListUsersResponse) GetMetadata() ListUsersResponseMetadata {
 	if r == nil {
-		return listUsersResponseMetadata{}
+		return ListUsersResponseMetadata{}
 	}
 	return r.Metadata
 }

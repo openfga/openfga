@@ -448,7 +448,6 @@ var usersetCompleteTestingModelTest = []*stage{
 				Tuple:          &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
 				Expectation:    false,
 				ListUsersError: condition.ErrEvaluationFailed,
-				Error:          condition.ErrEvaluationFailed,
 			},
 		},
 	},

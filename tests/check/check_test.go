@@ -33,28 +33,31 @@ import (
 func TestMatrixMemory(t *testing.T) {
 	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 	RunTestMatrix(t, ds, true)
-	//RunTestMatrix(t, ds, false)
+	RunTestMatrix(t, ds, false)
 }
 
-//func TestMatrixPostgres(t *testing.T) {
-//	RunTestMatrix(t, "postgres", true)
-//	RunTestMatrix(t, "postgres", false)
-//}
-//func TestMatrixMysql(t *testing.T) {
-//	RunTestMatrix(t, "mysql", true)
-//	RunTestMatrix(t, "mysql", false)
-//}
-//func TestMatrixSqlite(t *testing.T) {
-//	RunTestMatrix(t, "sqlite", true)
-//	RunTestMatrix(t, "sqlite", false)
-//}
-//
-//func TestMatrixAll(t *testing.T) {
-//	TestMatrixMemory(t)
-//	TestMatrixPostgres(t)
-//	TestMatrixMysql(t)
-//	TestMatrixSqlite(t)
-//}
+func TestMatrixPostgres(t *testing.T) {
+	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
+	RunTestMatrix(t, ds, true)
+	RunTestMatrix(t, ds, false)
+}
+func TestMatrixMysql(t *testing.T) {
+	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
+	RunTestMatrix(t, ds, true)
+	RunTestMatrix(t, ds, false)
+}
+func TestMatrixSqlite(t *testing.T) {
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
+	RunTestMatrix(t, ds, true)
+	RunTestMatrix(t, ds, false)
+}
+
+func TestMatrixAll(t *testing.T) {
+	TestMatrixMemory(t)
+	TestMatrixPostgres(t)
+	TestMatrixMysql(t)
+	TestMatrixSqlite(t)
+}
 
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")

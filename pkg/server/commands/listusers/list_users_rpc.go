@@ -171,7 +171,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 func (l *ListUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
-) (*listUsersResponse, error) {
+) (*ListUsersResponse, error) {
 	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
@@ -199,9 +199,9 @@ func (l *ListUsersQuery) ListUsers(
 		}
 		if !hasPossibleEdges {
 			span.SetAttributes(attribute.Bool("no_possible_edges", true))
-			return &listUsersResponse{
+			return &ListUsersResponse{
 				Users: []*openfgav1.User{},
-				Metadata: listUsersResponseMetadata{
+				Metadata: ListUsersResponseMetadata{
 					DispatchCounter: new(atomic.Uint32),
 					WasThrottled:    new(atomic.Bool),
 				},
@@ -278,9 +278,9 @@ func (l *ListUsersQuery) ListUsers(
 
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
-	return &listUsersResponse{
+	return &ListUsersResponse{
 		Users: foundUsers,
-		Metadata: listUsersResponseMetadata{
+		Metadata: ListUsersResponseMetadata{
 			DatastoreQueryCount: l.datastore.GetMetrics().DatastoreQueryCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,

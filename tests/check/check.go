@@ -4,7 +4,6 @@ package check
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	"math"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -65,32 +65,10 @@ type ClientInterface interface {
 }
 
 func RunTestMatrix(t *testing.T, ds storage.OpenFGADatastore, experimentalsEnabled bool) {
-	// if this takes in a datastore, instead of an engine string
-	// then it'll work for the purposes of sandcastle
 	t.Run("test_matrix_"+"TODO get logging better"+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
-		// cfg := config.MustDefaultConfig()
-		//if experimental {
-		//	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-		//}
-		//cfg.Log.Level = "error"
-		//cfg.Datastore.Engine = engine
-		//cfg.ListUsersDeadline = 0   // no deadline
-		//cfg.ListObjectsDeadline = 0 // no deadline
-		//// extend the timeout for the tests, coverage makes them slower
-		//cfg.RequestTimeout = 10 * time.Second
-		//
-		//cfg.CheckIteratorCache.Enabled = true
-		//
-		//// you'll have to modify this
-		//// or create a new one, this may be used in a many places
-		//tests.StartServer(t, cfg)
-		//
-		//conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-		//
-		//runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, openfgav1.NewOpenFGAServiceClient(conn)})
 		runTestMatrix(t, ds, experimentalsEnabled)
 	})
 }
@@ -1233,7 +1211,7 @@ condition xcond(x: string) {
   x == '1'
 }`
 	// schemaVersion := params.schemaVersion
-	//client := params.client
+	// client := params.client
 	name := matrix.Name
 
 	ctx := context.Background()
@@ -1263,16 +1241,10 @@ condition xcond(x: string) {
 
 				ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-				// TODO: experimentals yes and no
-
 				localCheckOpts := []graph.LocalCheckerOption{
 					graph.WithOptimizations(experimentalsEnabled),
 				}
-				// cacheOpts := []graph.CachedCheckResolverOpt{
-				//	graph.WithCacheTTL(10 * time.Second),
-				//}
 				checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
-					// graph.WithCachedCheckResolverOpts(true, cacheOpts...),
 					graph.WithLocalCheckerOpts(localCheckOpts...),
 				}
 
@@ -1280,51 +1252,20 @@ condition xcond(x: string) {
 				require.NoError(t, err)
 				t.Cleanup(checkResolverCloser)
 
-				//////////// OLD
-				// resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
-				//require.NoError(t, err)
-				//storeID := resp.GetId()
-				//modelProto := parser.MustTransformDSLToProto(model)
-				//writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-				//	StoreId:         storeID,
-				//	SchemaVersion:   schemaVersion,
-				//	TypeDefinitions: modelProto.GetTypeDefinitions(),
-				//	Conditions:      modelProto.GetConditions(),
-				//})
-				//require.NoError(t, err)
-				//modelID := writeModelResponse.GetAuthorizationModelId()
-				//
-				//tuples := testutils.Shuffle(stage.Tuples)
-				//tuplesLength := len(tuples)
-				//if tuplesLength > 0 {
-				//	for i := 0; i < tuplesLength; i += writeMaxChunkSize {
-				//		end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-				//		writeChunk := (tuples)[i:end]
-				//		_, err = client.Write(ctx, &openfgav1.WriteRequest{
-				//			StoreId:              storeID,
-				//			AuthorizationModelId: modelID,
-				//			Writes: &openfgav1.WriteRequestWrites{
-				//				TupleKeys: writeChunk,
-				//			},
-				//		})
-				//		require.NoError(t, err)
-				//	}
-				//}
-
 				if len(stage.CheckAssertions) == 0 {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
 					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
-						_ = commands.NewCheckCommand(ds, checkResolver, ts)
-						//	assertCheck(ctx, t, assertion, stage, query, storeID)
+						query := commands.NewCheckCommand(ds, checkResolver, ts)
+						assertCheck(ctx, t, assertion, stage, query, storeID)
 					})
-					//t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
-					//	query, err := commands.NewListObjectsQuery(ds, checkResolver)
-					//	require.NoError(t, err)
-					//
-					//	assertListObjects(ctx, t, assertion, stage, query, storeID)
-					//})
+					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
+						query, err := commands.NewListObjectsQuery(ds, checkResolver)
+						require.NoError(t, err)
+
+						assertListObjects(ctx, t, assertion, stage, query, storeID)
+					})
 					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
 						query := listusers.NewListUsersQuery(ds, nil)
 						assertListUsers(ctx, t, assertion, query, storeID)
