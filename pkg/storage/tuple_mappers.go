@@ -52,11 +52,7 @@ func (n UsersetMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	res, err := n.doMap(tupleRes)
-	if err != nil {
-		return n.Next(ctx)
-	}
-	return res, nil
+	return n.doMap(tupleRes)
 }
 
 func (n UsersetMapper) Stop() {
@@ -75,7 +71,7 @@ func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 
 func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
-	if relation == "" {
+	if relation == "" && !tuple.IsWildcard(usersetName) {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.
 		return "", fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 	}
@@ -94,11 +90,7 @@ func (n TTUMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	res, err := n.doMap(tupleRes)
-	if err != nil {
-		return n.Next(ctx)
-	}
-	return res, nil
+	return n.doMap(tupleRes)
 }
 
 func (n TTUMapper) Stop() {
