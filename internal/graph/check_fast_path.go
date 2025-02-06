@@ -472,20 +472,28 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		rightSet.Add(r.userset)
 	}
 
+	var lastErr error
+
+ConsumerLoop:
 	for leftOpen || rightOpen {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			lastErr = ctx.Err()
+			break ConsumerLoop
 		case msg, ok := <-leftChan:
 			if !ok {
 				leftOpen = false
 				if leftSet.Size() == 0 {
-					return res, ctx.Err()
+					if ctx.Err() != nil {
+						lastErr = ctx.Err()
+					}
+					break ConsumerLoop
 				}
 				break
 			}
 			if msg.Err != nil {
-				return nil, msg.Err
+				lastErr = msg.Err
+				break ConsumerLoop
 			}
 			for {
 				t, err := msg.Iter.Next(ctx)
@@ -494,13 +502,15 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 					if storage.IterIsDoneOrCancelled(err) {
 						break
 					}
-					return nil, err
+					lastErr = err
+					continue
 				}
 				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
 					msg.Iter.Stop()
 					res.Allowed = true
 					span.SetAttributes(attribute.Bool("allowed", true))
-					return res, ctx.Err()
+					lastErr = nil
+					break ConsumerLoop
 				}
 			}
 		case msg, ok := <-rightChan:
@@ -509,16 +519,18 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 				break
 			}
 			if msg.err != nil {
-				return nil, msg.err
+				lastErr = msg.err
+				continue
 			}
 			if processUsersetMessage(msg.userset, rightSet, leftSet) {
 				res.Allowed = true
 				span.SetAttributes(attribute.Bool("allowed", true))
-				return res, nil
+				lastErr = nil
+				break ConsumerLoop
 			}
 		}
 	}
-	return res, ctx.Err()
+	return res, lastErr
 }
 
 func constructLeftChannels(ctx context.Context,

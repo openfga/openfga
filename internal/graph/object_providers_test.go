@@ -296,7 +296,6 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 					actualMessages = append(actualMessages, res)
 				}
 
-				fmt.Println(actualMessages)
 				require.Len(t, actualMessages, 1)
 				require.Empty(t, actualMessages[0].userset)
 				require.Error(t, actualMessages[0].err)
