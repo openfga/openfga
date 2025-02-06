@@ -579,6 +579,9 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 		return false
 	}
 
+	// verifying weight here is not enough given the object#relation might be weight 2, but we do not explicitly know
+	// the userset given we aren't in the weighted graph as we traverse, thus having to fully inspect to match the context
+	// of what is being resolved.
 	_, ok = node.GetWeight(userType)
 	if !ok {
 		return false
@@ -617,10 +620,10 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
 			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
 				w, ok := edge.GetWeight(userType)
-				if ok && w > 2 {
-					return false
-				}
 				if ok {
+					if w > 2 {
+						return false
+					}
 					usersetEdges = append(usersetEdges, edge)
 				}
 			}
@@ -645,6 +648,9 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 		return false
 	}
 
+	// verifying weight here is not enough given the relation from parent might be weight 2, but we do not explicitly know
+	// the ttu given we aren't in the weighted graph as we traverse and that ttu could possibly not have a weight for the terminal type,
+	// thus having to fully inspect to match the context of what is being resolved.
 	_, ok = node.GetWeight(userType)
 	if !ok {
 		return false
@@ -677,10 +683,10 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
 				w, ok := edge.GetWeight(userType)
-				if ok && w > 2 {
-					return false
-				}
 				if ok {
+					if w > 2 {
+						return false
+					}
 					ttuEdges = append(ttuEdges, edge)
 				}
 			}
@@ -775,7 +781,7 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		}
 		// type doc
 		// relations
-		// viewer: rel2 and rel3 but no or viewer from parent
+		// viewer: rel2 and rel3 but not or viewer from parent
 		// everything else must comply with being weight = 1
 		if w, ok := edge.GetWeight(userType); ok && w > 1 {
 			return false

@@ -6222,11 +6222,10 @@ func TestRecursiveTTUCanFastPath(t *testing.T) {
 					schema 1.1
 				type user
 				type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user, employee] or member from parent
-`,
+				type group
+					relations
+					define parent: [group]
+					define member: [user, employee] or member from parent`,
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			objectType:         "group",
@@ -6238,15 +6237,14 @@ type group
 		{
 			name: "simple_ttu_multiple_types_wildcard",
 			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user:*, employee] or member from parent
-`,
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define parent: [group]
+						define member: [user:*, employee] or member from parent`,
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			objectType:         "group",
