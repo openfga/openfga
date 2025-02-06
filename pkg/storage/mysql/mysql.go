@@ -62,7 +62,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		if cfg.Password != "" {
 			dsnCfg.Passwd = cfg.Password
 		}
-
+		dsnCfg.AllowNativePasswords = true
 		uri = dsnCfg.FormatDSN()
 	}
 

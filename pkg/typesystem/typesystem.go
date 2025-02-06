@@ -579,13 +579,12 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 		return false
 	}
 
-	w, ok := node.GetWeight(userType)
+	// verifying weight here is not enough given the object#relation might be weight 2, but we do not explicitly know
+	// the userset given we aren't in the weighted graph as we traverse, thus having to fully inspect to match the context
+	// of what is being resolved.
+	_, ok = node.GetWeight(userType)
 	if !ok {
 		return false
-	}
-
-	if w == 2 {
-		return true
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
@@ -620,10 +619,13 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 			// each edge must belong to one of the directly assignable userset types AND each one of them
 			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
 			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
-				if w, ok := edge.GetWeight(userType); ok && w > 2 {
-					return false
+				w, ok := edge.GetWeight(userType)
+				if ok {
+					if w > 2 {
+						return false
+					}
+					usersetEdges = append(usersetEdges, edge)
 				}
-				usersetEdges = append(usersetEdges, edge)
 			}
 		}
 		if len(innerEdges) == 0 {
@@ -645,16 +647,13 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	if !ok {
 		return false
 	}
-	// node.weight(userType) is the maximum weight to get to "userType".
-	// if the weight is exactly 2 (and all TTUs are a minimum of 2), exit early.
-	// if the weight is > 2:
-	//	it is possible that the node has multiple paths to arrive to "userType", but the TTU rewrite being evaluated could actually have weight == 2, in which case return true.
-	w, ok := node.GetWeight(userType)
+
+	// verifying weight here is not enough given the relation from parent might be weight 2, but we do not explicitly know
+	// the ttu given we aren't in the weighted graph as we traverse and that ttu could possibly not have a weight for the terminal type,
+	// thus having to fully inspect to match the context of what is being resolved.
+	_, ok = node.GetWeight(userType)
 	if !ok {
 		return false
-	}
-	if w == 2 {
-		return true
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
@@ -683,10 +682,13 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetConditionedOn() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-				if w, ok := edge.GetWeight(userType); ok && w > 2 {
-					return false
+				w, ok := edge.GetWeight(userType)
+				if ok {
+					if w > 2 {
+						return false
+					}
+					ttuEdges = append(ttuEdges, edge)
 				}
-				ttuEdges = append(ttuEdges, edge)
 			}
 		}
 		if len(innerEdges) == 0 {
@@ -728,7 +730,7 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // If true, it returns a map of Operands (edges) leaving the OR.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string) bool {
+func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -763,20 +765,30 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		return false
 	}
 
+	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
+	computedRelation := ttu.GetComputedUserset().GetRelation()
+	recursiveTTUFound := false
+
 	for _, edge := range edgesFromUnionNode {
 		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-		if edge.GetEdgeType() == graph.TTUEdge {
-			if w, ok := edge.GetWeight(userType); ok && w == graph.Infinite && edge.GetTo() == objRelNode {
+		if edge.GetEdgeType() == graph.TTUEdge &&
+			edge.GetConditionedOn() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
+			w, ok := edge.GetWeight(userType)
+			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
+				recursiveTTUFound = true
 				continue
 			}
 		}
+		// type doc
+		// relations
+		// viewer: rel2 and rel3 but not or viewer from parent
 		// everything else must comply with being weight = 1
 		if w, ok := edge.GetWeight(userType); ok && w > 1 {
 			return false
 		}
 	}
 
-	return true
+	return recursiveTTUFound
 }
 
 // PathExists returns true if:
