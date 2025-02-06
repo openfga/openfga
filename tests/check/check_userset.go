@@ -1097,10 +1097,10 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:                 "valid_user_direct",
-				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_1"},
-				Expectation:          true,
-				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+				Name:             "valid_user_direct",
+				Tuple:            &openfgav1.TupleKey{Object: "usersets-user:nou_1", Relation: "nested_or_userset", User: "user:nou_1"},
+				Expectation:      true,
+				ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
 			{
 				Name:        "valid_user_direct_cond",
@@ -1115,10 +1115,10 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:                 "valid_user_direct_wild",
-				Tuple:                &openfgav1.TupleKey{Object: "usersets-user:nou_3", Relation: "nested_or_userset", User: "user:nou_3"},
-				Expectation:          true,
-				ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+				Name:             "valid_user_direct_wild",
+				Tuple:            &openfgav1.TupleKey{Object: "usersets-user:nou_3", Relation: "nested_or_userset", User: "user:nou_3"},
+				Expectation:      true,
+				ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 			},
 			/*
 				// Disable due to https://github.com/openfga/openfga/issues/2179

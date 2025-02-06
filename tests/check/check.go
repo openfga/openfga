@@ -398,10 +398,10 @@ var matrix = individualTest{
 					Error: condition.ErrEvaluationFailed,
 				},
 				{
-					Name:                 "not_public_id_no_cond",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:not-public", Relation: "direct_wild_cond", User: "user:valid"},
-					Expectation:          false,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "not_public_id_no_cond",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:not-public", Relation: "direct_wild_cond", User: "user:valid"},
+					Expectation:      false,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:  "self_no_cond",
@@ -562,10 +562,10 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:                 "valid_user",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Expectation:          true,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "valid_user",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
+					Expectation:      true,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:  "valid_user_not_public",
@@ -628,10 +628,10 @@ var matrix = individualTest{
 					Expectation: true,
 				},
 				{
-					Name:                 "valid_user_public_doc",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
-					Expectation:          true,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "valid_user_public_doc",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_cond_and_direct_wild", User: "user:valid"},
+					Expectation:      true,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:               "invalid_user_no_cond",
@@ -707,11 +707,11 @@ var matrix = individualTest{
 					Expectation: false,
 				},
 				{
-					Name:                 "invalid_user_no_cond",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
-					Expectation:          false,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:               "invalid_user_no_cond",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Expectation:        false,
+					ListObjectsError:   condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersErrorCode: 2000,                          // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:        "valid_cond_invalid_user",
@@ -770,10 +770,10 @@ var matrix = individualTest{
 					Expectation: false,
 				},
 				{
-					Name:                 "valid_user_no_cond_public",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
-					Expectation:          true,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "valid_user_no_cond_public",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:2", Relation: "direct_wildcard_and_direct_wildcard_cond", User: "user:valid"},
+					Expectation:      true,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 			},
 		},
@@ -1054,11 +1054,11 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:                 "base_err_diff_true",
-					Tuple:                &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
-					Expectation:          false,
-					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
-					ListUsersErrorCode:   2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:               "base_err_diff_true",
+					Tuple:              &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Expectation:        false,
+					ListObjectsError:   condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersErrorCode: 2000,                          // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
 					Name:  "base_err_diff_false",
@@ -1260,17 +1260,9 @@ condition xcond(x: string) {
 
 				ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-				// Iterator cache enabled
-				// experimentals yes and no
-				//
-				//cfg.ListUsersDeadline = 0   // no deadline
-				//cfg.ListObjectsDeadline = 0 // no deadline
-				//// extend the timeout for the tests, coverage makes them slower
-				//cfg.RequestTimeout = 10 * time.Second
+				// TODO: experimentals yes and no
 
-				//cfg.CheckIteratorCache.Enabled = true
 				localCheckOpts := []graph.LocalCheckerOption{
-					//graph.WithResolveNodeBreadthLimit(100),
 					graph.WithOptimizations(experimentalsEnabled),
 				}
 				//cacheOpts := []graph.CachedCheckResolverOpt{
@@ -1320,13 +1312,16 @@ condition xcond(x: string) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
-						query := commands.NewCheckCommand(ds, checkResolver, ts)
-						assertCheck(ctx, t, assertion, stage, query, storeID)
-					})
-					//t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
-					//	assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
+					//t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
+					//	query := commands.NewCheckCommand(ds, checkResolver, ts)
+					//	assertCheck(ctx, t, assertion, stage, query, storeID)
 					//})
+					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
+						query, err := commands.NewListObjectsQuery(ds, checkResolver)
+						require.NoError(t, err)
+
+						assertListObjects(ctx, t, assertion, stage, query, storeID)
+					})
 					//t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
 					//	assertListUsers(ctx, t, assertion, client, storeID, modelID)
 					//})
@@ -1365,25 +1360,26 @@ func assertCheck(
 		require.NoError(t, err, detailedInfo)
 		require.Equal(t, assertion.Expectation, resp.GetAllowed(), detailedInfo)
 	} else {
-		// these will be wrong
 		require.Error(t, err, detailedInfo)
-		t.Logf("Justin the err: %+v", err)
-		//t.Logf("Justin the err is: %t", errors.Is(err, condition.ErrEvaluationFailed))
 		require.ErrorIs(t, err, assertion.Error, detailedInfo)
-		//e, ok := status.FromError(err)
-		//require.True(t, ok, detailedInfo)
-		//require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 	}
 }
 
-func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertListObjects(
+	ctx context.Context,
+	t *testing.T,
+	assertion *checktest.Assertion,
+	stage *stage,
+	query *commands.ListObjectsQuery,
+	storeID string,
+) {
 	objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
-	resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Type:                 objectType,
-		User:                 assertion.Tuple.GetUser(),
-		Relation:             assertion.Tuple.GetRelation(),
+
+	resp, err := query.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     objectType,
+		User:     assertion.Tuple.GetUser(),
+		Relation: assertion.Tuple.GetRelation(),
 		ContextualTuples: &openfgav1.ContextualTupleKeys{
 			// TODO
 			TupleKeys: []*openfgav1.TupleKey{},
@@ -1391,31 +1387,26 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 		Context: assertion.Context,
 	})
 
-	if assertion.ListObjectsErrorCode != 0 {
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, assertion.ListObjectsErrorCode, int(e.Code()))
+	if assertion.ListObjectsError != nil {
+		require.ErrorIs(t, err, assertion.ListObjectsError)
 		return
 	}
 	if strings.Contains(stage.Name, "usersets_userset_cond_to_computed_cond") {
 		require.NoError(t, err)
 		return
 	}
-	if assertion.ErrorCode != 0 {
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, assertion.ErrorCode, int(e.Code()))
+	if assertion.Error != nil {
+		require.ErrorIs(t, err, assertion.Error)
 		return
 	}
 
 	require.NoError(t, err)
+
 	if assertion.Expectation {
-		require.NotEmpty(t, resp.GetObjects(), "at least one object should be returned")
-		require.Contains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should be returned in the response")
+		require.NotEmpty(t, resp.Objects, "at least one object should be returned")
+		require.Contains(t, resp.Objects, assertion.Tuple.GetObject(), "object should be returned in the response")
 	} else {
-		require.NotContains(t, resp.GetObjects(), assertion.Tuple.GetObject(), "object should not be in the response")
+		require.NotContains(t, resp.Objects, assertion.Tuple.GetObject(), "object should not be in the response")
 	}
 }
 
