@@ -1,11 +1,11 @@
 package check
 
 import (
-	"github.com/openfga/openfga/internal/condition"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/condition"
 	checktest "github.com/openfga/openfga/internal/test/check"
 )
 
@@ -444,11 +444,11 @@ var usersetCompleteTestingModelTest = []*stage{
 				Error: condition.ErrEvaluationFailed,
 			},
 			{
-				Name:               "invalid_object",
-				Tuple:              &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
-				Expectation:        false,
-				ListUsersErrorCode: 2000,
-				//Error:              condition.ErrEvaluationFailed,
+				Name:           "invalid_object",
+				Tuple:          &openfgav1.TupleKey{Object: "usersets-user:utoc_3", Relation: "userset_to_or_computed", User: "user:utoc_1"},
+				Expectation:    false,
+				ListUsersError: condition.ErrEvaluationFailed,
+				Error:          condition.ErrEvaluationFailed,
 			},
 		},
 	},
@@ -966,10 +966,10 @@ var usersetCompleteTestingModelTest = []*stage{
 				Expectation: false,
 			},
 			{
-				Name:               "invalid_object",
-				Tuple:              &openfgav1.TupleKey{Object: "usersets-user:userset_or_2", Relation: "or_userset", User: "user:userset_or_userset_invalid"},
-				Expectation:        false,
-				ListUsersErrorCode: 2000,
+				Name:           "invalid_object",
+				Tuple:          &openfgav1.TupleKey{Object: "usersets-user:userset_or_2", Relation: "or_userset", User: "user:userset_or_userset_invalid"},
+				Expectation:    false,
+				ListUsersError: condition.ErrEvaluationFailed,
 			},
 		},
 	},

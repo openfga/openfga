@@ -33,7 +33,7 @@ import (
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
 
-type listUsersQuery struct {
+type ListUsersQuery struct {
 	logger                  logger.Logger
 	datastore               *storagewrappers.RequestStorageWrapper
 	resolveNodeBreadthLimit uint32
@@ -77,50 +77,50 @@ type foundUser struct {
 	relationshipStatus userRelationshipStatus
 }
 
-type ListUsersQueryOption func(l *listUsersQuery)
+type ListUsersQueryOption func(l *ListUsersQuery)
 
 func WithListUsersQueryLogger(l logger.Logger) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.logger = l
 	}
 }
 
 // WithListUsersMaxResults see server.WithListUsersMaxResults.
 func WithListUsersMaxResults(maxResults uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.maxResults = maxResults
 	}
 }
 
 // WithListUsersDeadline see server.WithListUsersDeadline.
 func WithListUsersDeadline(t time.Duration) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.deadline = t
 	}
 }
 
 // WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.resolveNodeBreadthLimit = limit
 	}
 }
 
 // WithListUsersMaxConcurrentReads see server.WithMaxConcurrentReadsForListUsers.
 func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.maxConcurrentReads = limit
 	}
 }
 
-func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
+func (l *ListUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32) {
 	span := trace.SpanFromContext(ctx)
 
 	shouldThrottle := threshold.ShouldThrottle(
@@ -141,14 +141,14 @@ func (l *listUsersQuery) throttle(ctx context.Context, currentNumDispatch uint32
 }
 
 func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
-	return func(d *listUsersQuery) {
+	return func(d *ListUsersQuery) {
 		d.dispatchThrottlerConfig = config
 	}
 }
 
 // TODO accept ListUsersRequest instead of contextualTuples.
-func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-	l := &listUsersQuery{
+func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *ListUsersQuery {
+	l := &ListUsersQuery{
 		logger:                  logger.NewNoopLogger(),
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
@@ -168,7 +168,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 }
 
 // ListUsers assumes that the typesystem is in the context and that the request is valid.
-func (l *listUsersQuery) ListUsers(
+func (l *ListUsersQuery) ListUsers(
 	ctx context.Context,
 	req *openfgav1.ListUsersRequest,
 ) (*listUsersResponse, error) {
@@ -304,7 +304,7 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 	return len(edges) > 0, err
 }
 
-func (l *listUsersQuery) dispatch(
+func (l *ListUsersQuery) dispatch(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
@@ -317,7 +317,7 @@ func (l *listUsersQuery) dispatch(
 	return l.expand(ctx, req, foundUsersChan)
 }
 
-func (l *listUsersQuery) expand(
+func (l *ListUsersQuery) expand(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
@@ -383,7 +383,7 @@ func (l *listUsersQuery) expand(
 	return resp
 }
 
-func (l *listUsersQuery) expandRewrite(
+func (l *ListUsersQuery) expandRewrite(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset,
@@ -418,7 +418,7 @@ func (l *listUsersQuery) expandRewrite(
 	return resp
 }
 
-func (l *listUsersQuery) expandDirect(
+func (l *ListUsersQuery) expandDirect(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
@@ -517,7 +517,7 @@ LoopOnIterator:
 	}
 }
 
-func (l *listUsersQuery) expandIntersection(
+func (l *ListUsersQuery) expandIntersection(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Intersection,
@@ -621,7 +621,7 @@ func (l *listUsersQuery) expandIntersection(
 	}
 }
 
-func (l *listUsersQuery) expandUnion(
+func (l *ListUsersQuery) expandUnion(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Union,
@@ -704,7 +704,7 @@ func (l *listUsersQuery) expandUnion(
 	}
 }
 
-func (l *listUsersQuery) expandExclusion(
+func (l *ListUsersQuery) expandExclusion(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_Difference,
@@ -834,7 +834,7 @@ func (l *listUsersQuery) expandExclusion(
 	}
 }
 
-func (l *listUsersQuery) expandTTU(
+func (l *ListUsersQuery) expandTTU(
 	ctx context.Context,
 	req *internalListUsersRequest,
 	rewrite *openfgav1.Userset_TupleToUserset,
@@ -928,7 +928,7 @@ func enteredCycle(req *internalListUsersRequest) bool {
 	return false
 }
 
-func (l *listUsersQuery) buildResultsChannel() chan foundUser {
+func (l *ListUsersQuery) buildResultsChannel() chan foundUser {
 	foundUsersCh := make(chan foundUser, serverconfig.DefaultListUsersMaxResults)
 	maxResults := l.maxResults
 	if maxResults > 0 {

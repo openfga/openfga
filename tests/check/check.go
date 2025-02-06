@@ -4,25 +4,28 @@ package check
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/openfga/pkg/server/commands/listusers"
+	"math"
+	"strconv"
+	"strings"
+	"testing"
+
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/pkg/server/commands"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
-	"math"
 	"sigs.k8s.io/yaml"
-	"strconv"
-	"strings"
-	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
 	checktest "github.com/openfga/openfga/internal/test/check"
+	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -68,7 +71,7 @@ func RunTestMatrix(t *testing.T, ds storage.OpenFGADatastore, experimentalsEnabl
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
-		//cfg := config.MustDefaultConfig()
+		// cfg := config.MustDefaultConfig()
 		//if experimental {
 		//	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
 		//}
@@ -296,10 +299,10 @@ var matrix = individualTest{
 					Error: condition.ErrEvaluationFailed,
 				},
 				{
-					Name:               "invalid_user_no_cond",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:invalid"},
-					Expectation:        false,
-					ListUsersErrorCode: 2000,
+					Name:           "invalid_user_no_cond",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond", User: "user:invalid"},
+					Expectation:    false,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_valid_user",
@@ -466,16 +469,16 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:               "valid_user",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
-					Expectation:        true,
-					ListUsersErrorCode: 2000,
+					Name:           "valid_user",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:valid"},
+					Expectation:    true,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
-					Name:               "invalid_user",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
-					Expectation:        false,
-					ListUsersErrorCode: 2000,
+					Name:           "invalid_user",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_cond", User: "user:invalid"},
+					Expectation:    false,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "ignore_valid_cond_valid_user",
@@ -634,10 +637,10 @@ var matrix = individualTest{
 					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
-					Name:               "invalid_user_no_cond",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
-					Expectation:        false,
-					ListUsersErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:           "invalid_user_no_cond",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild", User: "user:invalid"},
+					Expectation:    false,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "invalid_user_invalid_cond",
@@ -707,11 +710,11 @@ var matrix = individualTest{
 					Expectation: false,
 				},
 				{
-					Name:               "invalid_user_no_cond",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
-					Expectation:        false,
-					ListObjectsError:   condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
-					ListUsersErrorCode: 2000,                          // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "invalid_user_no_cond",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_cond_and_direct_wild_cond", User: "user:invalid"},
+					Expectation:      false,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersError:   condition.ErrEvaluationFailed,
 				},
 				{
 					Name:        "valid_cond_invalid_user",
@@ -973,16 +976,16 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:               "path_1",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid1"},
-					Expectation:        true,
-					ListUsersErrorCode: 2000,
+					Name:           "path_1",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:valid1"},
+					Expectation:    true,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
-					Name:               "path_1_no_user",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
-					Expectation:        false,
-					ListUsersErrorCode: 2000,
+					Name:           "path_1_no_user",
+					Tuple:          &openfgav1.TupleKey{Object: "directs-user:or_computed", Relation: "or_computed", User: "user:invalid"},
+					Expectation:    false,
+					ListUsersError: condition.ErrEvaluationFailed,
 				},
 				{
 					Name:  "path_2_without_cond",
@@ -1054,11 +1057,11 @@ var matrix = individualTest{
 			},
 			CheckAssertions: []*checktest.Assertion{
 				{
-					Name:               "base_err_diff_true",
-					Tuple:              &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
-					Expectation:        false,
-					ListObjectsError:   condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
-					ListUsersErrorCode: 2000,                          // any tuple with user:* and a condition and missing context will be un-evaluable
+					Name:             "base_err_diff_true",
+					Tuple:            &openfgav1.TupleKey{Object: "directs-user:butnot_computed", Relation: "butnot_computed", User: "user:diff"},
+					Expectation:      false,
+					ListObjectsError: condition.ErrEvaluationFailed, // any tuple with user:* and a condition and missing context will be un-evaluable
+					ListUsersError:   condition.ErrEvaluationFailed,
 				},
 				{
 					Name:  "base_err_diff_false",
@@ -1229,7 +1232,7 @@ type complexity4
 condition xcond(x: string) {
   x == '1'
 }`
-	//schemaVersion := params.schemaVersion
+	// schemaVersion := params.schemaVersion
 	//client := params.client
 	name := matrix.Name
 
@@ -1265,11 +1268,11 @@ condition xcond(x: string) {
 				localCheckOpts := []graph.LocalCheckerOption{
 					graph.WithOptimizations(experimentalsEnabled),
 				}
-				//cacheOpts := []graph.CachedCheckResolverOpt{
+				// cacheOpts := []graph.CachedCheckResolverOpt{
 				//	graph.WithCacheTTL(10 * time.Second),
 				//}
 				checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
-					//graph.WithCachedCheckResolverOpts(true, cacheOpts...),
+					// graph.WithCachedCheckResolverOpts(true, cacheOpts...),
 					graph.WithLocalCheckerOpts(localCheckOpts...),
 				}
 
@@ -1278,7 +1281,7 @@ condition xcond(x: string) {
 				t.Cleanup(checkResolverCloser)
 
 				//////////// OLD
-				//resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
+				// resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 				//require.NoError(t, err)
 				//storeID := resp.GetId()
 				//modelProto := parser.MustTransformDSLToProto(model)
@@ -1312,19 +1315,20 @@ condition xcond(x: string) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					//t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
-					//	query := commands.NewCheckCommand(ds, checkResolver, ts)
-					//	assertCheck(ctx, t, assertion, stage, query, storeID)
-					//})
-					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
-						query, err := commands.NewListObjectsQuery(ds, checkResolver)
-						require.NoError(t, err)
-
-						assertListObjects(ctx, t, assertion, stage, query, storeID)
+					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
+						_ = commands.NewCheckCommand(ds, checkResolver, ts)
+						//	assertCheck(ctx, t, assertion, stage, query, storeID)
 					})
-					//t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
-					//	assertListUsers(ctx, t, assertion, client, storeID, modelID)
+					//t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
+					//	query, err := commands.NewListObjectsQuery(ds, checkResolver)
+					//	require.NoError(t, err)
+					//
+					//	assertListObjects(ctx, t, assertion, stage, query, storeID)
 					//})
+					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
+						query := listusers.NewListUsersQuery(ds, nil)
+						assertListUsers(ctx, t, assertion, query, storeID)
+					})
 				}
 			})
 		}
@@ -1410,33 +1414,33 @@ func assertListObjects(
 	}
 }
 
-func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+func assertListUsers(
+	ctx context.Context,
+	t *testing.T,
+	assertion *checktest.Assertion,
+	query *listusers.ListUsersQuery,
+	storeID string,
+) {
 	objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
 	userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
 	userObjectType, _ := tuple.SplitObject(userObject)
 	relation := assertion.Tuple.GetRelation()
-	resp, err := client.ListUsers(ctx, &openfgav1.ListUsersRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		Object:               &openfgav1.Object{Type: objectType, Id: objectID},
-		Relation:             relation,
-		UserFilters:          []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
-		ContextualTuples:     []*openfgav1.TupleKey{}, // TODO
-		Context:              assertion.Context,
+
+	resp, err := query.ListUsers(ctx, &openfgav1.ListUsersRequest{
+		StoreId:          storeID,
+		Object:           &openfgav1.Object{Type: objectType, Id: objectID},
+		Relation:         relation,
+		UserFilters:      []*openfgav1.UserTypeFilter{{Type: userObjectType, Relation: userRelation}},
+		ContextualTuples: []*openfgav1.TupleKey{}, // TODO
+		Context:          assertion.Context,
 	})
 
-	if assertion.ListUsersErrorCode != 0 {
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, assertion.ListUsersErrorCode, int(e.Code()))
+	if assertion.ListUsersError != nil {
+		require.ErrorIs(t, err, assertion.ListUsersError)
 		return
 	}
-	if assertion.ErrorCode != 0 {
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, assertion.ErrorCode, int(e.Code()))
+	if assertion.Error != nil {
+		require.ErrorIs(t, err, assertion.Error)
 		return
 	}
 

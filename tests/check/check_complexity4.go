@@ -1,6 +1,7 @@
 package check
 
 import (
+	"github.com/openfga/openfga/internal/condition"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -254,10 +255,10 @@ var complexityFourTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:               "path_to_user_1",
-				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "ttu_and_nested_complex3", User: "user:valid"},
-				Expectation:        true,
-				ListUsersErrorCode: 2000,
+				Name:           "path_to_user_1",
+				Tuple:          &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "ttu_and_nested_complex3", User: "user:valid"},
+				Expectation:    true,
+				ListUsersError: condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "no_path_to_user_with_cond_truthy",
@@ -301,10 +302,10 @@ var complexityFourTestingModelTest = []*stage{
 		},
 		CheckAssertions: []*checktest.Assertion{
 			{
-				Name:               "path_to_user_through_ttu_and_nested_complex3",
-				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid"},
-				Expectation:        true,
-				ListUsersErrorCode: 2000,
+				Name:           "path_to_user_through_ttu_and_nested_complex3",
+				Tuple:          &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid"},
+				Expectation:    true,
+				ListUsersError: condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "path_to_user_through_userset_or_compute_complex3",
@@ -317,10 +318,10 @@ var complexityFourTestingModelTest = []*stage{
 				Expectation: true,
 			},
 			{
-				Name:               "no_path_1",
-				Tuple:              &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid2"},
-				Expectation:        false,
-				ListUsersErrorCode: 2000,
+				Name:           "no_path_1",
+				Tuple:          &openfgav1.TupleKey{Object: "complexity4:pe1", Relation: "or_complex4", User: "user:valid2"},
+				Expectation:    false,
+				ListUsersError: condition.ErrEvaluationFailed,
 			},
 			{
 				Name:        "no_path_2",

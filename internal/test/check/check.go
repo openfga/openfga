@@ -16,6 +16,6 @@ type Assertion struct {
 	ErrorCode   int `json:"errorCode"`
 	Error       error
 	// For other APIs
-	ListObjectsError   error
-	ListUsersErrorCode int
+	ListObjectsError error
+	ListUsersError   error
 }
