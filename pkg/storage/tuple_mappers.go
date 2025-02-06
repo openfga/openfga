@@ -52,7 +52,11 @@ func (n UsersetMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	res, err := n.doMap(tupleRes)
+	if err != nil {
+		return n.Next(ctx)
+	}
+	return res, nil
 }
 
 func (n UsersetMapper) Stop() {
@@ -90,7 +94,11 @@ func (n TTUMapper) Next(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return n.doMap(tupleRes)
+	res, err := n.doMap(tupleRes)
+	if err != nil {
+		return n.Next(ctx)
+	}
+	return res, nil
 }
 
 func (n TTUMapper) Stop() {
