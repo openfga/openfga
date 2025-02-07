@@ -2699,3 +2699,66 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		require.True(t, checkResult.GetAllowed())
 	})
 }
+
+func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("happy_case", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		checker := NewLocalChecker()
+		t.Cleanup(checker.Close)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] or viewer from parent
+					define parent: [document]`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		t.Run("check_against_specific_user_works", func(t *testing.T) {
+			mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:anne"}},
+				ObjectIDs:  nil,
+			}, storage.ReadStartingWithUserOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+				},
+				WithResultsSortedAscending: true,
+			},
+			).Times(1).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:parent", "viewer", "user:anne")},
+			}), nil)
+
+			ctx := setRequestContext(context.Background(), ts, mockDatastore, []*openfgav1.TupleKey{nil})
+
+			iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
+				User:     "document:parent",
+				Relation: "parent",
+				Object:   "document:target",
+			}})
+
+			val, err := checker.recursiveTTUFastPathUnionAlgebraicOperations(ctx, &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ts.GetAuthorizationModelID(),
+				TupleKey:             tuple.NewTupleKey("document:target", "viewer", "user:anne"),
+			}, typesystem.TupleToUserset("parent", "viewer"), iter)
+			require.NoError(t, err)
+			require.NotNil(t, val)
+			require.True(t, val.GetAllowed())
+		})
+	})
+}

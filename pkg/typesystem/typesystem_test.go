@@ -4161,6 +4161,34 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			userType:   "user",
 			expected:   true,
 		},
+		{
+			name: "not_terminal_type",
+			model: `
+				model
+  					schema 1.1	
+				type operator
+				type driver
+				type user_group
+  					relations
+    					define member: [operator]
+				type resource
+  					relations
+    					define can_write: [resource_group#writer, user_group#member]
+				type resource_group
+  					relations
+    					define writer: [user_group#member]
+				type account
+  					relations
+    					define member: [driver] or owner
+    					define owner: [driver]
+				type wallet
+  					relations
+    					define can_write: [resource#can_write, account#owner]`,
+			objectType: "wallet",
+			relation:   "can_write",
+			userType:   "driver",
+			expected:   false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -5294,6 +5322,39 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			computedRelation:  "admin",
 			expectCanFastPath: true,
 		},
+		{
+			name: "not_terminal_type",
+			model: `
+				model
+  					schema 1.1	
+				type operator
+				type driver
+				type user_group
+  					relations
+    					define member: [operator]
+				type resource
+  					relations
+    					define can_write: writer or writer from parent
+    					define parent: [resource_group]
+    					define writer: [user_group#member]
+				type resource_group
+  					relations
+    					define writer: [user_group#member]
+				type account
+  					relations
+    					define member: [driver] or owner
+    					define owner: [driver]
+				type wallet
+  					relations
+    					define can_write: can_write from parent or owner from owns
+    					define owns: [account]
+    					define parent: [resource]`,
+			objectType:        "wallet",
+			relation:          "can_write",
+			tuplesetRelation:  "parent",
+			computedRelation:  "can_write",
+			expectCanFastPath: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -5310,6 +5371,382 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 					},
 				})
 			require.Equal(t, test.expectCanFastPath, actual)
+		})
+	}
+}
+
+func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
+	tests := []struct {
+		name              string
+		model             string
+		objectType        string
+		relation          string
+		userType          string
+		tuplesetRelation  string
+		computedRelation  string
+		expectCanFastPath bool
+	}{
+		{name: "recursive_ttu_or_computed_weight_one_1",
+			model: `
+					model
+  						schema 1.1
+					type user
+					type document
+  						relations
+    						define rel1: rel2 or rel1 from parent 
+    						define parent: [document]
+    						define rel2: [user] and rel3
+    						define rel3: rel4 but not rel5
+    						define rel4: [user]
+    						define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "recursive_ttu_or_computed_weight_one_2",
+			model: `
+					model
+  						schema 1.1
+					type user
+					type document
+  						relations
+    						define rel1: [user] or rel2 or rel1 from parent 
+    						define parent: [document]
+    						define rel2: [user] and rel3
+    						define rel3: rel4 but not rel5
+    						define rel4: [user]
+    						define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "recursive_ttu_or_computed_weight_one_3",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type document
+  					relations
+    					define rel1: rel2 or rel6 or rel1 from parent
+    					define parent: [document]
+   						define rel2: [user] and rel3
+    					define rel3: rel4 but not rel5
+    					define rel4: [user]
+    					define rel5: [user]
+    					define rel6: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "recursive_ttu_or_computed_weight_one_infinity",
+			model: `
+					model
+  						schema 1.1
+					type user
+					type document
+  						relations
+    						define rel1: rel2 or rel1 from parent 
+    						define noapplyrel: rel1 or noapplyrel from parent
+    						define parent: [document]
+    						define rel2: [user] and rel3
+    						define rel3: rel4 but not rel5
+    						define rel4: [user]
+    						define rel5: [user]`,
+			objectType:        "document",
+			relation:          "noapplyrel",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "recursive_ttu_or_terminal_type",
+			model: `
+				model
+            		schema 1.1
+          		type user
+          		type folder
+            		relations
+              			define parent: [folder]
+             			 define viewer: [user] or viewer from parent`,
+			objectType:        "folder",
+			relation:          "viewer",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
+			expectCanFastPath: true,
+		},
+		{name: "recursive_ttu_or_wildcard",
+			model: `
+				model
+            		schema 1.1
+          		type user
+          		type folder
+            		relations
+              			define parent: [folder]
+              			define viewer: [user, user:*] or viewer from parent`,
+			objectType:        "folder",
+			relation:          "viewer",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "viewer",
+			expectCanFastPath: true,
+		},
+		{name: "complex_ttu_multiple_parent_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type employee
+				type team
+					relations
+						define parent: [team]
+						define member: [user]
+				type group
+					relations
+						define parent: [group, team]
+						define member: [user] or member from parent`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{name: "complex_ttu_directly_other_assigned_userset_1",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define parent: [group]
+						define otherRelation: [user]
+						define member: [user, group#otherRelation] or member from parent`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{name: "complex_ttu_directly_other_assigned_userset_2",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define parent: [group]
+						define member: [user, group#member] or member from parent`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
+		{name: "complex_non_recursive_userset_from_directly_assignable",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define parent: [group]
+						define owner: [user]
+						define member: [user] or owner from parent`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "owner",
+			expectCanFastPath: false,
+		},
+		{name: "complex_non_recursive_userset_from_computed",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define parent: [group]
+						define owner: [user]
+						define other_owner: owner
+						define member: [user] or other_owner from parent`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "other_owner",
+			expectCanFastPath: false,
+		},
+		{name: "nested_wildcard",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type document
+  					relations
+    					define rel1: rel2 or rel1 from parent
+    					define parent: [document]
+    					define rel2: [user:*] and rel3
+    					define rel3: rel4 but not rel5
+    					define rel4: [user:*]
+    					define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "two_ttus",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type document
+  					relations
+    					define rel1: (rel2 from parent) or rel1 from parent
+    					define parent: [document]
+    					define rel2: [user] and rel3
+    					define rel3: rel4 but not rel5
+    					define rel4: [user]
+    					define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "ttu_or_intersection_1",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type document
+  					relations
+   						define rel1: (rel2 and rel3) or rel1 from parent
+    					define parent: [document]
+    					define rel2: [user]
+    					define rel3: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "ttu_or_intersection_2",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type document
+  					relations
+    					define rel1: (rel2 and rel3) or (rel4 and rel5) or rel1 from parent
+    					define parent: [document]
+    					define rel2: [user]
+    					define rel3: [user]
+    					define rel4: [user]
+    					define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "ttu_or_intersection_that_is_weight_2",
+			model: `
+				model
+  					schema 1.1
+					type user
+					type document
+  						relations
+    						define rel1: (rel2 and rel3) or rel1 from parent
+    						define parent: [document]
+    						define rel2: rel3 from parent
+    						define rel3: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "multiple_parents_in_ttu",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type group
+					relations
+						define rel1: [user]
+				type document
+ 					relations
+    					define rel1: rel2 or rel1 from parent 
+    					define parent: [document, group]
+    					define rel2: [user] and rel3
+    					define rel3: rel4 but not rel5
+    					define rel4: [user]
+    					define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "not_terminal_type",
+			model: `
+				model
+  					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define rel1: [user]
+				type document
+  					relations
+    					define rel1: rel2 or rel1 from parent 
+    					define parent: [document, group]
+    					define rel2: [user] and rel3
+    					define rel3: rel4 but not rel5
+    					define rel4: [user]
+    					define rel5: [user]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "employee",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typesys, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			res := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+				Tupleset: &openfgav1.ObjectRelation{
+					Relation: test.tuplesetRelation,
+				},
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Relation: test.computedRelation,
+				},
+			})
+			require.Equal(t, test.expectCanFastPath, res)
 		})
 	}
 }
@@ -5752,84 +6189,68 @@ func TestRecursiveTTUCanFastPath(t *testing.T) {
 	tests := []struct {
 		name               string
 		model              string
-		objectTypeRelation string
+		objectType         string
+		relation           string
 		userType           string
+		tuplesetRelation   string
+		computedRelation   string
+		objectTypeRelation string
 		expected           bool
 	}{
 		{
-			name: "object_type_relation_not_found",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define member: [user] or member from parent
-`,
-			objectTypeRelation: "group#undefined",
-			userType:           "user",
-			expected:           false,
-		},
-		{
-			name: "non_ttu",
-			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define member: [user, group#member]
-`,
-			objectTypeRelation: "group#member",
-			userType:           "user",
-			expected:           false,
-		},
-		{
 			name: "simple_ttu",
 			model: `
-model
-	schema 1.1
-type user
-type group
-	relations
-		define parent: [group]
-		define member: [user] or member from parent
-`,
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define parent: [group]
+						define member: [user] or member from parent`,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
 			name: "simple_ttu_multiple_types",
 			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user, employee] or member from parent
-`,
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+					define parent: [group]
+					define member: [user, employee] or member from parent`,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
 			name: "simple_ttu_multiple_types_wildcard",
 			model: `
-model
-	schema 1.1
-type user
-type employee
-type group
-	relations
-		define parent: [group]
-		define member: [user:*, employee] or member from parent
-`,
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define parent: [group]
+						define member: [user:*, employee] or member from parent`,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5849,6 +6270,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5868,6 +6293,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5887,6 +6316,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5906,6 +6339,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5925,6 +6362,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5944,6 +6385,10 @@ condition cond(x: int) {
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           true,
 		},
 		{
@@ -5961,6 +6406,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "other",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -5981,6 +6430,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -5997,6 +6450,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -6013,6 +6470,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -6028,6 +6489,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -6044,6 +6509,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		{
@@ -6061,6 +6530,10 @@ type group
 `,
 			objectTypeRelation: "group#member",
 			userType:           "user",
+			objectType:         "group",
+			relation:           "member",
+			tuplesetRelation:   "parent",
+			computedRelation:   "member",
 			expected:           false,
 		},
 		// note that we cannot define something like
@@ -6076,6 +6549,18 @@ type group
 			require.NoError(t, err)
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
+			if test.expected {
+				// every time RecursiveTTUCanFastPath returns true, IsRelationWithRecursiveTTUAndAlgebraicOperations must also
+				v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: test.tuplesetRelation,
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: test.computedRelation,
+					},
+				})
+				require.True(t, v2)
+			}
 		})
 	}
 }

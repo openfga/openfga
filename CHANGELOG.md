@@ -13,11 +13,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and contextual tuples are involved. [#2150](https://github.com/openfga/openfga/pull/2150)
 - Added metrics to track invalid cache hits: `check_cache_invalid_hit_count` and `tuples_iterator_cache_invalid_hit_count` [#2222](https://github.com/openfga/openfga/pull/2222).
 - Move Check performance optimizations out of experimental mode: shortcutting based on path, recursive userset fast path, and recursive TTU fast path. [#2236](https://github.com/openfga/openfga/pull/2236)
+- Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the model contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
+- Implement dynamic TLS certificate reloading for HTTP and gRPC servers. [#2182](https://github.com/openfga/openfga/pull/2182)
 
 ### Changed
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
 
 ### Fixed
+- Optimized database dialect handling by setting it during initialization instead of per-call, fixing SQL syntax errors in MySQL [#2252](https://github.com/openfga/openfga/pull/2252)
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
 - Fixed incorrect types in configuration JSON schema [#2217](https://github.com/openfga/openfga/pull/2217), [#2228](https://github.com/openfga/openfga/pull/2228).
 - Fixed `BatchCheck` API to validate presence of the `tuple_key` property of a `BatchCheckItem` [#2242](https://github.com/openfga/openfga/issues/2242)
