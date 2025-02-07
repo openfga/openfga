@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	checktest "github.com/openfga/openfga/tests/check"
 )
 
 // to prevent overwhelming server on expensive queries.
@@ -29,8 +30,9 @@ func noopContextGenerator() *structpb.Struct {
 	return &structpb.Struct{}
 }
 
-func TestCheckMatrix(t *testing.T, ds storage.OpenFGADatastore) {
-
+func CheckMatrix(t *testing.T, ds storage.OpenFGADatastore) {
+	checktest.RunTestMatrix(t, ds, true)
+	checktest.RunTestMatrix(t, ds, false)
 }
 
 func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {

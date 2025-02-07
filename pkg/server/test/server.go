@@ -17,9 +17,7 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunMatrixTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestCheckMatrix", func(t *testing.T) {
-		TestCheckMatrix(t, ds)
-	})
+	t.Run("TestCheckMatrix", func(t *testing.T) { CheckMatrix(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

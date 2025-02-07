@@ -65,6 +65,7 @@ type ClientInterface interface {
 }
 
 func RunTestMatrix(t *testing.T, ds storage.OpenFGADatastore, experimentalsEnabled bool) {
+	// TODO: logging remains. It looks like there's no way to get the name of the datastore out of the ds?
 	t.Run("test_matrix_"+"TODO get logging better"+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
