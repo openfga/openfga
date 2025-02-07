@@ -29,26 +29,19 @@ import (
 	"github.com/openfga/openfga/tests"
 )
 
-func TestMatrix(t *testing.T) {
-	testMatrixMemory(t)
-	testMatrixPostgres(t)
-	testMatrixMysql(t)
-	testMatrixSqlite(t)
-}
-
-func testMatrixMemory(t *testing.T) {
+func TestMatrixMemory(t *testing.T) {
 	runMatrixWithEngine(t, "memory")
 }
 
-func testMatrixPostgres(t *testing.T) {
+func TestMatrixPostgres(t *testing.T) {
 	runMatrixWithEngine(t, "postgres")
 }
 
-func testMatrixMysql(t *testing.T) {
+func TestMatrixMysql(t *testing.T) {
 	runMatrixWithEngine(t, "mysql")
 }
 
-func testMatrixSqlite(t *testing.T) {
+func TestMatrixSqlite(t *testing.T) {
 	runMatrixWithEngine(t, "sqlite")
 }
 
