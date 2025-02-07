@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -37,10 +36,10 @@ func TestMatrixMemory(t *testing.T) {
 
 	memory := "memory"
 	clientWithExperimentals := buildClientInterface(t, memory, true)
-	testRunTestMatrix(t, memory, true, clientWithExperimentals)
+	runTestMatrix(t, memory, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := buildClientInterface(t, memory, false)
-	testRunTestMatrix(t, memory, false, clientWithoutExperimentals)
+	runTestMatrix(t, memory, false, clientWithoutExperimentals)
 }
 
 func TestMatrixPostgres(t *testing.T) {
@@ -50,10 +49,10 @@ func TestMatrixPostgres(t *testing.T) {
 
 	postgres := "postgres"
 	clientWithExperimentals := buildClientInterface(t, postgres, true)
-	testRunTestMatrix(t, postgres, true, clientWithExperimentals)
+	runTestMatrix(t, postgres, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := buildClientInterface(t, postgres, false)
-	testRunTestMatrix(t, postgres, false, clientWithoutExperimentals)
+	runTestMatrix(t, postgres, false, clientWithoutExperimentals)
 }
 func TestMatrixMysql(t *testing.T) {
 	t.Cleanup(func() {
@@ -62,10 +61,10 @@ func TestMatrixMysql(t *testing.T) {
 
 	mysql := "mysql"
 	clientWithExperimentals := buildClientInterface(t, mysql, true)
-	testRunTestMatrix(t, mysql, true, clientWithExperimentals)
+	runTestMatrix(t, mysql, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := buildClientInterface(t, mysql, false)
-	testRunTestMatrix(t, mysql, false, clientWithoutExperimentals)
+	runTestMatrix(t, mysql, false, clientWithoutExperimentals)
 }
 func TestMatrixSqlite(t *testing.T) {
 	t.Cleanup(func() {
@@ -74,10 +73,10 @@ func TestMatrixSqlite(t *testing.T) {
 
 	sqlite := "sqlite"
 	clientWithExperimentals := buildClientInterface(t, sqlite, true)
-	testRunTestMatrix(t, sqlite, true, clientWithExperimentals)
+	runTestMatrix(t, sqlite, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := buildClientInterface(t, sqlite, false)
-	testRunTestMatrix(t, sqlite, false, clientWithoutExperimentals)
+	runTestMatrix(t, sqlite, false, clientWithoutExperimentals)
 }
 
 func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool) ClientInterface {
@@ -98,12 +97,6 @@ func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	return openfgav1.NewOpenFGAServiceClient(conn)
-}
-
-func testRunTestMatrix(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
-		runTestMatrixSuite(t, client)
-	})
 }
 
 func TestCheckMemory(t *testing.T) {
