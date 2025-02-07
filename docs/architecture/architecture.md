@@ -27,7 +27,7 @@ The following diagram describes at high level how OpenFGA works internally.
 
 - The [`/read`](https://openfga.dev/api/service#/Relationship%20Tuples/Read) and [`/write`](https://openfga.dev/api/service#/Relationship%20Tuples/Write) endppints read and write relationship tuples, which are validated and stored in the configured database.
 
-- The [`/check`](https://openfga.dev/api/service#/Relationship%20Queries/Check), [`/batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck), [`/list-objects`](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects), [`/list-users`](https://openfga.dev/api/service#/Relationship%20Queries/ListUsers), [`/expand`](https://openfga.dev/api/service#/Relationship%20Queries/Expand) endpoints evaluate the permission graph, reading data the database and two caches.
+- The [`/check`](https://openfga.dev/api/service#/Relationship%20Queries/Check), [`/batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck), [`/list-objects`](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects), [`/list-users`](https://openfga.dev/api/service#/Relationship%20Queries/ListUsers), [`/expand`](https://openfga.dev/api/service#/Relationship%20Queries/Expand) endpoints evaluate the permission graph, reading data the database and caches.
 
 The `check cache` stores the results of subproblems that were evaluated while resolving a `check` call.
 
