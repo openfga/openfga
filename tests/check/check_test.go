@@ -29,54 +29,39 @@ import (
 	"github.com/openfga/openfga/tests"
 )
 
-func TestMatrixMemory(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	memory := "memory"
-	clientWithExperimentals := buildClientInterface(t, memory, true)
-	runTestMatrix(t, memory, true, clientWithExperimentals)
-
-	clientWithoutExperimentals := buildClientInterface(t, memory, false)
-	runTestMatrix(t, memory, false, clientWithoutExperimentals)
+func TestMatrix(t *testing.T) {
+	testMatrixMemory(t)
+	testMatrixPostgres(t)
+	testMatrixMysql(t)
+	testMatrixSqlite(t)
 }
 
-func TestMatrixPostgres(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	postgres := "postgres"
-	clientWithExperimentals := buildClientInterface(t, postgres, true)
-	runTestMatrix(t, postgres, true, clientWithExperimentals)
-
-	clientWithoutExperimentals := buildClientInterface(t, postgres, false)
-	runTestMatrix(t, postgres, false, clientWithoutExperimentals)
+func testMatrixMemory(t *testing.T) {
+	runMatrixWithEngine(t, "memory")
 }
-func TestMatrixMysql(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
 
-	mysql := "mysql"
-	clientWithExperimentals := buildClientInterface(t, mysql, true)
-	runTestMatrix(t, mysql, true, clientWithExperimentals)
-
-	clientWithoutExperimentals := buildClientInterface(t, mysql, false)
-	runTestMatrix(t, mysql, false, clientWithoutExperimentals)
+func testMatrixPostgres(t *testing.T) {
+	runMatrixWithEngine(t, "postgres")
 }
-func TestMatrixSqlite(t *testing.T) {
+
+func testMatrixMysql(t *testing.T) {
+	runMatrixWithEngine(t, "mysql")
+}
+
+func testMatrixSqlite(t *testing.T) {
+	runMatrixWithEngine(t, "sqlite")
+}
+
+func runMatrixWithEngine(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	sqlite := "sqlite"
-	clientWithExperimentals := buildClientInterface(t, sqlite, true)
-	runTestMatrix(t, sqlite, true, clientWithExperimentals)
+	clientWithExperimentals := buildClientInterface(t, engine, true)
+	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := buildClientInterface(t, sqlite, false)
-	runTestMatrix(t, sqlite, false, clientWithoutExperimentals)
+	clientWithoutExperimentals := buildClientInterface(t, engine, false)
+	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
 }
 
 func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool) ClientInterface {

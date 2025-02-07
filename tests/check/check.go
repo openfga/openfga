@@ -64,7 +64,6 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
 			runTests(t, testParams{typesystem.SchemaVersion1_1, client})
-			//runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 		})
 	})
 }
@@ -206,9 +205,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-func runTestMatrix(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
-		TestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
+		t.Parallel()
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 	})
 }
 
@@ -1067,7 +1067,7 @@ var matrix = individualTest{
 	},
 }
 
-func TestMatrix(t *testing.T, params testParams) {
+func runTestMatrix(t *testing.T, params testParams) {
 	model := `model
   schema 1.1
 type user
