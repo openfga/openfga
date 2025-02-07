@@ -11,7 +11,7 @@ OpenFGA is a server that reads/writes from a database, and its architecture is s
 - The cluster needs to have an ingress for load balancing and eventually service authentication (e.g. nginx).
 
 - The OpenFGA service needs a database. At the time of writing this the supported one were Postgres, MySQL and SQLite. SQLite is not designed for deployment in a Kubernetes cluster.
-- OpenFGA supports OTEL metrics, OTEL metrics and JSON logging. These can be sent to any collector.
+- OpenFGA supports OTEL metrics, OTEL traces and JSON logging. These can be sent to any collector.
 
 ## Internal Architecture
 
