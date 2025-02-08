@@ -21,7 +21,7 @@ The following diagram describes at high level how OpenFGA works internally.
 
 - The [`/authorization-models`](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) endpoint allow writing new authorization models, which define the authorization policies.
 
- - he [`/write`](https://openfga.dev/api/service#/Relationship%20Tuples/Write) endpoint allows writing and deleting relationship tuples, which are validated and stored in the configured database.
+ - The [`/write`](https://openfga.dev/api/service#/Relationship%20Tuples/Write) endpoint allows writing and deleting relationship tuples, which are validated and stored in the configured database.
 
 - The [`/read`](https://openfga.dev/api/service#/Relationship%20Tuples/Read) endpoint allows retrieving the data stored in the database.
 
