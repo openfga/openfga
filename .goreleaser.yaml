@@ -30,12 +30,6 @@ dockers:
     dockerfile: Dockerfile.goreleaser
 
     image_templates:
-      - "openfga/openfga:latest-amd64"
-      - "openfga/openfga:{{ .Tag }}-amd64"
-      - "openfga/openfga:v{{ .Version }}-amd64"
-      - "openfga/openfga:v{{ .Major }}-amd64"
-      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-amd64"
       # ghcr.io
       - "ghcr.io/openfga/openfga:latest-amd64"
       - "ghcr.io/openfga/openfga:{{ .Tag }}-amd64"
@@ -57,12 +51,6 @@ dockers:
     dockerfile: Dockerfile.goreleaser
 
     image_templates:
-      - "openfga/openfga:latest-arm64"
-      - "openfga/openfga:{{ .Tag }}-arm64"
-      - "openfga/openfga:v{{ .Version }}-arm64"
-      - "openfga/openfga:v{{ .Major }}-arm64"
-      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}-arm64"
-      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}-arm64"
       # ghcr.io
       - "ghcr.io/openfga/openfga:latest-arm64"
       - "ghcr.io/openfga/openfga:{{ .Tag }}-arm64"
