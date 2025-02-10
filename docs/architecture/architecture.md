@@ -19,7 +19,7 @@ The following diagram describes at high level how OpenFGA works internally.
 
 - The [`/store`](https://openfga.dev/api/service#/Stores/CreateStore) endpoints allow managing OpenFGA stores, which contain the authorization model + the data. Stores can be used for isolating different applications, environments, or tenants.
 
-- The [`/authorization-models`](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) endpoint allow writing new authorization models, which define the authorization policies.
+- The [`/authorization-models`](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) endpoint allows writing new authorization models, which define the authorization policies.
 
  - The [`/write`](https://openfga.dev/api/service#/Relationship%20Tuples/Write) endpoint allows writing and deleting relationship tuples, which are validated and stored in the configured database.
 
