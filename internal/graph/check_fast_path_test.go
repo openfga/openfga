@@ -1872,6 +1872,405 @@ func TestRecursiveUsersetFastPath(t *testing.T) {
 	})
 }
 
+func TestRecursiveUsersetFastPathV2(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	tests := []struct {
+		name                            string
+		readStartingWithUserTuples      []*openfgav1.Tuple
+		readStartingWithUserTuplesError error
+		readUsersetTuples               [][]*openfgav1.Tuple
+		readUsersetTuplesError          error
+		expected                        *ResolveCheckResponse
+		expectedError                   error
+	}{
+		{
+			name:                       "no_user_assigned_to_group",
+			readStartingWithUserTuples: []*openfgav1.Tuple{},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+					},
+				},
+				{},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+			},
+		},
+		{
+			name: "user_assigned_to_first_level_sub_group",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+				},
+			},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+			},
+		},
+		{
+			name: "user_assigned_to_second_level_sub_group",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+				},
+			},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
+					},
+				},
+				{
+					{
+						Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
+					},
+				},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: true,
+			},
+		},
+		{
+			name: "user_not_assigned_to_sub_group",
+			readStartingWithUserTuples: []*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+				},
+				{
+					Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+				},
+			},
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+					},
+				},
+				{},
+			},
+			expected: &ResolveCheckResponse{
+				Allowed: false,
+			},
+		},
+		{
+			name:                            "error_getting_tuple",
+			readStartingWithUserTuples:      []*openfgav1.Tuple{},
+			readStartingWithUserTuplesError: fmt.Errorf("mock error"),
+			readUsersetTuples: [][]*openfgav1.Tuple{
+				{
+					{
+						Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+					},
+				},
+				{},
+			},
+			expected:      nil,
+			expectedError: fmt.Errorf("mock error"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			storeID := ulid.Make().String()
+			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+				ObjectType: "group",
+				Relation:   "member",
+				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+				ObjectIDs:  nil,
+			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+
+			for _, tuples := range tt.readUsersetTuples[1:] {
+				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+			}
+			model := parser.MustTransformDSLToProto(`
+						model
+							schema 1.1
+
+						type user
+						type group
+							relations
+								define member: [user, group#member]
+`)
+
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+			req := &ResolveCheckRequest{
+				StoreID:              storeID,
+				AuthorizationModelID: ulid.Make().String(),
+				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+				RequestMetadata:      NewCheckRequestMetadata(),
+			}
+
+			checker := NewLocalChecker()
+			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
+			for _, t := range tt.readUsersetTuples[0] {
+				k := t.GetKey()
+				tupleKeys = append(tupleKeys, &openfgav1.TupleKey{
+					User:     k.GetUser(),
+					Relation: k.GetRelation(),
+					Object:   k.GetObject(),
+				})
+			}
+
+			result, err := checker.recursiveUsersetFastPathV2(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))
+			require.Equal(t, tt.expectedError, err)
+			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+		})
+	}
+
+	t.Run("complex_model", func(t *testing.T) {
+		tests := []struct {
+			name                            string
+			readStartingWithUserTuples      []*openfgav1.Tuple
+			readStartingWithUserTuplesError error
+			readUsersetTuples               [][]*openfgav1.Tuple
+			readUsersetTuplesError          error
+			expected                        *ResolveCheckResponse
+			expectedError                   error
+		}{
+			{
+				name:                       "no_user_assigned_to_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "rel1", "group:3#member"),
+						},
+					},
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+				},
+			},
+			{
+				name: "user_assigned_to_first_level_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+			{
+				name: "user_assigned_to_second_level_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
+						},
+					},
+					{
+						{
+							Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+			{
+				name: "user_not_assigned_to_sub_group",
+				readStartingWithUserTuples: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+					},
+					{
+						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+						},
+					},
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+				},
+			},
+			{
+				name:                            "error_getting_tuple",
+				readStartingWithUserTuples:      []*openfgav1.Tuple{},
+				readStartingWithUserTuplesError: fmt.Errorf("mock error"),
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+						},
+					},
+					{},
+				},
+				expected:      nil,
+				expectedError: fmt.Errorf("mock error"),
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				storeID := ulid.Make().String()
+				mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+
+				for _, tuples := range tt.readUsersetTuples[1:] {
+					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
+				}
+				model := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+
+		type user
+		type employee
+		type group
+			relations
+				define rel1: [group#rel1, user, employee, group#rel3] or (rel2 but not rel7)
+				define rel2: rel4 but not rel5
+				define rel3: employee
+				define rel4: [user]
+				define rel5: [user]
+				define rel7: [user]
+		`)
+
+				ts, err := typesystem.New(model)
+				require.NoError(t, err)
+				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+				req := &ResolveCheckRequest{
+					StoreID:              storeID,
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(),
+				}
+
+				checker := NewLocalChecker()
+				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
+				for _, t := range tt.readUsersetTuples[0] {
+					k := t.GetKey()
+					tupleKeys = append(tupleKeys, &openfgav1.TupleKey{
+						User:     k.GetUser(),
+						Relation: k.GetRelation(),
+						Object:   k.GetObject(),
+					})
+				}
+
+				result, err := checker.recursiveUsersetFastPathV2(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+			})
+		}
+	})
+
+	t.Run("resolution_depth_exceeded", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:bad", "member", "user:maria"),
+				},
+			}), nil)
+
+		for i := 1; i < 26; i++ {
+			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i+1), "member", "group:"+strconv.Itoa(i)+"#member"),
+					},
+				}), nil)
+		}
+		model := parser.MustTransformDSLToProto(`
+							model
+								schema 1.1
+
+							type user
+							type group
+								relations
+									define member: [user, group#member]
+
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+		req := &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+		}
+
+		checker := NewLocalChecker()
+		tupleKeys := []*openfgav1.TupleKey{{Object: "group:1", Relation: "member", User: "group:0#member"}}
+
+		result, err := checker.recursiveUsersetFastPathV2(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))
+		require.Nil(t, result)
+		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
+}
+
 func TestBuildRecursiveMapper(t *testing.T) {
 	storeID := ulid.Make().String()
 
@@ -2751,7 +3150,7 @@ func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
 				Object:   "document:target",
 			}})
 
-			val, err := checker.recursiveTTUFastPathUnionAlgebraicOperations(ctx, &ResolveCheckRequest{
+			val, err := checker.recursiveTTUFastPathV2(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: ts.GetAuthorizationModelID(),
 				TupleKey:             tuple.NewTupleKey("document:target", "viewer", "user:anne"),

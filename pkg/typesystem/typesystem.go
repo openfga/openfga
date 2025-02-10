@@ -724,13 +724,13 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
-// IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
+// RecursiveTTUCanFastPathV2 returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // If true, it returns a map of Operands (edges) leaving the OR.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -789,6 +789,86 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 	}
 
 	return recursiveTTUFound
+}
+
+// RecursiveUsersetCanFastPathV2 returns true if all these conditions apply:
+// 1. Node[objectType#relation].weights[userType] = infinite
+// 2. any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
+// Example:
+// type doc
+// rel1 = [doc#rel1, user, user with cond, employee, doc#rel8] or ( (rel2 but not rel7) or rel8)
+// rel2 = rel4 but not rel5
+// rel4 = [user]
+// rel5 = [user]
+// rel7 = [user]
+// rel8 = [employee]
+// calling RecursiveUsersetCanFastPathV2(doc, rel1, user) should return TRUE
+// calling RecursiveUsersetCanFastPathV2(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee
+func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userType string) bool {
+	if t.authzWeightedGraph == nil {
+		return false
+	}
+	objRel := tuple.ToObjectRelationString(objectType, relation)
+	objRelNode, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+	if !ok {
+		return false
+	}
+
+	w, ok := objRelNode.GetWeight(userType)
+	if !ok || w != graph.Infinite {
+		// 1. node[objectType#relation].weights[userType] = infinite
+		return false
+	}
+
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
+	if !ok {
+		return false
+	}
+
+	recursiveUsersetFound := false
+
+	for len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+		for _, edge := range edges {
+			w, ok := edge.GetWeight(userType)
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				if ok {
+					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
+					if w == graph.Infinite {
+						operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+						if !okOpEdge {
+							return false
+						}
+						innerEdges = append(innerEdges, operationalEdges...)
+					} else if w > 1 {
+						// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
+						return false
+					}
+				}
+			}
+			// if the edge is a direct edge, and it is the same userset that we are evaluating
+			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRel {
+				// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
+				if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
+					// mark as the recursive userset was found
+					recursiveUsersetFound = true
+					continue
+				}
+			}
+			// for any other case, get the weight of the edge for the usertype, if the weight > 1 violates one of the preconditions
+			if ok && w > 1 {
+				return false
+			}
+		}
+		if len(innerEdges) == 0 {
+			break
+		}
+		edges = innerEdges
+	}
+
+	return recursiveUsersetFound // return if the recursive userset was found
 }
 
 // PathExists returns true if:

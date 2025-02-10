@@ -5738,7 +5738,7 @@ func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			res := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+			res := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 				Tupleset: &openfgav1.ObjectRelation{
 					Relation: test.tuplesetRelation,
 				},
@@ -6550,8 +6550,8 @@ type group
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
 			if test.expected {
-				// every time RecursiveTTUCanFastPath returns true, IsRelationWithRecursiveTTUAndAlgebraicOperations must also
-				v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+				// every time RecursiveTTUCanFastPath returns true, RecursiveTTUCanFastPathV2 must also
+				v2 := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
 					},

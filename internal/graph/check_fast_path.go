@@ -443,13 +443,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
-		go func() {
-			for msg := range leftChan {
-				if msg.Iter != nil {
-					msg.Iter.Stop()
-				}
-			}
-		}()
+		go drainIteratorChannel(leftChan)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -541,21 +535,27 @@ func constructLeftChannels(ctx context.Context,
 
 	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
+		relation := relationFunc(parentType)
+		if relation == "" {
+			continue
+		}
 		r := req.clone()
 		r.TupleKey = &openfgav1.TupleKey{
 			Object: tuple.BuildObject(parentType.GetType(), "ignore"),
 			// depending on relationFunc, it will return the parentType's relation (userset) or computedRelation (TTU)
-			Relation: relationFunc(parentType),
+			Relation: relation,
 			User:     r.GetTupleKey().GetUser(),
 		}
-		rel, err := typesys.GetRelation(parentType.GetType(), relationFunc(parentType))
+		rel, err := typesys.GetRelation(parentType.GetType(), relation)
 		if err != nil {
-			// NOTE: is there a better way to check and filter rather than skipping?
-			// other paths can be reachable
 			continue
 		}
 		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {
+			// if the resolver already started it needs to be drained
+			if len(leftChans) > 0 {
+				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans))
+			}
 			return nil, err
 		}
 		leftChans = append(leftChans, leftChan)
@@ -621,8 +621,14 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 // NOTE: Can we make this generic and move it to concurrency pkg?
 func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan *iterator.Msg {
 	limit := len(chans)
-	pool := concurrency.NewPool(ctx, limit)
+
 	out := make(chan *iterator.Msg, limit)
+
+	if limit == 0 {
+		close(out)
+		return out
+	}
+	pool := concurrency.NewPool(ctx, limit)
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
@@ -644,6 +650,14 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 	}()
 
 	return out
+}
+
+func drainIteratorChannel(c chan *iterator.Msg) {
+	for msg := range c {
+		if msg.Iter != nil {
+			msg.Iter.Stop()
+		}
+	}
 }
 
 // Note that visited does not necessary means that there are cycles.  For the following model,
@@ -883,7 +897,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := newSimpleRecursiveObjectProvider(typesys, ds)
+	objectProvider, err := newRecursiveObjectProvider(typesys, ds)
 	if err != nil {
 		return nil, err
 	}
@@ -894,24 +908,24 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	}, objectProvider)
 }
 
-// recursiveTTUFastPathUnionAlgebraicOperations solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
+// recursiveTTUFastPathV2 solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
-func (c *LocalChecker) recursiveTTUFastPathUnionAlgebraicOperations(ctx context.Context, req *ResolveCheckRequest, recursiveTTURewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathUnionAlgebraicOperations")
+func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathV2")
 	defer span.End()
 
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	objectProvider, err := newComplexTTURecursiveObjectProvider(typesys, recursiveTTURewrite)
+	ttu := rewrite.GetTupleToUserset()
+
+	objectProvider, err := newRecursiveTTUObjectProvider(typesys, ttu)
 	if err != nil {
 		return nil, err
 	}
 
-	rightTTURelation := recursiveTTURewrite.GetTupleToUserset().GetTupleset().GetRelation()
-
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
-		tuplesetRelation: rightTTURelation,
+		tuplesetRelation: ttu.GetTupleset().GetRelation(),
 	}, objectProvider)
 }
 
@@ -922,13 +936,31 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := newSimpleRecursiveObjectProvider(typesys, ds)
+	objectProvider, err := newRecursiveObjectProvider(typesys, ds)
 	if err != nil {
 		return nil, err
 	}
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
+		kind:                        storage.UsersetKind,
+		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+	}, objectProvider)
+}
+
+func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathV2")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
+	objectProvider, err := newUsersetRecursiveObjectProvider(typesys)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,
 		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 	}, objectProvider)

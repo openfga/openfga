@@ -32,7 +32,7 @@ func TestSimpleRecursiveObjectProvider(t *testing.T) {
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
 	t.Run("New", func(t *testing.T) {
-		_, err := newSimpleRecursiveObjectProvider(nil, mockDatastore)
+		_, err := newRecursiveObjectProvider(nil, mockDatastore)
 		require.Error(t, err)
 	})
 
@@ -62,7 +62,7 @@ func TestSimpleRecursiveObjectProvider(t *testing.T) {
 		require.NoError(t, err)
 
 		t.Run("when_empty_req", func(t *testing.T) {
-			c, err := newSimpleRecursiveObjectProvider(ts, mockDatastore)
+			c, err := newRecursiveObjectProvider(ts, mockDatastore)
 			require.NoError(t, err)
 			t.Cleanup(c.End)
 
@@ -74,7 +74,7 @@ func TestSimpleRecursiveObjectProvider(t *testing.T) {
 			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 				Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-			c, err := newSimpleRecursiveObjectProvider(ts, mockDatastore)
+			c, err := newRecursiveObjectProvider(ts, mockDatastore)
 			require.NoError(t, err)
 			t.Cleanup(c.End)
 
@@ -98,7 +98,7 @@ func TestSimpleRecursiveObjectProvider(t *testing.T) {
 					{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 				}), nil)
 
-			c, err := newSimpleRecursiveObjectProvider(ts, mockDatastore)
+			c, err := newRecursiveObjectProvider(ts, mockDatastore)
 			require.NoError(t, err)
 			t.Cleanup(c.End)
 
@@ -121,7 +121,7 @@ func TestSimpleRecursiveObjectProvider(t *testing.T) {
 				Times(1).
 				Return(nil, fmt.Errorf("error"))
 
-			c, err := newSimpleRecursiveObjectProvider(ts, mockDatastore)
+			c, err := newRecursiveObjectProvider(ts, mockDatastore)
 			require.NoError(t, err)
 			t.Cleanup(c.End)
 
@@ -145,17 +145,6 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 
 	mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-	t.Run("New", func(t *testing.T) {
-		_, err := newComplexTTURecursiveObjectProvider(nil, typesystem.This())
-		require.ErrorContains(t, err, "nil typesystem")
-
-		_, err = newComplexTTURecursiveObjectProvider(&typesystem.TypeSystem{}, nil)
-		require.Error(t, err, "nil rewrite")
-
-		_, err = newComplexTTURecursiveObjectProvider(&typesystem.TypeSystem{}, typesystem.This())
-		require.Error(t, err, "rewrite must be a tupletouserset")
-	})
-
 	t.Run("Begin_And_End", func(t *testing.T) {
 		t.Run("on_supported_model", func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(`
@@ -170,7 +159,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
-			rewrite := typesystem.TupleToUserset("parent", "admin")
+			ttu := typesystem.TupleToUserset("parent", "admin").GetTupleToUserset()
 
 			req, err := NewResolveCheckRequest(ResolveCheckRequestParams{
 				StoreID:              storeID,
@@ -184,7 +173,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("when_empty_req", func(t *testing.T) {
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -193,7 +182,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 			})
 
 			t.Run("when_invalid_req", func(t *testing.T) {
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -216,7 +205,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -240,7 +229,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -263,7 +252,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 					Times(1).
 					Return(nil, fmt.Errorf("error"))
 
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -283,7 +272,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						return iterator, nil
 					})
 
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
@@ -309,7 +298,7 @@ func TestComplexRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c, err := newComplexTTURecursiveObjectProvider(ts, rewrite)
+				c, err := newRecursiveTTUObjectProvider(ts, ttu)
 				require.NoError(t, err)
 				t.Cleanup(c.End)
 
