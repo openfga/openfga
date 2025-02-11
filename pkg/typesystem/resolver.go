@@ -60,7 +60,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		var model *openfgav1.AuthorizationModel
 		var key string
 		if modelID == "" {
-			v, err, _ := lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModel:%s", storeID), func() (interface{}, error) {
+			v, err, _ := lookupGroup.Do("FindLatestAuthorizationModel:"+storeID, func() (interface{}, error) {
 				return datastore.FindLatestAuthorizationModel(ctx, storeID)
 			})
 			if err != nil {

@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -623,7 +622,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 		var tuples []*openfgav1.TupleKey
 
 		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
-			obj := fmt.Sprintf("document:%s", strconv.Itoa(numberObjectsAccesible))
+			obj := "document:" + strconv.Itoa(numberObjectsAccesible)
 
 			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
 

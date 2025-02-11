@@ -164,7 +164,7 @@ var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered
 func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	switch val := v.GetKind().(type) {
 	case *structpb.Value_BoolValue:
-		_, err = w.WriteString(fmt.Sprintf("%v", val.BoolValue))
+		_, err = w.WriteString(strconv.FormatBool(val.BoolValue))
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:

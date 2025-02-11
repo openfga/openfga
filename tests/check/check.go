@@ -1207,7 +1207,7 @@ condition xcond(x: string) {
 		stages = append(stages, complexityFourTestingModelTest...)
 		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
-			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
+			t.Run("stage_"+stage.Name, func(t *testing.T) {
 				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 				require.NoError(t, err)
 				storeID := resp.GetId()
@@ -1242,13 +1242,13 @@ condition xcond(x: string) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					t.Run(fmt.Sprintf("assertion_check_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
 						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 					})
-					t.Run(fmt.Sprintf("assertion_list_objects_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
 						assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
 					})
-					t.Run(fmt.Sprintf("assertion_list_users_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
 						assertListUsers(ctx, t, assertion, client, storeID, modelID)
 					})
 				}
