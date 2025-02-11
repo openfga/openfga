@@ -1165,21 +1165,22 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			resolver := c.checkUsersetSlowPath
+			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
+			userType := tuple.GetType(reqTupleKey.GetUser())
 
-			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+			if c.optimizationsEnabled && !isUserset {
+				if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					resolver = c.checkUsersetFastPathV2
+					span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+				}
+			} else if !isUserset {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
 					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
-				} else {
-					userType := tuple.GetType(reqTupleKey.GetUser())
-					if typesys.RecursiveUsersetCanFastPath(
-						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
-						resolver = c.recursiveUsersetFastPath
-						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if c.optimizationsEnabled && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						resolver = c.checkUsersetFastPathV2
-						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-					}
+				} else if typesys.RecursiveUsersetCanFastPath(
+					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
+					resolver = c.recursiveUsersetFastPath
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 				}
 			}
 
