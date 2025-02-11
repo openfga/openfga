@@ -955,7 +955,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider, err := newUsersetRecursiveObjectProvider(typesys)
+	objectProvider, err := newRecursiveUsersetObjectProvider(typesys)
 	if err != nil {
 		return nil, err
 	}

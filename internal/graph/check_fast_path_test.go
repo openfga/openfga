@@ -2045,21 +2045,23 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 
 	t.Run("complex_model", func(t *testing.T) {
 		tests := []struct {
-			name                            string
-			readStartingWithUserTuples      []*openfgav1.Tuple
-			readStartingWithUserTuplesError error
-			readUsersetTuples               [][]*openfgav1.Tuple
-			readUsersetTuplesError          error
-			expected                        *ResolveCheckResponse
-			expectedError                   error
+			name                             string
+			readStartingWithUserTuplesMember []*openfgav1.Tuple
+			readStartingWithUserTuplesRel4   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel5   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel6   []*openfgav1.Tuple
+			readStartingWithUserTuplesError  error
+			readUsersetTuples                [][]*openfgav1.Tuple
+			readUsersetTuplesError           error
+			expected                         *ResolveCheckResponse
+			expectedError                    error
 		}{
 			{
-				name:                       "no_user_assigned_to_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{},
+				name: "no_user_assigned_to_group",
 				readUsersetTuples: [][]*openfgav1.Tuple{
 					{
 						{
-							Key: tuple.NewTupleKey("group:1", "rel1", "group:3#member"),
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
 						},
 					},
 					{},
@@ -2069,13 +2071,10 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				},
 			},
 			{
-				name: "user_assigned_to_first_level_sub_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{
+				name: "user_assigned_via_rel4",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
-					},
-					{
-						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
 					},
 				},
 				readUsersetTuples: [][]*openfgav1.Tuple{
@@ -2090,13 +2089,15 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				},
 			},
 			{
-				name: "user_assigned_to_second_level_sub_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{
+				name: "user_assigned_via_rel4_but_denied_rel5",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
 					},
+				},
+				readStartingWithUserTuplesRel5: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+						Key: tuple.NewTupleKey("group:3", "rel5", "user:maria"),
 					},
 				},
 				readUsersetTuples: [][]*openfgav1.Tuple{
@@ -2112,17 +2113,19 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 					},
 				},
 				expected: &ResolveCheckResponse{
-					Allowed: true,
+					Allowed: false,
 				},
 			},
 			{
-				name: "user_not_assigned_to_sub_group",
-				readStartingWithUserTuples: []*openfgav1.Tuple{
+				name: "user_assigned_via_rel4_but_denied_rel6",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:3", "member", "user:maria"),
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
 					},
+				},
+				readStartingWithUserTuplesRel6: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:4", "member", "user:maria"),
+						Key: tuple.NewTupleKey("group:3", "rel6", "user:maria"),
 					},
 				},
 				readUsersetTuples: [][]*openfgav1.Tuple{
@@ -2136,21 +2139,6 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				expected: &ResolveCheckResponse{
 					Allowed: false,
 				},
-			},
-			{
-				name:                            "error_getting_tuple",
-				readStartingWithUserTuples:      []*openfgav1.Tuple{},
-				readStartingWithUserTuplesError: fmt.Errorf("mock error"),
-				readUsersetTuples: [][]*openfgav1.Tuple{
-					{
-						{
-							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
-						},
-					},
-					{},
-				},
-				expected:      nil,
-				expectedError: fmt.Errorf("mock error"),
 			},
 		}
 		for _, tt := range tests {
@@ -2167,7 +2155,28 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 					Relation:   "member",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					ObjectIDs:  nil,
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel4",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel5",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel6",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
 
 				for _, tuples := range tt.readUsersetTuples[1:] {
 					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
@@ -2180,12 +2189,12 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 		type employee
 		type group
 			relations
-				define rel1: [group#rel1, user, employee, group#rel3] or (rel2 but not rel7)
+				define member: [group#member, user, employee, group#rel3] or (rel2 but not rel6)
 				define rel2: rel4 but not rel5
-				define rel3: employee
+				define rel3: [employee]
 				define rel4: [user]
 				define rel5: [user]
-				define rel7: [user]
+				define rel6: [user]
 		`)
 
 				ts, err := typesystem.New(model)

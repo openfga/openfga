@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/sourcegraph/conc/pool"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -99,41 +100,7 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 	c.cancel = cancel
 
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(func(ctx context.Context) error {
-		leftOpen := true
-		defer func() {
-			close(outChannel)
-			if !leftOpen {
-				return
-			}
-			go drainIteratorChannel(leftChannel)
-		}()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case msg, ok := <-leftChannel:
-			if !ok {
-				leftOpen = false
-				return nil
-			}
-			if msg.Err != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, outChannel)
-				return msg.Err
-			}
-			t, err := msg.Iter.Next(ctx)
-			if err != nil {
-				msg.Iter.Stop()
-				if storage.IterIsDoneOrCancelled(err) {
-					break
-				}
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-				return err
-			}
-			userset := t.GetObject()
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
-		}
-		return nil
-	})
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
 
 	return outChannel, nil
 }
@@ -144,7 +111,7 @@ type recursiveUsersetObjectProvider struct {
 	pool   *pool.ContextPool
 }
 
-func newUsersetRecursiveObjectProvider(ts *typesystem.TypeSystem) (*recursiveUsersetObjectProvider, error) {
+func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) (*recursiveUsersetObjectProvider, error) {
 	return &recursiveUsersetObjectProvider{ts: ts}, nil
 }
 
@@ -161,9 +128,8 @@ func (c *recursiveUsersetObjectProvider) End() {
 
 func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	possibleParents, err := c.ts.GetDirectlyRelatedUserTypes(objectType, req.GetTupleKey().GetRelation())
-
-	leftChans, err := constructLeftChannels(ctx, req, possibleParents, checkutil.BuildUsersetV2RelationFunc())
+	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
+	leftChans, err := constructLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -171,27 +137,32 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 	leftChannel := fanInIteratorChannels(ctx, leftChans)
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
-
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(func(ctx context.Context) error {
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
+
+	return outChannel, nil
+}
+
+func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
 		leftOpen := true
 		defer func() {
-			close(outChannel)
+			close(dst)
 			if !leftOpen {
 				return
 			}
-			go drainIteratorChannel(leftChannel)
+			go drainIteratorChannel(src)
 		}()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg, ok := <-leftChannel:
+		case msg, ok := <-src:
 			if !ok {
 				leftOpen = false
 				return nil
 			}
 			if msg.Err != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, outChannel)
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
 				return msg.Err
 			}
 			t, err := msg.Iter.Next(ctx)
@@ -200,14 +171,12 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 				if storage.IterIsDoneOrCancelled(err) {
 					break
 				}
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
 				return err
 			}
 			userset := t.GetObject()
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, dst)
 		}
 		return nil
-	})
-
-	return outChannel, nil
+	}
 }
