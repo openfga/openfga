@@ -425,7 +425,7 @@ func fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+func resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Int("sources", len(leftChans)),
 		attribute.Bool("allowed", false),
@@ -441,8 +441,8 @@ func resolveFastPath(ctx context.Context, leftChans []chan *iteratorMsg, iter st
 		cancel()
 		iter.Stop()
 		for msg := range leftChan {
-			if msg.iter != nil {
-				msg.iter.Stop()
+			if msg.Iter != nil {
+				msg.Iter.Stop()
 			}
 		}
 	}()

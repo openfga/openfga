@@ -2722,14 +2722,14 @@ func TestResolveFastPath(t *testing.T) {
 		iter3.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(&openfgav1.TupleKey{Object: "group:3"}, nil)
 		iter3.EXPECT().Stop().Times(1)
 
-		leftChans := make([]chan *iteratorMsg, 3)
-		leftChans[0] = make(chan *iteratorMsg, 1)
-		leftChans[1] = make(chan *iteratorMsg, 1)
-		leftChans[2] = make(chan *iteratorMsg, 1)
+		leftChans := make([]chan *iterator.Msg, 3)
+		leftChans[0] = make(chan *iterator.Msg, 1)
+		leftChans[1] = make(chan *iterator.Msg, 1)
+		leftChans[2] = make(chan *iterator.Msg, 1)
 		go func() {
-			leftChans[0] <- &iteratorMsg{iter: iter1}
-			leftChans[1] <- &iteratorMsg{iter: iter2}
-			leftChans[2] <- &iteratorMsg{iter: iter3}
+			leftChans[0] <- &iterator.Msg{Iter: iter1}
+			leftChans[1] <- &iterator.Msg{Iter: iter2}
+			leftChans[2] <- &iterator.Msg{Iter: iter3}
 			close(leftChans[0])
 			close(leftChans[1])
 			close(leftChans[2])
@@ -2745,9 +2745,9 @@ func TestResolveFastPath(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, checkResponse)
 		require.True(t, checkResponse.GetAllowed())
-  }
+	})
 }
-    
+
 func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
