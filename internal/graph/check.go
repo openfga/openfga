@@ -23,6 +23,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/pkg/workgroup"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -129,98 +130,118 @@ type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
 // in flight at any given time.
 type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
 
-// resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
-// Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
+type item[T any] struct {
+	N     int
+	Value T
+}
+
+// resolve concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
+// Callers of the 'resolve' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() {
-	limiter := make(chan struct{}, concurrencyLimit)
+func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (resultChan <-chan item[checkOutcome], end func()) {
+	ch := make(chan item[checkOutcome], len(handlers))
+	resultChan = ch
 
+	// wg will keep track of a go routine that manages scheduling
+	// of independent go routines for the passed in CheckHandlerFunc
+	// values. Wait() will be called on wg within a closure returned
+	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	checker := func(fn CheckHandlerFunc) {
-		defer func() {
-			wg.Done()
-			<-limiter
-		}()
-
-		resolved := make(chan checkOutcome, 1)
-
+	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) error {
 		if ctx.Err() != nil {
-			resultChan <- checkOutcome{nil, ctx.Err()}
-			return
+			return ctx.Err()
 		}
 
-		go func() {
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
-		}()
-
-		select {
-		case <-ctx.Done():
-			return
-		case res := <-resolved:
-			resultChan <- res
+		// execute the handler function, passing in the parent
+		// context captured from the parent function. this context
+		// may contain data that is used by the handler function.
+		resp, err := fn.Value(ctx)
+		if err != nil {
+			return err
 		}
-	}
 
+		ch <- item[checkOutcome]{
+			N:     fn.N, // N is the ordinal of the handler. this is important for difference evalutions.
+			Value: checkOutcome{resp, err},
+		}
+		return nil
+	})
+
+	// handlers are pushed into the work group within a separate
+	// routine so that the consuming end of the application can
+	// begin processing the results immediately as they arrive.
 	wg.Add(1)
 	go func() {
-	outer:
-		for _, handler := range handlers {
-			fn := handler // capture loop var
+		defer func() {
+			p.Close()
+			close(ch)
+			wg.Done()
+		}()
 
-			select {
-			case limiter <- struct{}{}:
-				wg.Add(1)
-				go checker(fn)
-			case <-ctx.Done():
-				break outer
-			}
+		// will be used to collect the receive channel error handles.
+		// each channel must be awaited for a possible error resulting
+		// from a panic or context cancelation in each handler.
+		hnds := make([]<-chan error, len(handlers))
+
+		for i, handler := range handlers {
+			hnd := p.Push(ctx, item[CheckHandlerFunc]{
+				N:     i,
+				Value: handler,
+			})
+			hnds[i] = hnd
 		}
 
-		wg.Done()
+		for i, hnd := range hnds {
+			err := <-hnd
+			if err != nil {
+				ch <- item[checkOutcome]{
+					N:     i,
+					Value: checkOutcome{nil, err},
+				}
+			}
+		}
 	}()
 
-	return func() {
+	end = func() {
 		wg.Wait()
-		close(limiter)
 	}
+	return
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
-
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
-
-	defer func() {
-		cancel()
-		drain()
-		close(resultChan)
-	}()
+	resultChan, end := resolve(ctx, concurrencyLimit, handlers...)
+	defer end()
 
 	var err error
 	var cycleDetected bool
-	for i := 0; i < len(handlers); i++ {
+
+loop:
+	for {
 		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				err = result.err
-				continue
+		case <-ctx.Done():
+			err = ctx.Err()
+			break loop
+		case i, more := <-resultChan:
+			if !more {
+				break loop
 			}
 
-			if result.resp.GetCycleDetected() {
+			if i.Value.err != nil {
+				err = i.Value.err
+				continue loop
+			}
+
+			if i.Value.resp.GetCycleDetected() {
 				cycleDetected = true
 			}
 
-			if result.resp.GetAllowed() {
-				return result.resp, nil
+			if i.Value.resp.GetAllowed() {
+				return i.Value.resp, nil
 			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
 		}
 	}
 
@@ -244,35 +265,32 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 			Allowed: false,
 		}, nil
 	}
-
 	span := trace.SpanFromContext(ctx)
-
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
-
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
-
-	defer func() {
-		cancel()
-		drain()
-		close(resultChan)
-	}()
+	resultChan, end := resolve(ctx, concurrencyLimit, handlers...)
+	defer end()
 
 	var err error
-	for i := 0; i < len(handlers); i++ {
+
+loop:
+	for {
 		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				telemetry.TraceError(span, result.err)
-				err = errors.Join(err, result.err)
+		case <-ctx.Done():
+			err = ctx.Err()
+			break loop
+		case i, more := <-resultChan:
+			if !more {
+				break loop
+			}
+
+			if i.Value.err != nil {
+				telemetry.TraceError(span, i.Value.err)
+				err = errors.Join(err, i.Value.err)
 				continue
 			}
 
-			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				return result.resp, nil
+			if i.Value.resp.GetCycleDetected() || !i.Value.resp.GetAllowed() {
+				return i.Value.resp, nil
 			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
 		}
 	}
 
@@ -293,105 +311,65 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
-
 	span := trace.SpanFromContext(ctx)
-
-	limiter := make(chan struct{}, concurrencyLimit)
-
-	ctx, cancel := context.WithCancel(ctx)
-	baseChan := make(chan checkOutcome, 1)
-	subChan := make(chan checkOutcome, 1)
-
-	var wg sync.WaitGroup
-
-	defer func() {
-		cancel()
-		wg.Wait()
-		close(baseChan)
-		close(subChan)
-	}()
-
-	baseHandler := handlers[0]
-	subHandler := handlers[1]
-
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		resp, err := baseHandler(ctx)
-		baseChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
-	}()
-
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		resp, err := subHandler(ctx)
-		subChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
-	}()
+	resultChan, end := resolve(ctx, concurrencyLimit, handlers...)
+	defer end()
 
 	response := &ResolveCheckResponse{
 		Allowed: false,
 	}
 
-	var baseErr error
-	var subErr error
+	var err error
 
-	for i := 0; i < len(handlers); i++ {
+loop:
+	for {
 		select {
-		case baseResult := <-baseChan:
-			if baseResult.err != nil {
-				telemetry.TraceError(span, baseResult.err)
-				baseErr = baseResult.err
-				continue
-			}
-
-			if baseResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if !baseResult.resp.GetAllowed() {
-				return response, nil
-			}
-
-		case subResult := <-subChan:
-			if subResult.err != nil {
-				telemetry.TraceError(span, subResult.err)
-				subErr = subResult.err
-				continue
-			}
-
-			if subResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if subResult.resp.GetAllowed() {
-				return response, nil
-			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		case i, more := <-resultChan:
+			if !more {
+				break loop
+			}
+
+			ordinal := i.N
+			result := i.Value
+
+			if result.err != nil {
+				telemetry.TraceError(span, result.err)
+				err = errors.Join(err, result.err)
+				continue loop
+			}
+
+			if result.resp.GetCycleDetected() {
+				return &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: ResolveCheckResponseMetadata{
+						CycleDetected: true,
+					},
+				}, nil
+			}
+
+			switch ordinal {
+			case 0:
+				// If the left-hand condition of a "but not" returns false we
+				// can short-circuit the exclusion evaluation because the result
+				// is allowed=false, regardless of the right-hand condition value.
+				if !result.resp.GetAllowed() {
+					return response, nil
+				}
+			case 1:
+				// If the right-hand condition of a "but not" returns true we
+				// can short-circuit the exclusion evaluation because the result
+				// is allowed=false, regardless of the left-hand condition value.
+				if result.resp.GetAllowed() {
+					return response, nil
+				}
+			}
 		}
 	}
 
-	// base is either (true) or error, sub is either (false) or error:
-	// true, false - true
-	// true, error - error
-	// error, false - error
-	// error, error - error
-	if baseErr != nil || subErr != nil {
-		return nil, errors.Join(baseErr, subErr)
+	if err != nil {
+		return nil, err
 	}
 
 	return &ResolveCheckResponse{
