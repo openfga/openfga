@@ -2,13 +2,14 @@ package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/graph/iterator"
+
 	"github.com/sourcegraph/conc/pool"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -27,8 +28,8 @@ type recursiveObjectProvider struct {
 	ds     storage.RelationshipTupleReader
 }
 
-func newRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) (*recursiveObjectProvider, error) {
-	return &recursiveObjectProvider{ts: ts, ds: ds}, nil
+func newRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) *recursiveObjectProvider {
+	return &recursiveObjectProvider{ts: ts, ds: ds}
 }
 
 var _ objectProvider = (*recursiveObjectProvider)(nil)
@@ -65,10 +66,10 @@ type recursiveTTUObjectProvider struct {
 	pool             *pool.ContextPool
 }
 
-func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) (*recursiveTTUObjectProvider, error) {
+func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) *recursiveTTUObjectProvider {
 	tuplesetRelation := ttu.GetTupleset().GetRelation()
 	computedRelation := ttu.GetComputedUserset().GetRelation()
-	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}, nil
+	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}
 }
 
 var _ objectProvider = (*recursiveTTUObjectProvider)(nil)
@@ -111,8 +112,8 @@ type recursiveUsersetObjectProvider struct {
 	pool   *pool.ContextPool
 }
 
-func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) (*recursiveUsersetObjectProvider, error) {
-	return &recursiveUsersetObjectProvider{ts: ts}, nil
+func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) *recursiveUsersetObjectProvider {
+	return &recursiveUsersetObjectProvider{ts: ts}
 }
 
 var _ objectProvider = (*recursiveUsersetObjectProvider)(nil)

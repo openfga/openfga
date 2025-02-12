@@ -897,10 +897,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := newRecursiveObjectProvider(typesys, ds)
-	if err != nil {
-		return nil, err
-	}
+	objectProvider := newRecursiveObjectProvider(typesys, ds)
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -918,10 +915,7 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 
 	ttu := rewrite.GetTupleToUserset()
 
-	objectProvider, err := newRecursiveTTUObjectProvider(typesys, ttu)
-	if err != nil {
-		return nil, err
-	}
+	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -936,10 +930,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider, err := newRecursiveObjectProvider(typesys, ds)
-	if err != nil {
-		return nil, err
-	}
+	objectProvider := newRecursiveObjectProvider(typesys, ds)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
@@ -955,10 +946,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider, err := newRecursiveUsersetObjectProvider(typesys)
-	if err != nil {
-		return nil, err
-	}
+	objectProvider := newRecursiveUsersetObjectProvider(typesys)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,

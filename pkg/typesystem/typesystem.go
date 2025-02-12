@@ -793,7 +793,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 
 // RecursiveUsersetCanFastPathV2 returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
-// 2. any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
+// 2. Any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
 // Example:
 // type doc
 // rel1 = [doc#rel1, user, user with cond, employee, doc#rel8] or ( (rel2 but not rel7) or rel8)
@@ -803,7 +803,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 // rel7 = [user]
 // rel8 = [employee]
 // calling RecursiveUsersetCanFastPathV2(doc, rel1, user) should return TRUE
-// calling RecursiveUsersetCanFastPathV2(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee
+// calling RecursiveUsersetCanFastPathV2(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
 func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userType string) bool {
 	if t.authzWeightedGraph == nil {
 		return false

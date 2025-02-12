@@ -3,7 +3,6 @@ package typesystem
 import (
 	"context"
 	"fmt"
-
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +10,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
+
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
