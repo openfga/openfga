@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -201,6 +202,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 			})
 		}
+	})
+}
+
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 	})
 }
 
@@ -1383,8 +1391,4 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 	} else {
 		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
 	}
-}
-
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
-	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 }
