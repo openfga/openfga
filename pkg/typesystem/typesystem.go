@@ -846,6 +846,7 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 						// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
 						return false
 					}
+					continue
 				}
 			}
 			// if the edge is a direct edge, and it is the same userset that we are evaluating
@@ -867,7 +868,6 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 		}
 		edges = innerEdges
 	}
-
 	return recursiveUsersetFound // return if the recursive userset was found
 }
 
