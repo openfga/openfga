@@ -5375,7 +5375,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 	}
 }
 
-func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
+func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string
