@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
@@ -31,34 +30,54 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	testRunTestMatrix(t, "memory", true)
-	testRunTestMatrix(t, "memory", false)
+	runMatrixWithEngine(t, "memory")
 }
 
-func testRunTestMatrix(t *testing.T, engine string, experimental bool) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimental), func(t *testing.T) {
-		t.Cleanup(func() {
-			goleak.VerifyNone(t)
-		})
-		cfg := config.MustDefaultConfig()
-		if experimental {
-			cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-		}
-		cfg.Log.Level = "error"
-		cfg.Datastore.Engine = engine
-		cfg.ListUsersDeadline = 0   // no deadline
-		cfg.ListObjectsDeadline = 0 // no deadline
-		// extend the timeout for the tests, coverage makes them slower
-		cfg.RequestTimeout = 10 * time.Second
+func TestMatrixPostgres(t *testing.T) {
+	runMatrixWithEngine(t, "postgres")
+}
 
-		cfg.CheckIteratorCache.Enabled = true
+// TODO: re-enable
+// func TestMatrixMysql(t *testing.T) {
+//	runMatrixWithEngine(t, "mysql")
+//}
 
-		tests.StartServer(t, cfg)
+// TODO: re-enable after investigating write contention in test
+// func TestMatrixSqlite(t *testing.T) {
+//	runMatrixWithEngine(t, "sqlite")
+//}
 
-		conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-
-		runTestMatrixSuite(t, openfgav1.NewOpenFGAServiceClient(conn))
+func runMatrixWithEngine(t *testing.T, engine string) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
 	})
+
+	clientWithExperimentals := buildClientInterface(t, engine, true)
+	RunMatrixTests(t, engine, true, clientWithExperimentals)
+
+	clientWithoutExperimentals := buildClientInterface(t, engine, false)
+	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+}
+
+func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool) ClientInterface {
+	cfg := config.MustDefaultConfig()
+	if experimentalsEnabled {
+		cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	}
+	cfg.Log.Level = "error"
+	cfg.Datastore.Engine = engine
+	cfg.ListUsersDeadline = 0   // no deadline
+	cfg.ListObjectsDeadline = 0 // no deadline
+	// extend the timeout for the tests, coverage makes them slower
+	cfg.RequestTimeout = 10 * time.Second
+
+	cfg.CheckIteratorCache.Enabled = true
+	cfg.ContextPropagationToDatastore = true
+
+	tests.StartServer(t, cfg)
+
+	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
+	return openfgav1.NewOpenFGAServiceClient(conn)
 }
 
 func TestCheckMemory(t *testing.T) {
