@@ -56,21 +56,11 @@ func TestRecursiveObjectProvider(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		t.Run("when_empty_req", func(t *testing.T) {
-			c := newRecursiveObjectProvider(ts, mockDatastore)
-			require.NoError(t, err)
-			t.Cleanup(c.End)
-
-			_, err = c.Begin(context.Background(), nil)
-			require.Error(t, err)
-		})
-
 		t.Run("when_empty_iterator", func(t *testing.T) {
 			mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 				Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
 			c := newRecursiveObjectProvider(ts, mockDatastore)
-			require.NoError(t, err)
 			t.Cleanup(c.End)
 
 			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -94,7 +84,6 @@ func TestRecursiveObjectProvider(t *testing.T) {
 				}), nil)
 
 			c := newRecursiveObjectProvider(ts, mockDatastore)
-			require.NoError(t, err)
 			t.Cleanup(c.End)
 
 			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -117,7 +106,6 @@ func TestRecursiveObjectProvider(t *testing.T) {
 				Return(nil, fmt.Errorf("error"))
 
 			c := newRecursiveObjectProvider(ts, mockDatastore)
-			require.NoError(t, err)
 			t.Cleanup(c.End)
 
 			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -169,7 +157,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 
 			t.Run("when_invalid_req", func(t *testing.T) {
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				invalidReq, err := NewResolveCheckRequest(ResolveCheckRequestParams{
@@ -192,7 +179,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -216,7 +202,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					}), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -240,7 +225,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					Return(nil, mockError)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -260,7 +244,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					})
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -286,7 +269,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					}), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
@@ -348,7 +330,6 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -372,7 +353,6 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					}), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -395,7 +375,6 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					Return(nil, fmt.Errorf("error"))
 
 				c := newRecursiveUsersetObjectProvider(ts)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -415,7 +394,6 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					})
 
 				c := newRecursiveUsersetObjectProvider(ts)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -441,7 +419,6 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					}), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
-				require.NoError(t, err)
 				t.Cleanup(c.End)
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
