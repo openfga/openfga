@@ -147,7 +147,7 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	poolCtx, poolCancel := context.WithCancel(ctx)
+	poolCtx, poolCancel := context.WithCancel(context.Background())
 	pool := concurrency.NewPool(poolCtx, int(concurrencyLimit))
 
 	wg.Add(1)
@@ -161,7 +161,7 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 		}()
 
 		for i, handler := range handlers {
-			pool.Go(func(ctx context.Context) error {
+			pool.Go(func(_ context.Context) error {
 				if ctx.Err() != nil {
 					ch <- item[checkOutcome]{
 						N:     i,
