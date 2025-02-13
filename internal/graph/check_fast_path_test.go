@@ -2050,6 +2050,8 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 			readStartingWithUserTuplesRel4   []*openfgav1.Tuple
 			readStartingWithUserTuplesRel5   []*openfgav1.Tuple
 			readStartingWithUserTuplesRel6   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel7   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel8   []*openfgav1.Tuple
 			readStartingWithUserTuplesError  error
 			readUsersetTuples                [][]*openfgav1.Tuple
 			readUsersetTuplesError           error
@@ -2125,11 +2127,6 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				readUsersetTuples: [][]*openfgav1.Tuple{
 					{
 						{
-							Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
-						},
-					},
-					{
-						{
 							Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
 						},
 					},
@@ -2153,13 +2150,35 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				readUsersetTuples: [][]*openfgav1.Tuple{
 					{
 						{
-							Key: tuple.NewTupleKey("group:1", "member", "group:2#member"),
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
 						},
 					},
-					{},
 				},
 				expected: &ResolveCheckResponse{
 					Allowed: false,
+				},
+			},
+			{
+				name: "user_assigned_via_rel7_and_rel8",
+				readStartingWithUserTuplesRel7: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel7", "user:maria"),
+					},
+				},
+				readStartingWithUserTuplesRel8: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel8", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
 				},
 			},
 		}
@@ -2171,7 +2190,6 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				defer ctrl.Finish()
 				storeID := ulid.Make().String()
 				mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "member",
@@ -2185,6 +2203,20 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
 					ObjectIDs:  nil,
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel7",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel8",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
@@ -2212,11 +2244,13 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 		type group
 			relations
 				define member: [group#member, user, employee, group#rel3] or (rel2 but not rel6)
-				define rel2: rel4 but not rel5
+				define rel2: (rel4 or (rel7 and rel8)) but not rel5
 				define rel3: [employee]
 				define rel4: [user]
 				define rel5: [user]
 				define rel6: [user]
+				define rel7: [user]
+				define rel8: [user]
 		`)
 
 				ts, err := typesystem.New(model)
