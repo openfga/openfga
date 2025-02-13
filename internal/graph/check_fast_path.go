@@ -536,7 +536,8 @@ func constructLeftChannels(ctx context.Context,
 	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
-		if relation == "" {
+		rel, err := typesys.GetRelation(parentType.GetType(), relation)
+		if err != nil {
 			continue
 		}
 		r := req.clone()
@@ -545,10 +546,6 @@ func constructLeftChannels(ctx context.Context,
 			// depending on relationFunc, it will return the parentType's relation (userset) or computedRelation (TTU)
 			Relation: relation,
 			User:     r.GetTupleKey().GetUser(),
-		}
-		rel, err := typesys.GetRelation(parentType.GetType(), relation)
-		if err != nil {
-			continue
 		}
 		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {

@@ -3108,7 +3108,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 	})
 }
 
-func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
+func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
