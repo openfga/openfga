@@ -193,12 +193,14 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				require.Empty(t, actualMessages)
 			})
 
-			t.Run("when_iterator_returns_one_result", func(t *testing.T) {
+			t.Run("when_iterator_returns_results", func(t *testing.T) {
 				mockDatastore.EXPECT().
 					ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
+						{Key: tuple.NewTupleKey("document:2", "admin", "user:XYZ")},
+						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
 					}), nil)
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
@@ -208,13 +210,15 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				channel, err := c.Begin(ctx, req)
 				require.NoError(t, err)
 
-				actualMessages := make([]usersetMessage, 0)
+				actualMessages := make([]usersetMessage, 0, 3)
 				for msg := range channel {
 					actualMessages = append(actualMessages, msg)
 				}
 
-				require.Len(t, actualMessages, 1)
+				require.Len(t, actualMessages, 3)
 				require.Equal(t, "document:1", actualMessages[0].userset)
+				require.Equal(t, "document:2", actualMessages[1].userset)
+				require.Equal(t, "document:3", actualMessages[2].userset)
 			})
 
 			t.Run("when_fastPathRewrite_errors", func(t *testing.T) {
@@ -344,12 +348,14 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				require.Empty(t, actualMessages)
 			})
 
-			t.Run("when_iterator_returns_one_result", func(t *testing.T) {
+			t.Run("when_iterator_returns_results", func(t *testing.T) {
 				mockDatastore.EXPECT().
 					ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
+						{Key: tuple.NewTupleKey("document:2", "admin", "user:XYZ")},
+						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
 					}), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
@@ -359,13 +365,15 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				channel, err := c.Begin(ctx, req)
 				require.NoError(t, err)
 
-				actualMessages := make([]usersetMessage, 0)
+				actualMessages := make([]usersetMessage, 0, 3)
 				for msg := range channel {
 					actualMessages = append(actualMessages, msg)
 				}
 
-				require.Len(t, actualMessages, 1)
+				require.Len(t, actualMessages, 3)
 				require.Equal(t, "document:1", actualMessages[0].userset)
+				require.Equal(t, "document:2", actualMessages[1].userset)
+				require.Equal(t, "document:3", actualMessages[2].userset)
 			})
 
 			t.Run("when_fastPathRewrite_errors", func(t *testing.T) {

@@ -832,34 +832,36 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 
 		for _, edge := range edges {
 			w, ok := edge.GetWeight(userType)
+			if !ok {
+				continue
+			}
 			// edge is a set operator thus we have to inspect each node of the operator
 			if edge.GetEdgeType() == graph.RewriteEdge {
-				if ok {
-					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-					if w == graph.Infinite {
-						operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-						if !okOpEdge {
-							return false
-						}
-						innerEdges = append(innerEdges, operationalEdges...)
-					} else if w > 1 {
-						// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
+				// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
+				if w == graph.Infinite {
+					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okOpEdge {
 						return false
 					}
-					continue
+					innerEdges = append(innerEdges, operationalEdges...)
+				} else if w > 1 {
+					// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
+					return false
 				}
+				continue
+
 			}
 			// if the edge is a direct edge, and it is the same userset that we are evaluating
 			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRel {
 				// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
-				if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
+				if w == graph.Infinite && edge.GetTo() == objRelNode {
 					// mark as the recursive userset was found
 					recursiveUsersetFound = true
 					continue
 				}
 			}
 			// for any other case, get the weight of the edge for the usertype, if the weight > 1 violates one of the preconditions
-			if ok && w > 1 {
+			if w > 1 {
 				return false
 			}
 		}

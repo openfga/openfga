@@ -2071,6 +2071,28 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 				},
 			},
 			{
+				name: "user_assigned_to_group_recursively",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
+					},
+				},
+				readUsersetTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:6", "member", "group:5#member"),
+						},
+					}, {
+						{
+							Key: tuple.NewTupleKey("group:5", "member", "group:3#member"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+			{
 				name: "user_assigned_via_rel4",
 				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
 					{

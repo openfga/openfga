@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-
 	"github.com/sourcegraph/conc/pool"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -166,17 +165,19 @@ func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
 				return msg.Err
 			}
-			t, err := msg.Iter.Next(ctx)
-			if err != nil {
-				msg.Iter.Stop()
-				if storage.IterIsDoneOrCancelled(err) {
-					break
+			for {
+				t, err := msg.Iter.Next(ctx)
+				if err != nil {
+					msg.Iter.Stop()
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
+					return err
 				}
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
-				return err
+				userset := t.GetObject()
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, dst)
 			}
-			userset := t.GetObject()
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, dst)
 		}
 		return nil
 	}
