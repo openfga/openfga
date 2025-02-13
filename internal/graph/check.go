@@ -23,6 +23,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/pkg/workgroup"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -138,8 +139,9 @@ type item[T any] struct {
 // Callers of the 'resolve' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (<-chan item[checkOutcome], func()) {
+func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (resultChan <-chan item[checkOutcome], end func()) {
 	ch := make(chan item[checkOutcome], len(handlers))
+	resultChan = ch
 
 	// wg will keep track of a go routine that manages scheduling
 	// of independent go routines for the passed in CheckHandlerFunc
@@ -147,42 +149,44 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	poolCtx, poolCancel := context.WithCancel(context.Background())
-	pool := concurrency.NewPool(poolCtx, int(concurrencyLimit))
+	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) {
+		if ctx.Err() != nil {
+			ch <- item[checkOutcome]{
+				N:     fn.N,
+				Value: checkOutcome{nil, ctx.Err()},
+			}
+			return
+		}
+		resp, err := fn.Value(ctx)
+		ch <- item[checkOutcome]{
+			N:     fn.N,
+			Value: checkOutcome{resp, err},
+		}
+	})
 
 	wg.Add(1)
 	go func() {
 		defer func() {
-			pool.Wait()
-			// handlers in the pool will be done producing to ch
-			// at this point.
+			p.Close()
 			close(ch)
 			wg.Done()
 		}()
 
 		for i, handler := range handlers {
-			pool.Go(func(_ context.Context) error {
-				if ctx.Err() != nil {
-					ch <- item[checkOutcome]{
-						N:     i,
-						Value: checkOutcome{nil, ctx.Err()},
-					}
-					return nil
-				}
-				resp, err := handler(ctx)
-				ch <- item[checkOutcome]{
-					N:     i,
-					Value: checkOutcome{resp, err},
-				}
-				return nil
+			err := p.Push(ctx, item[CheckHandlerFunc]{
+				N:     i,
+				Value: handler,
 			})
+			if err != nil {
+				break
+			}
 		}
 	}()
 
-	return ch, func() {
-		poolCancel()
+	end = func() {
 		wg.Wait()
 	}
+	return
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
