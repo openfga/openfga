@@ -849,7 +849,6 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 					return false
 				}
 				continue
-
 			}
 			// if the edge is a direct edge, and it is the same userset that we are evaluating
 			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRel {

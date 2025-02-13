@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+
 	"github.com/sourcegraph/conc/pool"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
