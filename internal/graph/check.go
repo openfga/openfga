@@ -141,21 +141,27 @@ type item[T any] struct {
 func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (<-chan item[checkOutcome], func()) {
 	ch := make(chan item[checkOutcome], len(handlers))
 
+	// wg will keep track of a go routine that manages scheduling
+	// of independent go routines for the passed in CheckHandlerFunc
+	// values. Wait() will be called on wg within a closure returned
+	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	poolCtx, poolCancel := context.WithCancel(context.Background())
+	poolCtx, poolCancel := context.WithCancel(ctx)
 	pool := concurrency.NewPool(poolCtx, int(concurrencyLimit))
 
 	wg.Add(1)
 	go func() {
 		defer func() {
 			pool.Wait()
+			// handlers in the pool will be done producing to ch
+			// at this point.
 			close(ch)
 			wg.Done()
 		}()
 
 		for i, handler := range handlers {
-			pool.Go(func(_ context.Context) error {
+			pool.Go(func(ctx context.Context) error {
 				if ctx.Err() != nil {
 					ch <- item[checkOutcome]{
 						N:     i,
@@ -320,10 +326,16 @@ loop:
 
 			switch ordinal {
 			case 0:
+				// If the left-hand condition of a "but not" returns false we
+				// can short-circuit the exclusion evaluation because the result
+				// is allowed=false, regardless of the right-hand condition value.
 				if !result.resp.GetAllowed() {
 					return response, nil
 				}
 			case 1:
+				// If the right-hand condition of a "but not" returns true we
+				// can short-circuit the exclusion evaluation because the result
+				// is allowed=false, regardless of the left-hand condition value.
 				if result.resp.GetAllowed() {
 					return response, nil
 				}
