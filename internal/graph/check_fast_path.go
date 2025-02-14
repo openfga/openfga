@@ -425,7 +425,7 @@ func fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+func resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Int("sources", len(leftChans)),
 		attribute.Bool("allowed", false),
@@ -440,16 +440,11 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	defer func() {
 		cancel()
 		iter.Stop()
-		if !leftOpen {
-			return
-		}
-		go func() {
-			for msg := range leftChan {
-				if msg.Iter != nil {
-					msg.Iter.Stop()
-				}
+		for msg := range leftChan {
+			if msg.Iter != nil {
+				msg.Iter.Stop()
 			}
-		}()
+		}
 	}()
 
 	res := &ResolveCheckResponse{
@@ -585,7 +580,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 		}, nil
 	}
 
-	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
+	return resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
 func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -615,7 +610,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		}, nil
 	}
 
-	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
+	return resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
