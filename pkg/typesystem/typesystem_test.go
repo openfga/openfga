@@ -12,6 +12,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type relationDetails struct {
@@ -5375,7 +5376,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 	}
 }
 
-func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
+func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string
@@ -5738,7 +5739,7 @@ func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			res := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+			res := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 				Tupleset: &openfgav1.ObjectRelation{
 					Relation: test.tuplesetRelation,
 				},
@@ -5938,6 +5939,7 @@ func TestRecursiveUsersetCanFastPath(t *testing.T) {
 		objectTypeRelation string
 		userType           string
 		expected           bool
+		expectedV2         bool
 	}{
 		{
 			name: "object_type_relation_not_found",
@@ -5952,6 +5954,7 @@ type group
 			objectTypeRelation: "group#undefined",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
 		},
 		{
 			name: "simple_recursive",
@@ -5966,6 +5969,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_other_types",
@@ -5981,6 +5985,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_condition",
@@ -5998,6 +6003,7 @@ condition cond(x: int) {
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_wildcard",
@@ -6012,6 +6018,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_wildcard_condition",
@@ -6029,6 +6036,7 @@ condition cond(x: int) {
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard",
@@ -6043,6 +6051,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_wildcard_cond",
@@ -6060,6 +6069,7 @@ condition cond(x: int) {
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "simple_recursive_multi_direct_assignment_user_wildcard_cond",
@@ -6077,6 +6087,7 @@ condition cond(x: int) {
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           true,
+			expectedV2:         true,
 		},
 		{
 			name: "complex_recursive_due_to_type_not_found",
@@ -6092,6 +6103,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
 		},
 		{
 			name: "complex_due_to_union",
@@ -6107,6 +6119,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         true,
 		},
 		{
 			name: "complex_due_to_intersection",
@@ -6122,6 +6135,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
 		},
 		{
 			name: "complex_due_to_exclusion",
@@ -6137,6 +6151,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
 		},
 		{
 			name: "complex_due_to_other_directly_assigned_userset",
@@ -6152,6 +6167,7 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
 		},
 		{
 			name: "complex_due_to_other_directly_assigned_userset_other_type",
@@ -6169,6 +6185,43 @@ type group
 			objectTypeRelation: "group#member",
 			userType:           "user",
 			expected:           false,
+			expectedV2:         false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         true,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         true,
 		},
 	}
 	for _, test := range tests {
@@ -6179,6 +6232,9 @@ type group
 			require.NoError(t, err)
 			result := typesys.RecursiveUsersetCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
+			objectType, relation := tuple.SplitObjectRelation(test.objectTypeRelation)
+			resultV2 := typesys.RecursiveUsersetCanFastPathV2(objectType, relation, test.userType)
+			require.Equal(t, test.expectedV2, resultV2)
 		})
 	}
 }
@@ -6550,8 +6606,8 @@ type group
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
 			if test.expected {
-				// every time RecursiveTTUCanFastPath returns true, IsRelationWithRecursiveTTUAndAlgebraicOperations must also
-				v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+				// every time RecursiveTTUCanFastPath returns true, RecursiveTTUCanFastPathV2 must also
+				v2 := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
 					},
