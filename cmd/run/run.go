@@ -41,6 +41,7 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -741,6 +742,16 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			}),
 			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
 			runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
+			runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.HTTPBodyMarshaler{
+				Marshaler: &runtime.JSONPb{
+					MarshalOptions: protojson.MarshalOptions{
+						EmitUnpopulated: false,
+					},
+					UnmarshalOptions: protojson.UnmarshalOptions{
+						DiscardUnknown: true,
+					},
+				},
+			}),
 		}
 		mux := runtime.NewServeMux(muxOpts...)
 		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
