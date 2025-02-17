@@ -63,7 +63,7 @@ jobs:
           comment-on-alert: true
 
       - name: Get CPU information
-        uses: kenchan0130/actions-system-info@c74331947b5734764feeb375de4038960f2576bd # v1
+        uses: kenchan0130/actions-system-info@6a1e7522ec3f38a344c8ea597867a012c3e691a8 # v1
         id: system-info
 
       - name: Save benchmark JSON to cache
