@@ -770,10 +770,10 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 	recursiveTTUFound := false
 
 	for _, edge := range edgesFromUnionNode {
+		w, ok := edge.GetWeight(userType)
 		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
 		if edge.GetEdgeType() == graph.TTUEdge &&
 			edge.GetConditionedOn() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-			w, ok := edge.GetWeight(userType)
 			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
 				recursiveTTUFound = true
 				continue
@@ -783,7 +783,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 		// relations
 		// viewer: rel2 and rel3 but not or viewer from parent
 		// everything else must comply with being weight = 1
-		if w, ok := edge.GetWeight(userType); ok && w > 1 {
+		if ok && w > 1 {
 			return false
 		}
 	}
@@ -844,16 +844,13 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 						return false
 					}
 					innerEdges = append(innerEdges, operationalEdges...)
-				} else if w > 1 {
-					// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
-					return false
 				}
 				continue
 			}
 			// if the edge is a direct edge, and it is the same userset that we are evaluating
-			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRel {
+			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRelNode.GetUniqueLabel() {
 				// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
-				if w == graph.Infinite && edge.GetTo() == objRelNode {
+				if w == graph.Infinite && edge.GetTo() == objRelNode && !recursiveUsersetFound {
 					// mark as the recursive userset was found
 					recursiveUsersetFound = true
 					continue

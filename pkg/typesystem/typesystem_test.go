@@ -6223,6 +6223,63 @@ type group
 			expected:           false,
 			expectedV2:         true,
 		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_2",
+			model: `
+model
+	schema 1.1
+type user
+type team
+	relations
+		define: [user]
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [team#member]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_inf",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and inner_member
+		define user: [user]
+		define inner_member: [user, group#inner_member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection_with_weight_cycle",
+			model: `
+model
+	schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, group#member] or owner
+			define owner: user or inner_member
+			define user: [user]
+			define inner_member: [user, group#member]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
