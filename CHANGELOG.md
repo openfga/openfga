@@ -15,9 +15,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Move Check performance optimizations out of experimental mode: shortcutting based on path, recursive userset fast path, and recursive TTU fast path. [#2236](https://github.com/openfga/openfga/pull/2236)
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the model contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
 - Implement dynamic TLS certificate reloading for HTTP and gRPC servers. [#2182](https://github.com/openfga/openfga/pull/2182)
+- Publicize `check.RunMatrixTests` method to allow testing against any `ClientInterface`. [#2267](https://github.com/openfga/openfga/pull/2267).
 
 ### Changed
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
+- Update to Go 1.23 as the min supported version and bump the container image to go1.23.6
+  We follow Go's version support policy and will only support the latest two major versions of Go. Now that [Go 1.24 is out](https://go.dev/blog/go1.24), we have dropped support for Go < 1.23.
 
 ### Fixed
 - Optimized database dialect handling by setting it during initialization instead of per-call, fixing SQL syntax errors in MySQL [#2252](https://github.com/openfga/openfga/pull/2252)
