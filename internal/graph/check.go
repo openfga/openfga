@@ -52,6 +52,7 @@ type LocalChecker struct {
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
+	goroutineWaiter      *sync.WaitGroup
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -99,6 +100,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
+		goroutineWaiter:    &sync.WaitGroup{},
 	}
 	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -108,6 +110,10 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	}
 
 	return checker
+}
+
+func (c *LocalChecker) Close() {
+	c.goroutineWaiter.Wait()
 }
 
 // SetDelegate sets this LocalChecker's dispatch delegate.
@@ -397,10 +403,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &ResolveCheckResponse{
 		Allowed: true,
 	}, nil
-}
-
-// Close is a noop.
-func (c *LocalChecker) Close() {
 }
 
 // dispatch clones the parent request, modifies its metadata and tupleKey, and dispatches the new request
