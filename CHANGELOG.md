@@ -16,6 +16,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the model contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
 - Implement dynamic TLS certificate reloading for HTTP and gRPC servers. [#2182](https://github.com/openfga/openfga/pull/2182)
 - Publicize `check.RunMatrixTests` method to allow testing against any `ClientInterface`. [#2267](https://github.com/openfga/openfga/pull/2267).
+- Added `cachecontroller_cache_invalidation_count` metric to track invalidation operations. [#2282](https://github.com/openfga/openfga/pull/2282)
 
 ### Changed
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
