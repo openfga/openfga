@@ -38,6 +38,12 @@ var (
 		Help:      "The total number of cache hits from cachecontroller requests.",
 	})
 
+	cacheInvalidationCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_cache_invalidation_count",
+		Help:      "The total number of invalidations performed by the cache controller.",
+	}, []string{"invalidation_type"})
+
 	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "cachecontroller_find_changes_and_invalidate_histogram",
@@ -263,17 +269,20 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 // invalidateIteratorCache writes a new key to the cache with a very long TTL.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
+	cacheInvalidationCounter.WithLabelValues("full_invalidation").Inc()
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
 // invalidateIteratorCacheByObjectRelation writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
+	cacheInvalidationCounter.WithLabelValues("by_object_relation").Inc()
 	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
 // invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
+	cacheInvalidationCounter.WithLabelValues("by_user_and_object_type").Inc()
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
