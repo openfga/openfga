@@ -106,44 +106,6 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 	return outChannel, nil
 }
 
-type recursiveUsersetObjectProvider struct {
-	ts     *typesystem.TypeSystem
-	cancel context.CancelFunc
-	pool   *pool.ContextPool
-}
-
-func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) *recursiveUsersetObjectProvider {
-	return &recursiveUsersetObjectProvider{ts: ts}
-}
-
-var _ objectProvider = (*recursiveUsersetObjectProvider)(nil)
-
-func (c *recursiveUsersetObjectProvider) End() {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	if c.pool != nil {
-		_ = c.pool.Wait()
-	}
-}
-
-func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
-	leftChans, err := constructLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
-	if err != nil {
-		return nil, err
-	}
-	outChannel := make(chan usersetMessage, len(leftChans))
-	leftChannel := fanInIteratorChannels(ctx, leftChans)
-	poolCtx, cancel := context.WithCancel(ctx)
-	c.cancel = cancel
-	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
-
-	return outChannel, nil
-}
-
 func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		leftOpen := true
