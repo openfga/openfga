@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+- Added `cachecontroller_cache_invalidation_count` metric to track invalidation operations. [#2282](https://github.com/openfga/openfga/pull/2282)
 
 ## [1.8.5] - 2025-02-19
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.4...v1.8.5)
@@ -20,7 +21,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the model contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
 - Implement dynamic TLS certificate reloading for HTTP and gRPC servers. [#2182](https://github.com/openfga/openfga/pull/2182)
 - Publicize `check.RunMatrixTests` method to allow testing against any `ClientInterface`. [#2267](https://github.com/openfga/openfga/pull/2267).
-- Added `cachecontroller_cache_invalidation_count` metric to track invalidation operations. [#2282](https://github.com/openfga/openfga/pull/2282)
 
 ### Changed
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
