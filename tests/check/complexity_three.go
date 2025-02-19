@@ -824,4 +824,99 @@ var complexityThreeTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "complex3_or_userset_mix_public",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:complex3_or_userset_mix_public_1", Relation: "userset_mix_public", User: "directs-user:complex3_or_userset_mix_public_1#direct"},
+			{Object: "directs-user:complex3_or_userset_mix_public_1", Relation: "direct", User: "user:complex3_or_userset_mix_public_1"},
+			{Object: "complexity3:complex3_or_userset_mix_public_1", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_public_1"},
+
+			{Object: "usersets-user:complex3_or_userset_mix_public_user_public", Relation: "userset_mix_public", User: "user:*"},
+			{Object: "complexity3:complex3_or_userset_mix_public_user_public", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_public_user_public"},
+
+			{Object: "usersets-user:complex3_or_userset_mix_public_user_specific", Relation: "userset_mix_public", User: "user:or_specific"},
+			{Object: "complexity3:complex3_or_userset_mix_public_user_specific", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_public_user_specific"},
+
+			{Object: "usersets-user:complex3_or_userset_mix_public_2", Relation: "or_userset_mix_public", User: "user:*"},
+			{Object: "complexity3:complex3_or_userset_mix_public_2", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_public_2"},
+
+			{Object: "usersets-user:complex3_or_userset_mix_public_3", Relation: "or_userset_mix_public", User: "user:complex3_or_userset_mix_public_3"},
+			{Object: "complexity3:complex3_or_userset_mix_public_3", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_public_3"},
+
+			{Object: "usersets-user:complex3_or_userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:*"},
+			{Object: "complexity3:complex3_or_userset_mix_directs_user_public", Relation: "userset_parent", User: "usersets-user:complex3_or_userset_mix_directs_user_public"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_1", Relation: "or_userset_mix_public_complex3", User: "directs-user:complex3_or_userset_mix_public_1#direct"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_1", Relation: "or_userset_mix_public_complex3", User: "user:complex3_or_userset_mix_public_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_1", Relation: "or_userset_mix_public_complex3", User: "directs-user:complex3_or_userset_mix_public_invalid#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_1", Relation: "or_userset_mix_public_complex3", User: "user:complex3_or_userset_mix_public_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_user_public", Relation: "or_userset_mix_public_complex3", User: "user:or_any"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_user_specific", Relation: "or_userset_mix_public_complex3", User: "user:or_specific"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific_other",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_user_specific", Relation: "or_userset_mix_public_complex3", User: "user:or_other"},
+				Expectation: false,
+			},
+			{
+				Name:        "public_user_direct_assign",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_2", Relation: "or_userset_mix_public_complex3", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "specific_user_direct_assign",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_3", Relation: "or_userset_mix_public_complex3", User: "user:complex3_or_userset_mix_public_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_direct_assign_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_3", Relation: "or_userset_mix_public_complex3", User: "user:complex3_or_userset_mix_public_3_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "user_direct_assign_invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_public_3_invalid", Relation: "or_userset_mix_public_complex3", User: "user:complex3_or_userset_mix_public_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_directs_user_public", Relation: "or_userset_mix_public_complex3", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct_user_public_userset_1",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_directs_user_public", Relation: "or_userset_mix_public_complex3", User: "directs-user:any#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public_userset_2",
+				Tuple:       &openfgav1.TupleKey{Object: "complexity3:complex3_or_userset_mix_directs_user_public", Relation: "or_userset_mix_public_complex3", User: "directs-user:any#direct_wild"},
+				Expectation: false,
+			},
+		},
+	},
 }

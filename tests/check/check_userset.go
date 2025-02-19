@@ -1462,4 +1462,157 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "userset_mix_public",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:userset_mix_public_1", Relation: "userset_mix_public", User: "directs-user:userset_mix_public_1#direct"},
+			{Object: "directs-user:userset_mix_public_1", Relation: "direct", User: "user:userset_mix_public_1"},
+
+			{Object: "usersets-user:userset_mix_public_user_public", Relation: "userset_mix_public", User: "user:*"},
+
+			{Object: "usersets-user:userset_mix_public_user_specific", Relation: "userset_mix_public", User: "user:specific"},
+			{Object: "usersets-user:userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:*"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_1", Relation: "userset_mix_public", User: "directs-user:userset_mix_public_1#direct"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_1", Relation: "userset_mix_public", User: "user:userset_mix_public_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_1", Relation: "userset_mix_public", User: "directs-user:userset_mix_public_invalid#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_1", Relation: "userset_mix_public", User: "user:userset_mix_public_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_user_public", Relation: "userset_mix_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_user_specific", Relation: "userset_mix_public", User: "user:specific"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific_other",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_public_user_specific", Relation: "userset_mix_public", User: "user:other"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct_user_public_userset_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:any#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public_userset_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:any#direct_wild"},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "or_userset_mix_public",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:or_userset_mix_public_1", Relation: "userset_mix_public", User: "directs-user:or_userset_mix_public_1#direct"},
+			{Object: "directs-user:or_userset_mix_public_1", Relation: "direct", User: "user:or_userset_mix_public_1"},
+
+			{Object: "usersets-user:or_userset_mix_public_user_public", Relation: "userset_mix_public", User: "user:*"},
+
+			{Object: "usersets-user:or_userset_mix_public_user_specific", Relation: "userset_mix_public", User: "user:or_specific"},
+
+			{Object: "usersets-user:or_userset_mix_public_2", Relation: "or_userset_mix_public", User: "user:*"},
+
+			{Object: "usersets-user:or_userset_mix_public_3", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_3"},
+
+			{Object: "usersets-user:or_userset_mix_directs_user_public", Relation: "userset_mix_public", User: "directs-user:*"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "valid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_1", Relation: "or_userset_mix_public", User: "directs-user:or_userset_mix_public_1#direct"},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_1", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_1"},
+				Expectation: true,
+			},
+			{
+				Name:        "invalid_userset_assignment",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_1", Relation: "or_userset_mix_public", User: "directs-user:or_userset_mix_public_invalid#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_1", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_user_public", Relation: "or_userset_mix_public", User: "user:or_any"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_user_specific", Relation: "or_userset_mix_public", User: "user:or_specific"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_specific_other",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_user_specific", Relation: "or_userset_mix_public", User: "user:or_other"},
+				Expectation: false,
+			},
+			{
+				Name:        "public_user_direct_assign",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_2", Relation: "or_userset_mix_public", User: "user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "specific_user_direct_assign",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_3", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_3"},
+				Expectation: true,
+			},
+			{
+				Name:        "user_direct_assign_invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_3", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_3_invalid"},
+				Expectation: false,
+			},
+			{
+				Name:        "user_direct_assign_invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_public_3_invalid", Relation: "or_userset_mix_public", User: "user:or_userset_mix_public_3"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_directs_user_public", Relation: "or_userset_mix_public", User: "directs-user:any"},
+				Expectation: true,
+			},
+			{
+				Name:        "direct_user_public_userset_1",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_directs_user_public", Relation: "or_userset_mix_public", User: "directs-user:any#direct"},
+				Expectation: false,
+			},
+			{
+				Name:        "direct_user_public_userset_2",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:or_userset_mix_directs_user_public", Relation: "or_userset_mix_public", User: "directs-user:any#direct_wild"},
+				Expectation: false,
+			},
+		},
+	},
 }

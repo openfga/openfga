@@ -28,6 +28,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
 - Fixed incorrect types in configuration JSON schema [#2217](https://github.com/openfga/openfga/pull/2217), [#2228](https://github.com/openfga/openfga/pull/2228).
 - Fixed `BatchCheck` API to validate presence of the `tuple_key` property of a `BatchCheckItem` [#2242](https://github.com/openfga/openfga/issues/2242)
+- Fixed incorrect check and list objects evaluation when model has a relation directly assignable to both public access AND userset with the same type and type bound public access tuple is assigned to the object.
 
 ## [1.8.4] - 2025-01-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)

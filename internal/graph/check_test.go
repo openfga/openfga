@@ -4274,6 +4274,54 @@ func TestShouldCheckPubliclyAssigned(t *testing.T) {
 			reqTupleKey: tuple.NewTupleKey("group:1", "other_member", "group:2#member"),
 			expected:    false,
 		},
+		{
+			name: "mixed_public_userset_tuple_user",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	type folder
+		relations
+			define viewer: [group, group:*, group#member]
+	`),
+			reqTupleKey: tuple.NewTupleKey("folder:1", "viewer", "group:1"),
+			expected:    true,
+		},
+		{
+			name: "mixed_public_userset_tuple_wilduser",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	type folder
+		relations
+			define viewer: [group, group:*, group#member]
+	`),
+			reqTupleKey: tuple.NewTupleKey("folder:1", "viewer", "group:*"),
+			expected:    true,
+		},
+		{
+			name: "mixed_public_userset_tuple_userset",
+			model: parser.MustTransformDSLToProto(`
+	model
+		schema 1.1
+	type user
+	type group
+		relations
+			define member: [user, user:*]
+	type folder
+		relations
+			define viewer: [group, group:*, group#member]
+	`),
+			reqTupleKey: tuple.NewTupleKey("folder:1", "viewer", "group:1#member"),
+			expected:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
