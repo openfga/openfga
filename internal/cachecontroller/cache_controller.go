@@ -250,7 +250,11 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	} else {
 		// only a subset of changes are new, revoke the respective ones.
 		lastModified := time.Now()
-		cacheInvalidationCounter.Inc()
+
+		// only increment if we're going to enter the invalidation for loop below
+		if idx >= 0 {
+			cacheInvalidationCounter.Inc()
+		}
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
 			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
