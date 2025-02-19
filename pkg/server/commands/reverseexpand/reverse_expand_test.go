@@ -820,3 +820,94 @@ func TestReverseExpandHonorsConsistency(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldCheckPublicAssignable(t *testing.T) {
+	tests := []struct {
+		name            string
+		model           string
+		targetReference *openfgav1.RelationReference
+		userRef         IsUserRef
+		expectedResult  bool
+		expectedError   bool
+	}{
+		{
+			name: "model_non_public",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, group#member]
+`,
+			targetReference: typesystem.DirectRelationReference("document", "viewer"),
+			userRef: &UserRefObject{
+				Object: &openfgav1.Object{Type: "user", Id: "bob"},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "model_public",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, user:*, group#member]
+`,
+			targetReference: typesystem.DirectRelationReference("document", "viewer"),
+			userRef: &UserRefObject{
+				Object: &openfgav1.Object{Type: "user", Id: "bob"},
+			},
+			expectedResult: true,
+		},
+		{
+			name: "model_public_but_request_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type document
+					relations
+						define viewer: [user, user:*, group#member]
+`,
+			targetReference: typesystem.DirectRelationReference("document", "viewer"),
+			userRef: &UserRefObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
+					Object:   "group",
+					Relation: "member",
+				},
+			},
+			expectedResult: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+
+			typeSystem, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(test.model))
+			require.NoError(t, err)
+
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+			dut := NewReverseExpandQuery(mockDatastore, typeSystem)
+			publiclyAssignable, err := dut.shouldCheckPublicAssignable(test.targetReference, test.userRef)
+			if test.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectedResult, publiclyAssignable)
+			}
+		})
+	}
+}

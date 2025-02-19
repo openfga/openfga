@@ -1111,6 +1111,11 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
+	// if the user tuple is userset, by definition it cannot be a wildcard
+	if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+		return false
+	}
+
 	isPubliclyAssignable, _ := typesys.IsPubliclyAssignable(
 		typesystem.DirectRelationReference(objectType, relation), // target
 		tuple.GetType(reqTupleKey.GetUser()),
