@@ -742,50 +742,58 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 
 	w, ok := objRelNode.GetWeight(userType)
 	if !ok || w != graph.Infinite {
-		// 1. node[objectType#relation].weights[userType] = infinite
 		return false
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
-	if !ok || len(edges) != 1 {
-		// 2. node[objectType#relation] has only 1 edge
-		return false
-	}
-
-	edge := edges[0]
-	if edge.GetTo().GetLabel() != graph.UnionOperator {
-		// 2. node[objectType#relation] has 1 edge to an OR node
-		return false
-	}
-
-	unionNode := edge.GetTo()
-
-	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesFromNode(unionNode)
 	if !ok {
 		return false
 	}
 
-	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
+	tuplesetRelation := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
 	computedRelation := ttu.GetComputedUserset().GetRelation()
 	recursiveTTUFound := false
 
-	for _, edge := range edgesFromUnionNode {
-		w, ok := edge.GetWeight(userType)
-		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-		if edge.GetEdgeType() == graph.TTUEdge &&
-			edge.GetTuplesetRelation() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
-				recursiveTTUFound = true
+	for len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+		for _, edge := range edges {
+			w, ok := edge.GetWeight(userType)
+			if !ok {
 				continue
 			}
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
+				if w == graph.Infinite {
+					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okOpEdge {
+						return false
+					}
+					innerEdges = append(innerEdges, operationalEdges...)
+					continue
+				}
+			}
+			// find and validate the TTUEdge which is infinite (the one being processed at the current time)
+			if edge.GetEdgeType() == graph.TTUEdge &&
+				edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
+				if w == graph.Infinite && edge.GetTo() == objRelNode {
+					recursiveTTUFound = true
+					continue
+				}
+			}
+			// type doc
+			// relations
+			// viewer: rel2 and rel3 but not or viewer from parent
+			// everything else must comply with being weight = 1
+			if w > 1 {
+				return false
+			}
 		}
-		// type doc
-		// relations
-		// viewer: rel2 and rel3 but not or viewer from parent
-		// everything else must comply with being weight = 1
-		if ok && w > 1 {
-			return false
+		if len(innerEdges) == 0 {
+			break
 		}
+		edges = innerEdges
 	}
 
 	return recursiveTTUFound
