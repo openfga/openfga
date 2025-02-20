@@ -8,8 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.9.0] - 2025-02-20
-[Full changelog](https://github.com/openfga/openfga/compare/v1.8.5...v1.9.0)
+## [1.8.6] - 2025-02-20
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6)
 
 ### Added
 - Added `cachecontroller_cache_invalidation_count` metric to track invalidation operations. [#2282](https://github.com/openfga/openfga/pull/2282)
@@ -1217,8 +1217,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.0...HEAD
-[1.9.0]: https://github.com/openfga/openfga/compare/v1.8.5...v1.9.0
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.6...HEAD
+[1.8.6]: https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/openfga/openfga/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3
