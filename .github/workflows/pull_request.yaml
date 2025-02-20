@@ -54,6 +54,37 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
 
+
+  goreleaser-dryrun:
+    name: Dry Run GoReleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
+      - name: Set up Go
+        uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 # v5.3.0
+        with:
+          go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
+          check-latest: true
+
+      - id: go-cache-paths
+        name: Get Go cache paths
+        run: |
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
+
+      - uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e # v3.8.0
+
+      - uses: anchore/sbom-action/download-syft@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+
+      - name: Dry Run GoReleaser
+        uses: goreleaser/goreleaser-action@9ed2f89a662bf1735a48bc8557fd212fa902bebf # v6.1.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config .goreleaser.yaml --snapshot --skip sign,publish,announce
+
   govulncheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15
