@@ -724,13 +724,13 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
-// IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
+// RecursiveTTUCanFastPathV2 returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // If true, it returns a map of Operands (edges) leaving the OR.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -770,10 +770,10 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 	recursiveTTUFound := false
 
 	for _, edge := range edgesFromUnionNode {
+		w, ok := edge.GetWeight(userType)
 		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
 		if edge.GetEdgeType() == graph.TTUEdge &&
 			edge.GetConditionedOn() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-			w, ok := edge.GetWeight(userType)
 			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
 				recursiveTTUFound = true
 				continue
@@ -783,7 +783,7 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 		// relations
 		// viewer: rel2 and rel3 but not or viewer from parent
 		// everything else must comply with being weight = 1
-		if w, ok := edge.GetWeight(userType); ok && w > 1 {
+		if ok && w > 1 {
 			return false
 		}
 	}

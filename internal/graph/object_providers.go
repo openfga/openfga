@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sourcegraph/conc/pool"
 
@@ -10,7 +9,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
-	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -20,37 +19,31 @@ import (
 // It must close the channel when there are no more results.
 type objectProvider interface {
 	End()
-	Begin(cancellableCtx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
+	Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
 }
 
-type simpleRecursiveObjectProvider struct {
+type recursiveObjectProvider struct {
 	mapper storage.TupleMapper
 	ts     *typesystem.TypeSystem
 	ds     storage.RelationshipTupleReader
 }
 
-func newSimpleRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) (*simpleRecursiveObjectProvider, error) {
-	if ts == nil || ds == nil {
-		return nil, fmt.Errorf("%w: nil arguments", openfgaErrors.ErrUnknown)
-	}
-	return &simpleRecursiveObjectProvider{ts: ts, ds: ds}, nil
+func newRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) *recursiveObjectProvider {
+	return &recursiveObjectProvider{ts: ts, ds: ds}
 }
 
-var _ objectProvider = (*simpleRecursiveObjectProvider)(nil)
+var _ objectProvider = (*recursiveObjectProvider)(nil)
 
-func (s *simpleRecursiveObjectProvider) End() {
+func (s *recursiveObjectProvider) End() {
 	if s.mapper != nil {
 		s.mapper.Stop()
 	}
 }
 
-func (s *simpleRecursiveObjectProvider) Begin(cancellableCtx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
-	if req == nil {
-		return nil, fmt.Errorf("%w: nil request", openfgaErrors.ErrUnknown)
-	}
+func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
 	// since the consumer is using hashsets to check for intersection.
-	userIter, err := checkutil.IteratorReadStartingFromUser(cancellableCtx, s.ts, s.ds, req,
+	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, s.ts, s.ds, req,
 		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
 		nil, false)
 	if err != nil {
@@ -60,12 +53,12 @@ func (s *simpleRecursiveObjectProvider) Begin(cancellableCtx context.Context, re
 	s.mapper = usersetFromUserIter
 
 	// note: this function will close the channel
-	userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, usersetFromUserIter)
+	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, usersetFromUserIter)
 
 	return userToUsersetMessageChan, nil
 }
 
-type complexRecursiveTTUObjectProvider struct {
+type recursiveTTUObjectProvider struct {
 	ts               *typesystem.TypeSystem
 	tuplesetRelation string
 	computedRelation string
@@ -73,25 +66,15 @@ type complexRecursiveTTUObjectProvider struct {
 	pool             *pool.ContextPool
 }
 
-func newComplexTTURecursiveObjectProvider(ts *typesystem.TypeSystem, rewrite *openfgav1.Userset) (*complexRecursiveTTUObjectProvider, error) {
-	if ts == nil {
-		return nil, fmt.Errorf("%w: nil typesystem", openfgaErrors.ErrUnknown)
-	}
-	if rewrite == nil {
-		return nil, fmt.Errorf("%w: nil rewrite", openfgaErrors.ErrUnknown)
-	}
-	if rewrite.GetTupleToUserset() == nil {
-		return nil, fmt.Errorf("%w: rewrite must be a tupletouserset", openfgaErrors.ErrUnknown)
-	}
-
-	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-	return &complexRecursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}, nil
+func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) *recursiveTTUObjectProvider {
+	tuplesetRelation := ttu.GetTupleset().GetRelation()
+	computedRelation := ttu.GetComputedUserset().GetRelation()
+	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}
 }
 
-var _ objectProvider = (*complexRecursiveTTUObjectProvider)(nil)
+var _ objectProvider = (*recursiveTTUObjectProvider)(nil)
 
-func (c *complexRecursiveTTUObjectProvider) End() {
+func (c *recursiveTTUObjectProvider) End() {
 	if c.cancel != nil {
 		c.cancel()
 	}
@@ -100,10 +83,7 @@ func (c *complexRecursiveTTUObjectProvider) End() {
 	}
 }
 
-func (c *complexRecursiveTTUObjectProvider) Begin(cancellableCtx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
-	if req == nil {
-		return nil, fmt.Errorf("%w: nil request", openfgaErrors.ErrUnknown)
-	}
+func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 
 	possibleParents, err := c.ts.GetDirectlyRelatedUserTypes(objectType, c.tuplesetRelation)
@@ -111,57 +91,57 @@ func (c *complexRecursiveTTUObjectProvider) Begin(cancellableCtx context.Context
 		return nil, err
 	}
 
-	leftChannels, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
+	leftChannels, err := constructLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
 	if err != nil {
 		return nil, err
 	}
 	outChannel := make(chan usersetMessage, len(leftChannels))
-	leftChannel := fanInIteratorChannels(cancellableCtx, leftChannels)
-	poolCtx, cancel := context.WithCancel(cancellableCtx)
+	leftChannel := fanInIteratorChannels(ctx, leftChannels)
+	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(func(ctx context.Context) error {
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
+
+	return outChannel, nil
+}
+
+func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
 		leftOpen := true
 		defer func() {
-			close(outChannel)
+			close(dst)
 			if !leftOpen {
 				return
 			}
-			go func() {
-				for msg := range leftChannel {
-					if msg.Iter != nil {
-						msg.Iter.Stop()
-					}
-				}
-			}()
+			go drainIteratorChannel(src)
 		}()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg, ok := <-leftChannel:
+		case msg, ok := <-src:
 			if !ok {
 				leftOpen = false
 				return nil
 			}
 			if msg.Err != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, outChannel)
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
 				return msg.Err
 			}
-			t, err := msg.Iter.Next(ctx)
-			if err != nil {
-				msg.Iter.Stop()
-				if storage.IterIsDoneOrCancelled(err) {
-					break
+			for {
+				t, err := msg.Iter.Next(ctx)
+				if err != nil {
+					msg.Iter.Stop()
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
+					return err
 				}
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, outChannel)
-				return err
+				userset := t.GetObject()
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, dst)
 			}
-			userset := t.GetObject()
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, outChannel)
 		}
 		return nil
-	})
-
-	return outChannel, nil
+	}
 }

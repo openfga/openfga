@@ -2700,7 +2700,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 	})
 }
 
-func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
+func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -2751,7 +2751,7 @@ func TestRecursiveTTUFastPathUnionAlgebraicOperations(t *testing.T) {
 				Object:   "document:target",
 			}})
 
-			val, err := checker.recursiveTTUFastPathUnionAlgebraicOperations(ctx, &ResolveCheckRequest{
+			val, err := checker.recursiveTTUFastPathV2(ctx, &ResolveCheckRequest{
 				StoreID:              storeID,
 				AuthorizationModelID: ts.GetAuthorizationModelID(),
 				TupleKey:             tuple.NewTupleKey("document:target", "viewer", "user:anne"),
