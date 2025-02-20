@@ -14,8 +14,9 @@ func TestWorkerPool(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(2, func(j int32) {
+	p := Bound(2, func(j int32) error {
 		i.Add(j)
+		return nil
 	})
 
 	p.Push(ctx, 1)
@@ -30,9 +31,10 @@ func TestWorkerPoolWaitCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(2, func(j int32) {
+	p := Bound(2, func(j int32) error {
 		i.Add(j)
 		time.Sleep(1 * time.Second)
+		return nil
 	})
 
 	p.Push(ctx, 1)
