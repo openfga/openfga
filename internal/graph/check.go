@@ -149,21 +149,29 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) {
+	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) error {
 		if ctx.Err() != nil {
-			ch <- item[checkOutcome]{
-				N:     fn.N,
-				Value: checkOutcome{nil, ctx.Err()},
-			}
-			return
+			return ctx.Err()
 		}
+
+		// execute the handler function, passing in the parent
+		// context captured from the parent function. this context
+		// may contain data that is used by the handler function.
 		resp, err := fn.Value(ctx)
+		if err != nil {
+			return err
+		}
+
 		ch <- item[checkOutcome]{
-			N:     fn.N,
+			N:     fn.N, // N is the ordinal of the handler. this is important for difference evalutions.
 			Value: checkOutcome{resp, err},
 		}
+		return nil
 	})
 
+	// handlers are pushed into the work group within a separate
+	// routine so that the consuming end of the application can
+	// begin processing the results immediately as they arrive.
 	wg.Add(1)
 	go func() {
 		defer func() {
@@ -172,13 +180,26 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 			wg.Done()
 		}()
 
+		// will be used to collect the receive channel error handles.
+		// each channel must be awaited for a possible error resulting
+		// from a panic or context cancelation in each handler.
+		hnds := make([]<-chan error, len(handlers))
+
 		for i, handler := range handlers {
-			err := p.Push(ctx, item[CheckHandlerFunc]{
+			hnd := p.Push(ctx, item[CheckHandlerFunc]{
 				N:     i,
 				Value: handler,
 			})
+			hnds[i] = hnd
+		}
+
+		for i, hnd := range hnds {
+			err := <-hnd
 			if err != nil {
-				break
+				ch <- item[checkOutcome]{
+					N:     i,
+					Value: checkOutcome{nil, err},
+				}
 			}
 		}
 	}()
