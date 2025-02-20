@@ -415,20 +415,31 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		slowFalseHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: false,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: false,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := exclusion(ctx, concurrencyLimit, slowTrueHandler, slowFalseHandler)
@@ -438,7 +449,10 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		var wg sync.WaitGroup
 
@@ -450,8 +464,12 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		}()
 
 		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := exclusion(ctx, concurrencyLimit, slowHandler, slowHandler)
@@ -680,13 +698,20 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_deadline_before_truthy_handler", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
@@ -716,13 +741,20 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_deadline_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
@@ -732,7 +764,10 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		var wg sync.WaitGroup
 
@@ -744,10 +779,14 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		}()
 
 		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := intersection(ctx, concurrencyLimit, slowTrueHandler)
@@ -1548,11 +1587,18 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 	})
 	t.Run("should_handle_cancellations_through_context", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
-		slowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{}, nil
+		slowHandler := func(ctx context.Context) (*ResolveCheckResponse, error) {
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := union(ctx, concurrencyLimit, slowHandler, falseHandler)
@@ -1562,13 +1608,20 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	t.Run("should_handle_context_timeouts_even_with_eventual_truthy_handler", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		trueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(25 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseHandler)
@@ -1578,10 +1631,13 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	t.Run("should_return_true_with_slow_falsey_handler", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		falseSlowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(25 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			return &ResolveCheckResponse{
 				Allowed: false,
 			}, nil
@@ -1594,7 +1650,10 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	t.Run("return_error_if_context_cancelled_before_resolution", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+		t.Cleanup(func() {
+			cancel()
+			goleak.VerifyNone(t)
+		})
 
 		var wg sync.WaitGroup
 
@@ -1605,11 +1664,15 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 			cancel()
 		}()
 
-		slowTrueHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(50 * time.Millisecond)
-			return &ResolveCheckResponse{
-				Allowed: true,
-			}, nil
+		slowTrueHandler := func(ctx context.Context) (*ResolveCheckResponse, error) {
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := union(ctx, concurrencyLimit, slowTrueHandler)
