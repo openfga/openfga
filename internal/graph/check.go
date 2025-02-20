@@ -23,7 +23,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/workgroup"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -149,41 +148,42 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) {
-		if ctx.Err() != nil {
-			ch <- item[checkOutcome]{
-				N:     fn.N,
-				Value: checkOutcome{nil, ctx.Err()},
-			}
-			return
-		}
-		resp, err := fn.Value(ctx)
-		ch <- item[checkOutcome]{
-			N:     fn.N,
-			Value: checkOutcome{resp, err},
-		}
-	})
+	ctx, cancel := context.WithCancel(ctx)
+	pool := concurrency.NewPool(ctx, int(concurrencyLimit))
 
 	wg.Add(1)
 	go func() {
 		defer func() {
-			p.Close()
+			pool.Wait()
 			close(ch)
 			wg.Done()
 		}()
 
 		for i, handler := range handlers {
-			err := p.Push(ctx, item[CheckHandlerFunc]{
-				N:     i,
-				Value: handler,
-			})
-			if err != nil {
-				break
+			if ctx.Err() != nil {
+				return
 			}
+
+			pool.Go(func(ctx context.Context) error {
+				if ctx.Err() != nil {
+					ch <- item[checkOutcome]{
+						N:     i,
+						Value: checkOutcome{nil, ctx.Err()},
+					}
+					return ctx.Err()
+				}
+				resp, err := handler(ctx)
+				ch <- item[checkOutcome]{
+					N:     i,
+					Value: checkOutcome{resp, err},
+				}
+				return nil
+			})
 		}
 	}()
 
 	end = func() {
+		cancel()
 		wg.Wait()
 	}
 	return
