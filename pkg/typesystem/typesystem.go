@@ -680,7 +680,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 			// a TuplesetRelation may have multiple parents and these need to be visited to ensure their weight does not
 			// exceed weight 2
 			if edge.GetEdgeType() == graph.TTUEdge &&
-				edge.GetConditionedOn() == tuplesetRelationKey &&
+				edge.GetTuplesetRelation() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
 				w, ok := edge.GetWeight(userType)
 				if ok {
@@ -773,7 +773,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 		w, ok := edge.GetWeight(userType)
 		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
 		if edge.GetEdgeType() == graph.TTUEdge &&
-			edge.GetConditionedOn() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
+			edge.GetTuplesetRelation() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
 			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
 				recursiveTTUFound = true
 				continue
