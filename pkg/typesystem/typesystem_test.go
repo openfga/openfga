@@ -5732,6 +5732,79 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 			computedRelation:  "rel1",
 			expectCanFastPath: false,
 		},
+		{name: "parent_with_condition",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "parent_with_condition_and_without_conditions",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond, document]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "ttu_in_inner_operations",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: ([user] or rel2 or rel1 from parent) or rel2
+						define rel2: [user]
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "cannot_recurse_on_itself_through_computed",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: rel2 or rel1 from parent
+						define rel2: [user] or rel3
+						define rel3: [user] or rel1 from parent # same tupleset/computed
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
