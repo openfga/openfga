@@ -724,7 +724,8 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
-// RecursiveTTUCanFastPathV2 returns true if all these conditions apply:
+// RecursiveTTUCanFastPathV2 returns true fast path can be applied to user/relation.
+// For it to return true, all of these conditions must be met:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
