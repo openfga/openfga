@@ -1146,6 +1146,8 @@ type usersets-user
     define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
     define tuple_cycle2: [ttus#tuple_cycle2]
     define tuple_cycle3: [directs-user#compute_tuple_cycle3]
+    define userset_mix_public: [directs-user#direct, directs-user:*, user, user:*]
+    define or_userset_mix_public: [user, user:*] or userset_mix_public
 type ttus
   relations
     define direct_parent: [directs-user]
@@ -1190,7 +1192,8 @@ type complexity3
     define compute_userset_ttu_userset: userset_ttu_userset
     define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
     define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
-    define cycle_nested: [ttus#tuple_cycle3]   
+    define cycle_nested: [ttus#tuple_cycle3]
+    define or_userset_mix_public_complex3: or_userset_mix_public from userset_parent
 type complexity4
   relations
     define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
