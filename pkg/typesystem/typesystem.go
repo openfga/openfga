@@ -760,6 +760,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 		for _, edge := range edges {
 			w, ok := edge.GetWeight(userType)
 			if !ok {
+				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
 			// edge is a set operator thus we have to inspect each node of the operator
@@ -772,12 +773,19 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 					}
 					innerEdges = append(innerEdges, operationalEdges...)
 					continue
+				} else if w > 1 {
+					// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
+					return false
 				}
 			}
 			// find and validate the TTUEdge which is infinite (the one being processed at the current time)
 			if edge.GetEdgeType() == graph.TTUEdge &&
 				edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
-				if w == graph.Infinite && edge.GetTo() == objRelNode {
+				// The recursive TTU edge needs to have :
+				// 1. weight infinite for the terminal type
+				// 2. the computed relation for the TTU is the same relation
+				// 3. there can only be one recursive TTU edge
+				if w == graph.Infinite && edge.GetTo() == objRelNode && !recursiveTTUFound {
 					recursiveTTUFound = true
 					continue
 				}
