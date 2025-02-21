@@ -773,9 +773,6 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 					}
 					innerEdges = append(innerEdges, operationalEdges...)
 					continue
-				} else if w > 1 {
-					// otherwise if the edge has weight > 1 for the usertype then it violates the pre-requisite of all except the recursive relation needs to be weight = 1
-					return false
 				}
 			}
 			// find and validate the TTUEdge which is infinite (the one being processed at the current time)
