@@ -736,10 +736,6 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		close(checkOutcomeChan)
 		return
 	}
-
-	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-		Allowed: false,
-	}}, checkOutcomeChan)
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
