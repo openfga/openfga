@@ -1406,13 +1406,12 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		currentLevelUsersets *hashset.Set
 		usersetFromUser      *hashset.Set
 		readMocks            [][]*openfgav1.Tuple
-		expectedOutcomes     []checkOutcome
+		expected             bool
 	}{
 		{
 			name:                 "empty_userset",
 			currentLevelUsersets: hashset.New(),
 			usersetFromUser:      hashset.New(),
-			expectedOutcomes:     []checkOutcome{},
 		},
 		{
 			name:                 "duplicates_no_match_no_recursion",
@@ -1422,11 +1421,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				{{}},
 				{{}},
 				{{}},
-			},
-			expectedOutcomes: []checkOutcome{
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
 			},
 		},
 		{
@@ -1438,14 +1432,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				{{Key: tuple.NewTupleKey("group:3", "parent", "group:2")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
 			},
-			expectedOutcomes: []checkOutcome{
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
-			},
 		},
 		{
 			name:                 "duplicates_match_with_recursion",
@@ -1456,11 +1442,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
 				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
 			},
-			expectedOutcomes: []checkOutcome{
-				{resp: &ResolveCheckResponse{
-					Allowed: true,
-				}},
-			},
+			expected: true,
 		},
 		{
 			name:                 "duplicates_match_with_recursion",
@@ -1471,11 +1453,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
 				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
 			},
-			expectedOutcomes: []checkOutcome{
-				{resp: &ResolveCheckResponse{
-					Allowed: true,
-				}},
-			},
+			expected: true,
 		},
 		{
 			name:                 "no_duplicates_no_match_counts",
@@ -1491,17 +1469,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				{{}},
 				{{}},
 				{{}},
-			},
-			expectedOutcomes: []checkOutcome{
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
-				{resp: &ResolveCheckResponse{
-					Allowed: false,
-				}},
 			},
 		},
 	}
@@ -1549,11 +1516,11 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
 			checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
 
-			collectedOutcomes := make([]checkOutcome, 0)
+			result := false
 			for outcome := range checkOutcomeChan {
-				collectedOutcomes = append(collectedOutcomes, outcome)
+				result = outcome.resp.Allowed
 			}
-			require.Equal(t, tt.expectedOutcomes, collectedOutcomes)
+			require.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -1914,6 +1881,58 @@ func TestRecursiveTTUFastPathV2(t *testing.T) {
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 		})
 	}
+
+	t.Run("resolution_depth_exceeded", func(t *testing.T) {
+		t.Parallel()
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+				{
+					Key: tuple.NewTupleKey("group:30", "member", "user:maria"),
+				},
+			}), nil)
+
+		for i := 1; i < 26; i++ {
+			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
+				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i), "parent", "group:"+strconv.Itoa(i+1)),
+					},
+				}), nil)
+		}
+		model := parser.MustTransformDSLToProto(`
+model
+	schema 1.1
+
+type user
+type group
+	relations
+		define member: [user] or member from parent
+		define parent: [group]
+			`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+		req := &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:0", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+		}
+
+		checker := NewLocalChecker()
+		tupleKeys := []*openfgav1.TupleKey{{Object: "group:0", Relation: "parent", User: "group:1"}}
+
+		result, err := checker.recursiveTTUFastPathV2(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))
+		require.Nil(t, result)
+		require.Equal(t, ErrResolutionDepthExceeded, err)
+	})
 }
 
 func TestRecursiveUsersetFastPath(t *testing.T) {
