@@ -1998,7 +1998,7 @@ type group
 				name: "user_assigned_via_rel4_but_denied_rel6",
 				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
 					{
-						Key: tuple.NewTupleKey("group:3", "rel4", "user:mari"),
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
 					},
 				},
 				readStartingWithUserTuplesRel6: []*openfgav1.Tuple{
