@@ -56,7 +56,7 @@ func (p *boundGroup[T]) Push(ctx context.Context, t T) <-chan error {
 
 	select {
 	case <-p.ctx.Done():
-		ch <- ctx.Err()
+		ch <- p.ctx.Err()
 	case <-ctx.Done():
 		ch <- ctx.Err()
 	case p.limiter <- struct{}{}:
