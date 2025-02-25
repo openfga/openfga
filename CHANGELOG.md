@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Changed
+- Rewrite some of the check resolution logic to keep track of running go routines and ensure that all routines have synchronized back into the original parent thread of execution before continuing. [#2275](https://github.com/openfga/openfga/pull/2275)
+
 ## [1.8.6] - 2025-02-20
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6)
 
