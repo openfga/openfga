@@ -1882,6 +1882,248 @@ func TestRecursiveTTUFastPathV2(t *testing.T) {
 		})
 	}
 
+	t.Run("complex_model", func(t *testing.T) {
+		model := parser.MustTransformDSLToProto(`
+model
+	schema 1.1
+
+type user
+type group
+	relations
+		define member: member from parent or (rel2 but not rel6)
+		define parent: [group]
+		define rel2: (rel4 or (rel7 and rel8)) but not rel5
+		define rel4: [user]
+		define rel5: [user]
+		define rel6: [user]
+		define rel7: [user]
+		define rel8: [user]
+		`)
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		tests := []struct {
+			name                             string
+			readStartingWithUserTuplesMember []*openfgav1.Tuple
+			readStartingWithUserTuplesRel4   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel5   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel6   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel7   []*openfgav1.Tuple
+			readStartingWithUserTuplesRel8   []*openfgav1.Tuple
+			readStartingWithUserTuplesError  error
+			readTuples                       [][]*openfgav1.Tuple
+			readTuplesError                  error
+			expected                         *ResolveCheckResponse
+			expectedError                    error
+		}{
+			{
+				name: "no_user_assigned_to_group",
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "parent", "group:3"),
+						},
+					},
+					{},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+				},
+			},
+			{
+				name: "user_assigned_to_group_recursively",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:6", "parent", "group:5"),
+						},
+					}, {
+						{
+							Key: tuple.NewTupleKey("group:5", "parent", "group:3"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+			{
+				name: "user_assigned_via_rel4",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "parent", "group:3"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+			{
+				name: "user_assigned_via_rel4_but_denied_rel5",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:maria"),
+					},
+				},
+				readStartingWithUserTuplesRel5: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel5", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:5", "parent", "group:5"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+				},
+			},
+			{
+				name: "user_assigned_via_rel4_but_denied_rel6",
+				readStartingWithUserTuplesRel4: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel4", "user:mari"),
+					},
+				},
+				readStartingWithUserTuplesRel6: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel6", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "parent", "group:3"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: false,
+				},
+			},
+			{
+				name: "user_assigned_via_rel7_and_rel8",
+				readStartingWithUserTuplesRel7: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel7", "user:maria"),
+					},
+				},
+				readStartingWithUserTuplesRel8: []*openfgav1.Tuple{
+					{
+						Key: tuple.NewTupleKey("group:3", "rel8", "user:maria"),
+					},
+				},
+				readTuples: [][]*openfgav1.Tuple{
+					{
+						{
+							Key: tuple.NewTupleKey("group:1", "parent", "group:3"),
+						},
+					},
+				},
+				expected: &ResolveCheckResponse{
+					Allowed: true,
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				//t.Parallel()
+
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				storeID := ulid.Make().String()
+				mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel4",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel7",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel8",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel5",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "rel6",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
+
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+					ObjectType: "group",
+					Relation:   "member",
+					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
+					ObjectIDs:  nil,
+				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
+
+				for _, tuples := range tt.readTuples[1:] {
+					mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
+				}
+
+				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+				req := &ResolveCheckRequest{
+					StoreID:              storeID,
+					AuthorizationModelID: ulid.Make().String(),
+					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
+					RequestMetadata:      NewCheckRequestMetadata(),
+				}
+
+				checker := NewLocalChecker()
+				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
+				for _, t := range tt.readTuples[0] {
+					k := t.GetKey()
+					tupleKeys = append(tupleKeys, &openfgav1.TupleKey{
+						User:     k.GetUser(),
+						Relation: k.GetRelation(),
+						Object:   k.GetObject(),
+					})
+				}
+
+				result, err := checker.recursiveTTUFastPathV2(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))
+				require.Equal(t, tt.expectedError, err)
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
+			})
+		}
+	})
+
 	t.Run("resolution_depth_exceeded", func(t *testing.T) {
 		t.Parallel()
 		ctrl := gomock.NewController(t)

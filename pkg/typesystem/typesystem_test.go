@@ -5805,6 +5805,54 @@ condition cond(x: int) {
 			computedRelation:  "rel1",
 			expectCanFastPath: false,
 		},
+		{name: "with_non_recursive_ttu_of_valid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or viewer from partner or (rel2)
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{name: "with_non_recursive_ttu_of_invalid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or (viewer from partner or rel2) 
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "employee",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

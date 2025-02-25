@@ -9,7 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## Fixed
-- Fix evaluation of certain recursive TTU cases behind the `enable-check-optimizations` flag. [#2281](https://github.com/openfga/openfga/pull/2281)
+- Fixed evaluation of certain recursive TTU cases behind the `enable-check-optimizations` flag. [#2281](https://github.com/openfga/openfga/pull/2281)
 
 ## [1.8.6] - 2025-02-20
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6)
