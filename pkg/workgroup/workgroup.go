@@ -82,7 +82,6 @@ func (p *boundGroup[T]) Push(ctx context.Context, t T) <-chan error {
 func (p *boundGroup[T]) Close() error {
 	p.once.Do(func() {
 		p.cancel()
-		close(p.limiter)
 	})
 	p.wg.Wait()
 	return nil
