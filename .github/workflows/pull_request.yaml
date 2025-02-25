@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
@@ -25,7 +25,7 @@ jobs:
           args: -v -c .golangci.yaml
 
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout code
@@ -86,7 +86,7 @@ jobs:
           args: release --clean --config .goreleaser.yaml --snapshot --skip sign,publish,announce
 
   govulncheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout code
@@ -97,7 +97,7 @@ jobs:
           go-version-file: go.mod
 
   docker-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout code
@@ -130,7 +130,7 @@ jobs:
         run: make test-docker
 
   go-bench:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout code
