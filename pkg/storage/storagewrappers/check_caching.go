@@ -263,7 +263,7 @@ func (c *CachedDatastore) Read(
 // the key is present, and
 // the cache key satisfies TS(key) >= TS(store), and
 // all of the invalidEntityKeys satisfy TS(key) >= TS(invalid).
-func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string, logger logger.Logger, operation string) (*storage.TupleIteratorCacheEntry, bool) {
+func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string, logger logger.Logger) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
 	var ok bool
 
@@ -378,7 +378,7 @@ func (c *CachedDatastore) newCachedIterator(
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	tuplesCacheTotalCounter.WithLabelValues(operation).Inc()
 
-	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger, operation); ok {
+	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger); ok {
 		tuplesCacheHitCounter.WithLabelValues(operation).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
@@ -517,7 +517,7 @@ func (c *cachedIterator) Stop() {
 		defer c.iter.Stop()
 
 		// if cache is already set, we don't need to drain the iterator
-		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger, c.operation)
+		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger)
 		if ok {
 			c.iter.Stop()
 			c.tuples = nil
