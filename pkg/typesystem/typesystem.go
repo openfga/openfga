@@ -764,10 +764,10 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			// edge is a set operator thus we have to inspect each node of the operator
-			if edge.GetEdgeType() == graph.RewriteEdge {
-				// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-				if w == graph.Infinite {
+			if w == graph.Infinite {
+				// edge is a set operator thus we have to inspect each node of the operator
+				if edge.GetEdgeType() == graph.RewriteEdge {
+					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
 					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
 					if !okOpEdge {
 						return false
@@ -775,21 +775,19 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 					// these edges will need to be evaluated in subsequent iterations
 					innerEdges = append(innerEdges, operationalEdges...)
 					continue
-				}
-			}
-			// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-			if edge.GetEdgeType() == graph.TTUEdge &&
-				edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), computedRelationSuffix) {
-				// The recursive TTU edge needs to have:
-				// 1. weight infinite for the terminal type
-				// 2. the computed relation for the TTU is the same relation
-				// 3. there can only be one recursive TTU edge
-				if w == graph.Infinite && edge.GetTo() == objRelNode && !recursiveTTUFound {
+				} else if edge.GetEdgeType() == graph.TTUEdge && !recursiveTTUFound && edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), computedRelationSuffix) && edge.GetTo() == objRelNode {
+					// find and validate the TTUEdge which is infinite (the one being processed at the current time)
+					// The recursive TTU edge needs to have:
+					// 1. weight infinite for the terminal type
+					// 2. the computed relation for the TTU is the same relation
+					// 3. there can only be one recursive TTU edge
 					recursiveTTUFound = true
 					continue
 				}
 			}
+
 			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
+			// thus if an infinite didn't get handled it will exit through here
 			if w > 1 {
 				return false
 			}
@@ -847,28 +845,26 @@ func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userTyp
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			// edge is a set operator thus we have to inspect each node of the operator
-			if edge.GetEdgeType() == graph.RewriteEdge {
-				// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-				if w == graph.Infinite {
+			if w == graph.Infinite {
+				// edge is a set operator thus we have to inspect each node of the operator
+				if edge.GetEdgeType() == graph.RewriteEdge {
+					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
 					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
 					if !okOpEdge {
 						return false
 					}
 					innerEdges = append(innerEdges, operationalEdges...)
 					continue
-				}
-			}
-			// if the edge is a direct edge, and it is the same userset that we are evaluating
-			if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo().GetUniqueLabel() == objRelNode.GetUniqueLabel() {
-				// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
-				if w == graph.Infinite && edge.GetTo() == objRelNode && !recursiveUsersetFound {
+				} else if edge.GetEdgeType() == graph.DirectEdge && !recursiveUsersetFound && edge.GetTo().GetUniqueLabel() == objRelNode.GetUniqueLabel() && edge.GetTo() == objRelNode {
+					// if the edge is a direct edge, and it is the same userset that we are evaluating
+					// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
 					// mark as the recursive userset was found
 					recursiveUsersetFound = true
 					continue
 				}
 			}
 			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
+			// thus if an infinite didn't get handled it will exit through here
 			if w > 1 {
 				return false
 			}
