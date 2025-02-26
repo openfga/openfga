@@ -3,8 +3,6 @@ package storagewrappers
 import (
 	"context"
 
-	"go.opentelemetry.io/otel/trace"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -27,10 +25,9 @@ func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
 }
 
 // queryContext generates a new context that is independent of the provided
-// context and its timeout with the exception of the trace context.
+// context timeout.
 func queryContext(ctx context.Context) context.Context {
-	span := trace.SpanFromContext(ctx)
-	return trace.ContextWithSpan(context.Background(), span)
+	return context.WithoutCancel(ctx)
 }
 
 // Close ensures proper cleanup and closure of resources associated with the OpenFGADatastore.
