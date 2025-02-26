@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Fixed
+- Fixed evaluation of certain recursive TTU cases behind the `enable-check-optimizations` flag. [#2281](https://github.com/openfga/openfga/pull/2281)
+
+## [1.8.6] - 2025-02-20
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6)
+
+### Added
+- Added `cachecontroller_cache_invalidation_count` metric to track invalidation operations. [#2282](https://github.com/openfga/openfga/pull/2282)
+
+## [1.8.5] - 2025-02-19
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.4...v1.8.5)
+
 ### Added
 - Improve `Check` performance for sub-problems when caching is enabled [#2193](https://github.com/openfga/openfga/pull/2193).
 - Improve `Check` performance for relations involving public wildcard. Enable via experimental flag `enable-check-optimizations`.  [#2180](https://github.com/openfga/openfga/pull/2180).
@@ -19,12 +31,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Performance optimizations for string operations and memory allocations across the codebase [#2238](https://github.com/openfga/openfga/pull/2238) and [#2241](https://github.com/openfga/openfga/pull/2241)
+- Update to Go 1.23 as the min supported version and bump the container image to go1.23.6
+  We follow Go's version support policy and will only support the latest two major versions of Go. Now that [Go 1.24 is out](https://go.dev/blog/go1.24), we have dropped support for Go < 1.23.
 
 ### Fixed
 - Optimized database dialect handling by setting it during initialization instead of per-call, fixing SQL syntax errors in MySQL [#2252](https://github.com/openfga/openfga/pull/2252)
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
 - Fixed incorrect types in configuration JSON schema [#2217](https://github.com/openfga/openfga/pull/2217), [#2228](https://github.com/openfga/openfga/pull/2228).
 - Fixed `BatchCheck` API to validate presence of the `tuple_key` property of a `BatchCheckItem` [#2242](https://github.com/openfga/openfga/issues/2242)
+- Fixed incorrect check and list objects evaluation when model has a relation directly assignable to both public access AND userset with the same type and type bound public access tuple is assigned to the object.
 
 ## [1.8.4] - 2025-01-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
@@ -1204,7 +1219,9 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.6...HEAD
+[1.8.6]: https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6
+[1.8.5]: https://github.com/openfga/openfga/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/openfga/openfga/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/openfga/openfga/compare/v1.8.1...v1.8.2

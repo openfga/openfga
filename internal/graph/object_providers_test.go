@@ -427,6 +427,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					}), nil)
 
 				c := newRecursiveUsersetObjectProvider(ts)
+
 				t.Cleanup(c.End)
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))

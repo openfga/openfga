@@ -736,10 +736,6 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		close(checkOutcomeChan)
 		return
 	}
-
-	concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-		Allowed: false,
-	}}, checkOutcomeChan)
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
@@ -824,6 +820,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 
 	// check to see if there are any recursive userset assigned. If not,
 	// we don't even need to check the terminal type side.
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

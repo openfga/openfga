@@ -5733,6 +5733,127 @@ func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 			computedRelation:  "rel1",
 			expectCanFastPath: false,
 		},
+		{name: "parent_with_condition",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "parent_with_condition_and_without_conditions",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond, document]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "ttu_in_inner_operations",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: ([user] or rel2 or rel1 from parent) or rel2
+						define rel2: [user]
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "cannot_recurse_on_itself_through_computed",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: rel2 or rel1 from parent
+						define rel2: [user] or rel3
+						define rel3: [user] or rel1 from parent # same tupleset/computed
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "with_non_recursive_ttu_of_valid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or viewer from partner or (rel2)
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{name: "with_non_recursive_ttu_of_invalid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or (viewer from partner or rel2) 
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "employee",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -6231,7 +6352,7 @@ model
 type user
 type team
 	relations
-		define: [user]
+		define member: [user]
 type group
 	relations
 		define member: [user, group#member] or owner
@@ -6279,6 +6400,42 @@ model
 			userType:           "user",
 			expected:           false,
 			expectedV2:         false,
+		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         true,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+			expectedV2:         true,
 		},
 	}
 	for _, test := range tests {
