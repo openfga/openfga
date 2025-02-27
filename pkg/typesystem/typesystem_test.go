@@ -6334,7 +6334,7 @@ model
 type user
 type group
 	relations
-		define member: [user, group#member] or owner
+		define member: [user, group#member] or owner or admin
 		define owner: user but not admin
 		define user: [user]
 		define admin: [user]
