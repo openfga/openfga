@@ -1122,7 +1122,7 @@ type usersets-user
     define computed: direct
     define direct_4: [user]
     define butnot_computed: computed but not direct_4
-	define direct_wild: [user:*]
+    define direct_wild: [user:*]
     define alg_combined: butnot_computed but not direct_4
     define userset: [directs-user#direct, directs-employee#direct]
     define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
