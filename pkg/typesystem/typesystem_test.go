@@ -5375,7 +5375,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 	}
 }
 
-func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
+func TestRecursiveTTUCanFastPathV2(t *testing.T) {
 	tests := []struct {
 		name              string
 		model             string
@@ -5732,13 +5732,134 @@ func TestClassifyRelationWithRecursiveTTUAndAlgebraicOps(t *testing.T) {
 			computedRelation:  "rel1",
 			expectCanFastPath: false,
 		},
+		{name: "parent_with_condition",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "parent_with_condition_and_without_conditions",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: [user] or rel1 from parent
+						define parent: [document with cond, document]
+condition cond(x: int) {
+	x < 100
+}`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "ttu_in_inner_operations",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: ([user] or rel2 or rel1 from parent) or rel2
+						define rel2: [user]
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: true,
+		},
+		{name: "cannot_recurse_on_itself_through_computed",
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define rel1: rel2 or rel1 from parent
+						define rel2: [user] or rel3
+						define rel3: [user] or rel1 from parent # same tupleset/computed
+						define parent: [document]`,
+			objectType:        "document",
+			relation:          "rel1",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "rel1",
+			expectCanFastPath: false,
+		},
+		{name: "with_non_recursive_ttu_of_valid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or viewer from partner or (rel2)
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "user",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: true,
+		},
+		{name: "with_non_recursive_ttu_of_invalid_user_type",
+			model: `
+model
+	schema 1.1
+
+type user
+type employee
+type group
+	relations
+		define member: member from parent or (viewer from partner or rel2) 
+		define parent: [group]
+		define partner: [company]
+		define rel2: [user]
+type company
+	relations
+		define viewer: [employee]
+`,
+			objectType:        "group",
+			relation:          "member",
+			userType:          "employee",
+			tuplesetRelation:  "parent",
+			computedRelation:  "member",
+			expectCanFastPath: false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			res := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+			res := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 				Tupleset: &openfgav1.ObjectRelation{
 					Relation: test.tuplesetRelation,
 				},
@@ -6170,6 +6291,40 @@ type group
 			userType:           "user",
 			expected:           false,
 		},
+		{
+			name: "complex_due_to_union_nested_intersection",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user and admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
+		{
+			name: "complex_due_to_union_nested_difference",
+			model: `
+model
+	schema 1.1
+type user
+type group
+	relations
+		define member: [user, group#member] or owner
+		define owner: user but not admin
+		define user: [user]
+		define admin: [user]
+`,
+			objectTypeRelation: "group#member",
+			userType:           "user",
+			expected:           false,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -6550,8 +6705,8 @@ type group
 			result := typesys.RecursiveTTUCanFastPath(test.objectTypeRelation, test.userType)
 			require.Equal(t, test.expected, result)
 			if test.expected {
-				// every time RecursiveTTUCanFastPath returns true, IsRelationWithRecursiveTTUAndAlgebraicOperations must also
-				v2 := typesys.IsRelationWithRecursiveTTUAndAlgebraicOperations(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+				// every time RecursiveTTUCanFastPath returns true, RecursiveTTUCanFastPathV2 must also
+				v2 := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
 					},

@@ -680,7 +680,7 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 			// a TuplesetRelation may have multiple parents and these need to be visited to ensure their weight does not
 			// exceed weight 2
 			if edge.GetEdgeType() == graph.TTUEdge &&
-				edge.GetConditionedOn() == tuplesetRelationKey &&
+				edge.GetTuplesetRelation() == tuplesetRelationKey &&
 				strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
 				w, ok := edge.GetWeight(userType)
 				if ok {
@@ -724,13 +724,14 @@ func (t *TypeSystem) TTUCanFastPath(objectType, tuplesetRelation, computedRelati
 	return true
 }
 
-// IsRelationWithRecursiveTTUAndAlgebraicOperations returns true if all these conditions apply:
+// RecursiveTTUCanFastPathV2 returns true fast path can be applied to user/relation.
+// For it to return true, all of these conditions:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
-// If true, it returns a map of Operands (edges) leaving the OR.
-func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+// must be all true.
+func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -742,50 +743,61 @@ func (t *TypeSystem) IsRelationWithRecursiveTTUAndAlgebraicOperations(objectType
 
 	w, ok := objRelNode.GetWeight(userType)
 	if !ok || w != graph.Infinite {
-		// 1. node[objectType#relation].weights[userType] = infinite
 		return false
 	}
 
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
-	if !ok || len(edges) != 1 {
-		// 2. node[objectType#relation] has only 1 edge
-		return false
-	}
-
-	edge := edges[0]
-	if edge.GetTo().GetLabel() != graph.UnionOperator {
-		// 2. node[objectType#relation] has 1 edge to an OR node
-		return false
-	}
-
-	unionNode := edge.GetTo()
-
-	edgesFromUnionNode, ok := t.authzWeightedGraph.GetEdgesFromNode(unionNode)
 	if !ok {
 		return false
 	}
 
-	tuplesetRelationKey := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
-	computedRelation := ttu.GetComputedUserset().GetRelation()
+	tuplesetRelation := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
+	computedRelationSuffix := "#" + ttu.GetComputedUserset().GetRelation()
 	recursiveTTUFound := false
 
-	for _, edge := range edgesFromUnionNode {
-		// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-		if edge.GetEdgeType() == graph.TTUEdge &&
-			edge.GetConditionedOn() == tuplesetRelationKey && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), "#"+computedRelation) {
+	for len(edges) != 0 {
+		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+
+		for _, edge := range edges {
 			w, ok := edge.GetWeight(userType)
-			if ok && w == graph.Infinite && edge.GetTo() == objRelNode {
-				recursiveTTUFound = true
+			if !ok {
+				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
+			// edge is a set operator thus we have to inspect each node of the operator
+			if edge.GetEdgeType() == graph.RewriteEdge {
+				// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
+				if w == graph.Infinite {
+					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okOpEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, operationalEdges...)
+					continue
+				}
+			}
+			// find and validate the TTUEdge which is infinite (the one being processed at the current time)
+			if edge.GetEdgeType() == graph.TTUEdge &&
+				edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), computedRelationSuffix) {
+				// The recursive TTU edge needs to have:
+				// 1. weight infinite for the terminal type
+				// 2. the computed relation for the TTU is the same relation
+				// 3. there can only be one recursive TTU edge
+				if w == graph.Infinite && edge.GetTo() == objRelNode && !recursiveTTUFound {
+					recursiveTTUFound = true
+					continue
+				}
+			}
+			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
+			if w > 1 {
+				return false
+			}
 		}
-		// type doc
-		// relations
-		// viewer: rel2 and rel3 but not or viewer from parent
-		// everything else must comply with being weight = 1
-		if w, ok := edge.GetWeight(userType); ok && w > 1 {
-			return false
+		if len(innerEdges) == 0 {
+			break
 		}
+		edges = innerEdges
 	}
 
 	return recursiveTTUFound
