@@ -164,7 +164,7 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 
 		ch <- item[checkOutcome]{
 			N:     fn.N, // N is the ordinal of the handler. this is important for difference evalutions.
-			Value: checkOutcome{resp, err},
+			Value: checkOutcome{resp, nil},
 		}
 		return nil
 	})
