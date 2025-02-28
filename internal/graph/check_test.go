@@ -1637,10 +1637,14 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		})
 
 		falseSlowHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			time.Sleep(1 * time.Second)
-			return &ResolveCheckResponse{
-				Allowed: false,
-			}, nil
+			select {
+			case <-time.After(1 * time.Second):
+				return &ResolveCheckResponse{
+					Allowed: false,
+				}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
 
 		resp, err := union(ctx, concurrencyLimit, trueHandler, falseSlowHandler)
