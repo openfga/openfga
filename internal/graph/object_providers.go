@@ -176,8 +176,7 @@ func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx
 					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
 					return err
 				}
-				userset := t.GetObject()
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: userset}, dst)
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
 			}
 		}
 		return nil
