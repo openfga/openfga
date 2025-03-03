@@ -433,6 +433,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
 				cancel()
 				channel, err := c.Begin(ctx, req)
+				// the context cancellation might not be propagated before the creation of ReadStartingWithUser, so the cancellation might happen before yielding tuples.
 				if err != nil {
 					require.ErrorIs(t, err, context.Canceled)
 				} else {
