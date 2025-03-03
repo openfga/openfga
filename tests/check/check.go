@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -201,6 +202,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 			})
 		}
+	})
+}
+
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 	})
 }
 
@@ -1084,6 +1092,7 @@ type directs-user
     define computed_computed: computed
     define computed_computed_computed: computed_computed
     define or_computed: computed or computed_cond or direct_wild
+    define or_computed_no_cond: computed or direct_wild
     define and_computed: computed_cond and computed_wild
     define butnot_computed: computed_wild_cond but not computed_computed
     define butnot_computed_cond: computed_cond but not computed_computed
@@ -1107,6 +1116,14 @@ type directs-employee
     define alg_combined: butnot_computed and direct_cond
 type usersets-user
   relations
+    define direct: [user] or direct_2
+    define direct_2: [user] and direct_3
+    define direct_3: [user]
+    define computed: direct
+    define direct_4: [user]
+    define butnot_computed: computed but not direct_4
+    define direct_wild: [user:*]
+    define alg_combined: butnot_computed but not direct_4
     define userset: [directs-user#direct, directs-employee#direct]
     define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
     define userset_to_computed: [directs-user#computed, directs-employee#computed]
@@ -1119,11 +1136,15 @@ type usersets-user
     define userset_cond_to_computed_wild: [directs-user#computed_wild with xcond]
     define userset_cond_to_computed_wild_cond: [directs-user#computed_wild_cond with xcond]
     define userset_to_or_computed: [directs-user#or_computed]
+    define userset_to_or_computed_no_cond: [directs-user#or_computed_no_cond]
     define userset_to_butnot_computed: [directs-user#butnot_computed]
     define userset_to_and_computed:[directs-user#and_computed]
     define userset_recursive: [user, usersets-user#userset_recursive]
+    define userset_recursive_alg: [user, usersets-user#userset_recursive_alg] or alg_combined
     define userset_recursive_public: [user, user:*, usersets-user#userset_recursive_public]
+    define userset_recursive_public_alg: [user, user:*, usersets-user#userset_recursive_public_alg] or alg_combined or direct_wild
     define userset_recursive_public_only: [user:*, usersets-user#userset_recursive_public_only]
+    define userset_recursive_public_only_alg: [user, user:*, usersets-user#userset_recursive_public_only_alg] or direct_wild
     define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
@@ -1136,6 +1157,8 @@ type usersets-user
     define ttu_and_direct_userset: [ttus#and_comp_from_direct_parent]
     define tuple_cycle2: [ttus#tuple_cycle2]
     define tuple_cycle3: [directs-user#compute_tuple_cycle3]
+    define userset_mix_public: [directs-user#direct, directs-user:*, user, user:*]
+    define or_userset_mix_public: [user, user:*] or userset_mix_public
 type ttus
   relations
     define direct_parent: [directs-user]
@@ -1180,7 +1203,8 @@ type complexity3
     define compute_userset_ttu_userset: userset_ttu_userset
     define or_compute_complex3: compute_ttu_userset_ttu or compute_userset_ttu_userset
     define and_nested_complex3: [ttus#and_ttu] and compute_ttu_userset_ttu 
-    define cycle_nested: [ttus#tuple_cycle3]   
+    define cycle_nested: [ttus#tuple_cycle3]
+    define or_userset_mix_public_complex3: or_userset_mix_public from userset_parent
 type complexity4
   relations
     define userset_ttu_userset_ttu: [complexity3#ttu_userset_ttu]
@@ -1205,7 +1229,7 @@ condition xcond(x: string) {
 		stages = append(stages, complexityFourTestingModelTest...)
 		stages = append(stages, usersetCompleteTestingModelTest...)
 		for _, stage := range stages {
-			t.Run(fmt.Sprintf("stage_%s", stage.Name), func(t *testing.T) {
+			t.Run("stage_"+stage.Name, func(t *testing.T) {
 				resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 				require.NoError(t, err)
 				storeID := resp.GetId()
@@ -1240,13 +1264,13 @@ condition xcond(x: string) {
 					t.Skipf("no check assertions defined")
 				}
 				for _, assertion := range stage.CheckAssertions {
-					t.Run(fmt.Sprintf("assertion_check_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_check_"+assertion.Name, func(t *testing.T) {
 						assertCheck(ctx, t, assertion, stage, client, storeID, modelID)
 					})
-					t.Run(fmt.Sprintf("assertion_list_objects_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_list_objects_"+assertion.Name, func(t *testing.T) {
 						assertListObjects(ctx, t, assertion, stage, client, storeID, modelID)
 					})
-					t.Run(fmt.Sprintf("assertion_list_users_%s", assertion.Name), func(t *testing.T) {
+					t.Run("assertion_list_users_"+assertion.Name, func(t *testing.T) {
 						assertListUsers(ctx, t, assertion, client, storeID, modelID)
 					})
 				}
@@ -1381,8 +1405,4 @@ func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Ass
 	} else {
 		require.NotContains(t, responseUsers, assertion.Tuple.GetUser(), "user should not be returned in the response")
 	}
-}
-
-func runTestMatrixSuite(t *testing.T, client ClientInterface) {
-	runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 }

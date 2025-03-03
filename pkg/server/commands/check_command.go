@@ -96,7 +96,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest, err := graph.NewResolveCheckRequest(

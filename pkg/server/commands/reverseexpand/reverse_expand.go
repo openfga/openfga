@@ -423,6 +423,19 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	return err
 }
 
+func (c *ReverseExpandQuery) shouldCheckPublicAssignable(targetReference *openfgav1.RelationReference, userRef IsUserRef) (bool, error) {
+	_, userIsUserset := userRef.(*UserRefObjectRelation)
+	if userIsUserset {
+		// if the user is an userset, by definition it is not public assignable
+		return false, nil
+	}
+	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(targetReference, userRef.GetObjectType())
+	if err != nil {
+		return false, err
+	}
+	return publiclyAssignable, nil
+}
+
 func (c *ReverseExpandQuery) readTuplesAndExecute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -445,7 +458,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		relationFilter = req.edge.TargetReference.GetRelation()
 		targetUserObjectType := req.User.GetObjectType()
 
-		publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
+		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
 			return err
 		}

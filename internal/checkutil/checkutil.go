@@ -91,11 +91,13 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	objectRel string,
-	objectIDs storage.SortedSet) (storage.TupleKeyIterator, error) {
+	objectIDs storage.SortedSet,
+	sortContextualTuples bool) (storage.TupleKeyIterator, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
 	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: sortContextualTuples,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},

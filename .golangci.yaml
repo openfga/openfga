@@ -6,34 +6,35 @@ run:
     - docker
 
 linters:
-  enable:
+  enable: # please keep in sorted order
+    - bodyclose
+    - errcheck
     - errname
+    - gci
+    - gocritic
+    - gocyclo
+    - godot
     - gofmt
     - goimports
-    - gci
-    - stylecheck
-    - importas
-    - errcheck
     - gosimple
     - govet
+    - importas
     - ineffassign
     - mirror
     - misspell
+    - perfsprint
+    - protogetter
+    - revive
     - staticcheck
+    - stylecheck
     - tagalign
     - testifylint
     - typecheck
-    - unused
     - unconvert
     - unparam
+    - unused
     - wastedassign
     - whitespace
-    - protogetter
-    - revive
-    - godot
-    - bodyclose
-    - gocritic
-    - gocyclo
     #- gosec Too many different issues. Needs to be tackled in a separate PR.
 
 linters-settings:
@@ -66,6 +67,9 @@ linters-settings:
       - default # Default section: contains all imports that could not be matched to another section type.
       - prefix(github.com/openfga)  # Custom section: groups all imports with the specified Prefix.
       - localmodule
+  perfsprint:
+    errorf: false
+    err-error: false
 
 issues:
   exclude-use-default: false
@@ -73,6 +77,7 @@ issues:
     - path: "(.+)_test.go"
       linters:
         - bodyclose
+        - perfsprint
   exclude:
     - "should have a package comment" # stylecheck | revive
     - "exported (.+) should have comment" # revive

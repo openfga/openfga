@@ -96,7 +96,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
 	}
 
-	name := fmt.Sprintf("postgres-%s", ulid.Make().String())
+	name := "postgres-" + ulid.Make().String()
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
@@ -125,7 +125,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	}
 
 	pgTestContainer := &postgresTestContainer{
-		addr:     fmt.Sprintf("localhost:%s", m[0].HostPort),
+		addr:     "localhost:" + m[0].HostPort,
 		username: "postgres",
 		password: "secret",
 	}

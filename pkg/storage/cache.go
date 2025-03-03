@@ -123,8 +123,8 @@ func GetInvalidIteratorCacheKey(storeID string) string {
 	return invalidIteratorCachePrefix + storeID
 }
 
-func GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation string) []string {
-	return []string{invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation}
+func GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation string) string {
+	return invalidIteratorCachePrefix + storeID + "-or/" + object + "#" + relation
 }
 
 func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string, objectType string) []string {
@@ -164,7 +164,7 @@ var ErrUnexpectedStructValue = errors.New("unexpected structpb value encountered
 func writeValue(w io.StringWriter, v *structpb.Value) (err error) {
 	switch val := v.GetKind().(type) {
 	case *structpb.Value_BoolValue:
-		_, err = w.WriteString(fmt.Sprintf("%v", val.BoolValue))
+		_, err = w.WriteString(strconv.FormatBool(val.BoolValue))
 	case *structpb.Value_NullValue:
 		_, err = w.WriteString("null")
 	case *structpb.Value_StringValue:

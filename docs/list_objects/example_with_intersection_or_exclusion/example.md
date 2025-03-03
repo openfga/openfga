@@ -1,4 +1,4 @@
-# ListObjects API implementation
+# ListObjects API with intersection or exclusion implementation
 
 An authorization model can be represented as a directed, possibly cyclical, graph. This graph shows the possible relationships between types (e.g. `user`) and usersets (eg `user:*`).
 

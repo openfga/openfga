@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
-      - uses: gaurav-nelson/github-action-markdown-link-check@d53a906aa6b22b8979d33bc86170567e619495ec # v1.0.15
+      - uses: gaurav-nelson/github-action-markdown-link-check@1b916f2cf6c36510a6059943104e3c42ce6c16bc # v1.0.16
         with:
           use-verbose-mode: 'yes'
           folder-path: 'docs/'

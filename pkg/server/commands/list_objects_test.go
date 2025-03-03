@@ -244,8 +244,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 						MaxThreshold:     0,
 					}),
 					graph.WithThrottler(mockThrottler),
-				}...),
-				graph.WithLocalCheckerOpts(graph.WithMaxConcurrentReads(1))).Build()
+				}...)).Build()
 			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
@@ -258,6 +257,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 					Threshold:    3,
 					MaxThreshold: 0,
 				}),
+				WithMaxConcurrentReads(1),
 			)
 			mockThrottler.EXPECT().Throttle(gomock.Any()).Times(test.expectedThrottlingValue)
 			mockThrottler.EXPECT().Close().Times(1) // LO closes throttler during server close call.

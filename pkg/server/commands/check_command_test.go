@@ -198,7 +198,7 @@ type doc
 			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
 			return &graph.ResolveCheckResponse{}, nil
 		})
-		cacheController.EXPECT().DetermineInvalidation(gomock.Any(), storeID).Return(invalidationTime)
+		cacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), storeID).Return(invalidationTime)
 		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),

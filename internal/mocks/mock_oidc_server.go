@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -67,7 +66,7 @@ func createHTTPServer(issuerURL string, publicKey *rsa.PublicKey) *http.Server {
 	mockHandler.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		err := json.NewEncoder(w).Encode(map[string]string{
 			"issuer":   issuerURL,
-			"jwks_uri": fmt.Sprintf("%s/jwks.json", issuerURL),
+			"jwks_uri": issuerURL + "/jwks.json",
 		})
 		if err != nil {
 			log.Fatalf("failed to json encode the openid configurations: %v", err)

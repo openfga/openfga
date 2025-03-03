@@ -89,6 +89,14 @@ func ConvertTuplesToTupleKeys(input []*openfgav1.Tuple) []*openfgav1.TupleKey {
 	return converted
 }
 
+func ConvertTuplesKeysToTuples(input []*openfgav1.TupleKey) []*openfgav1.Tuple {
+	converted := make([]*openfgav1.Tuple, len(input))
+	for i := range input {
+		converted[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey(input[i].GetObject(), input[i].GetRelation(), input[i].GetUser())}
+	}
+	return converted
+}
+
 // Shuffle returns the input but with order of elements randomized.
 func Shuffle(arr []*openfgav1.TupleKey) []*openfgav1.TupleKey {
 	// copy array to avoid data races :(

@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -501,6 +500,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(10 * time.Second),
+				commands.WithMaxConcurrentReads(30),
 			}
 
 			if test.listObjectsDeadline != 0 {
@@ -509,7 +509,6 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 			localCheckOpts := []graph.LocalCheckerOption{
 				graph.WithResolveNodeBreadthLimit(100),
-				graph.WithMaxConcurrentReads(30),
 			}
 			cacheOpts := []graph.CachedCheckResolverOpt{
 				graph.WithCacheTTL(10 * time.Second),
@@ -623,7 +622,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 		var tuples []*openfgav1.TupleKey
 
 		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
-			obj := fmt.Sprintf("document:%s", strconv.Itoa(numberObjectsAccesible))
+			obj := "document:" + strconv.Itoa(numberObjectsAccesible)
 
 			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
 

@@ -327,7 +327,7 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))
-	storePrefix := fmt.Sprintf("%s:", StoreType)
+	storePrefix := StoreType + ":"
 	for i, store := range resp.GetObjects() {
 		storeIDs[i] = strings.TrimPrefix(store, storePrefix)
 	}
