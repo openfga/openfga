@@ -3,13 +3,13 @@ package iterator
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/internal/mocks"
-	"go.uber.org/mock/gomock"
 	"testing"
 
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 )
 
 func TestIteratorStream(t *testing.T) {
