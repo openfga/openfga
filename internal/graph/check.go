@@ -1175,6 +1175,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPathV2
 					span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+				} else if typesys.RecursiveUsersetCanFastPathV2(objectType, relation, userType) {
+					resolver = c.recursiveUsersetFastPathV2
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 				}
 			} else if !isUserset {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {

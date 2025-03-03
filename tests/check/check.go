@@ -1116,6 +1116,14 @@ type directs-employee
     define alg_combined: butnot_computed and direct_cond
 type usersets-user
   relations
+    define direct: [user] or direct_2
+    define direct_2: [user] and direct_3
+    define direct_3: [user]
+    define computed: direct
+    define direct_4: [user]
+    define butnot_computed: computed but not direct_4
+    define direct_wild: [user:*]
+    define alg_combined: butnot_computed but not direct_4
     define userset: [directs-user#direct, directs-employee#direct]
     define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
     define userset_to_computed: [directs-user#computed, directs-employee#computed]
@@ -1132,8 +1140,11 @@ type usersets-user
     define userset_to_butnot_computed: [directs-user#butnot_computed]
     define userset_to_and_computed:[directs-user#and_computed]
     define userset_recursive: [user, usersets-user#userset_recursive]
+    define userset_recursive_alg: [user, usersets-user#userset_recursive_alg] or alg_combined
     define userset_recursive_public: [user, user:*, usersets-user#userset_recursive_public]
+    define userset_recursive_public_alg: [user, user:*, usersets-user#userset_recursive_public_alg] or alg_combined or direct_wild
     define userset_recursive_public_only: [user:*, usersets-user#userset_recursive_public_only]
+    define userset_recursive_public_only_alg: [user, user:*, usersets-user#userset_recursive_public_only_alg] or direct_wild
     define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
