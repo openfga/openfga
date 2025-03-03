@@ -30,7 +30,6 @@ var tracer = otel.Tracer("internal/graph/check")
 type setOperatorType int
 
 var (
-	ErrShortCircuit       = errors.New("short circuit")
 	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
 )
 
