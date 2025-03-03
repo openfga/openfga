@@ -943,8 +943,8 @@ type usersetMessage struct {
 	err     error
 }
 
-// streamedLookupUsersetFromIterator streams the userset that are assigned to
-// the object to the usersetMessageChan channel.
+// streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
+// It closes the channel in the end.
 func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
@@ -1111,6 +1111,11 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
+	// if the user tuple is userset, by definition it cannot be a wildcard
+	if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+		return false
+	}
+
 	isPubliclyAssignable, _ := typesys.IsPubliclyAssignable(
 		typesystem.DirectRelationReference(objectType, relation), // target
 		tuple.GetType(reqTupleKey.GetUser()),
@@ -1163,21 +1168,25 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			resolver := c.checkUsersetSlowPath
+			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
+			userType := tuple.GetType(reqTupleKey.GetUser())
 
-			if !tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+			if c.optimizationsEnabled && !isUserset {
+				if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					resolver = c.checkUsersetFastPathV2
+					span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+				} else if typesys.RecursiveUsersetCanFastPathV2(objectType, relation, userType) {
+					resolver = c.recursiveUsersetFastPathV2
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+				}
+			} else if !isUserset {
 				if typesys.UsersetCanFastPath(directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPath
 					span.SetAttributes(attribute.String("resolver", "fastpathv1"))
-				} else {
-					userType := tuple.GetType(reqTupleKey.GetUser())
-					if typesys.RecursiveUsersetCanFastPath(
-						tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
-						resolver = c.recursiveUsersetFastPath
-						span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-					} else if c.optimizationsEnabled && typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-						resolver = c.checkUsersetFastPathV2
-						span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-					}
+				} else if typesys.RecursiveUsersetCanFastPath(
+					tuple.ToObjectRelationString(tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()), userType) {
+					resolver = c.recursiveUsersetFastPath
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 				}
 			}
 
@@ -1400,20 +1409,28 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
-		if !tuple.IsObjectRelation(tk.GetUser()) {
-			if canFastPath := typesys.TTUCanFastPath(
-				tuple.GetType(object), tuplesetRelation, computedRelation); canFastPath {
+		isUserset := tuple.IsObjectRelation(tk.GetUser())
+
+		if c.optimizationsEnabled && !isUserset {
+			// more common
+			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				resolver = c.checkTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				// less common
+				// TODO when this "if" is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath,
+				// since this code is a generalization of it.
+				resolver = c.recursiveTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+			}
+		} else if !isUserset {
+			if typesys.TTUCanFastPath(tuple.GetType(object), tuplesetRelation, computedRelation) {
 				resolver = c.checkTTUFastPath
 				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
+			} else if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+				resolver = c.recursiveTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
 			}
-		}
-
-		if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-			resolver = c.recursiveTTUFastPath
-			span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-		} else if c.optimizationsEnabled && typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-			resolver = c.checkTTUFastPathV2
-			span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}

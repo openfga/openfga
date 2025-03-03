@@ -38,6 +38,12 @@ var (
 		Help:      "The total number of cache hits from cachecontroller requests.",
 	})
 
+	cacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_cache_invalidation_count",
+		Help:      "The total number of invalidations performed by the cache controller.",
+	})
+
 	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "cachecontroller_find_changes_and_invalidate_histogram",
@@ -238,11 +244,17 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 
 	// all changes happened after the last invalidation, thus we should revoke all the cached iterators for the store.
 	if idx == len(changes)-1 {
+		cacheInvalidationCounter.Inc()
 		partialInvalidation = false
 		c.invalidateIteratorCache(storeID)
 	} else {
 		// only a subset of changes are new, revoke the respective ones.
 		lastModified := time.Now()
+
+		// only increment if we're going to enter the invalidation for loop below
+		if idx >= 0 {
+			cacheInvalidationCounter.Inc()
+		}
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
 			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
