@@ -880,7 +880,7 @@ var usersetCompleteTestingModelTest = []*stage{
 			},
 			{
 				Name:        "valid_user_via_wild",
-				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_wild", Relation: "userset_recursive_public_alg", User: "user:userset_recursive_public_alg_user_1"},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_wild", Relation: "userset_recursive_public_alg", User: "user:any"},
 				Expectation: true,
 			},
 			{

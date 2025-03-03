@@ -1161,7 +1161,16 @@ type usersets-user
     define or_userset_mix_public: [user, user:*] or userset_mix_public
 type ttus
   relations
+    define direct: [user] or direct_2
+    define direct_2: [user] and direct_3
+    define direct_3: [user]
+    define computed: direct
+    define direct_4: [user]
+    define butnot_computed: computed but not direct_4
+    define direct_wild: [directs-user:*]
+    define alg_combined: butnot_computed but not direct_4
     define direct_parent: [directs-user]
+    define ttu_parent: [ttus]
     define mult_parent_types: [directs-user, directs-employee]
     define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
     define direct_cond_parent: [directs-user with xcond]
@@ -1187,9 +1196,10 @@ type ttus
     define or_ttu: direct_pa_direct_ch or direct_cond_pa_direct_ch
     define and_ttu: or_comp_from_direct_parent and direct_pa_direct_ch
     define nested_butnot_ttu: or_comp_from_direct_parent but not userset_pa_userset_comp_wild_ch
-	define nested_ttu_parent: [ttus]
-	define nested_ttu: [directs-user] or nested_ttu from nested_ttu_parent
-	define nested_ttu_public: [directs-user, directs-user:*] or nested_ttu_public from nested_ttu_parent
+    define recursive_ttu: [directs-user] or recursive_ttu from ttu_parent
+    define recursive_ttu_alg: [directs-user] or recursive_ttu_alg from ttu_parent or alg_combined
+    define recursive_ttu_public: [directs-user, directs-user:*] or recursive_ttu_public from ttu_parent
+    define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
 
 type complexity3
   relations
