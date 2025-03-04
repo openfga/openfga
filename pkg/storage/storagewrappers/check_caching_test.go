@@ -48,13 +48,12 @@ func TestFindInCache(t *testing.T) {
 	storeID := ulid.Make().String()
 	key := "key"
 	invalidEntityKeys := []string{"invalid_key"}
-	operation := "test_op"
 
 	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).Return(nil),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_no_invalid", func(t *testing.T) {
@@ -64,14 +63,14 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
 	})
 	t.Run("cache_hit_bad_result", func(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).Return("invalid"),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid", func(t *testing.T) {
@@ -81,7 +80,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
@@ -92,7 +91,7 @@ func TestFindInCache(t *testing.T) {
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
 	})
 	t.Run("cache_hit_invalidation_incorrect_type", func(t *testing.T) {
@@ -102,7 +101,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return("invalid"),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity", func(t *testing.T) {
@@ -113,7 +112,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity_stale", func(t *testing.T) {
@@ -124,7 +123,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity_stale_invalid", func(t *testing.T) {
@@ -135,7 +134,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return("invalid"),
 		)
-		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger(), operation)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 }
