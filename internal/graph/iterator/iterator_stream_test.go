@@ -5,11 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func TestIteratorStream(t *testing.T) {
