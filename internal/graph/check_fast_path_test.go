@@ -1402,6 +1402,61 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+	t.Run("context_cancelled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		// Stop is called either sync (when context is already cancelled before sending iterator through channel
+		// or async when calling drainIteratorChannel
+		iter1 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
+		iter1.EXPECT().Stop().MaxTimes(1)
+		iter2 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
+		iter2.EXPECT().Stop().MaxTimes(1)
+		iter3 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
+		iter3.EXPECT().Stop().MaxTimes(1)
+		// currentUsersetLevel.Values() doesn't return results in order, thus there is no guarantee that `Times` will be consistent as it can return err due to context being cancelled
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter1, nil)
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(func(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+			cancel()
+			return iter2, nil
+		})
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter3, nil)
+
+		model := parser.MustTransformDSLToProto(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user] or member from parent
+						define parent: [group]
+				`)
+
+		req := &ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: ulid.Make().String(),
+			TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
+			RequestMetadata:      NewCheckRequestMetadata(),
+		}
+
+		ts, err := typesystem.New(model)
+		require.NoError(t, err)
+
+		ctx = setRequestContext(ctx, ts, mockDatastore, nil)
+
+		checker := NewLocalChecker()
+		mapping := &recursiveMapping{
+			kind:             storage.TTUKind,
+			tuplesetRelation: "parent",
+		}
+		checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
+		checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, hashset.New("group:1", "group:2", "group:3"), hashset.New(), checkOutcomeChan)
+	})
 }
 
 func TestRecursiveTTUFastPath(t *testing.T) {
