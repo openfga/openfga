@@ -5,21 +5,19 @@ import (
 	"fmt"
 	"slices"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type Msg struct {
-	Iter storage.TupleKeyIterator
+	Iter storage.Iterator[string]
 	Err  error
 }
 
 // Stream aggregates multiple iterators that are sent to a source channel into one iterator.
 type Stream struct {
 	idx            int
-	buffer         storage.TupleKeyIterator
+	buffer         storage.Iterator[string]
 	sourceIsClosed bool // sourceIsClosed is set when the buffer is Done and all the source are exhausted
 	source         chan *Msg
 }
@@ -37,9 +35,9 @@ func (s *Stream) Idx() int {
 
 // Head returns the first item in the buffer.  If the Head is sourceIsClosed or
 // cancelled, it will stop the buffer and set the buffer to nil.
-func (s *Stream) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+func (s *Stream) Head(ctx context.Context) (string, error) {
 	if s.buffer == nil {
-		return nil, storage.ErrIteratorDone
+		return "", storage.ErrIteratorDone
 	}
 	t, err := s.buffer.Head(ctx)
 	if err != nil {
@@ -47,14 +45,14 @@ func (s *Stream) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 			s.buffer.Stop()
 			s.buffer = nil
 		}
-		return nil, err
+		return "", err
 	}
 	return t, nil
 }
 
-func (s *Stream) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+func (s *Stream) Next(ctx context.Context) (string, error) {
 	if s.buffer == nil {
-		return nil, storage.ErrIteratorDone
+		return "", storage.ErrIteratorDone
 	}
 	t, err := s.buffer.Next(ctx)
 	if err != nil {
@@ -62,7 +60,7 @@ func (s *Stream) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 			s.buffer.Stop()
 			s.buffer = nil
 		}
-		return nil, err
+		return "", err
 	}
 	return t, nil
 }
@@ -92,7 +90,7 @@ func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
 		}
 		return err
 	}
-	tmpKey := t.GetObject()
+	tmpKey := t
 	for tmpKey < target {
 		_, _ = s.Next(ctx)
 		t, err = s.Head(ctx)
@@ -102,14 +100,14 @@ func (s *Stream) SkipToTargetObject(ctx context.Context, target string) error {
 			}
 			return err
 		}
-		tmpKey = t.GetObject()
+		tmpKey = t
 	}
 	return nil
 }
 
 // Drain all item in the stream's buffer and return these items.
-func (s *Stream) Drain(ctx context.Context) ([]*openfgav1.TupleKey, error) {
-	var batch []*openfgav1.TupleKey
+func (s *Stream) Drain(ctx context.Context) ([]string, error) {
+	var batch []string
 	for {
 		t, err := s.Next(ctx)
 		if err != nil {
@@ -151,13 +149,13 @@ func (s *Stream) isDone() bool {
 
 // NextItemInSliceStreams will advance all streamSlices specified in streamToProcess and return the item advanced.
 // Assumption is that the stream slices first item is identical, and we want to advance all these streams.
-func NextItemInSliceStreams(ctx context.Context, streamSlices []*Stream, streamToProcess []int) (*openfgav1.TupleKey, error) {
-	var item *openfgav1.TupleKey
+func NextItemInSliceStreams(ctx context.Context, streamSlices []*Stream, streamToProcess []int) (string, error) {
+	var item string
 	var err error
 	for _, iterIdx := range streamToProcess {
 		item, err = streamSlices[iterIdx].Next(ctx)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 	}
 	return item, nil
@@ -195,7 +193,7 @@ func (s *Streams) CleanDone(ctx context.Context) ([]*Stream, error) {
 			return nil, err
 		}
 	}
-	// TODO: in go1.23 compare performance vs slices.Collect
+
 	// clean up all empty entries that are both sourceIsClosed and drained
 	s.streams = slices.DeleteFunc(s.streams, func(entry *Stream) bool {
 		return entry.isDone()
