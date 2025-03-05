@@ -1373,7 +1373,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		object := tk.GetObject()
 
 		span.SetAttributes(
-			attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)),
+			attribute.String("tupleset_relation", tuple.ToObjectRelationString(tuple.GetType(object), tuplesetRelation)),
 			attribute.String("computed_relation", computedRelation),
 		)
 
@@ -1417,9 +1417,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				// less common
-				// TODO when this "if" is taken out of the optimization flag, we can remove RecursiveTTUCanFastPath,
-				// since this code is a generalization of it.
 				resolver = c.recursiveTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			}
