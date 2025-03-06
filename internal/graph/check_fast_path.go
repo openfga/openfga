@@ -45,8 +45,9 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 		return nil, err
 	}
 	iterChan := make(chan *iterator.Msg, 1)
-	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: i}, iterChan) {
-		i.Stop() // will not be received to be cleaned up
+	iter := storage.WrapIterator(storage.ObjectIDKind, i)
+	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
+		iter.Stop() // will not be received to be cleaned up
 	}
 	close(iterChan)
 	return iterChan, nil
@@ -70,29 +71,29 @@ func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *op
 
 // add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
 // If nextItemInSliceStreams has error, will also send message to specified outChan.
-func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iterator.Stream, streamsToProcess []int, batch []*openfgav1.TupleKey, outChan chan<- *iterator.Msg) ([]*openfgav1.TupleKey, error) {
+func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iterator.Stream, streamsToProcess []int, batch []string, outChan chan<- *iterator.Msg) ([]string, error) {
 	item, err := iterator.NextItemInSliceStreams(ctx, streamSlices, streamsToProcess)
 	if err != nil {
 		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, outChan)
 		return nil, err
 	}
-	if item != nil {
+	if item != "" {
 		batch = append(batch, item)
 	}
 	if len(batch) > IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-		batch = make([]*openfgav1.TupleKey, 0)
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+		batch = make([]string, 0)
 	}
 	return batch, nil
 }
 
 func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -129,13 +130,13 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 			}
 			// initialize
 			if idx == 0 {
-				minObject = v.GetObject()
+				minObject = v
 			}
 
-			if minObject == v.GetObject() {
+			if minObject == v {
 				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if minObject > v.GetObject() {
-				minObject = v.GetObject()
+			} else if minObject > v {
+				minObject = v
 				itersWithEqualObject = []int{idx}
 			}
 		}
@@ -159,12 +160,12 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 }
 
 func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -207,13 +208,13 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 			}
 
 			if idx == 0 {
-				maxObject = v.GetObject()
+				maxObject = v
 			}
 
-			if maxObject == v.GetObject() {
+			if maxObject == v {
 				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if maxObject < v.GetObject() {
-				maxObject = v.GetObject()
+			} else if maxObject < v {
+				maxObject = v
 				itersWithEqualObject = []int{idx}
 			}
 		}
@@ -249,12 +250,12 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 }
 
 func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
-	batch := make([]*openfgav1.TupleKey, 0)
+	batch := make([]string, 0)
 
 	defer func() {
 		// flush
 		if len(batch) > 0 {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
 		}
 		close(outChan)
 		streams.Stop()
@@ -290,10 +291,10 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 				return
 			}
 			if idx == BaseIndex {
-				base = v.GetObject()
+				base = v
 			}
 			if idx == DifferenceIndex {
-				diff = v.GetObject()
+				diff = v
 			}
 		}
 
@@ -355,8 +356,8 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 			}
 			batch = append(batch, items...)
 			if len(batch) > IteratorMinBatchThreshold {
-				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticTupleKeyIterator(batch)}, outChan)
-				batch = make([]*openfgav1.TupleKey, 0)
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+				batch = make([]string, 0)
 			}
 			iterStreams, err = streams.CleanDone(ctx)
 			if err != nil {
@@ -499,7 +500,7 @@ ConsumerLoop:
 					lastErr = err
 					continue
 				}
-				if processUsersetMessage(t.GetObject(), leftSet, rightSet) {
+				if processUsersetMessage(t, leftSet, rightSet) {
 					msg.Iter.Stop()
 					res.Allowed = true
 					span.SetAttributes(attribute.Bool("allowed", true))
@@ -670,7 +671,6 @@ func drainIteratorChannel(c chan *iterator.Msg) {
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-
 func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
 	req.GetRequestMetadata().Depth++
 	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
@@ -683,15 +683,10 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		close(checkOutcomeChan)
 		return
 	}
-
-	pool := concurrency.NewPool(ctx, int(c.concurrencyLimit))
-
-	mu := &sync.Mutex{}
-	nextUsersetLevel := hashset.New()
-
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
+	chans := make([]chan *iterator.Msg, 0, currentUsersetLevel.Size())
 	for _, usersetInterface := range currentUsersetLevel.Values() {
 		userset := usersetInterface.(string)
 		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
@@ -707,35 +702,57 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
 			continue
 		}
-		// if the pool is short-circuited, the iterator should be stopped
-		defer mapper.Stop()
-		pool.Go(func(ctx context.Context) error {
-			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
-			for usersetMsg := range objectToUsersetMessageChan {
-				if usersetMsg.err != nil {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
-					return nil
-				}
-				userset := usersetMsg.userset
-				if usersetFromUser.Contains(userset) {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
-						Allowed: true,
-					}}, checkOutcomeChan)
-					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
-				}
-				mu.Lock()
-				nextUsersetLevel.Add(userset)
-				mu.Unlock()
+		c := make(chan *iterator.Msg, 1)
+		if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: mapper}, c) {
+			mapper.Stop() // will not be received to be cleaned up
+		}
+		close(c)
+		chans = append(chans, c)
+	}
+	leftChan := fanInIteratorChannels(ctx, chans)
+	leftOpen := true
+	defer func() {
+		if leftOpen {
+			go drainIteratorChannel(leftChan)
+		}
+	}()
+	nextUsersetLevel := hashset.New()
+
+ConsumerLoop:
+	for {
+		select {
+		case <-ctx.Done():
+			close(checkOutcomeChan)
+			return
+		case msg, ok := <-leftChan:
+			if !ok {
+				// nothing was found in this level, break to proceed into the next one
+				leftOpen = false
+				break ConsumerLoop
 			}
-			return nil
-		})
+			for {
+				t, err := msg.Iter.Next(ctx)
+				if err != nil {
+					msg.Iter.Stop()
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
+					close(checkOutcomeChan)
+					return
+				}
+
+				if usersetFromUser.Contains(t) {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{Allowed: true}}, checkOutcomeChan)
+					close(checkOutcomeChan)
+					return
+				}
+
+				nextUsersetLevel.Add(t)
+			}
+		}
 	}
-	// wait for all checks to wrap up
-	// if a match was found, clean up
-	if err := pool.Wait(); err != nil && errors.Is(err, ErrShortCircuit) {
-		close(checkOutcomeChan)
-		return
-	}
+
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
@@ -928,6 +945,21 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
+		kind:                        storage.UsersetKind,
+		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+	}, objectProvider)
+}
+
+func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathV2")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
+	objectProvider := newRecursiveUsersetObjectProvider(typesys)
+
+	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,
 		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 	}, objectProvider)
