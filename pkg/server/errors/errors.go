@@ -123,15 +123,15 @@ func HandleError(public string, err error) error {
 	switch {
 	case errors.Is(err, storage.ErrTransactionThrottled):
 		return ErrTransactionThrottled
-	case errors.Is(err, storage.ErrInvalidContinuationToken):
-		return ErrInvalidContinuationToken
-	case errors.Is(err, storage.ErrInvalidStartTime):
-		return ErrInvalidStartTime
 	case errors.Is(err, context.Canceled):
 		// cancel by a client is not an "internal server error"
 		return ErrRequestCancelled
 	case errors.Is(err, context.DeadlineExceeded):
 		return ErrRequestDeadlineExceeded
+	case errors.Is(err, storage.ErrInvalidStartTime):
+		return ErrInvalidStartTime
+	case errors.Is(err, storage.ErrInvalidContinuationToken):
+		return ErrInvalidContinuationToken
 	default:
 		return NewInternalError(public, err)
 	}
