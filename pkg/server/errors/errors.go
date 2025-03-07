@@ -31,7 +31,7 @@ var (
 	ErrRequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
 	ErrThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
 
-	// ErrTransactionThrottled can apply when a limit is hit at the database level
+	// ErrTransactionThrottled can apply when a limit is hit at the database level.
 	ErrTransactionThrottled = status.Error(codes.ResourceExhausted, "transaction was throttled by the datastore")
 )
 
