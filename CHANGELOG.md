@@ -8,7 +8,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added `PassthroughError` type to proxy errors through OpenFGA. [#2303](https://github.com/openfga/openfga/pull/2303).
 - Added `storage.ErrTransactionThrottled` for throttling errors applied at the datastore level. [#2304](https://github.com/openfga/openfga/pull/2304).
 
 ### Removed

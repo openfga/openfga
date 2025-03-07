@@ -68,10 +68,6 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              context.DeadlineExceeded,
 			expectedTranslatedError: ErrRequestDeadlineExceeded,
 		},
-		`passthrough_error`: {
-			storageErr:              NewPassthroughError(NewEncodedError(1, "oh no")),
-			expectedTranslatedError: ErrPassthrough,
-		},
 		`throttling_error`: {
 			storageErr:              storage.ErrTransactionThrottled,
 			expectedTranslatedError: ErrTransactionThrottled,
