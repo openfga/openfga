@@ -8,8 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [v1.8.7] - 2025-03-07
-
+## [1.8.7] - 2025-03-07
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.6...v1.8.7)
 
 ### Removed
