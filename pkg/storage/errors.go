@@ -26,6 +26,9 @@ var (
 	// ErrTransactionalWriteFailed is returned when two writes attempt to write the same tuple at the same time.
 	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
 
+	// ErrTransactionThrottled is returned when throttling is applied at the datastore level.
+	ErrTransactionThrottled = errors.New("transaction throttled")
+
 	// ErrNotFound is returned when the object does not exist.
 	ErrNotFound = errors.New("not found")
 )
