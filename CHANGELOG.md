@@ -12,7 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.6...v1.8.7)
 
 ### Added
-- Added `PassthroughError` type to proxy errors through OpenFGA. [#2303](https://github.com/openfga/openfga/pull/2303).
+- Added `storage.ErrTransactionThrottled` for throttling errors applied at the datastore level. [#2304](https://github.com/openfga/openfga/pull/2304).
 
 ### Removed
 - Removed recently-added `tuples_iterator_cache_invalid_hit_count` metric. The `cachecontroller_cache_invalidation_count` from 1.8.6 better accomplishes the same goal. [#2296)[https://github.com/openfga/openfga/pull/2296/]

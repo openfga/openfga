@@ -30,6 +30,9 @@ var (
 	ErrRequestCancelled                       = status.Error(codes.Code(openfgav1.ErrorCode_cancelled), "Request Cancelled")
 	ErrRequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
 	ErrThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
+
+	// ErrTransactionThrottled can apply when a limit is hit at the database level.
+	ErrTransactionThrottled = status.Error(codes.ResourceExhausted, "transaction was throttled by the datastore")
 )
 
 type InternalError struct {
@@ -66,51 +69,6 @@ func NewInternalError(public string, internal error) InternalError {
 		public:   status.Error(codes.Code(openfgav1.InternalErrorCode_internal_error), public),
 		internal: internal,
 	}
-}
-
-type ExternalError interface {
-	HTTPStatus() int
-	GRPCStatus() *status.Status
-	Error() string
-	Code() string
-}
-
-// PassthroughError is for external consumers of OpenFGA who want an explicit error status
-// returned from their service. OpenFGA heavily utilizes HandleError which contains a case
-// specifically looking for errors.Is(err, PassthroughError), which it returns unmodified.
-type PassthroughError struct {
-	external ExternalError
-}
-
-var ErrPassthrough = PassthroughError{}
-
-func (e PassthroughError) Error() string {
-	return e.external.Error()
-}
-
-func (e PassthroughError) Code() string {
-	return e.external.Code()
-}
-
-func (e PassthroughError) Unwrap() error {
-	return e.external
-}
-
-func (e PassthroughError) GRPCStatus() *status.Status {
-	return e.external.GRPCStatus()
-}
-
-func (e PassthroughError) HTTPStatus() int {
-	return e.external.HTTPStatus()
-}
-
-func (e PassthroughError) Is(target error) bool {
-	_, ok := target.(PassthroughError)
-	return ok
-}
-
-func NewPassthroughError(external ExternalError) PassthroughError {
-	return PassthroughError{external: external}
 }
 
 func ValidationError(cause error) error {
@@ -163,15 +121,15 @@ func InvalidAuthorizationModelInput(err error) error {
 // Use `public` if you want to return a useful error message to the user.
 func HandleError(public string, err error) error {
 	switch {
-	case errors.Is(err, ErrPassthrough):
-		return err
+	case errors.Is(err, storage.ErrTransactionThrottled):
+		return ErrTransactionThrottled
 	case errors.Is(err, context.Canceled):
 		// cancel by a client is not an "internal server error"
 		return ErrRequestCancelled
-	case errors.Is(err, storage.ErrInvalidStartTime):
-		return ErrInvalidStartTime
 	case errors.Is(err, context.DeadlineExceeded):
 		return ErrRequestDeadlineExceeded
+	case errors.Is(err, storage.ErrInvalidStartTime):
+		return ErrInvalidStartTime
 	case errors.Is(err, storage.ErrInvalidContinuationToken):
 		return ErrInvalidContinuationToken
 	default:
