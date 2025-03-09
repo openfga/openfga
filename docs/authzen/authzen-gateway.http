@@ -1,0 +1,45 @@
+#### @fga_api_url =
+@fga_api_url =  https://authzen-interop.openfga.dev
+@fga_api_key = <key>
+@fga_store_id = 01JNW1803442023HVDKV03FB3A
+
+
+### Evaluation request 
+
+POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "identity",
+    "id": "peter"
+  },
+  "action": {
+    "name": "GET"
+  },
+  "resource": {
+    "type": "route",
+    "id": "/users/{userId}"
+  }
+}
+
+### Evaluation request 
+
+POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "identity",
+    "id": "CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "DELETE"
+  },
+  "resource": {
+    "type": "route",
+    "id": "/todos/{todoId}"
+  }
+}

@@ -1,0 +1,15 @@
+    model
+      schema 1.1
+
+    type identity
+
+    type role
+      relations
+        define assignee: [identity]
+
+    type route
+      relations
+        define GET: [identity:*, role#assignee]
+        define POST: [role#assignee]
+        define PUT: [role#assignee]
+        define DELETE: [role#assignee]
