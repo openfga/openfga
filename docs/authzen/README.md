@@ -2,15 +2,15 @@
 
 ## AuthZEN Implementation
 
-This branch includes an experimental implementation of the [AuthZen Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
+This branch includes an experimental implementation of the [AuthZEN Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
 
 It maps the `evaluation` and `evaluations` endpoints to the OpenFGA `check` and `batch-check` endpoints.
 
-The AuthZen [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
+The AuthZEN [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
 
 
 ```json
-### AuthZen Evaluation
+### AuthZEN Evaluation
 POST /stores/<store_id>/evaluation
 {
   "subject": {
@@ -45,10 +45,10 @@ POST /stores/<store_id>/check
 }
 ```
 
-The AuthZen [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
+The AuthZEN [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
 
 ```json
-### AuthZen Evaluations
+### AuthZEN Evaluations
 POST /stores/<store_id>/evaluations
 {
   "subject": {
@@ -137,7 +137,7 @@ fga model test --test authzen-gateway.fga.yaml
 There can also use [`authzen-todo.http`](./authzen-todo.http) and [`authzen-gateway.http`](./authzen-gateway.http) using [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client). 
 
 
-You can also try it live on the [AuthZen interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
+You can also try it live on the [AuthZEN interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
 
 
 ## Running the AuthZEN Todo Interop test suite
