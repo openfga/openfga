@@ -1,15 +1,19 @@
-    model
-      schema 1.1
+model
+  schema 1.1
 
-    type identity
+# The gateway interop scenario is very simple. It protects routes based on roles, 
+# and there are certain GET routes that are open for all users.
+# Role membership, and which routes are open for all users are are configured with tuples.
 
-    type role
-      relations
-        define assignee: [identity]
+type identity
 
-    type route
-      relations
-        define GET: [identity:*, role#assignee]
-        define POST: [role#assignee]
-        define PUT: [role#assignee]
-        define DELETE: [role#assignee]
+type role
+  relations
+    define assignee: [identity]
+
+type route
+  relations
+    define GET: [identity:*, role#assignee]
+    define POST: [role#assignee]
+    define PUT: [role#assignee]
+    define DELETE: [role#assignee]
