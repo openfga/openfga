@@ -53,7 +53,7 @@ require (
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.5
 	modernc.org/sqlite v1.36.0
-	sigs.k8s.io/controller-runtime v0.20.2
+	sigs.k8s.io/controller-runtime v0.20.3
 	sigs.k8s.io/yaml v1.4.0
 )
 
