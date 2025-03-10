@@ -30,6 +30,9 @@ var (
 	ErrRequestCancelled                       = status.Error(codes.Code(openfgav1.ErrorCode_cancelled), "Request Cancelled")
 	ErrRequestDeadlineExceeded                = status.Error(codes.Code(openfgav1.InternalErrorCode_deadline_exceeded), "Request Deadline Exceeded")
 	ErrThrottledTimeout                       = status.Error(codes.Code(openfgav1.UnprocessableContentErrorCode_throttled_timeout_error), "timeout due to throttling on complex request")
+
+	// ErrTransactionThrottled can apply when a limit is hit at the database level.
+	ErrTransactionThrottled = status.Error(codes.ResourceExhausted, "transaction was throttled by the datastore")
 )
 
 type InternalError struct {
@@ -118,15 +121,17 @@ func InvalidAuthorizationModelInput(err error) error {
 // Use `public` if you want to return a useful error message to the user.
 func HandleError(public string, err error) error {
 	switch {
-	case errors.Is(err, storage.ErrInvalidContinuationToken):
-		return ErrInvalidContinuationToken
-	case errors.Is(err, storage.ErrInvalidStartTime):
-		return ErrInvalidStartTime
+	case errors.Is(err, storage.ErrTransactionThrottled):
+		return ErrTransactionThrottled
 	case errors.Is(err, context.Canceled):
 		// cancel by a client is not an "internal server error"
 		return ErrRequestCancelled
 	case errors.Is(err, context.DeadlineExceeded):
 		return ErrRequestDeadlineExceeded
+	case errors.Is(err, storage.ErrInvalidStartTime):
+		return ErrInvalidStartTime
+	case errors.Is(err, storage.ErrInvalidContinuationToken):
+		return ErrInvalidContinuationToken
 	default:
 		return NewInternalError(public, err)
 	}
