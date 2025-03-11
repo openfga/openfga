@@ -179,6 +179,11 @@ type Server struct {
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
 
+	shadowCheckResolverEnabled           bool
+	shadowCheckResolverQueryThreshold    uint32
+	shadowCheckResolverDurationThreshold time.Duration
+	shadowCheckResolverTimeout           time.Duration
+
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
 
@@ -646,6 +651,20 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
+func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowCheckResolverEnabled = enabled
+	}
+}
+
+// WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
+func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowCheckResolverTimeout = threshold
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -673,6 +692,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 		checkResolver: nil,
+
+		shadowCheckResolverEnabled: serverconfig.DefaultShadowCheckResolverEnabled,
+		shadowCheckResolverTimeout: serverconfig.DefaultShadowCheckResolverTimeout,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -779,6 +801,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
