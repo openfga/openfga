@@ -23,7 +23,6 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/workgroup"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -148,7 +147,7 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 	// from this function, allowing synchronization.
 	var wg sync.WaitGroup
 
-	p := workgroup.Bound(concurrencyLimit, func(fn item[CheckHandlerFunc]) error {
+	p := concurrency.BoundGroup(concurrencyLimit, func(fn item[CheckHandlerFunc]) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}

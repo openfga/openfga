@@ -1,4 +1,4 @@
-package workgroup
+package concurrency
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func TestBoundWorkGroupPushToClosedPool(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(2, func(j int32) error {
+	p := BoundGroup(2, func(j int32) error {
 		i.Add(j)
 		return nil
 	})
@@ -36,7 +36,7 @@ func TestBoundWorkGroupPushToCanceledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	p := Bound(2, func(j int32) error {
+	p := BoundGroup(2, func(j int32) error {
 		i.Add(j)
 		return nil
 	})
@@ -58,7 +58,7 @@ func TestBoundWorkGroupPoolWaitCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(1, func(j int32) error {
+	p := BoundGroup(1, func(j int32) error {
 		i.Add(j)
 		time.Sleep(100 * time.Millisecond)
 		return nil
@@ -84,7 +84,7 @@ func TestBoundWorkGroupPushWaitCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	p := Bound(1, func(j int32) error {
+	p := BoundGroup(1, func(j int32) error {
 		i.Add(j)
 		time.Sleep(100 * time.Millisecond)
 		return nil
@@ -110,7 +110,7 @@ func TestBoundWorkGroupBlocking(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(1, func(j int32) error {
+	p := BoundGroup(1, func(j int32) error {
 		i.Add(j)
 		return nil
 	})
@@ -133,7 +133,7 @@ func TestBoundWorkGroupNonBlocking(t *testing.T) {
 
 	ctx := context.Background()
 
-	p := Bound(2, func(j int32) error {
+	p := BoundGroup(2, func(j int32) error {
 		i.Add(j)
 		return nil
 	})
@@ -154,7 +154,7 @@ func TestBoundWorkGroupNonBlocking(t *testing.T) {
 func TestBoundWorkGroupPanic(t *testing.T) {
 	ctx := context.Background()
 
-	p := Bound(2, func(j int32) error {
+	p := BoundGroup(2, func(j int32) error {
 		panic("panic")
 	})
 

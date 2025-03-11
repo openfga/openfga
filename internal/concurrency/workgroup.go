@@ -1,4 +1,4 @@
-package workgroup
+package concurrency
 
 import (
 	"context"
@@ -87,14 +87,14 @@ func (p *boundGroup[T]) Close() error {
 	return nil
 }
 
-// Bound returns a Group that processes input by spawning
+// BoundGroup returns a Group that processes input by spawning
 // a new go routine over function fn for each input up to
 // limit. Once a go routine finishes processing its input,
 // it will end. When the Group is idle, no go routines are
 // running. If the function fn returns an error, that error
 // will be emitted by the receive channel returned from the
 // call to Push.
-func Bound[T any](limit uint32, fn func(T) error) Group[T] {
+func BoundGroup[T any](limit uint32, fn func(T) error) Group[T] {
 	limiter := make(chan struct{}, limit)
 	ctx, cancel := context.WithCancel(context.Background())
 	return &boundGroup[T]{
