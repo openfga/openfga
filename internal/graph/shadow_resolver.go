@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -10,11 +11,19 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
+const Hundred = 100
+
 type ShadowResolverOpt func(*ShadowResolver)
 
 func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
 		shadowResolver.shadowTimeout = timeout
+	}
+}
+
+func ShadowResolverWithSampleRate(rate int) ShadowResolverOpt {
+	return func(shadowResolver *ShadowResolver) {
+		shadowResolver.sampleRate = rate
 	}
 }
 
@@ -28,6 +37,7 @@ type ShadowResolver struct {
 	main          CheckResolver
 	shadow        CheckResolver
 	shadowTimeout time.Duration
+	sampleRate    int
 	logger        logger.Logger
 	// only used for testing signals
 	wg *sync.WaitGroup
@@ -41,34 +51,36 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		return nil, err
 	}
 
-	// only successful requests will be evaluated
-	resClone := res.clone()
-	reqClone := req.clone()
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), s.shadowTimeout)
-		defer cancel()
-		shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
-		if err != nil {
-			s.logger.WarnWithContext(ctx, "shadow check errored",
-				zap.Error(err),
-				zap.String("request", reqClone.GetTupleKey().String()),
-				zap.String("store_id", reqClone.GetStoreID()),
-				zap.String("model_id", reqClone.GetAuthorizationModelID()),
-			)
-			return
-		}
-		if shadowRes.GetAllowed() != resClone.GetAllowed() {
-			s.logger.InfoWithContext(ctx, "shadow check difference",
-				zap.String("request", reqClone.GetTupleKey().String()),
-				zap.String("store_id", reqClone.GetStoreID()),
-				zap.String("model_id", reqClone.GetAuthorizationModelID()),
-				zap.Bool("shadow", shadowRes.GetAllowed()),
-				zap.Bool("main", resClone.GetAllowed()),
-			)
-		}
-	}()
+	if rand.Intn(Hundred) < s.sampleRate {
+		// only successful requests will be evaluated
+		resClone := res.clone()
+		reqClone := req.clone()
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), s.shadowTimeout)
+			defer cancel()
+			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
+			if err != nil {
+				s.logger.WarnWithContext(ctx, "shadow check errored",
+					zap.Error(err),
+					zap.String("request", reqClone.GetTupleKey().String()),
+					zap.String("store_id", reqClone.GetStoreID()),
+					zap.String("model_id", reqClone.GetAuthorizationModelID()),
+				)
+				return
+			}
+			if shadowRes.GetAllowed() != resClone.GetAllowed() {
+				s.logger.InfoWithContext(ctx, "shadow check difference",
+					zap.String("request", reqClone.GetTupleKey().String()),
+					zap.String("store_id", reqClone.GetStoreID()),
+					zap.String("model_id", reqClone.GetAuthorizationModelID()),
+					zap.Bool("shadow", shadowRes.GetAllowed()),
+					zap.Bool("main", resClone.GetAllowed()),
+				)
+			}
+		}()
+	}
 
 	return res, nil
 }

@@ -50,6 +50,7 @@ const (
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
 	DefaultShadowCheckResolverEnabled = false
+	DefaultShadowCheckSampleRate      = 10
 	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.

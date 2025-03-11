@@ -26,7 +26,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: ResolveCheckResponseMetadata{
@@ -45,7 +45,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: ResolveCheckResponseMetadata{
@@ -58,5 +58,26 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		checker.wg.Wait()
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
+	})
+	t.Run("should_sample", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		main := NewMockCheckResolver(ctrl)
+		shadow := NewMockCheckResolver(ctrl)
+		logger := mocks.NewMockLogger(ctrl)
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(10))
+		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(100).Return(&ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: ResolveCheckResponseMetadata{
+				DatastoreQueryCount: 5,
+			},
+		}, nil)
+		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(25).Return(&ResolveCheckResponse{Allowed: true}, nil)
+		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any()).MaxTimes(25)
+		for i := 0; i < 100; i++ {
+			res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+			require.NoError(t, err)
+			require.False(t, res.Allowed)
+		}
+		checker.wg.Wait()
 	})
 }
