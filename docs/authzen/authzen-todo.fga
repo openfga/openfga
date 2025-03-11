@@ -3,13 +3,14 @@
 
     type user
       relations
-        # The Todo App uses two identifiers for user, an ID and and an email, but uses the same 
-        # subject type for both. We are linking them.
-        define can_read_user: [user:*] or can_read_user from linked_user  
-        define linked_user: [user]
+        
+        # user:* means that we write a tuple that indicates that all users have the `can_read_user` permission
+        # for a specific user
+        define can_read_user: [user:*] 
 
     type todo
       relations
+
         # The Todo app defines a root "todo:1" that is the parent of all todos. All top
         # level permissions/roles are defined in that object are inherited for the rest of the todos. 
         # We would have modeled it as a 'todo-app' type and a 'todo' type.
@@ -24,7 +25,8 @@
         define can_create_todo: can_manage_todo_items 
         define can_read_todos: viewer or can_manage_todo_items 
 
-        # These relations are applied for each todo item
+        # These relations are applied for each todo item. Permisisons can be inherited from the parent roles
+        
         define parent: [todo]
         define owner: [user]
 

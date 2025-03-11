@@ -138,10 +138,6 @@ tests:
 
 - name: Any user can read any user
   check:
-  - user: user:any
-    object: user:beth@the-smiths.com
-    assertions:
-      can_read_user: true  
 
   - user: user:any
     object: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
@@ -149,37 +145,17 @@ tests:
       can_read_user: true  
 
   - user: user:any
-    object: user:rick@the-citadel.com
-    assertions:
-      can_read_user: true
-
-  - user: user:any
     object: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
     assertions:
       can_read_user: true      
 
-  - user: user:any
-    object: user:morty@the-citadel.com
-    assertions:
-      can_read_user: true
-      
   - user: user:any
     object: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
     assertions:
       can_read_user: true
 
   - user: user:any
-    object: user:summer@the-smiths.com
-    assertions:
-      can_read_user: true
-
-  - user: user:any
     object: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
-    assertions:
-      can_read_user: true
-
-  - user: user:any
-    object: user:jerry@the-smiths.com
     assertions:
       can_read_user: true
       
