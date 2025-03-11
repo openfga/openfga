@@ -2,15 +2,14 @@
 
 ## AuthZEN Implementation
 
-This branch includes an experimental implementation of the [AuthZEN Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
+This branch includes an experimental implementation of the [AuthZen Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
 
 It maps the `evaluation` and `evaluations` endpoints to the OpenFGA `check` and `batch-check` endpoints.
 
-The AuthZEN [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
-
+The AuthZen [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
 
 ```json
-### AuthZEN Evaluation
+### AuthZen Evaluation
 POST /stores/<store_id>/evaluation
 {
   "subject": {
@@ -45,10 +44,10 @@ POST /stores/<store_id>/check
 }
 ```
 
-The AuthZEN [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
+The AuthZen [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
 
 ```json
-### AuthZEN Evaluations
+### AuthZen Evaluations
 POST /stores/<store_id>/evaluations
 {
   "subject": {
@@ -112,7 +111,6 @@ POST /stores/<store_id>/batch-check
 }
 ```
 
-
 ## AuthZEN Interop Scenarios
 
 The [AuthZEN working group](https://openid.net/wg/authzen/) has defined two interoperability scenarios:
@@ -137,8 +135,7 @@ fga model test --test authzen-gateway.fga.yaml
 There can also use [`authzen-todo.http`](./authzen-todo.http) and [`authzen-gateway.http`](./authzen-gateway.http) using [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client). 
 
 
-You can also try it live on the [AuthZEN interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
-
+You can also try it live on the [AuthZen interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
 
 ## Running the AuthZEN Todo Interop test suite
 
@@ -169,7 +166,6 @@ export AUTHZEN_PDP_API_KEY="<shared-key>"
 ```
 yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 
 ```
-
 ## Running the AuthZEN Todo Application
 
 - Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
@@ -196,6 +192,11 @@ To run the test suites or the interop application pointing to a local OpenFGA in
 
 ```
 yarn test http://localhost:8080/stores/01JG9JGS4W0950VN17G8NNAH3C 
+```
+- If you want the Todo App pointing to a local OpenFGA instance, you'll need to change the port that OpenFGA uses, as it conflicts with the one used by the interop backend app:
+
+```
+dist/openfga run --http-addr 0.0.0.0:4000        
 ```
 
 ## TODO

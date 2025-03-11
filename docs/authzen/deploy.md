@@ -51,7 +51,6 @@ The SQLite database is in the github repository, and we copy it manually to the 
 scp -i "~/aws/openfga-authzen.pem" bin/openfga ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com:/home/ec2-user/openfga
 ```
 
-
 ## Initializing an SQLite database for the AuthZen interop authorization model
 
 We want to always use the same SQLite instance with the same Store ID to avoid having a new IDs generated each time we build/deploy the system:
@@ -66,9 +65,17 @@ openfga run --datastore-engine sqlite --datastore-uri authzen.sqlite
 To load it with the required models & data, run the following commands:
 
 ```
-fga model write --store-id 01JG9JGS4W0950VN17G8NNAH3C --file authzen.fga
-fga tuple write --store-id 01JG9JGS4W0950VN17G8NNAH3C --file authzen-tuples-core-interop.yaml
+fga model write --store-id 01JG9JGS4W0950VN17G8NNAH3C --file authzen-todo.fga
+fga tuple write --store-id 01JG9JGS4W0950VN17G8NNAH3C --file authzen-todo-tuples.yaml
 
 fga model write --store-id 01JNW1803442023HVDKV03FB3A --file authzen-gateway.fga
-fga tuple write --store-id 01JNW1803442023HVDKV03FB3A --file authzen-gateway-tuples-interop.yaml
+fga tuple write --store-id 01JNW1803442023HVDKV03FB3A --file authzen-gateway-tuples.yaml
+```
+
+## Making model changes
+
+Given that the OpenFGA server is deployed and the database has 'production' data (e.g. the Todo items added in https://todo.authzen-interop.net/), if we want to change the model, we should do it using the FGA API pointing to the production server, e.g
+
+```
+fga model write --api-url https://authzen-interop.openfga.dev --api-token <key> -store-id 01JG9JGS4W0950VN17G8NNAH3C --file authzen-todo.fga 
 ```
