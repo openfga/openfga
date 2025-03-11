@@ -3,10 +3,12 @@ package graph
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/stretchr/testify/assert"
-	"go.uber.org/mock/gomock"
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/openfga/openfga/internal/mocks"
 )
 
 func TestShadowResolver_ResolveCheck(t *testing.T) {
@@ -17,7 +19,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		expectedErr := errors.New("test error")
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
-		assert.Equal(t, expectedErr, err)
+		require.ErrorIs(t, expectedErr, err)
 	})
 	t.Run("should_log_warn_on_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -35,8 +37,8 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		logger.EXPECT().WarnWithContext(gomock.Any(), "shadow check errored", gomock.Any())
 		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		checker.wg.Wait()
-		assert.NoError(t, err)
-		assert.False(t, res.Allowed)
+		require.NoError(t, err)
+		require.False(t, res.Allowed)
 	})
 	t.Run("should_log_on_difference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -54,7 +56,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any())
 		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		checker.wg.Wait()
-		assert.NoError(t, err)
-		assert.False(t, res.Allowed)
+		require.NoError(t, err)
+		require.False(t, res.Allowed)
 	})
 }

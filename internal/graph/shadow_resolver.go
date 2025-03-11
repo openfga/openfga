@@ -2,10 +2,12 @@ package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/pkg/logger"
-	"go.uber.org/zap"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 type ShadowResolverOpt func(*ShadowResolver)
