@@ -1,47 +1,6 @@
-  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#GET-usersuserId
-  # All users can access route:/users/{userId} 
-  - user: identity:*
-    relation: GET
-    object: "route:/users/{userId}"
- 
-  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#GET-todos
-  # All users can access route:/todos
-  - user: identity:*
-    relation: GET
-    object: "route:/todos"
-
-  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#POST-todos
-  # Admins and Editors can POST to route:/todos
-  - user: role:admin#assignee
-    relation: POST
-    object: "route:/todos"
-
-  - user: role:editor#assignee
-    relation: POST
-    object: "route:/todos"
-
-  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#PUT-todostodoId
-  # Evil Geniuses and Editors can PUT to route:/todos/{todoId}
-
-  - user: role:evil_genius#assignee
-    relation: PUT
-    object: "route:/todos/{todoId}"
-
-  - user: role:editor#assignee
-    relation: PUT
-    object: "route:/todos/{todoId}"
-
-  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#DELETE-todostodoId
-  # Admins Geniuses and Editors can DELETE to route:/todos/{todoId}
-
-  - user: role:admin#assignee
-    relation: DELETE
-    object: "route:/todos/{todoId}"
-
-  - user: role:editor#assignee
-    relation: DELETE
-    object: "route:/todos/{todoId}"
-
+  
+  # Assign users to roles
+  
   # Rick is an admin and evil_genius
   - user: identity:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
     relation: assignee
@@ -65,3 +24,42 @@
   - user: identity:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
     relation: assignee
     object: role:viewer
+  
+  # Assign permissions to routes
+
+  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#GET-usersuserId
+  - user: identity:*
+    relation: GET
+    object: "route:/users/{userId}"
+ 
+  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#GET-todos
+  - user: identity:*
+    relation: GET
+    object: "route:/todos"
+
+  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#POST-todos
+  - user: role:admin#assignee
+    relation: POST
+    object: "route:/todos"
+
+  - user: role:editor#assignee
+    relation: POST
+    object: "route:/todos"
+
+  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#PUT-todostodoId
+  - user: role:evil_genius#assignee
+    relation: PUT
+    object: "route:/todos/{todoId}"
+
+  - user: role:editor#assignee
+    relation: PUT
+    object: "route:/todos/{todoId}"
+
+  # https://hackmd.io/ecYxP6uxSCm5X0RexkAM2g?view#DELETE-todostodoId
+  - user: role:admin#assignee
+    relation: DELETE
+    object: "route:/todos/{todoId}"
+
+  - user: role:editor#assignee
+    relation: DELETE
+    object: "route:/todos/{todoId}"
