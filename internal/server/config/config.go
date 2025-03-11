@@ -49,10 +49,8 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled           = false
-	DefaultShadowCheckResolverDurationThreshold = 5 * time.Millisecond
-	DefaultShadowCheckResolverQueryThreshold    = 5
-	DefaultShadowCheckResolverTimeout           = 1 * time.Second
+	DefaultShadowCheckResolverEnabled = false
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
