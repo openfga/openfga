@@ -179,10 +179,8 @@ type Server struct {
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
 
-	shadowCheckResolverEnabled           bool
-	shadowCheckResolverQueryThreshold    uint32
-	shadowCheckResolverDurationThreshold time.Duration
-	shadowCheckResolverTimeout           time.Duration
+	shadowCheckResolverEnabled bool
+	shadowCheckResolverTimeout time.Duration
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
