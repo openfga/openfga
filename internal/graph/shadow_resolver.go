@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -23,7 +24,7 @@ func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 
 func ShadowResolverWithSamplePercentage(p int) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
-		shadowResolver.samplePercentage = p
+		shadowResolver.samplePercentage = int(math.Abs(float64(p)))
 	}
 }
 
