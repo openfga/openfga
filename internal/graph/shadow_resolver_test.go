@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -16,6 +17,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		main := NewMockCheckResolver(ctrl)
 		checker := NewShadowChecker(main, NewMockCheckResolver(ctrl))
+		defer checker.Close()
 		expectedErr := errors.New("test error")
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(nil, expectedErr)
 		_, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
@@ -27,6 +29,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
 		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
+		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: ResolveCheckResponseMetadata{
@@ -46,6 +49,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
 		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
+		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: ResolveCheckResponseMetadata{
@@ -64,7 +68,8 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(10))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(10), ShadowResolverWithTimeout(1*time.Second))
+		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(100).Return(&ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: ResolveCheckResponseMetadata{
