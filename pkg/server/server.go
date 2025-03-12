@@ -179,9 +179,9 @@ type Server struct {
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
 
-	shadowCheckResolverEnabled    bool
-	shadowCheckResolverSampleRate int
-	shadowCheckResolverTimeout    time.Duration
+	shadowCheckResolverEnabled          bool
+	shadowCheckResolverSamplePercentage int
+	shadowCheckResolverTimeout          time.Duration
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -664,10 +664,10 @@ func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Opt
 	}
 }
 
-// WithShadowCheckResolverSampleRate is the percentage of requests to sample.
-func WithShadowCheckResolverSampleRate(rate int) OpenFGAServiceV1Option {
+// WithShadowCheckResolverSamplePercentage is the percentage of requests to sample.
+func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.shadowCheckResolverSampleRate = rate
+		s.shadowCheckResolverSamplePercentage = rate
 	}
 }
 
@@ -699,9 +699,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 		checkResolver: nil,
 
-		shadowCheckResolverEnabled:    serverconfig.DefaultShadowCheckResolverEnabled,
-		shadowCheckResolverSampleRate: serverconfig.DefaultShadowCheckSampleRate,
-		shadowCheckResolverTimeout:    serverconfig.DefaultShadowCheckResolverTimeout,
+		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
+		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
+		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -817,7 +817,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
 			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSampleRate(s.shadowCheckResolverSampleRate),
+			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
 			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),

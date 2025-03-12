@@ -21,9 +21,9 @@ func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 	}
 }
 
-func ShadowResolverWithSampleRate(rate int) ShadowResolverOpt {
+func ShadowResolverWithSamplePercentage(p int) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
-		shadowResolver.sampleRate = rate
+		shadowResolver.samplePercentage = p
 	}
 }
 
@@ -34,11 +34,11 @@ func ShadowResolverWithLogger(logger logger.Logger) ShadowResolverOpt {
 }
 
 type ShadowResolver struct {
-	main          CheckResolver
-	shadow        CheckResolver
-	shadowTimeout time.Duration
-	sampleRate    int
-	logger        logger.Logger
+	main             CheckResolver
+	shadow           CheckResolver
+	shadowTimeout    time.Duration
+	samplePercentage int
+	logger           logger.Logger
 	// only used for testing signals
 	wg *sync.WaitGroup
 }
@@ -51,7 +51,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		return nil, err
 	}
 
-	if rand.Intn(Hundred) < s.sampleRate {
+	if rand.Intn(Hundred) < s.samplePercentage {
 		// only successful requests will be evaluated
 		resClone := res.clone()
 		reqClone := req.clone()

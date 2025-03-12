@@ -28,7 +28,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSamplePercentage(100))
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
@@ -48,7 +48,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(100))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSamplePercentage(100))
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
@@ -68,7 +68,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		main := NewMockCheckResolver(ctrl)
 		shadow := NewMockCheckResolver(ctrl)
 		logger := mocks.NewMockLogger(ctrl)
-		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSampleRate(10), ShadowResolverWithTimeout(1*time.Second))
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSamplePercentage(10), ShadowResolverWithTimeout(1*time.Second))
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(100).Return(&ResolveCheckResponse{
 			Allowed: false,
