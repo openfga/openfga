@@ -49,9 +49,9 @@ POST /stores/<store_id>/check
 The AuthZEN [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
 
 ### AuthZEN Evaluations
+POST /stores/<store_id>/evaluations
 
 ```json
-POST /stores/<store_id>/evaluations
 {
   "subject": {
     "type": "user",
@@ -84,8 +84,9 @@ POST /stores/<store_id>/evaluations
 ```
 
 ### OpenFGA Batch-Check
-```json
 POST /stores/<store_id>/batch-check
+
+```json
 {
   "checks": [
      {
