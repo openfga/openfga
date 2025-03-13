@@ -2,15 +2,16 @@
 
 ## AuthZEN Implementation
 
-This branch includes an experimental implementation of the [AuthZen Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
+This branch includes an experimental implementation of the [AuthZEN Authorization API 1.1 – draft 02](https://openid.net/specs/authorization-api-1_0-02.html). 
 
 It maps the `evaluation` and `evaluations` endpoints to the OpenFGA `check` and `batch-check` endpoints.
 
-The AuthZen [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
+The AuthZEN [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
 
-```json
-### AuthZen Evaluation
+### AuthZEN Evaluation
+
 POST /stores/<store_id>/evaluation
+```json
 {
   "subject": {
     "type": "user",
@@ -28,10 +29,11 @@ POST /stores/<store_id>/evaluation
   }
 }
 ```
+### OpenFGA Check
+
+POST /stores/<store_id>/check
 
 ```json
-### OpenFGA Check
-POST /stores/<store_id>/check
 {
   "tuple_key": {
     "user": "user:<user_id>",
@@ -44,10 +46,11 @@ POST /stores/<store_id>/check
 }
 ```
 
-The AuthZen [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
+The AuthZEN [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
+
+### AuthZEN Evaluations
 
 ```json
-### AuthZen Evaluations
 POST /stores/<store_id>/evaluations
 {
   "subject": {
@@ -80,8 +83,8 @@ POST /stores/<store_id>/evaluations
 }
 ```
 
+### OpenFGA Batch-Check
 ```json
-### OpenFGA Check
 POST /stores/<store_id>/batch-check
 {
   "checks": [
@@ -206,4 +209,5 @@ Next steps:
 - Add a lot of unit tests for [evaluate](/pkg/server/commands/evaluate_test.go) and [evaluates](/pkg/server/commands/batch_evaluate_test.go). 
   - Verify if we return the right error codes.
 - Consider mapping additional attributes that can be specified in AuthZEN calls to either `context` values or contextual tuples.
+- Support [Evaluation Options](https://openid.net/specs/authorization-api-1_0-02.html#name-evaluations-options)
 - Add experimental flag
