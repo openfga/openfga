@@ -1,0 +1,18 @@
+    model
+      schema 1.1
+
+    type identity
+
+    type role
+      relations
+        define assignee: [identity]
+
+    type route
+      relations
+        # Some GET routes can be configured as open to every user, and others can be restricted to a specific role
+        define GET: [identity:*, role#assignee]
+
+        # POST, PUT, DELETE are restricted to a specific role
+        define POST: [role#assignee]
+        define PUT: [role#assignee]
+        define DELETE: [role#assignee]

@@ -1,113 +1,209 @@
-# OpenFGA AuthZen Implementation and Interop App
+# OpenFGA AuthZEN Implementation and Interop scenarios
 
-This branch includes an experimental implementation of the [AuthZen Authorization API 1.1 – draft 01](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_01.md).
+## AuthZEN Implementation
 
-It also includes a SQLite file with an OpenFGA store + tuples for the AuthZen Interop application.
+This branch includes an experimental implementation of the [AuthZen Authorization API 1.1 – draft 02](https://github.com/openid/authzen/blob/main/api/authorization-api-1_1_02.md). 
 
-## Deploying the branch to an EC2 instance
+It maps the `evaluation` and `evaluations` endpoints to the OpenFGA `check` and `batch-check` endpoints.
 
-There's currently no Docker image for this branch. We are keeping deployment simple by just copying the binary to an EC2 instance.
+The AuthZen [`evaluation`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluation-api) endpoint implementation maps to an [OpenFGA `check`](https://openfga.dev/api/service#/Relationship%20Queries/Check) call:
 
-- Build a linux/arm64 binary
-
-```shell
-GOOS=linux GOARCH=arm64 go build -o bin/openfga "./cmd/openfga" 
+```json
+### AuthZen Evaluation
+POST /stores/<store_id>/evaluation
+{
+  "subject": {
+    "type": "user",
+    "id": "<user_id>"
+  },
+  "resource": {
+    "type": "document",
+    "id": "<document_id>"
+  },
+  "action": {
+    "name": "can_read",
+  },
+  "context": {
+    "current_time": "1985-10-26T01:22-07:00"
+  }
+}
 ```
 
-- Copy it to the EC2 instance with scp:
-```
-scp -i "openfga-authzen.pem" bin/openfga ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com:/home/ec2-user/openfga
-```
-
-## Initializing an SQLite database for the AuthZen interop authorization model
-
-We want to always use the same SQLite instance with the same Store ID to avoid having a new IDs generated each time we build/deploy the system:
-
-```
-openfga migrate --datastore-engine sqlite --datastore-uri authzen.sqlite
-openfga run --datastore-engine sqlite --datastore-uri authzen.sqlite
-fga store import --file docs/authzen/authzen.fga.yaml 
-```
-
-We can then copy the SQLite database to the EC2 instance:
-
-```
-scp -i "openfga-authzen.pem" ./authzen.sqlite ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com:/home/ec2-user/authzen.sqlite
+```json
+### OpenFGA Check
+POST /stores/<store_id>/check
+{
+  "tuple_key": {
+    "user": "user:<user_id>",
+    "relation": "can_read",
+    "object": "document:<document_id>",
+    "context": {
+      "current_time":"1985-10-26T01:22-07:00"
+    }  
+  }
+}
 ```
 
-Note that the authzen.sqlite file is included in the branch so it does not need to be recreated each time and we can keep the Store ID.
+The AuthZen [`evaluations`](https://openid.net/specs/authorization-api-1_0-02.html#name-access-evaluations-api) endpoint implementation maps to an [OpenFGA `batch-check`](https://openfga.dev/api/service#/Relationship%20Queries/BatchCheck) call:
 
-## Starting OpenFGA in the EC2 instance
-
-The simplest way to run OpenFGA in the EC2 instance is by executing the command below:
-
+```json
+### AuthZen Evaluations
+POST /stores/<store_id>/evaluations
+{
+  "subject": {
+    "type": "user",
+    "id": "<user_id>"
+  },
+  "context":{
+    "time": "2024-05-31T15:22-07:00"
+  },
+  "evaluations": [
+    {
+      "action": {
+        "name": "can_read"
+      },
+      "resource": {
+        "type": "document",
+        "id": "<document_id>"
+      }
+    },
+    {
+      "action": {
+        "name": "can_edit"
+      },
+      "resource": {
+        "type": "document",
+        "id": "<document_id>"
+      }
+    }
+  ]
+}
 ```
-ssh -i "openfga-authzen.pem" ec2-user@ec2-3-21-166-38.us-east-2.compute.amazonaws.com
 
-sudo pkill openfga
-sudo ./openfga run --datastore-engine sqlite --datastore-uri authzen.sqlite  --http-addr 0.0.0.0:80  --authn-method preshared --authn-preshared-keys <key>
+```json
+### OpenFGA Check
+POST /stores/<store_id>/batch-check
+{
+  "checks": [
+     {
+       "tuple_key": {
+         "object": "document:<document_id>"
+         "relation": "can_edit",
+         "user": "user:<user_id>",
+       },
+        "context":{
+            "time": "2024-05-31T15:22-07:00"
+        },
+       "correlation_id": "1"
+     },
+    {
+       "tuple_key": {
+         "object": "document:<document_id>"
+         "relation": "can_read",
+         "user": "user:<user_id>",
+       },
+        "context":{
+            "time": "2024-05-31T15:22-07:00"
+        },
+       "correlation_id": "2"
+     }
+   ]
+}
 ```
 
-To test if it's working correctly you can try the `fga store list` command from a different host:
+## AuthZEN Interop Scenarios
 
-```
-fga --api-url https://authzen-interop.openfga.dev --api-token <key> store list 
+The [AuthZEN working group](https://openid.net/wg/authzen/) has defined two interoperability scenarios:
+
+- [Todo App Interop Scenario](https://authzen-interop.net/docs/scenarios/todo-1.1/)
+- [API Gateway Interop Scenario](https://authzen-interop.net/docs/category/api-gateway-10-draft-02)
+
+These scenarios require their own OpenFGA store, with their model and tuples:
+
+- [OpenFGA Todo App Interop Model](./authzen-todo.fga.yaml)
+- [OpenFGA Gateway Interop Model](./authzen-gateway.fga.yaml)
+
+The model files have inline documentation explaining the rationale for the design.
+
+To run tests using the [FGA CLI](https://github.com/openfga/cli), use:
+
+```bash
+fga model test --test authzen-todo.fga.yaml
+fga model test --test authzen-gateway.fga.yaml
 ```
 
-## Running the Authzen Interop test suite
+There can also use [`authzen-todo.http`](./authzen-todo.http) and [`authzen-gateway.http`](./authzen-gateway.http) using [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client). 
+
+
+You can also try it live on the [AuthZen interop website](https://todo.authzen-interop.net/). Use the user credentials specified [here](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md#identities).
+
+## Running the AuthZEN Todo Interop test suite
 
 - Clone https://github.com/openid/authzen
 - Go to the `interop/authzen-todo-backend` folder and follow the instructions in the readme to build the project.
-
-- Set the following environment variables:
-
-```
-export AUTHZEN_PDP_URL=https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C
-export AUTHZEN_PDP_API_KEY="Bearer <key>"
-```
-
-- Before running the tests, you need to write some tuples that the test requires. They could already be present in the FGA store and in such a case you'll get errors:
+- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
 
 ```
-fga --api-url https://authzen-interop.openfga.dev tuple write --file authzen.interop-tuples.yaml --store-id 01JG9JGS4W0950VN17G8NNAH3C  --api-token <key>
+export AUTHZEN_PDP_API_KEY="<shared-key>"
 ```
 
-- Run the conformance test suite with the following command:
-
+- Run the tests:
 ```
-yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 1.1-preview
-```
-
-## Running the AuthZen Interop App
-
-- Follow the steps in /authzen/interop/authzen-todo-backend/README.MD
-- Add the following environment variable:
-
-```
-export AUTHZEN_PDP_API_KEY='{"OpenFGA": "Bearer <key>"}'
+yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 
 ```
 
-- In `/authzen/interop/authzen-todo-backend` run `yarn start`
+## Running the AuthZEN API Gateway Interop test suite
 
-- Follow the steps in /authzen/interop/authzen-todo-application/README.MD
-- In `/authzen/interop/authzen-todo-application/` run `yarn start`
+- Clone https://github.com/openid/authzen
+- Go to the `interop/authzen-api-gateway` folder and follow the instructions in the readme to build the project.
+- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
 
-## Implementing the AuthZen Interop example with OpenFGA
-TBD
+```
+export AUTHZEN_PDP_API_KEY="<shared-key>"
+```
+
+- Run the tests:
+```
+yarn test https://authzen-interop.openfga.dev/stores/01JG9JGS4W0950VN17G8NNAH3C 
+```
+## Running the AuthZEN Todo Application
+
+- Set the shared key as an environment variable. You can find it on the OpenFGA vault under the "OpenFGA AuthZeN shared key" name.
+
+```
+export AUTHZEN_PDP_API_KEY='{"OpenFGA": "Bearer <shared-key>"}'
+```
+
+- Change the `gateways.--Pass Through--` entry in [pdps.json](https://github.com/openid/authzen/blob/main/interop/authzen-todo-backend/src/pdps.json) to point to "http://localhost:8080".
+
+- Change the `VITE_API_ORIGIN` in the [.env]`https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/.env` file to `http://localhost:8080`
+
+- Follow the instructions in this [readme](https://github.com/openid/authzen/tree/main/interop/authzen-todo-backend) to build and run the back-end app.
+
+- Follow the instructions in this [readme](https://github.com/openid/authzen/blob/main/interop/authzen-todo-application/README.md) to run the front-end app.
+
+## Pointing to a local OpenFGA instance
+
+To run the test suites or the interop application pointing to a local OpenFGA instance, you need to:
+
+- Change the `AUTHZEN_PDP_API_KEY` values to match the ones used by OpenFGA locally.
+- Change the [pdps.json](https://github.com/openid/authzen/blob/main/interop/authzen-todo-backend/src/pdps.json) OpenFGA entries and point to the local OpenFGA instance.
+- You can run the test suites by pointing to the local OpenFGA instance too:
+
+```
+yarn test http://localhost:8080/stores/01JG9JGS4W0950VN17G8NNAH3C 
+```
+- If you want the Todo App pointing to a local OpenFGA instance, you'll need to change the port that OpenFGA uses, as it conflicts with the one used by the interop backend app:
+
+```
+dist/openfga run --http-addr 0.0.0.0:4000        
+```
 
 ## TODO
 
-- Deployment
-    - Deploy with Docker
+Next steps:
 
-- AuthZen implementation
-    - Check what happens with the error codes for check
-    - Add more tests for mapping
-    - Add experimental flag
-    - How to test the error code when one type is incorrect?
-    - Add support for mapping contextual tuples
-    - Add examples for ABAC
-
-- Authzen Interop App
-    - Error handling for failing writes/fga writes?
-
+- Add a lot of unit tests for [evaluate](/pkg/server/commands/evaluate_test.go) and [evaluates](/pkg/server/commands/batch_evaluate_test.go). 
+  - Verify if we return the right error codes.
+- Consider mapping additional attributes that can be specified in AuthZEN calls to either `context` values or contextual tuples.
+- Add experimental flag

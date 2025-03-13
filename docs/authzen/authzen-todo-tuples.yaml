@@ -1,0 +1,105 @@
+
+
+  # Assign users to roles
+  
+  # Rick is an admin and evil_genius
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: admin
+    object: todo:todo-1
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: evil_genius
+    object: todo:todo-1
+  # Beth is a viewer
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: viewer
+    object: todo:todo-1
+  # Morty is an editor
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: editor
+    object: todo:todo-1
+  # Summer is an editor
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: editor
+    object: todo:todo-1
+  # Jerry is a viewer
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: viewer
+    object: todo:todo-1
+
+  # For the todo items we define two tuples for each. We establish a relation between
+  # the todo and the root Todo item (todo-1), and a tuple between the todo item and its owner
+
+  # Morty
+  - user: todo:todo-1
+    relation: parent
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: owner
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+
+  # Rick
+  - user: todo:todo-1
+    relation: parent
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: owner
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+
+  # Summer
+  - user: todo:todo-1
+    relation: parent
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: owner
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93    
+    
+  # Beth
+  - user: todo:todo-1
+    relation: parent
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: owner
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+
+  # Jerry
+  - user: todo:todo-1
+    relation: parent
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    relation: owner
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95     
+
+  # Allowing all users to read all users
+  - user: user:*
+    relation: can_read_user
+    object: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+  - user: user:*
+    relation: can_read_user
+    object: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+  - user: user:*
+    relation: can_read_user
+    object: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+  - user: user:*
+    relation: can_read_user
+    object: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+  - user: user:*
+    relation: can_read_user
+    object: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+
+  - user: user:*
+    relation: can_read_user
+    object: user:jerry@the-smiths.com
+  - user:  user:*
+    relation: can_read_user
+    object: user:summer@the-smiths.com
+  - user:  user:*
+    relation: can_read_user
+    object: user:morty@the-citadel.com
+  - user:  user:*
+    relation: can_read_user
+    object: user:beth@the-smiths.com
+  - user:  user:*
+    relation: can_read_user
+    object: user:rick@the-citadel.com
+
+  

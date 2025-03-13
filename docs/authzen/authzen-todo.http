@@ -1,0 +1,81 @@
+#### @fga_api_url =
+@fga_api_url =  https://authzen-interop.openfga.dev
+@fga_api_key = <key>
+@fga_store_id = 01JG9JGS4W0950VN17G8NNAH3C
+
+# Simple Evaluation Request
+
+POST https://authzen-interop.openfga.dev/stores/{{fga_store_id}}/access/v1/evaluation
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+{
+  "subject": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+  },
+  "action": {
+    "name": "can_read_user"
+  },
+  "resource": {
+    "type": "user",
+    "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+ 
+  }
+}
+
+### Batch EvaluationS request 
+POST {{fga_api_url}}/stores/{{fga_store_id}}/access/v1/evaluations
+Content-Type: application/json
+Authorization: bearer {{fga_api_key}}
+
+ {
+  "evaluations" : [
+    {
+      "subject": {
+        "type": "user",
+        "id": "CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "user",
+        "id": "rick@the-citadel.com"
+      }
+    },
+    {
+      "subject": {
+        "type": "user",
+        "id": "XiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs"
+      },
+      "action": {
+        "name": "can_read_user"
+      },
+      "resource": {
+        "type": "user",
+        "id": "rick1@the-citadel.com"
+      }
+    }
+  ]
+}
+
+
+
+### Stores
+
+POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Authorization: bearer {{fga_api_key}}
+Content-Type: application/json
+
+{
+  "page_size": 100
+}
+### Stores
+
+GET {{fga_api_url}}/stores
+Authorization: bearer {{fga_api_key}}
+
+Content-Type: application/json
+
+

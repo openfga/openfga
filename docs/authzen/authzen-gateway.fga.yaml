@@ -1,0 +1,78 @@
+name: AuthZen Gateway Interop
+model_file: authzen-gateway.fga 
+tuple_file: authzen-gateway-tuples.yaml
+
+tests:
+  - check:
+    # Every user should be able to get users and todos
+    - user: identity:peter
+      object: "route:/users/{userId}"
+      assertions:
+        GET: true
+
+    - user: identity:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/users/{userId}"
+      assertions:
+        GET: true        
+
+    - user: identity:peter
+      object: "route:/todos"
+      assertions:
+        GET: true
+        POST: false
+
+    # Rick is an admin and evil_genius
+    - user: identity:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos"
+      assertions:
+        GET: true      
+        POST: true
+
+    # Morty is an editor
+    - user: identity:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos"
+      assertions:
+        GET: true      
+        POST: true
+
+    # Beth is an viewer
+    - user: identity:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos"
+      assertions:
+        POST: false
+        GET: true
+
+    # Rick is an admin and evil_genius
+    - user: identity:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos/{todoId}"
+      assertions:
+        PUT: true
+        DELETE: true
+
+    # Morty is an editor
+    - user: identity:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos/{todoId}"
+      assertions:
+        PUT: true
+        DELETE: true
+
+    # Beth is an viewer
+    - user: identity:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos/{todoId}"
+      assertions:
+        PUT: false
+        DELETE: false
+
+    # Summer is an editor
+    - user: identity:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos"
+      assertions:
+        POST: true
+        GET: true
+
+    - user: identity:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: "route:/todos/{todoId}"
+      assertions:
+        PUT: true
+        DELETE: true
+

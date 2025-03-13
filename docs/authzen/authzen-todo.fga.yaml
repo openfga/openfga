@@ -1,0 +1,385 @@
+# This file includes all the tests that are run as part of the interop test suite for AuthZen 1.1 and additional tests
+
+name: AuthZen Interop
+model_file: authzen-todo.fga 
+tuple_file: authzen-todo-tuples.yaml
+
+tests:
+- name: Interop test suite for Rick
+  check:
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:beth@the-smiths.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:rick@the-citadel.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+
+- name: Interop test suite for Morty
+  check:
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:beth@the-smiths.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:morty@the-citadel.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      owner: true
+      can_update_todo: true
+      can_delete_todo: true
+
+- name: Interop test suite for Summer
+  check:
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:beth@the-smiths.com
+    assertions:
+     can_read_user: true
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:summer@the-smiths.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+
+- name: Interop test suite for Jerry
+  check:
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:beth@the-smiths.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: false
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+- name: Interop test suite for Beth
+  check:
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:beth@the-smiths.com
+    assertions:
+     can_read_user: true
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: user:jerry@the-smiths.com
+    assertions:
+      can_read_user: true
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: false
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+- check:
+    - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+      object: user:beth@the-smiths.com
+      assertions:
+        can_read_user: true
+
+- name: Any user can read any user
+  check:
+
+  - user: user:any
+    object: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    assertions:
+      can_read_user: true  
+
+  - user: user:any
+    object: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    assertions:
+      can_read_user: true      
+
+  - user: user:any
+    object: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    assertions:
+      can_read_user: true
+
+  - user: user:any
+    object: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    assertions:
+      can_read_user: true
+      
+  - user: user:any
+    object: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    assertions:
+      can_read_user: true
+
+- name: Rick (CiRmZDA) is 'admin' and 'evil_genius', they can perform all operations on todo items
+  check:
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDA2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+
+- name: Morty (CMiRmZDE) is an `editor`, they can create/read todos and only update/delete the todos he owns
+  check:
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDE2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+- name: Summer (CiRmZDI) is an `editor`, they can create/read todos and only update/delete the todos she owns
+  check:
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: true
+      can_delete_todo: true
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+  - user: user:CiRmZDI2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+- name: Jerry (CiRmZDQ) is a `viewer`, they can only read_todos
+  check:
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: false
+ 
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDQ2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+- name: Beth (CiRmZDM) is a `viewer`, they can only read_todos
+  check:
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: false
+ 
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+  - user: user:CiRmZDM2MTRkMy1jMzlhLTQ3ODEtYjdiZC04Yjk2ZjVhNTEwMGQSBWxvY2Fs
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: false
+      can_delete_todo: false
+
+
+- name: Peter (peter) is an evil genius, he can update Todos that do not belong to him. The interop suite does not have a user with just role.
+  tuples:
+    - user: user:peter
+      relation: evil_genius
+      object: todo:todo-1
+
+  check:
+  - user: user:peter
+    object: todo:todo-1
+    assertions:
+      can_read_todos: true
+      can_create_todo: true
+ 
+  - user: user:peter
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b91
+    assertions:
+      can_update_todo: true
+      can_delete_todo: false
+
+  - user: user:peter
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b92
+    assertions:
+      can_update_todo: true
+      can_delete_todo: false
+
+  - user: user:peter
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b93
+    assertions:
+      can_update_todo: true
+      can_delete_todo: false
+
+  - user: user:peter
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b94
+    assertions:
+      can_update_todo: true
+      can_delete_todo: false
+
+  - user: user:peter
+    object: todo:7240d0db-8ff0-41ec-98b2-34a096273b95
+    assertions:
+      can_update_todo: true
+      can_delete_todo: false      
