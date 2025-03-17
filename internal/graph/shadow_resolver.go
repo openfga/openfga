@@ -47,6 +47,7 @@ type ShadowResolver struct {
 var _ CheckResolver = (*ShadowResolver)(nil)
 
 func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+	ctxClone := context.WithoutCancel(ctx) // needs typesystem and datastore etc
 	res, err := s.main.ResolveCheck(ctx, req)
 	if err != nil {
 		return nil, err
@@ -56,11 +57,23 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		// only successful requests will be evaluated
 		resClone := res.clone()
 		reqClone := req.clone()
+		reqClone.VisitedPaths = nil // reset completely for evaluation
 		s.wg.Add(1)
 		go func() {
-			defer s.wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), s.shadowTimeout)
-			defer cancel()
+			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.ErrorWithContext(ctx, "shadow check panic",
+						zap.Any("error", err),
+						zap.String("request", reqClone.GetTupleKey().String()),
+						zap.String("store_id", reqClone.GetStoreID()),
+						zap.String("model_id", reqClone.GetAuthorizationModelID()),
+					)
+				}
+				cancel()
+				s.wg.Done()
+			}()
+
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",
@@ -76,8 +89,10 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
-					zap.Bool("shadow", shadowRes.GetAllowed()),
 					zap.Bool("main", resClone.GetAllowed()),
+					zap.Bool("main-cycle", resClone.GetCycleDetected()),
+					zap.Bool("shadow", shadowRes.GetAllowed()),
+					zap.Bool("shadow-cycle", shadowRes.GetCycleDetected()),
 				)
 			}
 		}()
