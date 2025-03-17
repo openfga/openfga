@@ -1081,4 +1081,137 @@ var ttuCompleteTestingModelTest = []*stage{
 			},
 		},
 	},
+	{
+		Name: "recursive_ttu_alg_cond",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_direct_assign", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_1", Relation: "ttu_parent_cond", User: "ttus:ttus_recursive_ttu_alg_cond_direct_assign", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_2", Relation: "ttu_parent_cond", User: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_3", Relation: "ttu_parent_cond", User: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_2", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_4", Relation: "ttu_parent_cond", User: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_3", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "ttus:ttus_recursive_ttu_alg_cond_alg", Relation: "alg_combined_cond", User: "user:ttus_recursive_ttu_alg_cond_alg", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "recursive_ttu_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_direct_assign", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "recursive_ttu_direct_user_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_direct_assign", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_not_assigned"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_direct_obj_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:other", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_direct_assigned_false_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_direct_assign", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_level_1",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_1", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "recursive_ttu_level_1_cond_not_met",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_1", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_level_1_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_1", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_other"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_level_4",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_4", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "recursive_ttu_level_4_cond_not_met",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_4", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_direct_assign"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_level_4_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_parent_case_1_4", Relation: "recursive_ttu_alg_cond", User: "directs-user:ttus_recursive_ttu_alg_cond_other"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_direct_alg",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_alg", Relation: "recursive_ttu_alg_cond", User: "user:ttus_recursive_ttu_alg_cond_alg"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "recursive_ttu_direct_alg_bad_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_recursive_ttu_alg_cond_alg", Relation: "recursive_ttu_alg_cond", User: "user:ttus_recursive_ttu_alg_cond_alg"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+		},
+	},
+	{
+		Name: "mixed_use",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:ttus_mixed_use_direct_assign", Relation: "mixed_use", User: "directs-user:ttus_mixed_use_direct_assign"},
+			{Object: "ttus:ttus_mixed_use_direct_assign_level_1", Relation: "mixed_ttu_parent", User: "ttus:ttus_mixed_use_direct_assign"},
+			{Object: "ttus:ttus_mixed_use_direct_assign_level_2", Relation: "mixed_ttu_parent", User: "ttus:ttus_mixed_use_direct_assign_level_1"},
+			{Object: "ttus:ttus_mixed_use_direct_assign_level_3", Relation: "mixed_ttu_parent", User: "ttus:ttus_mixed_use_direct_assign_level_2"},
+			// note that there is no direct connection from user:ttus_mixed_use_direct_assign_should_not_connect to directs-user:ttus_mixed_use_direct_assign with mixed_use relation
+			{Object: "directs-user:ttus_mixed_use_direct_assign", Relation: "direct", User: "user:ttus_mixed_use_direct_assign_should_not_connect"},
+			// tests for the user#mixed_use side
+			{Object: "directs-user:ttus_mixed_use_mixed_use", Relation: "direct", User: "user:ttus_mixed_use_mixed_use_side"},
+			{Object: "ttus:ttus_mixed_use_mixed_use", Relation: "mixed_ttu_parent", User: "directs-user:ttus_mixed_use_mixed_use"},
+			{Object: "ttus:ttus_mixed_use_mixed_use_level_1", Relation: "mixed_ttu_parent", User: "ttus:ttus_mixed_use_mixed_use"},
+			{Object: "ttus:ttus_mixed_use_mixed_use_level_2", Relation: "mixed_ttu_parent", User: "ttus:ttus_mixed_use_mixed_use_level_1"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "recursive_ttu_direct_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_direct_assign", Relation: "mixed_use", User: "directs-user:ttus_mixed_use_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "recursive_ttu_direct_user_not_assigned",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_direct_assign", Relation: "mixed_use", User: "directs-user:ttus_mixed_use_direct_assign_user_not_assigned"},
+				Expectation: false,
+			},
+			{
+				Name:        "recursive_ttu_direct_assigned_recursive_parent",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_direct_assign_level_3", Relation: "mixed_use", User: "directs-user:ttus_mixed_use_direct_assign"},
+				Expectation: true,
+			},
+			{
+				Name:        "mixed_use_should_not_connect",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_direct_assign_level_3", Relation: "mixed_use", User: "user:ttus_mixed_use_direct_assign_should_not_connect"},
+				Expectation: false,
+			},
+			{
+				Name:        "mixed_use_mixed_use_side",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_mixed_use", Relation: "mixed_use", User: "user:ttus_mixed_use_mixed_use_side"},
+				Expectation: true,
+			},
+			{
+				Name:        "mixed_use_mixed_use_side_level_2",
+				Tuple:       &openfgav1.TupleKey{Object: "ttus:ttus_mixed_use_mixed_use_level_2", Relation: "mixed_use", User: "user:ttus_mixed_use_mixed_use_side"},
+				Expectation: true,
+			},
+		},
+	},
 }
