@@ -30,21 +30,33 @@ func TestImpatientLessorCancel(t *testing.T) {
 
 	l.Acquire(context.Background())
 
+	var err error
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := l.Acquire(ctx)
-		require.ErrorIs(t, err, context.Canceled)
+		err = l.Acquire(ctx)
 	}()
 	cancel()
 	wg.Wait()
+	require.ErrorIs(t, err, context.Canceled)
 	l.Done()
 	l.Done()
 }
 
 func TestImpatientLessorSuccess(t *testing.T) {
 	l := Impatient(1, 10*time.Second)
+
+	err := l.Acquire(context.Background())
+	require.NoError(t, err)
+	l.Done()
+	err = l.Acquire(context.Background())
+	require.NoError(t, err)
+	l.Done()
+}
+
+func TestNoopLessorSuccess(t *testing.T) {
+	l := Noop()
 
 	err := l.Acquire(context.Background())
 	require.NoError(t, err)
