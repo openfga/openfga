@@ -57,6 +57,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		// only successful requests will be evaluated
 		resClone := res.clone()
 		reqClone := req.clone()
+		reqClone.VisitedPaths = nil // reset completely for evaluation
 		s.wg.Add(1)
 		go func() {
 			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
@@ -88,8 +89,10 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
-					zap.Bool("shadow", shadowRes.GetAllowed()),
 					zap.Bool("main", resClone.GetAllowed()),
+					zap.Bool("main-cycle", resClone.GetCycleDetected()),
+					zap.Bool("shadow", shadowRes.GetAllowed()),
+					zap.Bool("shadow-cycle", shadowRes.GetCycleDetected()),
 				)
 			}
 		}()
