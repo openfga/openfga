@@ -8,6 +8,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added a new CheckResolver (`ShadowResolver`) to allow comparing changes across different CheckResolvers. [#2308](https://github.com/openfga/openfga/pull/2308).
+
+## [1.8.7] - 2025-03-07
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.6...v1.8.7)
+
+### Added
 - Added `storage.ErrTransactionThrottled` for throttling errors applied at the datastore level. [#2304](https://github.com/openfga/openfga/pull/2304).
 
 ### Removed
@@ -1225,7 +1231,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.7...HEAD
+[1.8.7]: https://github.com/openfga/openfga/compare/v1.8.6...v1.8.7
 [1.8.6]: https://github.com/openfga/openfga/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/openfga/openfga/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4
