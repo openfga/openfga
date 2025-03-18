@@ -39,9 +39,6 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 5,
-			},
 		}, nil)
 		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(nil, context.Canceled)
 		logger.EXPECT().WarnWithContext(gomock.Any(), "shadow check errored", gomock.Any())
@@ -62,9 +59,6 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 5,
-			},
 		}, nil)
 		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{Allowed: true}, nil)
 		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any())
@@ -85,9 +79,6 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(100).Return(&ResolveCheckResponse{
 			Allowed: false,
-			ResolutionMetadata: ResolveCheckResponseMetadata{
-				DatastoreQueryCount: 5,
-			},
 		}, nil)
 		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).MaxTimes(25).Return(&ResolveCheckResponse{Allowed: true}, nil)
 		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any()).MaxTimes(25)
@@ -96,6 +87,39 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 			require.NoError(t, err)
 			require.False(t, res.Allowed)
 		}
+		checker.wg.Wait()
+	})
+	t.Run("should_recover_from_panic", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		main := NewMockCheckResolver(ctrl)
+		main.EXPECT().Close().MaxTimes(1)
+		shadow := NewMockCheckResolver(ctrl)
+		shadow.EXPECT().Close().MaxTimes(1)
+		logger := mocks.NewMockLogger(ctrl)
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSamplePercentage(100), ShadowResolverWithTimeout(1*time.Second))
+		defer checker.Close()
+		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
+			Allowed: false,
+		}, nil)
+		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			panic(errors.New("test error"))
+		})
+		logger.EXPECT().ErrorWithContext(gomock.Any(), "shadow check panic", gomock.Any())
+		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+		require.NoError(t, err)
+		require.False(t, res.Allowed)
+		checker.wg.Wait()
+		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
+			Allowed: false,
+		}, nil)
+		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
+			Allowed: true,
+		}, nil)
+		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any())
+		res, err = checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+		require.NoError(t, err)
+		require.False(t, res.Allowed)
 		checker.wg.Wait()
 	})
 }
