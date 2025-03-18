@@ -1100,7 +1100,7 @@ type directs-user
     define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
     define tuple_cycle3: [user, complexity3#cycle_nested]
     define compute_tuple_cycle3: tuple_cycle3
-	define mixed_use: or_computed_no_cond
+    define mixed_use: or_computed_no_cond
 type directs-employee
   relations
     define direct: [employee]
@@ -1207,7 +1207,7 @@ type ttus
     define recursive_ttu_public: [directs-user, directs-user:*] or recursive_ttu_public from ttu_parent
     define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
     define recursive_ttu_alg_cond: [directs-user with xcond] or recursive_ttu_alg_cond from ttu_parent_cond or alg_combined_cond
-	define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
+    define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
 
 type complexity3
   relations
