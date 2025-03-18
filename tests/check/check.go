@@ -1100,6 +1100,7 @@ type directs-user
     define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
     define tuple_cycle3: [user, complexity3#cycle_nested]
     define compute_tuple_cycle3: tuple_cycle3
+    define mixed_use: or_computed_no_cond
 type directs-employee
   relations
     define direct: [employee]
@@ -1124,6 +1125,7 @@ type usersets-user
     define butnot_computed: computed but not direct_4
     define direct_wild: [user:*]
     define alg_combined: butnot_computed but not direct_4
+    define alg_cond_combined: [user with xcond] or alg_combined
     define userset: [directs-user#direct, directs-employee#direct]
     define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
     define userset_to_computed: [directs-user#computed, directs-employee#computed]
@@ -1145,6 +1147,7 @@ type usersets-user
     define userset_recursive_public_alg: [user, user:*, usersets-user#userset_recursive_public_alg] or alg_combined or direct_wild
     define userset_recursive_public_only: [user:*, usersets-user#userset_recursive_public_only]
     define userset_recursive_public_only_alg: [user, user:*, usersets-user#userset_recursive_public_only_alg] or direct_wild
+    define userset_recursive_public_alg_cond: [user with xcond, user:*, usersets-user#userset_recursive_public_alg_cond with xcond] or alg_cond_combined or direct_wild
     define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
@@ -1169,10 +1172,13 @@ type ttus
     define butnot_computed: computed but not direct_4
     define direct_wild: [directs-user:*]
     define alg_combined: butnot_computed but not direct_4
+    define alg_combined_cond: [user with xcond] or alg_combined
     define direct_parent: [directs-user]
     define ttu_parent: [ttus]
+    define ttu_parent_cond: [ttus with xcond]
     define mult_parent_types: [directs-user, directs-employee]
     define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
+    define mixed_ttu_parent: [ttus, directs-user]
     define direct_cond_parent: [directs-user with xcond]
     define userset_parent: [usersets-user]
     define userset_cond_parent: [usersets-user with xcond]
@@ -1200,6 +1206,8 @@ type ttus
     define recursive_ttu_alg: [directs-user] or recursive_ttu_alg from ttu_parent or alg_combined
     define recursive_ttu_public: [directs-user, directs-user:*] or recursive_ttu_public from ttu_parent
     define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
+    define recursive_ttu_alg_cond: [directs-user with xcond] or recursive_ttu_alg_cond from ttu_parent_cond or alg_combined_cond
+    define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
 
 type complexity3
   relations
