@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -481,7 +480,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
 
-			// arrange: write tuples
+			// arrange: write tuples in random order
+			test.tuples = testutils.Shuffle(test.tuples)
 			err = ds.Write(context.Background(), storeID, nil, test.tuples)
 			require.NoError(t, err)
 
@@ -500,6 +500,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(10 * time.Second),
+				commands.WithMaxConcurrentReads(30),
 			}
 
 			if test.listObjectsDeadline != 0 {
@@ -508,10 +509,8 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 			localCheckOpts := []graph.LocalCheckerOption{
 				graph.WithResolveNodeBreadthLimit(100),
-				graph.WithMaxConcurrentReads(30),
 			}
 			cacheOpts := []graph.CachedCheckResolverOpt{
-				graph.WithMaxCacheSize(100),
 				graph.WithCacheTTL(10 * time.Second),
 			}
 			checkBuilderOpts := []graph.CheckResolverOrderedBuilderOpt{
@@ -623,12 +622,14 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 		var tuples []*openfgav1.TupleKey
 
 		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
-			obj := fmt.Sprintf("document:%s", strconv.Itoa(numberObjectsAccesible))
+			obj := "document:" + strconv.Itoa(numberObjectsAccesible)
 
 			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", "user:maria"))
 
 			numberObjectsAccesible++
 		}
+
+		tuples = testutils.Shuffle(tuples)
 
 		err := ds.Write(context.Background(), storeID, nil, tuples)
 		require.NoError(b, err)

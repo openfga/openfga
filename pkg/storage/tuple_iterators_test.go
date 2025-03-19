@@ -136,11 +136,9 @@ func TestStaticTupleIterator(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expected[0], tk)
 	})
-	t.Run("check_for_race", func(t *testing.T) {
-		t.Skip("TODO: whether static tuple iterator is intended to be thread safe")
-		const numberItem = 50
-		tks := make([]*openfgav1.Tuple, numberItem)
-		for i := 0; i < numberItem; i++ {
+	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
+		tks := make([]*openfgav1.Tuple, 100)
+		for i := 0; i < 100; i++ {
 			tks[i] = &openfgav1.Tuple{
 				Key:       tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "bill"),
 				Timestamp: timestamppb.New(time.Now()),
@@ -150,15 +148,25 @@ func TestStaticTupleIterator(t *testing.T) {
 		defer iter.Stop()
 
 		var wg errgroup.Group
-		for i := 0; i < numberItem; i++ {
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
-				_, err := iter.Next(context.Background())
+				_, err := iter.Head(context.Background())
 				return err
 			})
 		}
 
 		err := wg.Wait()
 		require.NoError(t, err)
+
+		for i := 0; i < 101; i++ {
+			wg.Go(func() error {
+				_, err := iter.Next(context.Background())
+				return err
+			})
+		}
+
+		err = wg.Wait()
+		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 }
 
@@ -307,6 +315,217 @@ func TestCombinedIterator(t *testing.T) {
 
 		require.True(t, iter1.stopped)
 		require.True(t, iter2.stopped)
+	})
+}
+
+func TestOrderedCombinedIterator(t *testing.T) {
+	t.Run("Stop", func(t *testing.T) {
+		iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+			{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+		})
+		iter := NewOrderedCombinedIterator(UserMapper(), iter1, nil)
+		iter.Stop()
+		require.Len(t, iter.pending, 1)
+		_, err := iter.Next(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+
+	t.Run("Next", func(t *testing.T) {
+		var testcases = map[string]struct {
+			iter1    TupleIterator
+			iter2    TupleIterator
+			expected []*openfgav1.Tuple
+		}{
+			`removes_duplicates_within_iterator`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				},
+			},
+			`removes_duplicates_across_iterators_first_entry`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				},
+			},
+			`removes_duplicates_across_iterators_last_entry`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				},
+			},
+			`non_overlapping_elements_returns_all`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
+				}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:e")},
+					{Key: tuple.NewTupleKey("document:1", "2", "user:f")},
+				},
+			},
+			`all_empty_iterators`: {
+				iter1:    NewStaticTupleIterator([]*openfgav1.Tuple{}),
+				iter2:    NewStaticTupleIterator([]*openfgav1.Tuple{}),
+				expected: []*openfgav1.Tuple{},
+			},
+			`one_empty_iterator`: {
+				iter1: NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				}),
+				iter2: NewStaticTupleIterator([]*openfgav1.Tuple{}),
+				expected: []*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				},
+			},
+		}
+
+		for name, tc := range testcases {
+			t.Run(name, func(t *testing.T) {
+				iter := NewOrderedCombinedIterator(UserMapper(), tc.iter1, tc.iter2)
+				t.Cleanup(func() {
+					iter.Stop()
+					require.Empty(t, iter.pending)
+				})
+
+				gotItems := make([]*openfgav1.Tuple, 0)
+				for {
+					got, err := iter.Next(context.Background())
+					if err != nil {
+						if errors.Is(err, ErrIteratorDone) {
+							break
+						}
+						require.Fail(t, "no error was expected")
+					}
+					require.NotNil(t, got)
+					gotItems = append(gotItems, got)
+				}
+
+				if diff := cmp.Diff(tc.expected, gotItems, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
+	})
+
+	t.Run("Head", func(t *testing.T) {
+		t.Run("return_err_if_unsorted_input_iterator", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{})
+
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
+
+			next, err := iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, "document:1#2@user:b", tuple.TupleKeyToString(next.GetKey()))
+
+			next, err = iter.Next(context.Background())
+			require.Nil(t, next)
+			require.ErrorContains(t, err, "iterator 0 is not in ascending order")
+		})
+		t.Run("multiple_calls_to_head_should_return_same_value", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			})
+			expected := &openfgav1.Tuple{
+				Key: tuple.NewTupleKey("document:1", "2", "user:a"),
+			}
+
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
+
+			for i := 0; i < 5; i++ {
+				got, err := iter.Head(context.Background())
+				require.NoError(t, err)
+
+				if diff := cmp.Diff(expected, got, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+		t.Run("head_and_next_interleaved", func(t *testing.T) {
+			iter1 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+			})
+			iter2 := NewStaticTupleIterator([]*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			})
+			expected := []*openfgav1.Tuple{
+				{Key: tuple.NewTupleKey("document:1", "2", "user:a")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:b")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:c")},
+				{Key: tuple.NewTupleKey("document:1", "2", "user:d")},
+			}
+
+			iter := NewOrderedCombinedIterator(UserMapper(), iter1, iter2)
+			t.Cleanup(iter.Stop)
+
+			var errorFromHead error
+			gotItems := make([]*openfgav1.Tuple, 0)
+			for {
+				gotHead, err := iter.Head(context.Background())
+				if err != nil {
+					require.ErrorIs(t, err, ErrIteratorDone)
+					errorFromHead = err
+				}
+				gotNext, err := iter.Next(context.Background())
+				if err != nil {
+					require.Equal(t, errorFromHead, err)
+					break
+				}
+				require.NotNil(t, gotNext)
+				if diff := cmp.Diff(gotHead, gotNext, protocmp.Transform()); diff != "" {
+					t.Errorf("mismatch in result of Next compared to Head (-want +got):\n%s", diff)
+				}
+				gotItems = append(gotItems, gotNext)
+			}
+
+			if diff := cmp.Diff(expected, gotItems, protocmp.Transform()); diff != "" {
+				t.Errorf("mismatch in result of Next (-want +got):\n%s", diff)
+			}
+		})
 	})
 }
 
@@ -514,40 +733,39 @@ func TestFilteredTupleKeyIterator(t *testing.T) {
 		})
 	})
 
-	t.Run("race_condition", func(t *testing.T) {
-		t.Skip("TODO: underlying static tuple key iterator is not thread safe")
-		const numMatchingIterator = 50
-		tuples := make([]*openfgav1.TupleKey, numMatchingIterator*3)
-		for i := 0; i < numMatchingIterator; i++ {
-			tuples[3*i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
-			tuples[3*i+1] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "editor", "user:elbuo")
-			tuples[3*i+2] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:charlie")
+	t.Run("next_and_head_are_thread_safe", func(t *testing.T) {
+		tuples := make([]*openfgav1.TupleKey, 100)
+		for i := 0; i < 100; i++ {
+			tuples[i] = tuple.NewTupleKey("document:doc"+strconv.Itoa(i), "viewer", "user:jon")
 		}
 		iter := NewFilteredTupleKeyIterator(
 			NewStaticTupleKeyIterator(tuples),
 			func(tk *openfgav1.TupleKey) bool {
-				return tk.GetRelation() == "editor"
+				return true
 			},
 		)
 		defer iter.Stop()
-		var wg errgroup.Group
 
-		for i := 0; i < numMatchingIterator; i++ {
+		var wg errgroup.Group
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
 				_, err := iter.Head(context.Background())
 				return err
 			})
 		}
 
-		for i := 0; i < numMatchingIterator-1; i++ {
+		err := wg.Wait()
+		require.NoError(t, err)
+
+		for i := 0; i < 101; i++ {
 			wg.Go(func() error {
 				_, err := iter.Next(context.Background())
 				return err
 			})
 		}
 
-		err := wg.Wait()
-		require.NoError(t, err)
+		err = wg.Wait()
+		require.ErrorIs(t, err, ErrIteratorDone)
 	})
 }
 

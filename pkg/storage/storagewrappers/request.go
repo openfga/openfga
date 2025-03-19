@@ -1,15 +1,11 @@
 package storagewrappers
 
 import (
-	"context"
-	"sync"
-	"time"
-
-	"golang.org/x/sync/singleflight"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
@@ -22,29 +18,15 @@ type RequestStorageWrapper struct {
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
-func NewRequestStorageWrapperForCheckAPI(
-	serverCtx context.Context,
-	ds storage.RelationshipTupleReader,
-	requestContextualTuples []*openfgav1.TupleKey,
-	maxConcurrentReads uint32,
-	shouldCacheIterators bool,
-	singleflightGroup *singleflight.Group,
-	waitGroup *sync.WaitGroup,
-	checkCache storage.InMemoryCache[any],
-	maxCheckCacheSize uint32,
-	checkCacheTTL time.Duration) *RequestStorageWrapper {
+func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32,
+	resources *shared.SharedCheckResources,
+	cacheSettings config.CacheSettings, logger logger.Logger) *RequestStorageWrapper {
 	var a storage.RelationshipTupleReader
 	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
-	if shouldCacheIterators {
-		a = graph.NewCachedDatastore(
-			serverCtx,
-			a,
-			checkCache,
-			int(maxCheckCacheSize),
-			checkCacheTTL,
-			singleflightGroup,
-			waitGroup,
-		) // to read tuples from cache
+	if cacheSettings.ShouldCacheIterators() {
+		// TODO(miparnisari): pass cacheSettings and resources directly, i can't now because i would create a package import cycle
+		a = NewCachedDatastore(resources.ServerCtx, a, resources.CheckCache, int(cacheSettings.CheckIteratorCacheMaxResults), cacheSettings.CheckIteratorCacheTTL, resources.SingleflightGroup, resources.WaitGroup,
+			WithCachedDatastoreLogger(logger)) // to read tuples from cache
 	}
 	b := NewInstrumentedOpenFGAStorage(a)                   // to capture metrics
 	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples

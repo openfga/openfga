@@ -86,7 +86,9 @@ type ReadAuthorizationModelsOptions struct {
 // be used with the ListStores method.
 type ListStoresOptions struct {
 	// IDs is a list of store IDs to filter the results.
-	IDs        []string
+	IDs []string
+	// Name is used to filter the results. If left empty no filter is applied.
+	Name       string
 	Pagination PaginationOptions
 }
 
@@ -131,7 +133,8 @@ type ReadUsersetTuplesOptions struct {
 // ReadStartingWithUserOptions represents the options that can
 // be used with the ReadStartingWithUser method.
 type ReadStartingWithUserOptions struct {
-	Consistency ConsistencyOptions
+	Consistency                ConsistencyOptions
+	WithResultsSortedAscending bool
 }
 
 // Writes is a typesafe alias for Write arguments.
@@ -201,7 +204,7 @@ type RelationshipTupleReader interface {
 	// ReadStartingWithUser for ['user:jon', 'group:eng#member'] filtered by 'document#viewer'
 	// and 'document:doc1, document:doc2' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
-	// The result is sorted by object ID.
+	// If ReadStartingWithUserOptions.WithResultsSortedAscending bool is enabled, the tuples returned must be sorted by one or more fields in them.
 	ReadStartingWithUser(
 		ctx context.Context,
 		store string,

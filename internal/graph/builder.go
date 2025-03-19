@@ -3,6 +3,9 @@ package graph
 type CheckResolverOrderedBuilder struct {
 	resolvers                              []CheckResolver
 	localCheckerOptions                    []LocalCheckerOption
+	shadowLocalCheckerOptions              []LocalCheckerOption
+	shadowResolverEnabled                  bool
+	shadowResolverOptions                  []ShadowResolverOpt
 	cachedCheckResolverEnabled             bool
 	cachedCheckResolverOptions             []CachedCheckResolverOpt
 	dispatchThrottlingCheckResolverEnabled bool
@@ -15,6 +18,24 @@ type CheckResolverOrderedBuilderOpt func(checkResolver *CheckResolverOrderedBuil
 func WithLocalCheckerOpts(opts ...LocalCheckerOption) CheckResolverOrderedBuilderOpt {
 	return func(r *CheckResolverOrderedBuilder) {
 		r.localCheckerOptions = opts
+	}
+}
+
+func WithLocalShadowCheckerOpts(opts ...LocalCheckerOption) CheckResolverOrderedBuilderOpt {
+	return func(r *CheckResolverOrderedBuilder) {
+		r.shadowLocalCheckerOptions = opts
+	}
+}
+
+func WithShadowResolverEnabled(enabled bool) CheckResolverOrderedBuilderOpt {
+	return func(r *CheckResolverOrderedBuilder) {
+		r.shadowResolverEnabled = enabled
+	}
+}
+
+func WithShadowResolverOpts(opts ...ShadowResolverOpt) CheckResolverOrderedBuilderOpt {
+	return func(r *CheckResolverOrderedBuilder) {
+		r.shadowResolverOptions = opts
 	}
 }
 
@@ -65,7 +86,13 @@ func (c *CheckResolverOrderedBuilder) Build() (CheckResolver, CheckResolverClose
 		c.resolvers = append(c.resolvers, NewDispatchThrottlingCheckResolver(c.dispatchThrottlingCheckResolverOptions...))
 	}
 
-	c.resolvers = append(c.resolvers, NewLocalChecker(c.localCheckerOptions...))
+	if c.shadowResolverEnabled {
+		main := NewLocalChecker(c.localCheckerOptions...)
+		shadow := NewLocalChecker(c.shadowLocalCheckerOptions...)
+		c.resolvers = append(c.resolvers, NewShadowChecker(main, shadow, c.shadowResolverOptions...))
+	} else {
+		c.resolvers = append(c.resolvers, NewLocalChecker(c.localCheckerOptions...))
+	}
 
 	for i, resolver := range c.resolvers {
 		if i == len(c.resolvers)-1 {

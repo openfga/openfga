@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"math"
-	"sync"
 	"time"
 
-	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -27,19 +27,14 @@ const (
 )
 
 type CheckQuery struct {
-	logger                 logger.Logger
-	checkResolver          graph.CheckResolver
-	typesys                *typesystem.TypeSystem
-	serverCtx              context.Context
-	datastore              storage.RelationshipTupleReader
-	cacheController        cachecontroller.CacheController
-	cacheSingleflightGroup *singleflight.Group
-	cacheWaitGroup         *sync.WaitGroup
-	checkCache             storage.InMemoryCache[any]
-	checkCacheTTL          time.Duration
-	maxCheckCacheSize      uint32
-	maxConcurrentReads     uint32
-	shouldCacheIterators   bool
+	logger               logger.Logger
+	checkResolver        graph.CheckResolver
+	typesys              *typesystem.TypeSystem
+	datastore            storage.RelationshipTupleReader
+	sharedCheckResources *shared.SharedCheckResources
+	cacheSettings        config.CacheSettings
+	maxConcurrentReads   uint32
+	shouldCacheIterators bool
 }
 
 type CheckCommandParams struct {
@@ -64,26 +59,10 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
-// TODO can we make this better? There are too many caching flags.
-func WithCheckCommandCache(
-	serverCtx context.Context,
-	ctrl cachecontroller.CacheController,
-	shouldCache bool,
-	sf *singleflight.Group,
-	cc storage.InMemoryCache[any],
-	wg *sync.WaitGroup,
-	m uint32,
-	ttl time.Duration,
-) CheckQueryOption {
+func WithCheckCommandCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.cacheController = ctrl
-		c.shouldCacheIterators = shouldCache
-		c.serverCtx = serverCtx
-		c.cacheSingleflightGroup = sf
-		c.cacheWaitGroup = wg
-		c.checkCache = cc
-		c.maxCheckCacheSize = m
-		c.checkCacheTTL = ttl
+		c.sharedCheckResources = sharedCheckResources
+		c.cacheSettings = cacheSettings
 	}
 }
 
@@ -94,10 +73,12 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		datastore:            datastore,
 		checkResolver:        checkResolver,
 		typesys:              typesys,
-		cacheController:      cachecontroller.NewNoopCacheController(),
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
-		serverCtx:            context.TODO(),
+		cacheSettings:        config.NewDefaultCacheSettings(),
+		sharedCheckResources: &shared.SharedCheckResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -115,40 +96,33 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	cacheInvalidationTime := time.Time{}
 
 	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.cacheController.DetermineInvalidation(ctx, params.StoreID)
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, params.StoreID)
 	}
 
-	resolveCheckRequest := graph.ResolveCheckRequest{
-		StoreID:              params.StoreID,
-		AuthorizationModelID: c.typesys.GetAuthorizationModelID(), // the resolved model ID
-		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
-		Context:              params.Context,
-		VisitedPaths:         make(map[string]struct{}),
-		RequestMetadata:      graph.NewCheckRequestMetadata(),
-		Consistency:          params.Consistency,
-		// avoid having to read from cache consistently by propagating it
-		LastCacheInvalidationTime: cacheInvalidationTime,
-	}
-
-	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(
-		c.serverCtx,
-		c.datastore,
-		params.ContextualTuples.GetTupleKeys(),
-		c.maxConcurrentReads,
-		c.shouldCacheIterators,
-		c.cacheSingleflightGroup,
-		c.cacheWaitGroup,
-		c.checkCache,
-		c.maxCheckCacheSize,
-		c.checkCacheTTL,
+	resolveCheckRequest, err := graph.NewResolveCheckRequest(
+		graph.ResolveCheckRequestParams{
+			StoreID:                   params.StoreID,
+			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+			Context:                   params.Context,
+			ContextualTuples:          params.ContextualTuples,
+			Consistency:               params.Consistency,
+			LastCacheInvalidationTime: cacheInvalidationTime,
+			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
+		},
 	)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings, c.logger)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
 
 	startTime := time.Now()
-	resp, err := c.checkResolver.ResolveCheck(ctx, &resolveCheckRequest)
+
+	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
 			return nil, nil, &ThrottledError{Cause: err}

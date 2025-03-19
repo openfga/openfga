@@ -1,4 +1,4 @@
-package graph
+package storagewrappers
 
 import (
 	"context"

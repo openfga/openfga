@@ -1,4 +1,4 @@
-package graph
+package storagewrappers
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -52,7 +53,7 @@ func TestFindInCache(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(key).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_no_invalid", func(t *testing.T) {
@@ -62,8 +63,15 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_bad_result", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
+		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid", func(t *testing.T) {
 		gomock.InOrder(
@@ -72,7 +80,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_stale_invalid", func(t *testing.T) {
@@ -83,8 +91,18 @@ func TestFindInCache(t *testing.T) {
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalidation_incorrect_type", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []*storage.TupleRecord{}, LastModified: time.Now()}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).
+				Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
+		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity", func(t *testing.T) {
 		gomock.InOrder(
@@ -94,7 +112,7 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.False(t, ok)
 	})
 	t.Run("cache_hit_invalid_entity_stale", func(t *testing.T) {
@@ -105,8 +123,19 @@ func TestFindInCache(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKeys[0]).
 				Return(&storage.InvalidEntityCacheEntry{LastModified: time.Now().Add(-5 * time.Second)}),
 		)
-		_, ok := ds.findInCache(storeID, key, invalidEntityKeys)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
 		require.True(t, ok)
+	})
+	t.Run("cache_hit_invalid_entity_stale_invalid", func(t *testing.T) {
+		gomock.InOrder(
+			mockCache.EXPECT().Get(key).
+				Return(&storage.TupleIteratorCacheEntry{Tuples: []*storage.TupleRecord{}, LastModified: time.Now()}),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+			mockCache.EXPECT().Get(invalidEntityKeys[0]).
+				Return("invalid"),
+		)
+		_, ok := findInCache(ds.cache, storeID, key, invalidEntityKeys, logger.NewNoopLogger())
+		require.False(t, ok)
 	})
 }
 
@@ -392,7 +421,7 @@ func TestReadUsersetTuples(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, filter.Object, filter.Relation)[0]),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -427,7 +456,7 @@ func TestReadUsersetTuples(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
-			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, filter.Object, filter.Relation)[0]).Return(nil),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)).Return(nil),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -464,7 +493,7 @@ func TestReadUsersetTuples(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, filter.Object, filter.Relation)[0]),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, filter.Object, filter.Relation)),
 		)
 
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
@@ -588,7 +617,7 @@ func TestRead(t *testing.T) {
 					t.Fatalf("mismatch (-want +got):\n%s", diff)
 				}
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, tk.GetObject(), tk.GetRelation())[0]),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -623,7 +652,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
-			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, tk.GetObject(), tk.GetRelation())[0]),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -660,7 +689,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), ttl).DoAndReturn(func(k string, entry *storage.TupleIteratorCacheEntry, ttl time.Duration) {
 				require.Empty(t, entry.Tuples)
 			}),
-			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, tk.GetObject(), tk.GetRelation())[0]),
+			mockCache.EXPECT().Delete(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, tk.GetObject(), tk.GetRelation())),
 		)
 
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
@@ -863,6 +892,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		_, err = iter.Next(ctx)
@@ -903,6 +933,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		_, err = iter.Next(ctx)
@@ -937,6 +968,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		var actual []*openfgav1.Tuple
@@ -993,6 +1025,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		iter.Stop()
@@ -1030,6 +1063,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		var actual []*openfgav1.Tuple
@@ -1092,6 +1126,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		iter.Stop()
@@ -1135,6 +1170,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		cancelledCtx, cancel := context.WithCancel(context.Background())
@@ -1162,11 +1198,19 @@ func TestCachedIterator(t *testing.T) {
 		maxCacheSize := 10
 		cacheKey := "cache-key"
 		ttl := 5 * time.Hour
+		store := ulid.Make().String()
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
 		mockCache := mocks.NewMockInMemoryCache[any](mockController)
-		mockCache.EXPECT().Get(gomock.Any()).Return(tuples)
+		tupleRecord := &storage.TupleIteratorCacheEntry{
+			Tuples:       cachedTuples,
+			LastModified: time.Now().Add(-1 * time.Second),
+		}
+		gomock.InOrder(
+			mockCache.EXPECT().Get(cacheKey).Return(tupleRecord),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(store)).Return(nil),
+		)
 
 		var wg sync.WaitGroup
 
@@ -1177,6 +1221,7 @@ func TestCachedIterator(t *testing.T) {
 		iter := &cachedIterator{
 			ctx:               ctx,
 			iter:              mockedIter,
+			store:             store,
 			operation:         "operation",
 			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
 			cacheKey:          cacheKey,
@@ -1190,6 +1235,7 @@ func TestCachedIterator(t *testing.T) {
 			objectID:          "",
 			relation:          "",
 			userType:          "",
+			logger:            logger.NewNoopLogger(),
 		}
 
 		wg.Add(1)
@@ -1204,6 +1250,69 @@ func TestCachedIterator(t *testing.T) {
 		iter.wg.Wait()
 
 		require.Zero(t, mockedIter.nextCalled)
+		require.Nil(t, iter.tuples)
+		require.Nil(t, iter.records)
+	})
+
+	t.Run("prevent_draining_if_already_cached_but_invalidated", func(t *testing.T) {
+		maxCacheSize := 10
+		cacheKey := "cache-key"
+		ttl := 5 * time.Hour
+		store := ulid.Make().String()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](mockController)
+		tupleRecord := &storage.TupleIteratorCacheEntry{
+			Tuples:       cachedTuples,
+			LastModified: time.Now().Add(-1 * time.Hour),
+		}
+		gomock.InOrder(
+			mockCache.EXPECT().Get(cacheKey).Return(tupleRecord),
+			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(store)).Return(&storage.InvalidEntityCacheEntry{
+				LastModified: time.Now().Add(-1 * time.Minute),
+			}),
+			mockCache.EXPECT().Set(cacheKey, gomock.Any(), ttl).AnyTimes(),
+		)
+
+		var wg sync.WaitGroup
+
+		mockedIter := &mockCalledTupleIterator{
+			iter: storage.NewStaticTupleIterator(tuples),
+		}
+
+		iter := &cachedIterator{
+			ctx:               ctx,
+			iter:              mockedIter,
+			store:             store,
+			operation:         "operation",
+			tuples:            make([]*openfgav1.Tuple, 0, maxCacheSize),
+			cacheKey:          cacheKey,
+			invalidEntityKeys: []string{},
+			cache:             mockCache,
+			maxResultSize:     maxCacheSize,
+			ttl:               ttl,
+			sf:                &singleflight.Group{},
+			wg:                &sync.WaitGroup{},
+			objectType:        "",
+			objectID:          "",
+			relation:          "",
+			userType:          "",
+			logger:            logger.NewNoopLogger(),
+		}
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			iter.Stop()
+		}()
+
+		wg.Wait()
+		iter.wg.Wait()
+
+		require.NotZero(t, mockedIter.nextCalled)
 		require.Nil(t, iter.tuples)
 		require.Nil(t, iter.records)
 	})
@@ -1246,6 +1355,7 @@ func TestCachedIterator(t *testing.T) {
 				objectID:          "",
 				relation:          "",
 				userType:          "",
+				logger:            logger.NewNoopLogger(),
 			}
 
 			mockedIter2 := &mockCalledTupleIterator{
@@ -1268,6 +1378,7 @@ func TestCachedIterator(t *testing.T) {
 				objectID:          "",
 				relation:          "",
 				userType:          "",
+				logger:            logger.NewNoopLogger(),
 			}
 
 			wg.Add(2)

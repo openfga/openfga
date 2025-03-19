@@ -67,7 +67,7 @@ func BootstrapFGAStore(
 	require.NoError(t, err)
 
 	tuples := tuple.MustParseTupleStrings(tupleStrs...)
-
+	tuples = testutils.Shuffle(tuples)
 	batchSize := ds.MaxTuplesPerWrite()
 	for batch := 0; batch < len(tuples); batch += batchSize {
 		batchEnd := min(batch+batchSize, len(tuples))

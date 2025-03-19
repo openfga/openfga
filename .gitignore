@@ -9,3 +9,4 @@ openfga
 coverage*.out
 *.swp
 
+mise.toml

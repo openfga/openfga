@@ -11,11 +11,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -36,6 +38,12 @@ var (
 		Help:      "The total number of cache hits from cachecontroller requests.",
 	})
 
+	cacheInvalidationCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cachecontroller_cache_invalidation_count",
+		Help:      "The total number of invalidations performed by the cache controller.",
+	})
+
 	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
 		Name:                            "cachecontroller_find_changes_and_invalidate_histogram",
@@ -48,12 +56,14 @@ var (
 )
 
 type CacheController interface {
-	DetermineInvalidation(ctx context.Context, storeID string) time.Time
+	// DetermineInvalidationTime returns the timestamp of the last write for the specified store.
+	// It may return a cached timestamp.
+	DetermineInvalidationTime(ctx context.Context, storeID string) time.Time
 }
 
 type NoopCacheController struct{}
 
-func (c *NoopCacheController) DetermineInvalidation(_ context.Context, _ string) time.Time {
+func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) time.Time {
 	return time.Time{}
 }
 
@@ -61,16 +71,34 @@ func NewNoopCacheController() CacheController {
 	return &NoopCacheController{}
 }
 
+// InMemoryCacheControllerOpt defines an option that can be used to change the behavior of InMemoryCacheController
+// instance.
+type InMemoryCacheControllerOpt func(*InMemoryCacheController)
+
+// WithLogger sets the logger for InMemoryCacheController.
+func WithLogger(logger logger.Logger) InMemoryCacheControllerOpt {
+	return func(inm *InMemoryCacheController) {
+		inm.logger = logger
+	}
+}
+
+// InMemoryCacheController will invalidate cache iterator (InMemoryCache) and sub problem cache (CachedCheckResolver) entries
+// that are more recent than the last write for the specified store.
+// Note that the invalidation is done asynchronously, and only after a Check request is received.
+// It will be eventually consistent.
 type InMemoryCacheController struct {
-	ds                    storage.OpenFGADatastore
-	cache                 storage.InMemoryCache[any]
+	ds    storage.OpenFGADatastore
+	cache storage.InMemoryCache[any]
+
+	// ttl for the entry that keeps the last timestamp for a Write for a storeID.
 	ttl                   time.Duration
 	iteratorCacheTTL      time.Duration
 	changelogBuckets      []uint
 	inflightInvalidations sync.Map
+	logger                logger.Logger
 }
 
-func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration) CacheController {
+func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration, opts ...InMemoryCacheControllerOpt) CacheController {
 	c := &InMemoryCacheController{
 		ds:                    ds,
 		cache:                 cache,
@@ -78,21 +106,30 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		iteratorCacheTTL:      iteratorCacheTTL,
 		changelogBuckets:      []uint{0, 25, 50, 75, 100},
 		inflightInvalidations: sync.Map{},
+		logger:                logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(c)
 	}
 
 	return c
 }
 
-func (c *InMemoryCacheController) DetermineInvalidation(
+// DetermineInvalidationTime returns the timestamp of the last write for the specified store.
+// It may return a cached timestamp.
+// If the timestamp is not known, it will asynchronously find the last Write and store it, and also invalidate some or all entries in the cache.
+func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidation", trace.WithAttributes(attribute.Bool("cached", false)))
+	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
+	c.logger.Debug("InMemoryCacheController DetermineInvalidationTime cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
@@ -100,11 +137,12 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 		return entry.LastModified
 	}
 
+	// if the cache key cannot be found, we asynchronously
+	// find the last Write and store it, and also invalidate some or all entries in the cache.
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if !present {
 		span.SetAttributes(attribute.Bool("check_invalidation", true))
-		// if the cache cannot be found, we want to invalidate entries in the background
-		// so that it does not block the answer path.
+
 		go func() {
 			// we do not want to propagate context to avoid early cancellation
 			// and pollute span.
@@ -118,7 +156,7 @@ func (c *InMemoryCacheController) DetermineInvalidation(
 	return time.Time{}
 }
 
-func (c *InMemoryCacheController) findChanges(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
+func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
 		Pagination: storage.PaginationOptions{
@@ -136,11 +174,11 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	link := trace.LinkFromContext(ctx)
 	parentSpan.AddLink(link)
 
-	cacheKey := storage.GetChangelogCacheKey(storeID)
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
 	// re-evaluate at a later time.
-	changes, _, err := c.findChanges(ctx, storeID)
+	// Note that changes are sorted most-recent first
+	changes, _, err := c.findChangesDescending(ctx, storeID)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		// do not allow any cache read until next refresh
@@ -148,59 +186,106 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		return
 	}
 
+	mostRecentChanges := changes[0]
 	entry := &storage.ChangelogCacheEntry{
-		LastModified: changes[0].GetTimestamp().AsTime(),
+		LastModified: mostRecentChanges.GetTimestamp().AsTime(),
 	}
 
-	// set changelog entry as soon as possible for subsequent cache
-	// lookups have the entry and not have to wait on the existing singleflight group
+	cacheKey := storage.GetChangelogCacheKey(storeID)
+	lastCacheRecord := c.cache.Get(cacheKey)
+
+	// set changelog entry as soon as possible so that subsequent cache lookups can find the entry
 	c.cache.Set(cacheKey, entry, c.ttl)
 
-	lastVerified := time.Now().Add(-c.ttl)
+	timestampOfLastInvalidation := time.Time{}
+	if lastCacheRecord != nil {
+		decodedRecord, ok := lastCacheRecord.(*storage.ChangelogCacheEntry)
+		if ok {
+			// if the change log cache is available and valid, use the last modified
+			// time to have better consistency. Otherwise, the timestampOfLastInvalidation will
+			// be the beginning of time which imply the need to invalidate one or more records.
+			timestampOfLastInvalidation = decodedRecord.LastModified
+		} else {
+			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("cacheKey", cacheKey))
+		}
+	}
 
-	if entry.LastModified.Before(lastVerified) {
+	if entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
+		c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation as entry.LastModified before last verified",
+			zap.String("store_id", storeID),
+			zap.Time("entry.LastModified", entry.LastModified),
+			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
+
 		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
 
+	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
+
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
+	// Remember that idx[0] is the most recent change while idx[len(changes)-1] is the oldest change because
+	// changes is ordered from most recent to oldest.
 	idx := len(changes) - 1
 	for ; idx >= 0; idx-- {
-		if changes[idx].GetTimestamp().AsTime().After(lastVerified) {
+		// idx marks the changes the first change after the timestampOfLastIteratorInvalidation.
+		// therefore, we want to use the changes happens at/after this time to invalidate cache.
+		//
+		// Note that we only want to add invalidation entries for changes with timestamp >= now - iterator cache's TTL
+		// because anything older than that time would not live in the iterator cache anyway.
+		if changes[idx].GetTimestamp().AsTime().After(timestampOfLastIteratorInvalidation) {
 			break
 		}
 	}
-	// all changes are new, thus we should revoke the whole query cache
+
+	partialInvalidation := true
+
+	// all changes happened after the last invalidation, thus we should revoke all the cached iterators for the store.
 	if idx == len(changes)-1 {
+		cacheInvalidationCounter.Inc()
+		partialInvalidation = false
 		c.invalidateIteratorCache(storeID)
 	} else {
-		// only a subset of changes are new, revoke the respective ones
+		// only a subset of changes are new, revoke the respective ones.
 		lastModified := time.Now()
+
+		// only increment if we're going to enter the invalidation for loop below
+		if idx >= 0 {
+			cacheInvalidationCounter.Inc()
+		}
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
 			c.invalidateIteratorCacheByObjectRelation(storeID, t.GetObject(), t.GetRelation(), lastModified)
-			c.invalidateIteratorCacheByObjectTypeRelation(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
+			// We invalidate all iterators for the tuple's user and object type, regardless of the relation.
+			c.invalidateIteratorCacheByUserAndObjectType(storeID, t.GetUser(), tuple.GetType(t.GetObject()), lastModified)
 		}
 	}
+
+	c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation",
+		zap.String("store_id", storeID),
+		zap.Time("entry.LastModified", entry.LastModified),
+		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
+		zap.Bool("partialInvalidation", partialInvalidation))
 	span.SetAttributes(attribute.Bool("invalidations", true))
 	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
 }
 
+// invalidateIteratorCache writes a new key to the cache with a very long TTL.
+// An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCache(storeID string) {
-	// These entries do not need to expire
 	c.cache.Set(storage.GetInvalidIteratorCacheKey(storeID), &storage.InvalidEntityCacheEntry{LastModified: time.Now()}, math.MaxInt)
 }
 
+// invalidateIteratorCacheByObjectRelation writes a new key to the cache.
+// An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeID, object, relation string, ts time.Time) {
-	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
-	// GetInvalidIteratorByObjectRelationCacheKeys returns only 1 instance
-	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKeys(storeID, object, relation)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
+	c.cache.Set(storage.GetInvalidIteratorByObjectRelationCacheKey(storeID, object, relation), &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
 
-func (c *InMemoryCacheController) invalidateIteratorCacheByObjectTypeRelation(storeID, user, objectType string, ts time.Time) {
-	// graph.storagewrapper is exclusively used for caching iterators used within check, which _always_ have object/relation defined
+// invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
+// An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
+func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

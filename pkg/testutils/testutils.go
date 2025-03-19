@@ -29,6 +29,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 const (
@@ -86,6 +87,32 @@ func ConvertTuplesToTupleKeys(input []*openfgav1.Tuple) []*openfgav1.TupleKey {
 		converted[i] = input[i].GetKey()
 	}
 	return converted
+}
+
+func ConvertTuplesKeysToTuples(input []*openfgav1.TupleKey) []*openfgav1.Tuple {
+	converted := make([]*openfgav1.Tuple, len(input))
+	for i := range input {
+		converted[i] = &openfgav1.Tuple{Key: tuple.NewTupleKey(input[i].GetObject(), input[i].GetRelation(), input[i].GetUser())}
+	}
+	return converted
+}
+
+// Shuffle returns the input but with order of elements randomized.
+func Shuffle(arr []*openfgav1.TupleKey) []*openfgav1.TupleKey {
+	// copy array to avoid data races :(
+	copied := make([]*openfgav1.TupleKey, len(arr))
+	for i := range arr {
+		copied[i] = tuple.NewTupleKeyWithCondition(arr[i].GetObject(),
+			arr[i].GetRelation(),
+			arr[i].GetUser(),
+			arr[i].GetCondition().GetName(),
+			arr[i].GetCondition().GetContext(),
+		)
+	}
+	rand.Shuffle(len(copied), func(i, j int) {
+		copied[i], copied[j] = copied[j], copied[i]
+	})
+	return copied
 }
 
 func CreateRandomString(n int) string {

@@ -39,6 +39,7 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 type Datastore struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
+	dbInfo                 *sqlcommon.DBInfo
 	logger                 logger.Logger
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
@@ -111,10 +112,12 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite")
 
 	return &Datastore{
 		stbl:                   stbl,
 		db:                     db,
+		dbInfo:                 dbInfo,
 		logger:                 cfg.Logger,
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
@@ -798,14 +801,20 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	ctx, span := startTrace(ctx, "ListStores")
 	defer span.End()
 
-	var whereClause sq.Sqlizer
+	whereClause := sq.And{
+		sq.Eq{"deleted_at": nil},
+	}
+
 	if len(options.IDs) > 0 {
-		whereClause = sq.And{
-			sq.Eq{"deleted_at": nil},
-			sq.Eq{"id": options.IDs},
-		}
-	} else {
-		whereClause = sq.Eq{"deleted_at": nil}
+		whereClause = append(whereClause, sq.Eq{"id": options.IDs})
+	}
+
+	if options.Name != "" {
+		whereClause = append(whereClause, sq.Eq{"name": options.Name})
+	}
+
+	if options.Pagination.From != "" {
+		whereClause = append(whereClause, sq.GtOrEq{"id": options.Pagination.From})
 	}
 
 	sb := s.stbl.
@@ -814,9 +823,6 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		Where(whereClause).
 		OrderBy("id")
 
-	if options.Pagination.From != "" {
-		sb = sb.Where(sq.GtOrEq{"id": options.Pagination.From})
-	}
 	if options.Pagination.PageSize > 0 {
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}

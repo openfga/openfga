@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -48,7 +49,7 @@ func TestGetRelation(t *testing.T) {
 		{name: "DeleteStore", expectedResult: CanCallDeleteStore},
 		{name: "Expand", expectedResult: CanCallExpand},
 		{name: "ReadChanges", expectedResult: CanCallReadChanges},
-		{name: "Unknown", errorMsg: ErrUnknownAPIMethod.Error()},
+		{name: "Unknown", errorMsg: "unknown API method"},
 	}
 
 	for _, test := range tests {
@@ -102,7 +103,10 @@ func TestAuthorizeCreateStore(t *testing.T) {
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned error")
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
@@ -112,6 +116,10 @@ func TestAuthorizeCreateStore(t *testing.T) {
 		err := authorizer.AuthorizeCreateStore(ctx)
 
 		require.Error(t, err)
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("succeed", func(t *testing.T) {
@@ -140,7 +148,10 @@ func TestAuthorizeListStores(t *testing.T) {
 		err := authorizer.AuthorizeListStores(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned error")
 	})
 
 	t.Run("error_when_not_authorized", func(t *testing.T) {
@@ -150,6 +161,10 @@ func TestAuthorizeListStores(t *testing.T) {
 		err := authorizer.AuthorizeListStores(ctx)
 
 		require.Error(t, err)
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("succeed", func(t *testing.T) {
@@ -183,7 +198,10 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", "invalid-api-method")
 
 		require.Error(t, err)
-		require.Equal(t, ErrUnknownAPIMethod.Error(), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "unknown API method")
 	})
 
 	t.Run("error_when_modules_errors", func(t *testing.T) {
@@ -207,7 +225,10 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
 
 		require.Error(t, err)
-		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned error")
 	})
 
 	t.Run("error_when_check_errors", func(t *testing.T) {
@@ -223,7 +244,10 @@ func TestAuthorize(t *testing.T) {
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
 		require.Error(t, err)
-		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned error")
 	})
 
 	t.Run("error_when_unauthorized", func(t *testing.T) {
@@ -237,8 +261,10 @@ func TestAuthorize(t *testing.T) {
 
 		err := authorizer.Authorize(ctx, "store-id", CreateStore)
 
-		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("succeed", func(t *testing.T) {
@@ -336,7 +362,7 @@ func TestExtractModulesFromTuples(t *testing.T) {
 		modules, err := extractModulesFromTuples(tuples, ts)
 		require.Empty(t, modules)
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(2021) desc = type 'unknown' not found", err.Error())
+		require.Equal(t, "type 'unknown' not found", err.Error())
 	})
 
 	t.Run("return_error_when_GetModuleForObjectTypeRelation_errors", func(t *testing.T) {
@@ -408,7 +434,10 @@ func TestListAuthorizedStores(t *testing.T) {
 		_, err := authorizer.ListAuthorizedStores(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = InvalidArgument desc = client ID not found in context", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "client ID not found in context")
 	})
 
 	t.Run("error_when_list_objects_errors", func(t *testing.T) {
@@ -419,7 +448,10 @@ func TestListAuthorizedStores(t *testing.T) {
 		_, err := authorizer.ListAuthorizedStores(ctx)
 
 		require.Error(t, err)
-		require.Equal(t, errorMessage.Error(), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "list objects returned error")
 	})
 
 	t.Run("succeed", func(t *testing.T) {
@@ -450,7 +482,10 @@ func TestIndividualAuthorize(t *testing.T) {
 		err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 
 		require.Error(t, err)
-		require.Equal(t, fmt.Sprintf("error authorizing the call: %s", errorMessage.Error()), err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned error")
 	})
 	t.Run("error_when_unauthorized", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
@@ -458,7 +493,10 @@ func TestIndividualAuthorize(t *testing.T) {
 		err := authorizer.individualAuthorize(context.Background(), "client-id", CanCallCreateStore, "system", &openfgav1.ContextualTupleKeys{})
 
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 	t.Run("succeed", func(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
@@ -495,7 +533,10 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("error_when_last_module_errors", func(t *testing.T) {
@@ -505,7 +546,10 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("error_when_all_modules_error", func(t *testing.T) {
@@ -515,7 +559,10 @@ func TestModuleAuthorize(t *testing.T) {
 
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, "store-id", []string{"module1", "module2", "module3"})
 		require.Error(t, err)
-		require.Equal(t, "rpc error: code = Code(1600) desc = the principal is not authorized to perform the action", err.Error())
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "check returned not allowed")
 	})
 
 	t.Run("succeed", func(t *testing.T) {

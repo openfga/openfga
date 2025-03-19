@@ -68,6 +68,10 @@ func TestHandleErrors(t *testing.T) {
 			storageErr:              context.DeadlineExceeded,
 			expectedTranslatedError: ErrRequestDeadlineExceeded,
 		},
+		`throttling_error`: {
+			storageErr:              storage.ErrTransactionThrottled,
+			expectedTranslatedError: ErrTransactionThrottled,
+		},
 	}
 	for testName, test := range tests {
 		t.Run(testName, func(t *testing.T) {

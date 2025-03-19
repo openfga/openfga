@@ -120,9 +120,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 		for stageNumber, stage := range test.Stages {
 			t.Run(fmt.Sprintf("stage_%d", stageNumber), func(t *testing.T) {
-				if contextTupleTest && len(stage.Tuples) > 20 {
+				if contextTupleTest && len(stage.Tuples) > 100 {
 					// https://github.com/openfga/api/blob/05de9d8be3ee12fa4e796b92dbdd4bbbf87107f2/openfga/v1/openfga.proto#L151
-					t.Skipf("cannot send more than 20 contextual tuples in one request")
+					t.Skipf("cannot send more than 100 contextual tuples in one request")
 				}
 				// arrange: write model
 				model := testutils.MustTransformDSLToProtoWithID(stage.Model)
@@ -135,7 +135,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 				require.NoError(t, err)
 
-				tuples := stage.Tuples
+				tuples := testutils.Shuffle(stage.Tuples)
 				tuplesLength := len(tuples)
 				// arrange: write tuples
 				if tuplesLength > 0 && !contextTupleTest {
@@ -161,7 +161,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
 						detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
-						ctxTuples := assertion.ContextualTuples
+						ctxTuples := testutils.Shuffle(assertion.ContextualTuples)
 						if contextTupleTest {
 							ctxTuples = append(ctxTuples, stage.Tuples...)
 						}

@@ -3,12 +3,13 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
-// ErrIteratorDone is returned when the iterator has finished iterating through all the items.
 var ErrIteratorDone = errors.New("iterator done")
 
 // Iterator is a generic interface defining methods for
@@ -19,42 +20,40 @@ type Iterator[T any] interface {
 	// items are available.
 	Next(ctx context.Context) (T, error)
 
-	// Stop terminates iteration over
-	// the underlying iterator.
+	// Stop terminates iteration. Any subsequent calls to Next must return ErrIteratorDone.
 	Stop()
 
-	// Head will return the first item or ErrIteratorDone if the iterator
-	// is empty.
+	// Head will return the first item or ErrIteratorDone if the iterator is finished or empty.
 	// It's possible for this method to advance the iterator internally, but a subsequent call to Next will not miss any results.
 	// Calling Head() continuously without calling Next() will yield the same result (the first one) over and over.
 	Head(ctx context.Context) (T, error)
 }
 
-// TupleIterator is an iterator for [*openfgav1.Tuple](s).
-// It is closed by explicitly calling [Iterator.Stop] or by calling
-// [Iterator.Next] until it returns an [ErrIteratorDone] error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
 
-// TupleKeyIterator is an iterator for [*openfgav1.TupleKey](s). It is closed by
-// explicitly calling [Iterator.Stop] or by calling [Iterator.Next] until it
-// returns an [ErrIteratorDone] error.
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
+// combinedIterator is a thread-safe iterator that merges multiple iterators.
+// Duplicates can be returned.
 type combinedIterator[T any] struct {
 	mu      *sync.Mutex
 	once    *sync.Once
-	pending []Iterator[T]
+	pending []Iterator[T] // GUARDED_BY(mu)
 }
+
+var _ Iterator[any] = (*combinedIterator[any])(nil)
 
 // Next see [Iterator.Next].
 func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
+	c.mu.Lock() // no defer of Unlock because of the recursive call
+
 	if len(c.pending) == 0 {
 		// All iterators ended.
 		var val T
+		c.mu.Unlock()
 		return val, ErrIteratorDone
 	}
 
-	c.mu.Lock()
 	iter := c.pending[0]
 	val, err := iter.Next(ctx)
 	if err != nil {
@@ -76,22 +75,24 @@ func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 func (c *combinedIterator[T]) Stop() {
 	c.once.Do(func() {
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		for _, iter := range c.pending {
 			iter.Stop()
 		}
-		c.mu.Unlock()
 	})
 }
 
 // Head see [Iterator.Head].
 func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
+	c.mu.Lock() // no defer of Unlock because of the recursive call
+
 	if len(c.pending) == 0 {
 		// All iterators ended.
 		var val T
+		c.mu.Unlock()
 		return val, ErrIteratorDone
 	}
 
-	c.mu.Lock()
 	iter := c.pending[0]
 	val, err := iter.Head(ctx)
 	if err != nil {
@@ -108,7 +109,7 @@ func (c *combinedIterator[T]) Head(ctx context.Context) (T, error) {
 	return val, nil
 }
 
-// NewCombinedIterator takes generic iterators of a given type T
+// NewCombinedIterator is a thread-safe iterator that takes generic iterators of a given type T
 // and combines them into a single iterator that yields all the
 // values from all iterators. Duplicates can be returned.
 func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
@@ -125,6 +126,7 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 	iter := &StaticIterator[*openfgav1.Tuple]{
 		items: tuples,
+		mu:    &sync.Mutex{},
 	}
 
 	return iter
@@ -134,6 +136,7 @@ func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
 func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
 	iter := &StaticIterator[*openfgav1.TupleKey]{
 		items: tupleKeys,
+		mu:    &sync.Mutex{},
 	}
 
 	return iter
@@ -178,8 +181,11 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 }
 
 type StaticIterator[T any] struct {
-	items []T
+	items []T // GUARDED_BY(mu)
+	mu    *sync.Mutex
 }
+
+var _ Iterator[any] = (*StaticIterator[any])(nil)
 
 // Next see [Iterator.Next].
 func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
@@ -188,6 +194,9 @@ func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
 	if ctx.Err() != nil {
 		return val, ctx.Err()
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if len(s.items) == 0 {
 		return val, ErrIteratorDone
@@ -200,7 +209,11 @@ func (s *StaticIterator[T]) Next(ctx context.Context) (T, error) {
 }
 
 // Stop see [Iterator.Stop].
-func (s *StaticIterator[T]) Stop() {}
+func (s *StaticIterator[T]) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = nil
+}
 
 // Head see [Iterator.Head].
 func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
@@ -210,6 +223,9 @@ func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 		return val, ctx.Err()
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.items) == 0 {
 		return val, ErrIteratorDone
 	}
@@ -218,7 +234,7 @@ func (s *StaticIterator[T]) Head(ctx context.Context) (T, error) {
 }
 
 func NewStaticIterator[T any](items []T) Iterator[T] {
-	return &StaticIterator[T]{items: items}
+	return &StaticIterator[T]{items: items, mu: &sync.Mutex{}}
 }
 
 // TupleKeyFilterFunc is a filter function that is used to filter out
@@ -259,7 +275,7 @@ func (f *filteredTupleKeyIterator) Stop() {
 
 // Head returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-// Note: the underlying iterator for unmatched filter may advance until filter is satisfied.
+// Note: the underlying iterator will advance until the filter is satisfied.
 func (f *filteredTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
 	for {
 		tuple, err := f.iter.Head(ctx)
@@ -391,6 +407,137 @@ func NewConditionsFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKe
 		filter: filter,
 		once:   &sync.Once{},
 	}
+}
+
+type OrderedCombinedIterator struct {
+	mu          *sync.Mutex
+	once        *sync.Once
+	mapper      TupleMapperFunc
+	pending     []TupleIterator  // GUARDED_BY(mu)
+	lastHead    *openfgav1.Tuple // GUARDED_BY(mu)
+	lastYielded *openfgav1.Tuple // GUARDED_BY(mu)
+}
+
+var _ TupleIterator = (*OrderedCombinedIterator)(nil)
+
+// NewOrderedCombinedIterator is a thread-safe iterator that combines a list of iterators into a single ordered iterator.
+// All the input iterators must be individually ordered already according to mapper.
+// Iterators can yield the same value (as defined by mapper) multiple times, but it will only be returned once.
+func NewOrderedCombinedIterator(mapper TupleMapperFunc, sortedIters ...TupleIterator) *OrderedCombinedIterator {
+	pending := make([]TupleIterator, 0, len(sortedIters))
+	for _, sortedIter := range sortedIters {
+		if sortedIter != nil {
+			pending = append(pending, sortedIter)
+		}
+	}
+	return &OrderedCombinedIterator{pending: pending, once: &sync.Once{}, mu: &sync.Mutex{}, mapper: mapper}
+}
+
+func (c *OrderedCombinedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	idx, err := c.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	c.lastHead = nil // invalidate it
+	t, err := c.pending[idx].Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.lastYielded = t
+	return t, nil
+}
+
+func (c *OrderedCombinedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.lastHead != nil {
+		return c.lastHead, nil
+	}
+	idx, err := c.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	lastHead, err := c.pending[idx].Head(ctx)
+	c.lastHead = lastHead
+	return c.lastHead, err
+}
+
+// head returns the index (within the pending array) that has the next smallest element, or -1 if there was an error.
+// The pending array is mutated, and there may be nil elements in it after this function runs.
+// Callers must use the returned index immediately, without mutating the pending array.
+// NOTE: callers must hold mu.
+func (c *OrderedCombinedIterator) head(ctx context.Context) (int, error) {
+	c.clearPendingThatAreNil()
+
+	var headMin *openfgav1.Tuple
+	minIdx := -1
+
+IterateOverPending:
+	for pendingIdx, iter := range c.pending {
+		head, err := iter.Head(ctx)
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				iter.Stop()
+				c.pending[pendingIdx] = nil
+				continue
+			}
+			return -1, err
+		}
+
+		if c.lastYielded != nil {
+			if c.mapper(head) < c.mapper(c.lastYielded) {
+				return -1, fmt.Errorf("iterator %d is not in ascending order", pendingIdx)
+			}
+			// Discard duplicate values.
+			// We do this based on the previous Head() returned for performance reasons.
+			// If on every call to Head() we discarded, we would need to iterate twice over pending:
+			// one time to find the minIdx, and one time to move the corresponding iterators.
+			for c.mapper(head) == c.mapper(c.lastYielded) {
+				head, err = iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, ErrIteratorDone) {
+						iter.Stop()
+						c.pending[pendingIdx] = nil
+						continue IterateOverPending
+					}
+					return -1, err
+				}
+			}
+		}
+
+		// initialize or found a new lower value at head
+		if headMin == nil || c.mapper(headMin) > c.mapper(head) {
+			headMin = head
+			minIdx = pendingIdx
+		}
+	}
+
+	if minIdx == -1 {
+		return minIdx, ErrIteratorDone
+	}
+	return minIdx, nil
+}
+
+func (c *OrderedCombinedIterator) clearPendingThatAreNil() {
+	c.pending = slices.DeleteFunc(c.pending, func(t TupleIterator) bool {
+		return t == nil
+	})
+}
+
+func (c *OrderedCombinedIterator) Stop() {
+	c.once.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+
+		c.clearPendingThatAreNil()
+		for _, iter := range c.pending {
+			iter.Stop()
+		}
+	})
 }
 
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.

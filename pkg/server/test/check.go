@@ -369,7 +369,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 		require.NoError(b, err)
 
-		// create and write necessary tuples
+		// create and write necessary tuples in deterministic order (to make runs comparable)
 		tuples := bm.tupleGenerator()
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey

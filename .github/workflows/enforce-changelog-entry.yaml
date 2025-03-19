@@ -15,7 +15,7 @@ jobs:
         with:
           skipLabels: 'Skip-Changelog,dependencies,tests'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # pin@v4
+      - uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # pin@v4
       - run: npx keep-a-changelog@2.5.3
       - run: |
           files=$(git status --porcelain)

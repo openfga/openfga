@@ -180,3 +180,38 @@ func TestDefaultValueRequestMetadata(t *testing.T) {
 	require.Equal(t, map[string]struct{}{}, r.GetVisitedPaths())
 	require.Zero(t, r.GetLastCacheInvalidationTime())
 }
+
+func TestNewResolveCheckRequest(t *testing.T) {
+	var cases = map[string]struct {
+		params ResolveCheckRequestParams
+		error  bool
+	}{
+		"missing_store_id_errors": {
+			params: ResolveCheckRequestParams{AuthorizationModelID: "abc123"},
+			error:  true,
+		},
+		"missing_model_id_errors": {
+			params: ResolveCheckRequestParams{StoreID: "abc123"},
+			error:  true,
+		},
+		"succeeds_if_required_args_are_present": {
+			params: ResolveCheckRequestParams{
+				AuthorizationModelID: "abc123",
+				StoreID:              "def456",
+			},
+			error: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			req, err := NewResolveCheckRequest(tc.params)
+			if tc.error {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotEmpty(t, req.GetInvariantCacheKey())
+			}
+		})
+	}
+}

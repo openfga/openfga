@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -235,6 +236,12 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			)
 		})
 	})
+
+	t.Run("invalid_dialect", func(t *testing.T) {
+		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
+			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
+		})
+	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
@@ -269,6 +276,19 @@ func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
 		_ = MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 			WithRequestDurationByQueryHistogramBuckets([]uint{}),
+		)
+	})
+}
+
+func TestServerPanicIfNilContext(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: server cannot be started with nil context", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByQueryHistogramBuckets([]uint{}),
+			WithContext(nil), //nolint
 		)
 	})
 }
@@ -890,6 +910,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -1180,6 +1201,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -1261,6 +1283,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	mockDatastore.EXPECT().
@@ -1433,6 +1456,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
+		Id:              modelID,
 	}, nil)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
@@ -1759,7 +1783,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		t.Cleanup(s.Close)
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.NotNil(t, s.checkResolver)
 
@@ -1781,7 +1805,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1810,7 +1834,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1841,7 +1865,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.False(t, s.checkQueryCacheEnabled)
+		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
@@ -1868,7 +1892,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
-		require.True(t, s.checkQueryCacheEnabled)
+		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 		require.NotNil(t, s.checkResolver)
 
 		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
@@ -1900,7 +1924,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		cachedCheckResolver, ok := s.checkResolver.(*graph.CachedCheckResolver)
 		require.True(t, ok)
-		require.True(t, s.checkQueryCacheEnabled)
+		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
 
 		dispatchThrottlingResolver, ok := cachedCheckResolver.GetDelegate().(*graph.DispatchThrottlingCheckResolver)
 		require.True(t, ok)
@@ -2099,7 +2123,9 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedCheckResources.CheckCache)
+		require.True(t, s.cacheSettings.ShouldCacheCheckQueries())
+		require.True(t, s.cacheSettings.ShouldCacheIterators())
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
@@ -2113,7 +2139,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedCheckResources.CheckCache)
 	})
 
 	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2127,7 +2153,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.checkCache)
+		require.NotNil(t, s.sharedCheckResources.CheckCache)
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2141,7 +2167,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.Nil(t, s.checkCache)
+		require.Nil(t, s.sharedCheckResources.CheckCache)
 	})
 }
 
@@ -2165,7 +2191,8 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		_, ok := s.cacheController.(*cachecontroller.NoopCacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheController)
+		_, ok := s.sharedCheckResources.CacheController.(*cachecontroller.NoopCacheController)
 		require.True(t, ok)
 	})
 
@@ -2185,7 +2212,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.cacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheController)
 	})
 
 	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
@@ -2204,7 +2231,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.cacheController)
+		require.NotNil(t, s.sharedCheckResources.CacheController)
 	})
 }
 
@@ -2240,6 +2267,7 @@ func TestCheckWithCachedIterator(t *testing.T) {
 		Return(&openfgav1.AuthorizationModel{
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
+			Id:              modelID,
 		}, nil)
 
 	mockDatastore.EXPECT().
@@ -2322,4 +2350,140 @@ func TestCheckWithCachedIterator(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.GetAllowed())
+}
+
+func TestBatchCheckWithCachedIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type company
+			relations
+				define viewer: [user]
+		type license
+			relations
+				define viewer: [user, company#viewer]`).GetTypeDefinitions()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		Times(1).
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+			Id:              modelID,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetObject() == "company:1" {
+					return &openfgav1.Tuple{
+						Key:       tk,
+						Timestamp: timestamppb.Now(),
+					}, nil
+				}
+
+				return nil, storage.ErrNotFound
+			})
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(mockDatastore),
+		WithCheckCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(10),
+	)
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	fakeID := "abc123"
+	batchCheckResponse, err := s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:1",
+					Relation: "viewer",
+					Object:   "license:1",
+				},
+				CorrelationId: fakeID,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
+
+	// Sleep for a while to ensure that the iterator is cached
+	time.Sleep(1 * time.Millisecond)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		Times(1).
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:2"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	// If we check for the same request, data should come from cached iterator and number of ReadUsersetTuples should still be 1
+	batchCheckResponse, err = s.BatchCheck(ctx, &openfgav1.BatchCheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Checks: []*openfgav1.BatchCheckItem{
+			{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					User:     "user:2", // New user
+					Relation: "viewer",
+					Object:   "license:1",
+				},
+				CorrelationId: fakeID,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, batchCheckResponse.GetResult()[fakeID].GetAllowed())
 }

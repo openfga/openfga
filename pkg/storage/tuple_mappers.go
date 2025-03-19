@@ -1,4 +1,4 @@
-package graph
+package storage
 
 import (
 	"context"
@@ -7,9 +7,22 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
+
+type TupleMapperFunc func(t *openfgav1.Tuple) string
+
+func UserMapper() TupleMapperFunc {
+	return func(t *openfgav1.Tuple) string {
+		return t.GetKey().GetUser()
+	}
+}
+
+func ObjectMapper() TupleMapperFunc {
+	return func(t *openfgav1.Tuple) string {
+		return t.GetKey().GetObject()
+	}
+}
 
 type TupleMapperKind int64
 
@@ -24,11 +37,11 @@ const (
 
 // TupleMapper is an iterator that, on calls to Next and Head, returns a mapping of the tuple.
 type TupleMapper interface {
-	storage.Iterator[string]
+	Iterator[string]
 }
 
 type UsersetMapper struct {
-	iter storage.TupleKeyIterator
+	iter TupleKeyIterator
 	once *sync.Once
 }
 
@@ -58,7 +71,7 @@ func (n UsersetMapper) Head(ctx context.Context) (string, error) {
 
 func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	usersetName, relation := tuple.SplitObjectRelation(t.GetUser())
-	if relation == "" {
+	if relation == "" && !tuple.IsWildcard(usersetName) {
 		// This should never happen because ReadUsersetTuples only returns usersets as users.
 		return "", fmt.Errorf("unexpected userset %s with no relation", t.GetUser())
 	}
@@ -66,7 +79,7 @@ func (n UsersetMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 }
 
 type TTUMapper struct {
-	iter storage.TupleKeyIterator
+	iter TupleKeyIterator
 	once *sync.Once
 }
 
@@ -99,7 +112,7 @@ func (n TTUMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 }
 
 type ObjectIDMapper struct {
-	iter storage.TupleKeyIterator
+	iter TupleKeyIterator
 	once *sync.Once
 }
 
@@ -131,7 +144,7 @@ func (n ObjectIDMapper) doMap(t *openfgav1.TupleKey) (string, error) {
 	return t.GetObject(), nil
 }
 
-func wrapIterator(kind TupleMapperKind, iter storage.TupleKeyIterator) TupleMapper {
+func WrapIterator(kind TupleMapperKind, iter TupleKeyIterator) TupleMapper {
 	switch kind {
 	case UsersetKind:
 		return &UsersetMapper{iter: iter, once: &sync.Once{}}

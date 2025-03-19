@@ -19,7 +19,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -76,12 +75,9 @@ const (
 )
 
 var (
-	ErrUnauthorizedResponse                  = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
-	ErrBadRequestMaxModulesInRequestExceeded = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request", MaxModulesInRequest))
-	ErrUnknownAPIMethod                      = errors.New("unknown API method")
-
-	SystemObjectID = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
-	tracer         = otel.Tracer("internal/authz")
+	ErrUnauthorizedResponse = status.Error(codes.Code(openfgav1.AuthErrorCode_forbidden), "the principal is not authorized to perform the action")
+	SystemObjectID          = fmt.Sprintf("%s:%s", SystemType, RootSystemID)
+	tracer                  = otel.Tracer("internal/authz")
 )
 
 type StoreIDType string
@@ -160,16 +156,12 @@ func NewAuthorizer(config *Config, server ServerInterface, logger logger.Logger)
 	}
 }
 
-type AuthorizationError struct {
-	Err error
+type authorizationError struct {
+	Cause string
 }
 
-func (e *AuthorizationError) Error() string {
-	return fmt.Sprintf("error authorizing the call: %s", e.Err)
-}
-
-func (e *AuthorizationError) Unwrap() error {
-	return e.Err
+func (e *authorizationError) Error() string {
+	return e.Cause
 }
 
 func (a *Authorizer) getRelation(apiMethod string) (string, error) {
@@ -205,7 +197,7 @@ func (a *Authorizer) getRelation(apiMethod string) (string, error) {
 	case ReadChanges:
 		return CanCallReadChanges, nil
 	default:
-		return "", AuthorizationError{Err: ErrUnknownAPIMethod}.Err
+		return "", errors.New("unknown API method")
 	}
 }
 
@@ -235,7 +227,7 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 
 	relation, err := a.getRelation(apiMethod)
 	if err != nil {
-		return err
+		return &authorizationError{Cause: fmt.Sprintf("error getting relation: %v", err)}
 	}
 
 	contextualTuples := openfgav1.ContextualTupleKeys{
@@ -254,7 +246,7 @@ func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, m
 		// If there is no top level authorization, but the max modules limit is exceeded, return an error regarding that limit
 		// Having a limit helps ensure we do not run too many checks on every write when there are modules
 		if len(modules) > MaxModulesInRequest {
-			return fmt.Errorf("%v (modules in request: %v)", ErrBadRequestMaxModulesInRequestExceeded, len(modules))
+			return &authorizationError{Cause: fmt.Sprintf("the principal cannot write tuples of more than %v module(s) in a single request (modules in request: %v)", MaxModulesInRequest, len(modules))}
 		}
 
 		return a.moduleAuthorize(ctx, claims.ClientID, relation, storeID, modules)
@@ -331,11 +323,11 @@ func (a *Authorizer) ListAuthorizedStores(ctx context.Context) ([]string, error)
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.ListObjects(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, &authorizationError{Cause: fmt.Sprintf("list objects returned error: %v", err)}
 	}
 
 	storeIDs := make([]string, len(resp.GetObjects()))
-	storePrefix := fmt.Sprintf("%s:", StoreType)
+	storePrefix := StoreType + ":"
 	for i, store := range resp.GetObjects() {
 		storeIDs[i] = strings.TrimPrefix(store, storePrefix)
 	}
@@ -393,7 +385,7 @@ func extractModulesFromTuples[T TupleKeyInterface](tupleKeys []T, typesys *types
 		objType, _ := tuple.SplitObject(tupleKey.GetObject())
 		objectType, ok := typesys.GetTypeDefinition(objType)
 		if !ok {
-			return nil, serverErrors.TypeNotFound(objType)
+			return nil, &authorizationError{Cause: fmt.Sprintf("type '%s' not found", objType)}
 		}
 		module, err := parser.GetModuleForObjectTypeRelation(objectType, tupleKey.GetRelation())
 		if err != nil {
@@ -431,11 +423,11 @@ func (a *Authorizer) individualAuthorize(ctx context.Context, clientID, relation
 	ctx = authclaims.ContextWithSkipAuthzCheck(ctx, true)
 	resp, err := a.server.Check(ctx, req)
 	if err != nil {
-		return fmt.Errorf("error authorizing the call: %w", err)
+		return &authorizationError{Cause: fmt.Sprintf("check returned error: %v", err)}
 	}
 
 	if !resp.GetAllowed() {
-		return ErrUnauthorizedResponse
+		return &authorizationError{Cause: "check returned not allowed"}
 	}
 
 	return nil
@@ -493,7 +485,7 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 func checkAuthClaims(ctx context.Context) (*authclaims.AuthClaims, error) {
 	claims, found := authclaims.AuthClaimsFromContext(ctx)
 	if !found || claims.ClientID == "" {
-		return nil, status.Error(codes.InvalidArgument, "client ID not found in context")
+		return nil, &authorizationError{Cause: "client ID not found in context or is empty"}
 	}
 	return claims, nil
 }

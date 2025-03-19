@@ -4,9 +4,145 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
+
+// MustNewStruct returns a new *structpb.Struct or panics
+// on error. The new *structpb.Struct value is built from
+// the map m.
+func MustNewStruct(m map[string]any) *structpb.Struct {
+	s, err := structpb.NewStruct(m)
+	if err == nil {
+		return s
+	}
+	panic(err)
+}
+
+func TestTupleKeys_Len(t *testing.T) {
+	tuples := TupleKeys{
+		NewTupleKey("document:A", "relationA", "user:A"),
+		NewTupleKey("document:B", "relationB", "user:B"),
+	}
+	require.Equal(t, 2, tuples.Len())
+}
+
+func TestTupleKeys_Swap(t *testing.T) {
+	tuples := TupleKeys{
+		NewTupleKey("document:A", "relationA", "user:A"),
+		NewTupleKey("document:B", "relationB", "user:B"),
+	}
+	tuples.Swap(0, 1)
+	require.Equal(t, "document:B", tuples[0].GetObject())
+	require.Equal(t, "document:A", tuples[1].GetObject())
+}
+
+func TestTupleKeys_Less(t *testing.T) {
+	var cases = map[string]struct {
+		value TupleKeys
+		i     int
+		j     int
+		ij    bool
+		ji    bool
+	}{
+		"object": {
+			value: TupleKeys{
+				NewTupleKey("document:A", "relationA", "user:A"),
+				NewTupleKey("document:B", "relationA", "user:A"),
+			},
+			i:  0,
+			j:  1,
+			ij: true,
+			ji: false,
+		},
+		"relation": {
+			value: TupleKeys{
+				NewTupleKey("document:A", "relationA", "user:A"),
+				NewTupleKey("document:A", "relationB", "user:A"),
+			},
+			i:  0,
+			j:  1,
+			ij: true,
+			ji: false,
+		},
+		"user": {
+			value: TupleKeys{
+				NewTupleKey("document:A", "relationA", "user:A"),
+				NewTupleKey("document:A", "relationA", "user:B"),
+			},
+			i:  0,
+			j:  1,
+			ij: true,
+			ji: false,
+		},
+		"condition": {
+			value: TupleKeys{
+				NewTupleKeyWithCondition("document:A", "relationA", "user:A", "testA", MustNewStruct(map[string]any{
+					"key": "value",
+				})),
+				NewTupleKeyWithCondition("document:A", "relationA", "user:A", "testB", MustNewStruct(map[string]any{
+					"key": "value",
+				})),
+			},
+			i:  0,
+			j:  1,
+			ij: true,
+			ji: false,
+		},
+		"nil_condition": {
+			value: TupleKeys{
+				NewTupleKey("document:A", "relationA", "user:A"),
+				NewTupleKeyWithCondition("document:A", "relationA", "user:A", "test", MustNewStruct(map[string]any{
+					"key": "value",
+				})),
+			},
+			i:  0,
+			j:  1,
+			ij: true,
+			ji: false,
+		},
+	}
+
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.ij, test.value.Less(test.i, test.j))
+			require.Equal(t, test.ji, test.value.Less(test.j, test.i))
+		})
+	}
+}
+
+func TestTuple_Getters(t *testing.T) {
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "document:A",
+		Relation: "relationA",
+		User:     "user:A",
+	}
+	tup := From(tupleKey)
+
+	t.Run("get_object", func(t *testing.T) {
+		require.Equal(t, "document:A", tup.GetObject())
+	})
+
+	t.Run("get_relation", func(t *testing.T) {
+		require.Equal(t, "relationA", tup.GetRelation())
+	})
+
+	t.Run("get_user", func(t *testing.T) {
+		require.Equal(t, "user:A", tup.GetUser())
+	})
+}
+
+func TestTuple_String(t *testing.T) {
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "document:A",
+		Relation: "relationA",
+		User:     "user:A",
+	}
+
+	result := From(tupleKey).String()
+	require.Equal(t, "document:A#relationA@user:A", result)
+}
 
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {

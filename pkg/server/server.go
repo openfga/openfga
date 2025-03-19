@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"sync"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
@@ -24,9 +23,9 @@ import (
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/authclaims"
@@ -172,23 +171,17 @@ type Server struct {
 	typesystemResolver     typesystem.TypesystemResolverFunc
 	typesystemResolverStop func()
 
-	checkCacheLimit uint32
-	checkCache      storage.InMemoryCache[any]
-
-	cacheControllerEnabled bool
-	cacheControllerTTL     time.Duration
-	cacheController        cachecontroller.CacheController
-
-	checkQueryCacheEnabled bool
-	checkQueryCacheTTL     time.Duration
-
-	checkIteratorCacheEnabled    bool
-	checkIteratorCacheMaxResults uint32
-	checkIteratorCacheTTL        time.Duration
-	checkIteratorCacheWaitGroup  *sync.WaitGroup
+	// cacheSettings are given by the user
+	cacheSettings serverconfig.CacheSettings
+	// sharedCheckResources are created by the server
+	sharedCheckResources *shared.SharedCheckResources
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
+
+	shadowCheckResolverEnabled          bool
+	shadowCheckResolverSamplePercentage int
+	shadowCheckResolverTimeout          time.Duration
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -416,31 +409,31 @@ func WithAccessControlParams(enabled bool, storeID string, modelID string, authn
 
 // WithCheckQueryCacheEnabled enables caching of Check results for the Check and List objects APIs.
 // This cache is shared for all requests.
-// See also WithCheckQueryCacheLimit and WithCheckQueryCacheTTL.
+// See also WithCheckCacheLimit and WithCheckQueryCacheTTL.
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkQueryCacheEnabled = enabled
+		s.cacheSettings.CheckQueryCacheEnabled = enabled
 	}
 }
 
 // WithCheckCacheLimit sets the check cache size limit (in items).
 func WithCheckCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkCacheLimit = limit
+		s.cacheSettings.CheckCacheLimit = limit
 	}
 }
 
 // WithCacheControllerEnabled enables cache invalidation of different cache entities.
 func WithCacheControllerEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheControllerEnabled = enabled
+		s.cacheSettings.CacheControllerEnabled = enabled
 	}
 }
 
 // WithCacheControllerTTL sets the frequency for the controller to execute.
 func WithCacheControllerTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheControllerTTL = ttl
+		s.cacheSettings.CacheControllerTTL = ttl
 	}
 }
 
@@ -448,14 +441,14 @@ func WithCacheControllerTTL(ttl time.Duration) OpenFGAServiceV1Option {
 // Needs WithCheckQueryCacheEnabled set to true.
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkQueryCacheTTL = ttl
+		s.cacheSettings.CheckQueryCacheTTL = ttl
 	}
 }
 
 // WithCheckIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
 func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkIteratorCacheEnabled = enabled
+		s.cacheSettings.CheckIteratorCacheEnabled = enabled
 	}
 }
 
@@ -463,7 +456,7 @@ func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 // Needs WithCheckIteratorCacheEnabled set to true.
 func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkIteratorCacheMaxResults = limit
+		s.cacheSettings.CheckIteratorCacheMaxResults = limit
 	}
 }
 
@@ -471,7 +464,7 @@ func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 // Needs WithCheckIteratorCacheEnabled set to true.
 func WithCheckIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkIteratorCacheTTL = ttl
+		s.cacheSettings.CheckIteratorCacheTTL = ttl
 	}
 }
 
@@ -657,10 +650,32 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
+func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowCheckResolverEnabled = enabled
+	}
+}
+
+// WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
+func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowCheckResolverTimeout = threshold
+	}
+}
+
+// WithShadowCheckResolverSamplePercentage is the percentage of requests to sample.
+func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowCheckResolverSamplePercentage = rate
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s := &Server{
+		ctx:                              context.Background(),
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
@@ -681,21 +696,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		checkCacheLimit: serverconfig.DefaultCheckCacheLimit,
-
-		cacheController:        cachecontroller.NewNoopCacheController(),
-		cacheControllerEnabled: serverconfig.DefaultCacheControllerEnabled,
-		cacheControllerTTL:     serverconfig.DefaultCacheControllerTTL,
-
-		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnabled,
-		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
-
-		checkIteratorCacheEnabled:    serverconfig.DefaultCheckIteratorCacheEnabled,
-		checkIteratorCacheMaxResults: serverconfig.DefaultCheckIteratorCacheMaxResults,
-		checkIteratorCacheTTL:        serverconfig.DefaultCheckIteratorCacheTTL,
-		checkIteratorCacheWaitGroup:  &sync.WaitGroup{},
-
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 		checkResolver: nil,
+
+		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
+		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
+		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -726,6 +732,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	// ctx can be nil despite the default above if WithContext() was called
+	if s.ctx == nil {
+		return nil, fmt.Errorf("server cannot be started with nil context")
 	}
 
 	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
@@ -778,26 +789,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.checkCacheLimit > 0 && (s.checkQueryCacheEnabled || s.checkIteratorCacheEnabled) {
-		var err error
-		s.checkCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](int64(s.checkCacheLimit)),
-		}...)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if s.checkCache != nil && s.cacheControllerEnabled {
-		s.cacheController = cachecontroller.NewCacheController(s.datastore, s.checkCache, s.cacheControllerTTL, s.checkIteratorCacheTTL)
+	s.sharedCheckResources, err = shared.NewSharedCheckResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedCheckResourcesOpt{shared.WithLogger(s.logger)}...)
+	if err != nil {
+		return nil, err
 	}
 
 	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.checkCache != nil && s.checkQueryCacheEnabled {
+	if s.cacheSettings.ShouldCacheCheckQueries() {
 		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.checkCache),
+			graph.WithExistingCache(s.sharedCheckResources.CheckCache),
 			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
+			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		)
 	}
 
@@ -807,7 +809,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
-		graph.WithCachedCheckResolverOpts(s.checkQueryCacheEnabled, checkCacheOptions...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
 	if err != nil {
@@ -846,14 +859,7 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	// wait for any cached iterator goroutines still in flight before
-	// closing the cache instance to avoid data races
-	s.checkIteratorCacheWaitGroup.Wait()
-
-	if s.checkCache != nil {
-		s.checkCache.Stop()
-	}
-
+	s.sharedCheckResources.Close()
 	s.datastore.Close()
 }
 
@@ -995,10 +1001,6 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 	}
 
 	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
-}
-
-func (s *Server) shouldCacheIterators() bool {
-	return s.checkCache != nil && s.checkIteratorCacheEnabled
 }
 
 func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckResponseMetadata, caller string) {

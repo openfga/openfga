@@ -91,11 +91,13 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	objectRel string,
-	objectIDs storage.SortedSet) (storage.TupleKeyIterator, error) {
+	objectIDs storage.SortedSet,
+	sortContextualTuples bool) (storage.TupleKeyIterator, error) {
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
 
 	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: sortContextualTuples,
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
@@ -137,17 +139,17 @@ func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation st
 	return tuple.ToObjectRelationString(objectType, cr), nil
 }
 
-type V2LeftChannelRelationFunc func(*openfgav1.RelationReference) string
+type V2RelationFunc func(*openfgav1.RelationReference) string
 
-// BuildUsersetV2LeftChannelRelationFunc returns the reference's relation.
-func BuildUsersetV2LeftChannelRelationFunc() V2LeftChannelRelationFunc {
+// BuildUsersetV2RelationFunc returns the reference's relation.
+func BuildUsersetV2RelationFunc() V2RelationFunc {
 	return func(ref *openfgav1.RelationReference) string {
 		return ref.GetRelation()
 	}
 }
 
-// BuildTTUV2LeftChannelRelationFunc will always return the computedRelation regardless of the reference.
-func BuildTTUV2LeftChannelRelationFunc(computedRelation string) V2LeftChannelRelationFunc {
+// BuildTTUV2RelationFunc will always return the computedRelation regardless of the reference.
+func BuildTTUV2RelationFunc(computedRelation string) V2RelationFunc {
 	return func(_ *openfgav1.RelationReference) string {
 		return computedRelation
 	}

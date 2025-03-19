@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -44,7 +43,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				// same as the next benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
 				for j := 0; j < 1000; j++ {
-					user := fmt.Sprintf("user:%s", ulid.Make().String())
+					user := "user:" + ulid.Make().String()
 					// one document accessible by many users
 					tuples = append(tuples, tuple.NewTupleKey("document:1", "viewer", user))
 				}
@@ -75,8 +74,8 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				// same as the previous benchmark, so that later we can compare times.
 				var tuples []*openfgav1.TupleKey
 				for j := 0; j < 1000; j++ {
-					user := fmt.Sprintf("user:%s", ulid.Make().String())
-					folder := fmt.Sprintf("folder:%s", ulid.Make().String())
+					user := "user:" + ulid.Make().String()
+					folder := "folder:" + ulid.Make().String()
 					// one document accessible by many users, but this benchmark will incur more reads, so it should take longer and result in less iterations
 					tuples = append(tuples, tuple.NewTupleKey(folder, "viewer", user))
 					tuples = append(tuples, tuple.NewTupleKey("document:1", "parent", folder))
@@ -113,7 +112,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				var tuples []*openfgav1.TupleKey
 				for j := 0; j < 1000; j++ {
 					// one document accessible by many users
-					user := fmt.Sprintf("user:%s", ulid.Make().String())
+					user := "user:" + ulid.Make().String()
 					tuples = append(tuples, tuple.NewTupleKeyWithCondition("document:1", "viewer", user, "condTrue", nil))
 				}
 				return tuples
@@ -162,7 +161,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
 		require.NoError(b, err)
 
-		// arrange: write tuples
+		// arrange: write tuples in random order
 		tuples := bm.tupleGenerator()
 		for i := 0; i < len(tuples); {
 			var tuplesToWrite []*openfgav1.TupleKey
@@ -173,6 +172,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				tuplesToWrite = append(tuplesToWrite, tuples[i])
 				i++
 			}
+			tuplesToWrite = testutils.Shuffle(tuplesToWrite)
 			err = ds.Write(context.Background(), storeID, nil, tuplesToWrite)
 			require.NoError(b, err)
 		}

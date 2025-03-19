@@ -216,6 +216,12 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("cache.limit", flags.Lookup("check-query-cache-limit"))
 		util.MustBindEnv("cache.limit", "OPENFGA_CHECK_QUERY_CACHE_LIMIT")
 
+		util.MustBindPFlag("cacheController.enabled", flags.Lookup("cache-controller-enabled"))
+		util.MustBindEnv("cacheController.enabled", "OPENFGA_CACHE_CONTROLLER_ENABLED")
+
+		util.MustBindPFlag("cacheController.ttl", flags.Lookup("cache-controller-ttl"))
+		util.MustBindEnv("cacheController.ttl", "OPENFGA_CACHE_CONTROLLER_TTL")
+
 		util.MustBindPFlag("checkIteratorCache.enabled", flags.Lookup("check-iterator-cache-enabled"))
 		util.MustBindEnv("checkIteratorCache.enabled", "OPENFGA_CHECK_ITERATOR_CACHE_ENABLED")
 

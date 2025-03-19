@@ -1,9 +1,8 @@
-package graph
+package storagewrappers
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,18 +12,23 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var (
+	tracer = otel.Tracer("openfga/pkg/storagewrappers/check_caching")
+
 	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
 	tuplesCacheTotalCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -60,6 +64,17 @@ var (
 // from the underlying datastore.
 type iterFunc func(ctx context.Context) (storage.TupleIterator, error)
 
+type CachedDatastoreOpt func(*CachedDatastore)
+
+// WithCachedDatastoreLogger sets the logger for the CachedDatastore.
+func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
+	return func(b *CachedDatastore) {
+		b.logger = logger
+	}
+}
+
+// CachedDatastore is a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
@@ -75,9 +90,12 @@ type CachedDatastore struct {
 	// wg is used to synchronize inflight goroutines from underlying
 	// cached iterators.
 	wg *sync.WaitGroup
+
+	logger logger.Logger
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
+// It can only be used for Check API requests, where the iterators _always_ have object/relation defined.
 func NewCachedDatastore(
 	ctx context.Context,
 	inner storage.RelationshipTupleReader,
@@ -86,8 +104,9 @@ func NewCachedDatastore(
 	ttl time.Duration,
 	sf *singleflight.Group,
 	wg *sync.WaitGroup,
+	opts ...CachedDatastoreOpt,
 ) *CachedDatastore {
-	return &CachedDatastore{
+	c := &CachedDatastore{
 		ctx:                     ctx,
 		RelationshipTupleReader: inner,
 		cache:                   cache,
@@ -95,7 +114,14 @@ func NewCachedDatastore(
 		ttl:                     ttl,
 		sf:                      sf,
 		wg:                      wg,
+		logger:                  logger.NewNoopLogger(),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 func (c *CachedDatastore) ReadStartingWithUser(
@@ -124,13 +150,13 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
 	)
 
-	// NOTE: while `storagewrapper` is only used in Check there is no need to limit the length of this
+	// NOTE: while CachedDatastore is only used in Check there is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
 		subject := tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
 		subjects = append(subjects, subject)
-		b.WriteString(fmt.Sprintf("/%s", subject))
+		b.WriteString("/" + subject)
 	}
 
 	if filter.ObjectIDs != nil {
@@ -141,7 +167,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 			}
 		}
 
-		b.WriteString(fmt.Sprintf("/%s", strconv.FormatUint(hasher.Sum64(), 10)))
+		b.WriteString("/" + strconv.FormatUint(hasher.Sum64(), 10))
 	}
 
 	return c.newCachedIteratorByUserObjectType(ctx, "ReadStartingWithUser", store, iter, b.String(), subjects, filter.ObjectType)
@@ -179,10 +205,10 @@ func (c *CachedDatastore) ReadUsersetTuples(
 
 	for _, userset := range filter.AllowedUserTypeRestrictions {
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			rb.WriteString(fmt.Sprintf("/%s#%s", userset.GetType(), userset.GetRelation()))
+			rb.WriteString("/" + userset.GetType() + "#" + userset.GetRelation())
 		}
 		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			wb.WriteString(fmt.Sprintf("/%s:*", userset.GetType()))
+			wb.WriteString("/" + userset.GetType() + ":*")
 		}
 	}
 
@@ -232,30 +258,66 @@ func (c *CachedDatastore) Read(
 	return c.newCachedIteratorByObjectRelation(ctx, "Read", store, iter, b.String(), tupleKey.GetObject(), tupleKey.GetRelation())
 }
 
-func (c *CachedDatastore) findInCache(store, key string, invalidEntityKeys []string) (*storage.TupleIteratorCacheEntry, bool) {
+// findInCache tries to find a key in the cache.
+// It returns true if and only if:
+// the key is present, and
+// the cache key satisfies TS(key) >= TS(store), and
+// all of the invalidEntityKeys satisfy TS(key) >= TS(invalid).
+func findInCache(cache storage.InMemoryCache[any], store, key string, invalidEntityKeys []string, logger logger.Logger) (*storage.TupleIteratorCacheEntry, bool) {
 	var tupleEntry *storage.TupleIteratorCacheEntry
+	var ok bool
 
 	// The iterator cache has a TTL and will eventually consistent.
-	if res := c.cache.Get(key); res != nil {
-		tupleEntry = res.(*storage.TupleIteratorCacheEntry)
+	if res := cache.Get(key); res != nil {
+		tupleEntry, ok = res.(*storage.TupleIteratorCacheEntry)
+		if !ok {
+			return nil, false
+		}
 	} else {
+		logger.Debug("CachedDatastore findInCache not found ", zap.String("store_id", store), zap.String("key", key))
 		return nil, false
 	}
+
 	invalidCacheKey := storage.GetInvalidIteratorCacheKey(store)
-	if res := c.cache.Get(invalidCacheKey); res != nil {
-		invalidEntry := res.(*storage.InvalidEntityCacheEntry)
-		if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+	if res := cache.Get(invalidCacheKey); res != nil {
+		invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
+		if !ok || tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+			invalidEntryLastModifiedTime := time.Time{}
+			if ok {
+				invalidEntryLastModifiedTime = invalidEntry.LastModified
+			}
+
+			logger.Debug("CachedDatastore found in cache but has expired for invalidCacheKey",
+				zap.String("store_id", store),
+				zap.String("key", key),
+				zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
+				zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
+
 			return nil, false
 		}
 	}
 	for _, invalidEntityKey := range invalidEntityKeys {
-		if res := c.cache.Get(invalidEntityKey); res != nil {
-			invalidEntry := res.(*storage.InvalidEntityCacheEntry)
-			if tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+		if res := cache.Get(invalidEntityKey); res != nil {
+			invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
+			if !ok || tupleEntry.LastModified.Before(invalidEntry.LastModified) {
+				invalidEntryLastModifiedTime := time.Time{}
+				if ok {
+					invalidEntryLastModifiedTime = invalidEntry.LastModified
+				}
+
+				logger.Debug("CachedDatastore findInCache but has expired for invalidEntry",
+					zap.String("store_id", store),
+					zap.String("key", key),
+					zap.String("invalidEntityKey", invalidEntityKey),
+					zap.Time("invalidEntry.LastModified", invalidEntryLastModifiedTime),
+					zap.Time("tupleEntry.LastModified", tupleEntry.LastModified))
+
 				return nil, false
 			}
 		}
 	}
+	logger.Debug("CachedDatastore findInCache ", zap.String("store_id", store), zap.String("key", key))
+
 	return tupleEntry, true
 }
 
@@ -269,8 +331,8 @@ func (c *CachedDatastore) newCachedIteratorByObjectRelation(
 	relation string,
 ) (storage.TupleIterator, error) {
 	objectType, objectID := tuple.SplitObject(object)
-	invalidEntityKeys := storage.GetInvalidIteratorByObjectRelationCacheKeys(store, object, relation)
-	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, invalidEntityKeys, objectType, objectID, relation, "")
+	invalidEntityKey := storage.GetInvalidIteratorByObjectRelationCacheKey(store, object, relation)
+	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, []string{invalidEntityKey}, objectType, objectID, relation, "")
 }
 
 func (c *CachedDatastore) newCachedIteratorByUserObjectType(
@@ -316,7 +378,7 @@ func (c *CachedDatastore) newCachedIterator(
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 	tuplesCacheTotalCounter.WithLabelValues(operation).Inc()
 
-	if cacheEntry, ok := c.findInCache(store, cacheKey, invalidEntityKeys); ok {
+	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger); ok {
 		tuplesCacheHitCounter.WithLabelValues(operation).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
@@ -339,6 +401,7 @@ func (c *CachedDatastore) newCachedIterator(
 	return &cachedIterator{
 		ctx:       c.ctx,
 		iter:      iter,
+		store:     store,
 		operation: operation,
 		// set an initial fraction capacity to balance constant reallocation and memory usage
 		tuples:            make([]*openfgav1.Tuple, 0, c.maxResultSize/2),
@@ -353,12 +416,14 @@ func (c *CachedDatastore) newCachedIterator(
 		relation:          relation,
 		userType:          userType,
 		wg:                c.wg,
+		logger:            c.logger,
 	}, nil
 }
 
 type cachedIterator struct {
 	ctx               context.Context
 	iter              storage.TupleIterator
+	store             string
 	operation         string
 	cacheKey          string
 	invalidEntityKeys []string
@@ -394,6 +459,8 @@ type cachedIterator struct {
 	// wg is used to synchronize inflight goroutines spawned
 	// when stopping the iterator.
 	wg *sync.WaitGroup
+
+	logger logger.Logger
 }
 
 // Next will return the next available tuple from the underlying iterator and
@@ -450,7 +517,8 @@ func (c *cachedIterator) Stop() {
 		defer c.iter.Stop()
 
 		// if cache is already set, we don't need to drain the iterator
-		if cachedResp := c.cache.Get(c.cacheKey); cachedResp != nil {
+		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger)
+		if ok {
 			c.iter.Stop()
 			c.tuples = nil
 			return
@@ -556,9 +624,13 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	return true
 }
 
-// flush will store copy of buffered tuples into cache.
+// flush will store copy of buffered tuples into cache and delete invalidEntityKeys from the cache.
 func (c *cachedIterator) flush() {
 	if c.tuples == nil || c.ctx.Err() != nil {
+		c.logger.Debug("cachedIterator flush noop due to empty tuples or c.ctx.Err",
+			zap.String("key", c.cacheKey),
+			zap.Bool("nil_tuples", c.tuples == nil),
+			zap.Error(c.ctx.Err()))
 		return
 	}
 
@@ -569,6 +641,7 @@ func (c *cachedIterator) flush() {
 	c.tuples = nil
 	c.records = nil
 
+	c.logger.Debug("cachedIterator flush and update cache for ", zap.String("cacheKey", c.cacheKey))
 	c.cache.Set(c.cacheKey, &storage.TupleIteratorCacheEntry{Tuples: records, LastModified: time.Now()}, c.ttl)
 	for _, k := range c.invalidEntityKeys {
 		c.cache.Delete(k)
