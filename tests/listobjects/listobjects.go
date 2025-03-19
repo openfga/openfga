@@ -21,7 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests/check"
+	"github.com/openfga/openfga/tests"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
@@ -37,7 +37,7 @@ type listObjectTests struct {
 
 type testParams struct {
 	schemaVersion string
-	client        ClientInterface
+	client        tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -47,15 +47,8 @@ type stage struct {
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
-// ClientInterface defines interface for running ListObjects and StreamedListObjects tests.
-type ClientInterface interface {
-	check.ClientInterface
-	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
-	StreamedListObjects(ctx context.Context, in *openfgav1.StreamedListObjectsRequest, opts ...grpc.CallOption) (openfgav1.OpenFGAService_StreamedListObjectsClient, error)
-}
-
 // RunAllTests will invoke all list objects tests.
-func RunAllTests(t *testing.T, client ClientInterface) {
+func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {
 			t.Parallel()

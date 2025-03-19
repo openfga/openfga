@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/yaml"
@@ -39,7 +38,7 @@ type checkTests struct {
 
 type testParams struct {
 	schemaVersion string
-	client        ClientInterface
+	client        tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -50,16 +49,8 @@ type stage struct {
 	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
-// ClientInterface defines client interface for running check tests.
-type ClientInterface interface {
-	tests.TestClientBootstrapper
-	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
-	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
-	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
-}
-
 // RunAllTests will run all check tests.
-func RunAllTests(t *testing.T, client ClientInterface) {
+func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
@@ -205,7 +196,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
@@ -1297,7 +1288,7 @@ condition xcond(x: string) {
 	})
 }
 
-func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client tests.ClientInterface, storeID string, modelID string) {
 	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
 
 	var tupleKey *openfgav1.CheckRequestTupleKey
@@ -1331,7 +1322,7 @@ func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Asserti
 	}
 }
 
-func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client tests.ClientInterface, storeID string, modelID string) {
 	objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
 	resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -1374,7 +1365,7 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 	}
 }
 
-func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client tests.ClientInterface, storeID string, modelID string) {
 	objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
 	userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
 	userObjectType, _ := tuple.SplitObject(userObject)
