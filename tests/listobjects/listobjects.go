@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
@@ -143,7 +144,6 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			}
 
 			// assert 2: on streaming list objects endpoint
-			done := make(chan struct{})
 			var streamedObjectIDs []string
 
 			clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
@@ -159,23 +159,23 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			}, []grpc.CallOption{}...)
 			require.NoError(t, err)
 
-			var streamingErr error
-			var streamingResp *openfgav1.StreamedListObjectsResponse
-			go func() {
+			var wg errgroup.Group
+			wg.Go(func() error {
 				for {
-					streamingResp, streamingErr = clientStream.Recv()
+					streamingResp, streamingErr := clientStream.Recv()
 					if streamingErr == nil {
 						streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
 					} else {
 						if errors.Is(streamingErr, io.EOF) {
-							streamingErr = nil
+							break
 						}
-						break
+						return streamingErr
 					}
 				}
-				done <- struct{}{}
-			}()
-			<-done
+				return nil
+			})
+			streamingErr := wg.Wait()
+			require.NoError(t, err)
 
 			if assertion.ErrorCode == 0 {
 				require.NoError(t, streamingErr, detailedInfo)
