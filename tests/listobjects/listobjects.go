@@ -163,14 +163,13 @@ func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.Client
 			wg.Go(func() error {
 				for {
 					streamingResp, streamingErr := clientStream.Recv()
-					if streamingErr == nil {
-						streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
-					} else {
+					if streamingErr != nil {
 						if errors.Is(streamingErr, io.EOF) {
 							break
 						}
 						return streamingErr
 					}
+					streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
 				}
 				return nil
 			})
