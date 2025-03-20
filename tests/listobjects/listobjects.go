@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,9 +43,29 @@ type testParams struct {
 
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
+	Name                 string
 	Model                string
 	Tuples               []*openfgav1.TupleKey
 	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
+}
+
+type matrixTests struct {
+	Name  string
+	Model string
+	Tests []matrixTest
+}
+
+type matrixTest struct {
+	Name                 string
+	Tuples               []*openfgav1.TupleKey
+	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
+}
+
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
+	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+		t.Parallel()
+		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
+	})
 }
 
 // RunAllTests will invoke all list objects tests.
@@ -85,6 +106,104 @@ func runTests(t *testing.T, params testParams) {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
+	}
+}
+
+func listObjectsAssertion(ctx context.Context, t *testing.T, client tests.ClientInterface, storeID, modelID string, contextTupleTest bool, tuples []*openfgav1.TupleKey, listAssertions []*listobjectstest.Assertion) {
+	for assertionNumber, assertion := range listAssertions {
+		t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
+			detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, modelID, tuples, assertion.ContextualTuples)
+
+			ctxTuples := testutils.Shuffle(assertion.ContextualTuples)
+			if contextTupleTest {
+				ctxTuples = append(ctxTuples, tuples...)
+			}
+
+			// assert 1: on regular list objects endpoint
+			resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Type:                 assertion.Request.GetType(),
+				Relation:             assertion.Request.GetRelation(),
+				User:                 assertion.Request.GetUser(),
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: ctxTuples,
+				},
+				Context: assertion.Context,
+			})
+
+			if assertion.ErrorCode == 0 {
+				require.NoError(t, err, detailedInfo)
+				require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
+			} else {
+				require.Error(t, err, detailedInfo)
+				e, ok := status.FromError(err)
+				require.True(t, ok, detailedInfo)
+				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+			}
+
+			// assert 2: on streaming list objects endpoint
+			done := make(chan struct{})
+			var streamedObjectIDs []string
+
+			clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Type:                 assertion.Request.GetType(),
+				Relation:             assertion.Request.GetRelation(),
+				User:                 assertion.Request.GetUser(),
+				ContextualTuples: &openfgav1.ContextualTupleKeys{
+					TupleKeys: ctxTuples,
+				},
+				Context: assertion.Context,
+			}, []grpc.CallOption{}...)
+			require.NoError(t, err)
+
+			var streamingErr error
+			var streamingResp *openfgav1.StreamedListObjectsResponse
+			go func() {
+				for {
+					streamingResp, streamingErr = clientStream.Recv()
+					if streamingErr == nil {
+						streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
+					} else {
+						if errors.Is(streamingErr, io.EOF) {
+							streamingErr = nil
+						}
+						break
+					}
+				}
+				done <- struct{}{}
+			}()
+			<-done
+
+			if assertion.ErrorCode == 0 {
+				require.NoError(t, streamingErr, detailedInfo)
+				require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
+			} else {
+				require.Error(t, streamingErr, detailedInfo)
+				e, ok := status.FromError(streamingErr)
+				require.True(t, ok, detailedInfo)
+				require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
+			}
+
+			if assertion.ErrorCode == 0 {
+				// assert 3: each object in the response of ListObjects should return check -> true
+				for _, object := range resp.GetObjects() {
+					checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+						StoreId:              storeID,
+						TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.GetRelation(), assertion.Request.GetUser()),
+						AuthorizationModelId: modelID,
+						ContextualTuples: &openfgav1.ContextualTupleKeys{
+							TupleKeys: ctxTuples,
+						},
+						Context: assertion.Context,
+					})
+					require.NoError(t, err, detailedInfo)
+					require.True(t, checkResp.GetAllowed(), detailedInfo)
+				}
+			}
+		})
 	}
 }
 
@@ -145,106 +264,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 						require.NoError(t, err)
 					}
 				}
-
 				if len(stage.ListObjectAssertions) == 0 {
 					t.Skipf("no list objects assertions defined")
 				}
 
-				for assertionNumber, assertion := range stage.ListObjectAssertions {
-					t.Run(fmt.Sprintf("assertion_%d", assertionNumber), func(t *testing.T) {
-						detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, stage.Model, stage.Tuples, assertion.ContextualTuples)
-
-						ctxTuples := testutils.Shuffle(assertion.ContextualTuples)
-						if contextTupleTest {
-							ctxTuples = append(ctxTuples, stage.Tuples...)
-						}
-
-						// assert 1: on regular list objects endpoint
-						resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-							Type:                 assertion.Request.GetType(),
-							Relation:             assertion.Request.GetRelation(),
-							User:                 assertion.Request.GetUser(),
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								TupleKeys: ctxTuples,
-							},
-							Context: assertion.Context,
-						})
-
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, err, detailedInfo)
-							require.ElementsMatch(t, assertion.Expectation, resp.GetObjects(), detailedInfo)
-						} else {
-							require.Error(t, err, detailedInfo)
-							e, ok := status.FromError(err)
-							require.True(t, ok, detailedInfo)
-							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-						}
-
-						// assert 2: on streaming list objects endpoint
-						done := make(chan struct{})
-						var streamedObjectIDs []string
-
-						clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
-							StoreId:              storeID,
-							AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-							Type:                 assertion.Request.GetType(),
-							Relation:             assertion.Request.GetRelation(),
-							User:                 assertion.Request.GetUser(),
-							ContextualTuples: &openfgav1.ContextualTupleKeys{
-								TupleKeys: ctxTuples,
-							},
-							Context: assertion.Context,
-						}, []grpc.CallOption{}...)
-						require.NoError(t, err)
-
-						var streamingErr error
-						var streamingResp *openfgav1.StreamedListObjectsResponse
-						go func() {
-							for {
-								streamingResp, streamingErr = clientStream.Recv()
-								if streamingErr == nil {
-									streamedObjectIDs = append(streamedObjectIDs, streamingResp.GetObject())
-								} else {
-									if errors.Is(streamingErr, io.EOF) {
-										streamingErr = nil
-									}
-									break
-								}
-							}
-							done <- struct{}{}
-						}()
-						<-done
-
-						if assertion.ErrorCode == 0 {
-							require.NoError(t, streamingErr, detailedInfo)
-							require.ElementsMatch(t, assertion.Expectation, streamedObjectIDs, detailedInfo)
-						} else {
-							require.Error(t, streamingErr, detailedInfo)
-							e, ok := status.FromError(streamingErr)
-							require.True(t, ok, detailedInfo)
-							require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
-						}
-
-						if assertion.ErrorCode == 0 {
-							// assert 3: each object in the response of ListObjects should return check -> true
-							for _, object := range resp.GetObjects() {
-								checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-									StoreId:              storeID,
-									TupleKey:             tuple.NewCheckRequestTupleKey(object, assertion.Request.GetRelation(), assertion.Request.GetUser()),
-									AuthorizationModelId: writeModelResponse.GetAuthorizationModelId(),
-									ContextualTuples: &openfgav1.ContextualTupleKeys{
-										TupleKeys: ctxTuples,
-									},
-									Context: assertion.Context,
-								})
-								require.NoError(t, err, detailedInfo)
-								require.True(t, checkResp.GetAllowed(), detailedInfo)
-							}
-						}
-					})
-				}
+				listObjectsAssertion(ctx, t, client, storeID, writeModelResponse.GetAuthorizationModelId(), contextTupleTest, stage.Tuples, stage.ListObjectAssertions)
 			})
 		}
 	})
