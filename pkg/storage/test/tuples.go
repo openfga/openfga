@@ -1152,6 +1152,45 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
+	t.Run("reading_userset_tuples_distinguish_different_relation_ref", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tks := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			tuple.NewTupleKey("document:1", "viewer", "users:*"),
+			tuple.NewTupleKey("document:1", "viewer", "group:*"),
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#other"),
+			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tks)
+		require.NoError(t, err)
+
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+			},
+		}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+
+		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
+		defer iter.Stop()
+
+		gotOne, err := iter.Next(ctx)
+		require.NoError(t, err)
+		_, err = iter.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+		expected := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		}
+		if diff := cmp.Diff(expected, []*openfgav1.TupleKey{gotOne}, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
+		}
+	})
+
 	t.Run("tuples_with_nil_condition", func(t *testing.T) {
 		// This test ensures we don't normalize nil conditions to an empty value.
 		storeID := ulid.Make().String()
