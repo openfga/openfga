@@ -10,6 +10,9 @@ var xCond = &openfgav1.RelationshipCondition{Name: "xcond"}
 var validConditionContext = MustNewStruct(map[string]any{
 	"x": "1",
 })
+var invalidConditionContext = MustNewStruct(map[string]any{
+	"x": "9",
+})
 
 var directs = []matrixTest{
 	{
@@ -68,9 +71,7 @@ var directs = []matrixTest{
 					Type:     "directs",
 					Relation: "direct_comb",
 				},
-				Context: MustNewStruct(map[string]any{
-					"x": "9", // fails condition
-				}),
+				Context: invalidConditionContext,
 				Expectation: []string{
 					"directs:wildcard_and_condition_1",
 					"directs:wildcard_and_condition_2",
@@ -133,6 +134,15 @@ var directs = []matrixTest{
 					"directs:alg_expr_2",
 				},
 				Context: validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_expr_1",
+					Type:     "directs",
+					Relation: "and_computed_mult_types",
+				},
+				Expectation: []string{},
+				Context:     invalidConditionContext,
 			},
 			{
 				Request: &openfgav1.ListObjectsRequest{
