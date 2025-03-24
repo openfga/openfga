@@ -6,13 +6,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
-	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/testutils"
 )
+
+// MustNewStruct returns a new *structpb.Struct or panics
+// on error. The new *structpb.Struct value is built from
+// the map m.
+func MustNewStruct(m map[string]any) *structpb.Struct {
+	s, err := structpb.NewStruct(m)
+	if err == nil {
+		return s
+	}
+	panic(err)
+}
 
 var matrix = matrixTests{
 	Name: "matrix_test",
@@ -160,35 +171,8 @@ type complexity4
 condition xcond(x: string) {
   x == '1'
 }`,
-	Tests: []matrixTest{
-		{
-			Name: "direct_assignment",
-			Tuples: []*openfgav1.TupleKey{
-				{Object: "directs:direct_1_1", Relation: "direct", User: "user:direct_1"},
-				{Object: "directs:direct_1_2", Relation: "direct", User: "user:direct_1"},
-			},
-			ListObjectAssertions: []*listobjectstest.Assertion{
-				{
-					Request: &openfgav1.ListObjectsRequest{
-						User:     "user:direct_1",
-						Type:     "directs",
-						Relation: "direct",
-					},
 
-					Expectation: []string{"directs:direct_1_1", "directs:direct_1_2"},
-				},
-				{
-					Request: &openfgav1.ListObjectsRequest{
-						User:     "user:direct_no_such_user",
-						Type:     "directs",
-						Relation: "direct",
-					},
-
-					Expectation: []string{},
-				},
-			},
-		},
-	},
+	Tests: directs, // TODO: to be extended by upcoming tests
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
