@@ -156,4 +156,35 @@ var directs = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "directs_nested_algebraic_expressions",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "directs:nested_alg_1", Relation: "direct", User: "user:nested_alg_1"},
+			{Object: "directs:nested_alg_2", Relation: "direct_comb", User: "user:*"},
+			{Object: "directs:nested_alg_2", Relation: "other_rel", User: "user:*", Condition: xCond},
+			{Object: "directs:nested_alg_3", Relation: "direct_mult_types", User: "user:nested_alg_1"},
+			{Object: "directs:nested_alg_3", Relation: "direct_mult_types", User: "employee:*"},
+			{Object: "directs:nested_alg_3", Relation: "other_rel", User: "user:*", Condition: xCond},
+			{Object: "directs:nested_alg_3", Relation: "other_rel", User: "employee:nested_alg_1"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:nested_alg_1",
+					Type:     "directs",
+					Relation: "alg_combined",
+				},
+				Expectation: []string{"directs:nested_alg_3"},
+				Context:     validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:nested_alg_1",
+					Type:     "directs",
+					Relation: "alg_combined",
+				},
+				Expectation: []string{"directs:nested_alg_3"},
+			},
+		},
+	},
 }
