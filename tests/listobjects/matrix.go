@@ -10,7 +10,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
-	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/testutils"
 )
 
@@ -160,35 +159,8 @@ type complexity4
 condition xcond(x: string) {
   x == '1'
 }`,
-	Tests: []matrixTest{
-		{
-			Name: "direct_assignment",
-			Tuples: []*openfgav1.TupleKey{
-				{Object: "directs:direct_1_1", Relation: "direct", User: "user:direct_1"},
-				{Object: "directs:direct_1_2", Relation: "direct", User: "user:direct_1"},
-			},
-			ListObjectAssertions: []*listobjectstest.Assertion{
-				{
-					Request: &openfgav1.ListObjectsRequest{
-						User:     "user:direct_1",
-						Type:     "directs",
-						Relation: "direct",
-					},
 
-					Expectation: []string{"directs:direct_1_1", "directs:direct_1_2"},
-				},
-				{
-					Request: &openfgav1.ListObjectsRequest{
-						User:     "user:direct_no_such_user",
-						Type:     "directs",
-						Relation: "direct",
-					},
-
-					Expectation: []string{},
-				},
-			},
-		},
-	},
+	Tests: directs,
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
