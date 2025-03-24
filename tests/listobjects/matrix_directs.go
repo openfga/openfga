@@ -50,13 +50,27 @@ var directs = []matrixTest{
 					Relation: "direct_comb",
 				},
 				Context: MustNewStruct(map[string]any{
-					"x": "1",
+					"x": "1", // passes condition
 				}),
 				Expectation: []string{
 					"directs:wildcard_and_condition_1",
 					"directs:wildcard_and_condition_2",
 					"directs:wildcard_and_condition_3",
 					"directs:wildcard_and_condition_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:direct_comb_1",
+					Type:     "directs",
+					Relation: "direct_comb",
+				},
+				Context: MustNewStruct(map[string]any{
+					"x": "9", // fails condition
+				}),
+				Expectation: []string{
+					"directs:wildcard_and_condition_1",
+					"directs:wildcard_and_condition_2",
 				},
 			},
 		},
