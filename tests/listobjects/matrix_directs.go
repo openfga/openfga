@@ -2,6 +2,7 @@ package listobjects
 
 import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 )
 
@@ -30,6 +31,33 @@ var directs = []matrixTest{
 				},
 
 				Expectation: []string{},
+			},
+		},
+	},
+	{
+		Name: "directs_one_terminal_type_wildcard_and_conditions",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "directs:wildcard_and_condition_1", Relation: "direct_comb", User: "user:direct_comb_1"},
+			{Object: "directs:wildcard_and_condition_2", Relation: "direct_comb", User: "user:*"},
+			{Object: "directs:wildcard_and_condition_3", Relation: "direct_comb", User: "user:direct_comb_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "directs:wildcard_and_condition_4", Relation: "direct_comb", User: "user:*", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:direct_comb_1",
+					Type:     "directs",
+					Relation: "direct_comb",
+				},
+				Context: MustNewStruct(map[string]any{
+					"x": "1",
+				}),
+				Expectation: []string{
+					"directs:wildcard_and_condition_1",
+					"directs:wildcard_and_condition_2",
+					"directs:wildcard_and_condition_3",
+					"directs:wildcard_and_condition_4",
+				},
 			},
 		},
 	},

@@ -6,12 +6,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/pkg/testutils"
 )
+
+// MustNewStruct returns a new *structpb.Struct or panics
+// on error. The new *structpb.Struct value is built from
+// the map m.
+func MustNewStruct(m map[string]any) *structpb.Struct {
+	s, err := structpb.NewStruct(m)
+	if err == nil {
+		return s
+	}
+	panic(err)
+}
 
 var matrix = matrixTests{
 	Name: "matrix_test",
@@ -160,7 +172,7 @@ condition xcond(x: string) {
   x == '1'
 }`,
 
-	Tests: directs,
+	Tests: directs, // TODO: to be extended by upcoming tests
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
