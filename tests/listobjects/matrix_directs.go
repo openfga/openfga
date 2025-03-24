@@ -75,4 +75,37 @@ var directs = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "directs_multiple_terminal_types",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "directs:mult_types_1", Relation: "direct_mult_types", User: "employee:mult_types_1"},
+			{Object: "directs:mult_types_2", Relation: "direct_mult_types", User: "employee:*"},
+			{Object: "directs:mult_types_3", Relation: "direct_mult_types", User: "user:mult_types_1"},
+			{Object: "directs:mult_types_4", Relation: "direct_mult_types", User: "user:*"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:mult_types_1",
+					Type:     "directs",
+					Relation: "direct_mult_types",
+				},
+				Expectation: []string{
+					"directs:mult_types_3",
+					"directs:mult_types_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:mult_types_1",
+					Type:     "directs",
+					Relation: "direct_mult_types",
+				},
+				Expectation: []string{
+					"directs:mult_types_1",
+					"directs:mult_types_2",
+				},
+			},
+		},
+	},
 }
