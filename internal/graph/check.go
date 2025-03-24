@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -167,18 +168,23 @@ func resolve(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHand
 				break
 			}
 			p.Go(func(ctx context.Context) error {
-				// execute the handler function, passing in the parent
-				// context captured from the parent function. this context
-				// may contain data that is used by the handler function.
-				resp, err := handler(ctx)
-				if err == context.Canceled {
-					// when the context is canceled, it is because a conclusion
-					// has been reached. no need to report an error.
-					return nil
-				}
-				ch <- item[checkOutcome]{
-					N:     i, // N is the ordinal of the handler. this is important for difference evalutions.
-					Value: checkOutcome{resp, err},
+				recovered := panics.Try(func() {
+					// execute the handler function, passing in the parent
+					// context captured from the parent function. this context
+					// may contain data that is used by the handler function.
+					resp, err := handler(ctx)
+					if err == context.Canceled {
+						// when the context is canceled, it is because a conclusion
+						// has been reached. no need to report an error.
+						return
+					}
+					ch <- item[checkOutcome]{
+						N:     i, // N is the ordinal of the handler. this is important for difference evalutions.
+						Value: checkOutcome{resp, err},
+					}
+				})
+				if recovered != nil {
+					return recovered.AsError()
 				}
 				return nil
 			})
