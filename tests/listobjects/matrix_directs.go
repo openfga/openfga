@@ -193,4 +193,39 @@ var directs = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "directs_alg_combined_oneline",
+		Tuples: []*openfgav1.TupleKey{
+			// excluded, only satisfies left side of AND
+			{Object: "directs:alg_combined_oneline_1", Relation: "direct", User: "user:alg_combined_oneline_1"},
+
+			// satisfies both sides of AND relation for this user
+			{Object: "directs:alg_combined_oneline_2", Relation: "direct_mult_types", User: "user:alg_combined_oneline_1"},
+			{Object: "directs:alg_combined_oneline_2", Relation: "direct_comb", User: "user:alg_combined_oneline_1"},
+			{Object: "directs:alg_combined_oneline_2", Relation: "other_rel", User: "user:alg_combined_oneline_1"},
+
+			// excluded for this employee, these relations are both on one side of the AND
+			{Object: "directs:alg_combined_oneline_2", Relation: "other_rel", User: "employee:alg_combined_oneline_1"},
+			{Object: "directs:alg_combined_oneline_2", Relation: "direct_mult_types", User: "employee:alg_combined_oneline_1"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_oneline_1",
+					Type:     "directs",
+					Relation: "alg_combined_oneline",
+				},
+				Expectation: []string{"directs:alg_combined_oneline_2"},
+				Context:     validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:alg_combined_oneline_1",
+					Type:     "directs",
+					Relation: "alg_combined_oneline",
+				},
+				Expectation: nil,
+			},
+		},
+	},
 }
