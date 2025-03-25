@@ -159,9 +159,15 @@ var directs = []matrixTest{
 	{
 		Name: "directs_nested_algebraic_expressions",
 		Tuples: []*openfgav1.TupleKey{
+			// Will exclude due to "but not computed_3_times" in the resolution path
 			{Object: "directs:nested_alg_1", Relation: "direct", User: "user:nested_alg_1"},
+			{Object: "directs:nested_alg_1", Relation: "other_rel", User: "user:nested_alg_1"},
+
+			// Will exclude due to "but not computed_comb" in the resolution path
 			{Object: "directs:nested_alg_2", Relation: "direct_comb", User: "user:*"},
 			{Object: "directs:nested_alg_2", Relation: "other_rel", User: "user:*", Condition: xCond},
+
+			// Should return for both types
 			{Object: "directs:nested_alg_3", Relation: "direct_mult_types", User: "user:nested_alg_1"},
 			{Object: "directs:nested_alg_3", Relation: "direct_mult_types", User: "employee:*"},
 			{Object: "directs:nested_alg_3", Relation: "other_rel", User: "user:*", Condition: xCond},
