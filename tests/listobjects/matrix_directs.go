@@ -175,6 +175,9 @@ var directs = []matrixTest{
 			{Object: "directs:nested_alg_3", Relation: "direct_mult_types", User: "employee:*"},
 			{Object: "directs:nested_alg_3", Relation: "other_rel", User: "user:*", Condition: xCond},
 			{Object: "directs:nested_alg_3", Relation: "other_rel", User: "employee:nested_alg_1"},
+
+			// Will exclude due to lack of other_rel
+			{Object: "directs:nested_alg_4", Relation: "direct", User: "user:nested_alg_1"},
 		},
 		ListObjectAssertions: []*listobjectstest.Assertion{
 			{
