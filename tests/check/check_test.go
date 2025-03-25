@@ -52,32 +52,11 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := buildClientInterface(t, engine, true)
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := buildClientInterface(t, engine, false)
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
 	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
-}
-
-func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool) ClientInterface {
-	cfg := config.MustDefaultConfig()
-	if experimentalsEnabled {
-		cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	}
-	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 0   // no deadline
-	cfg.ListObjectsDeadline = 0 // no deadline
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
-
-	cfg.CheckIteratorCache.Enabled = true
-	cfg.ContextPropagationToDatastore = true
-
-	tests.StartServer(t, cfg)
-
-	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	return openfgav1.NewOpenFGAServiceClient(conn)
 }
 
 func TestCheckMemory(t *testing.T) {

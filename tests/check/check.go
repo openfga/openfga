@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 	"sigs.k8s.io/yaml"
@@ -39,7 +38,7 @@ type checkTests struct {
 
 type testParams struct {
 	schemaVersion string
-	client        ClientInterface
+	client        tests.ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -50,16 +49,8 @@ type stage struct {
 	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
-// ClientInterface defines client interface for running check tests.
-type ClientInterface interface {
-	tests.TestClientBootstrapper
-	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
-	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
-	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
-}
-
 // RunAllTests will run all check tests.
-func RunAllTests(t *testing.T, client ClientInterface) {
+func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAllTests", func(t *testing.T) {
 		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
@@ -205,7 +196,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client ClientInterface) {
+func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
 	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
@@ -1100,6 +1091,7 @@ type directs-user
     define tuple_cycle2: [user, usersets-user#tuple_cycle2, employee]  
     define tuple_cycle3: [user, complexity3#cycle_nested]
     define compute_tuple_cycle3: tuple_cycle3
+    define mixed_use: or_computed_no_cond
 type directs-employee
   relations
     define direct: [employee]
@@ -1124,6 +1116,7 @@ type usersets-user
     define butnot_computed: computed but not direct_4
     define direct_wild: [user:*]
     define alg_combined: butnot_computed but not direct_4
+    define alg_cond_combined: [user with xcond] or alg_combined
     define userset: [directs-user#direct, directs-employee#direct]
     define userset_alg: [directs-user#alg_combined, directs-employee#alg_combined]
     define userset_to_computed: [directs-user#computed, directs-employee#computed]
@@ -1145,6 +1138,7 @@ type usersets-user
     define userset_recursive_public_alg: [user, user:*, usersets-user#userset_recursive_public_alg] or alg_combined or direct_wild
     define userset_recursive_public_only: [user:*, usersets-user#userset_recursive_public_only]
     define userset_recursive_public_only_alg: [user, user:*, usersets-user#userset_recursive_public_only_alg] or direct_wild
+    define userset_recursive_public_alg_cond: [user with xcond, user:*, usersets-user#userset_recursive_public_alg_cond with xcond] or alg_cond_combined or direct_wild
     define userset_recursive_mixed_direct_assignment: [user, usersets-user#userset_recursive_mixed_direct_assignment, usersets-user#userset]
     define or_userset: userset or userset_to_computed_cond
     define and_userset: userset_to_computed_cond and userset_to_computed_wild
@@ -1169,10 +1163,13 @@ type ttus
     define butnot_computed: computed but not direct_4
     define direct_wild: [directs-user:*]
     define alg_combined: butnot_computed but not direct_4
+    define alg_combined_cond: [user with xcond] or alg_combined
     define direct_parent: [directs-user]
     define ttu_parent: [ttus]
+    define ttu_parent_cond: [ttus with xcond]
     define mult_parent_types: [directs-user, directs-employee]
     define mult_parent_types_cond: [directs-user with xcond, directs-employee with xcond]
+    define mixed_ttu_parent: [ttus, directs-user]
     define direct_cond_parent: [directs-user with xcond]
     define userset_parent: [usersets-user]
     define userset_cond_parent: [usersets-user with xcond]
@@ -1200,6 +1197,8 @@ type ttus
     define recursive_ttu_alg: [directs-user] or recursive_ttu_alg from ttu_parent or alg_combined
     define recursive_ttu_public: [directs-user, directs-user:*] or recursive_ttu_public from ttu_parent
     define recursive_ttu_public_alg: [directs-user, directs-user:*] or recursive_ttu_public_alg from ttu_parent or direct_wild
+    define recursive_ttu_alg_cond: [directs-user with xcond] or recursive_ttu_alg_cond from ttu_parent_cond or alg_combined_cond
+    define mixed_use: [directs-user] or mixed_use from mixed_ttu_parent
 
 type complexity3
   relations
@@ -1289,7 +1288,7 @@ condition xcond(x: string) {
 	})
 }
 
-func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client tests.ClientInterface, storeID string, modelID string) {
 	detailedInfo := fmt.Sprintf("Check request: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Tuples, assertion.ContextualTuples)
 
 	var tupleKey *openfgav1.CheckRequestTupleKey
@@ -1323,7 +1322,7 @@ func assertCheck(ctx context.Context, t *testing.T, assertion *checktest.Asserti
 	}
 }
 
-func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client ClientInterface, storeID string, modelID string) {
+func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.Assertion, stage *stage, client tests.ClientInterface, storeID string, modelID string) {
 	objectType, _ := tuple.SplitObject(assertion.Tuple.GetObject())
 	resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -1366,7 +1365,7 @@ func assertListObjects(ctx context.Context, t *testing.T, assertion *checktest.A
 	}
 }
 
-func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client ClientInterface, storeID string, modelID string) {
+func assertListUsers(ctx context.Context, t *testing.T, assertion *checktest.Assertion, client tests.ClientInterface, storeID string, modelID string) {
 	objectType, objectID := tuple.SplitObject(assertion.Tuple.GetObject())
 	userObject, userRelation := tuple.SplitObjectRelation(assertion.Tuple.GetUser())
 	userObjectType, _ := tuple.SplitObject(userObject)

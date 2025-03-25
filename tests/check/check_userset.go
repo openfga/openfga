@@ -1091,6 +1091,88 @@ var usersetCompleteTestingModelTest = []*stage{
 		},
 	},
 	{
+		Name: "usersets_userset_recursive_public_cond",
+		Tuples: []*openfgav1.TupleKey{
+			// the following are for the directly assignable part
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_1#userset_recursive_public_alg_cond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_1", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_2#userset_recursive_public_alg_cond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_2", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_3#userset_recursive_public_alg_cond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_3", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_4#userset_recursive_public_alg_cond", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_4", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_1", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			// The following case are for the algebraic part
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_4", Relation: "alg_cond_combined", User: "user:userset_recursive_public_alg_cond_alg", Condition: &openfgav1.RelationshipCondition{Name: "xcond"}},
+			{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_4", Relation: "direct", User: "user:userset_recursive_public_alg_cond_alg_direct"},
+		},
+		CheckAssertions: []*checktest.Assertion{
+			{
+				Name:        "invalid_object",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_only_alg_invalid_object", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_user",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_invalid"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: false,
+			},
+			{
+				Name:        "valid_recursion",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_recursive_userset_single_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_1#userset_recursive_public_alg_cond"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "valid_recursive_userset_multi_level",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_3#userset_recursive_public_alg_cond"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Expectation: true,
+			},
+			{
+				Name:        "fail_due_to_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_1"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_recursive_userset_single_level_due_to_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_1#userset_recursive_public_alg_cond"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "invalid_recursive_userset_multi_level_due_to_cond",
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "usersets-user:userset_recursive_public_alg_cond_1_multi_level_3#userset_recursive_public_alg_cond"},
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Expectation: false,
+			},
+			{
+				Name:        "alg_match",
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_alg"},
+				Expectation: true,
+			},
+			{
+				Name:        "alg_match_cond_not_match",
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_alg"},
+				Expectation: false,
+			},
+			{
+				Name:        "alg_match_direct",
+				Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
+				Tuple:       &openfgav1.TupleKey{Object: "usersets-user:userset_recursive_public_alg_cond_1_multi_level", Relation: "userset_recursive_public_alg_cond", User: "user:userset_recursive_public_alg_cond_alg_direct"},
+				Expectation: true,
+			},
+		},
+	},
+	{
 		Name: "userset_recursive_mixed_direct_assignment_mixed_direct_assignment",
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "usersets-user:userset_recursive_mixed_direct_assignment_1", Relation: "userset_recursive_mixed_direct_assignment", User: "user:userset_recursive_mixed_direct_assignment_user_1"},
