@@ -124,6 +124,12 @@ var directs = []matrixTest{
 			// returned for this employee
 			{Object: "directs:alg_expr_2", Relation: "direct_mult_types", User: "employee:*"},
 			{Object: "directs:alg_expr_2", Relation: "other_rel", User: "employee:alg_expr_1"},
+
+			// User should have access to both of these with condition, but neither without condition
+			{Object: "directs:alg_expr_3", Relation: "direct_comb", User: "user:*"},
+			{Object: "directs:alg_expr_3", Relation: "other_rel", User: "user:alg_expr_1", Condition: xCond},
+			{Object: "directs:alg_expr_4", Relation: "direct_comb", User: "user:*", Condition: xCond},
+			{Object: "directs:alg_expr_4", Relation: "other_rel", User: "user:*"},
 		},
 		ListObjectAssertions: []*listobjectstest.Assertion{
 			{
@@ -135,6 +141,8 @@ var directs = []matrixTest{
 				Expectation: []string{
 					"directs:alg_expr_1",
 					"directs:alg_expr_2",
+					"directs:alg_expr_3",
+					"directs:alg_expr_4",
 				},
 				Context: validConditionContext,
 			},
@@ -231,39 +239,6 @@ var directs = []matrixTest{
 					Relation: "alg_combined_oneline",
 				},
 				Expectation: nil,
-			},
-		},
-	},
-	{
-		Name: "directs_and_computed_mult_types_conditions",
-		Tuples: []*openfgav1.TupleKey{
-			// User should have access to both of these with condition, but neither without condition
-			{Object: "directs:and_computed_conditions_1", Relation: "direct_comb", User: "user:*"},
-			{Object: "directs:and_computed_conditions_1", Relation: "other_rel", User: "user:and_computed_conditions_1", Condition: xCond},
-			{Object: "directs:and_computed_conditions_2", Relation: "direct_comb", User: "user:*", Condition: xCond},
-			{Object: "directs:and_computed_conditions_2", Relation: "other_rel", User: "user:*"},
-		},
-		ListObjectAssertions: []*listobjectstest.Assertion{
-			{
-				Request: &openfgav1.ListObjectsRequest{
-					User:     "user:and_computed_conditions_1",
-					Type:     "directs",
-					Relation: "and_computed_mult_types",
-				},
-				Expectation: []string{
-					"directs:and_computed_conditions_1",
-					"directs:and_computed_conditions_2",
-				},
-				Context: validConditionContext,
-			},
-			{
-				Request: &openfgav1.ListObjectsRequest{
-					User:     "user:and_computed_conditions_1",
-					Type:     "directs",
-					Relation: "and_computed_mult_types",
-				},
-				Expectation: []string{},
-				Context:     invalidConditionContext,
 			},
 		},
 	},
