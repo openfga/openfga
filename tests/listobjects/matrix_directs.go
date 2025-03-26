@@ -243,6 +243,45 @@ var directs = []matrixTest{
 		},
 	},
 	{
+		Name: "directs_employee_alg_combined_oneline",
+		Tuples: []*openfgav1.TupleKey{
+			// Always returned
+			{Object: "directs-employee:oneline_1", Relation: "direct", User: "employee:oneline_1"},
+
+			// returned if condition valid
+			{Object: "directs-employee:oneline_2", Relation: "direct", User: "employee:oneline_1", Condition: xCond},
+
+			// excluded due to missing right hand of AND
+			{Object: "directs-employee:oneline_3", Relation: "other_rel", User: "employee:oneline_1"},
+
+			// excluded due to missing left hand of AND
+			{Object: "directs-employee:oneline_4", Relation: "direct_wild", User: "employee:*"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:oneline_1",
+					Type:     "directs-employee",
+					Relation: "alg_combined_oneline",
+				},
+				Expectation: []string{
+					"directs-employee:oneline_1",
+					"directs-employee:oneline_2",
+				},
+				Context: validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:oneline_1",
+					Type:     "directs-employee",
+					Relation: "alg_combined_oneline",
+				},
+				Expectation: []string{"directs-employee:oneline_1"},
+				Context:     invalidConditionContext,
+			},
+		},
+	},
+	{
 		Name: "directs_employee_alg_combined",
 		Tuples: []*openfgav1.TupleKey{
 			// Excluded due to "but not other_rel"
