@@ -245,7 +245,7 @@ var directs = []matrixTest{
 	{
 		Name: "directs_employee_alg_combined",
 		Tuples: []*openfgav1.TupleKey{
-			// Excluded due to but not other_rel
+			// Excluded due to "but not other_rel"
 			{Object: "directs-employee:alg_combined_1", Relation: "other_rel", User: "employee:alg_combined_1"},
 			{Object: "directs-employee:alg_combined_1", Relation: "direct_wild", User: "employee:*"},
 
@@ -253,7 +253,7 @@ var directs = []matrixTest{
 			{Object: "directs-employee:alg_combined_2", Relation: "direct", User: "employee:alg_combined_1", Condition: xCond},
 			{Object: "directs-employee:alg_combined_2", Relation: "direct_wild", User: "employee:*"},
 
-			// Excluded due to lack of direct_wild
+			// Excluded due to lack of #direct_wild
 			{Object: "directs-employee:alg_combined_3", Relation: "direct", User: "employee:alg_combined_1"},
 		},
 		ListObjectAssertions: []*listobjectstest.Assertion{
