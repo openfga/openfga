@@ -65,7 +65,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	q, err := commands.NewListObjectsQuery(
 		s.datastore,
-		s.checkResolver,
+		s.listObjectsCheckResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
@@ -180,7 +180,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 
 	q, err := commands.NewListObjectsQuery(
 		s.datastore,
-		s.checkResolver,
+		s.listObjectsCheckResolver,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottlerConfig(threshold.Config{

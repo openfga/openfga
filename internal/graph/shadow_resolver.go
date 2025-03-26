@@ -16,6 +16,12 @@ const Hundred = 100
 
 type ShadowResolverOpt func(*ShadowResolver)
 
+func ShadowResolverWithName(name string) ShadowResolverOpt {
+	return func(shadowResolver *ShadowResolver) {
+		shadowResolver.name = name
+	}
+}
+
 func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
 		shadowResolver.shadowTimeout = timeout
@@ -35,6 +41,7 @@ func ShadowResolverWithLogger(logger logger.Logger) ShadowResolverOpt {
 }
 
 type ShadowResolver struct {
+	name             string
 	main             CheckResolver
 	shadow           CheckResolver
 	shadowTimeout    time.Duration
@@ -73,7 +80,6 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 				cancel()
 				s.wg.Done()
 			}()
-
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",
@@ -116,7 +122,7 @@ func (s ShadowResolver) GetDelegate() CheckResolver {
 }
 
 func NewShadowChecker(main CheckResolver, shadow CheckResolver, opts ...ShadowResolverOpt) *ShadowResolver {
-	r := &ShadowResolver{main: main, shadow: shadow, wg: &sync.WaitGroup{}}
+	r := &ShadowResolver{name: "check", main: main, shadow: shadow, wg: &sync.WaitGroup{}}
 
 	for _, opt := range opts {
 		opt(r)
