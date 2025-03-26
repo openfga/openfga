@@ -71,6 +71,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			defer func() {
 				if r := recover(); r != nil {
 					s.logger.ErrorWithContext(ctx, "shadow check panic",
+						zap.String("resolver", s.name),
 						zap.Any("error", err),
 						zap.String("request", reqClone.GetTupleKey().String()),
 						zap.String("store_id", reqClone.GetStoreID()),
@@ -83,6 +84,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",
+					zap.String("resolver", s.name),
 					zap.Error(err),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
@@ -92,6 +94,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			}
 			if shadowRes.GetAllowed() != resClone.GetAllowed() {
 				s.logger.InfoWithContext(ctx, "shadow check difference",
+					zap.String("resolver", s.name),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
