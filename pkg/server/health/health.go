@@ -31,7 +31,7 @@ func (o *Checker) AuthFuncOverride(ctx context.Context, fullMethodName string) (
 func (o *Checker) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
 	requestedService := req.GetService()
 	if requestedService == "" || requestedService == o.TargetServiceName {
-		ready, err := o.TargetService.IsReady(ctx)
+		ready, err := o.IsReady(ctx)
 		if err != nil {
 			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
 		}

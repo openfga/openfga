@@ -356,9 +356,9 @@ func TestBuildObject(t *testing.T) {
 
 func TestGetType(t *testing.T) {
 	require.Equal(t, "document", GetType("document:1"))
-	require.Equal(t, "", GetType("doc"))
-	require.Equal(t, "", GetType(":"))
-	require.Equal(t, "", GetType(""))
+	require.Empty(t, GetType("doc"))
+	require.Empty(t, GetType(":"))
+	require.Empty(t, GetType(""))
 }
 
 func TestToObjectRelationString(t *testing.T) {
@@ -715,19 +715,19 @@ func TestFromUserParts(t *testing.T) {
 
 func TestToUserParts(t *testing.T) {
 	userObjectType, userObjectID, userRelation := ToUserParts("jon")
-	require.Equal(t, "", userObjectType)
+	require.Empty(t, userObjectType)
 	require.Equal(t, "jon", userObjectID)
-	require.Equal(t, "", userRelation)
+	require.Empty(t, userRelation)
 
 	userObjectType, userObjectID, userRelation = ToUserParts("user:jon")
 	require.Equal(t, "user", userObjectType)
 	require.Equal(t, "jon", userObjectID)
-	require.Equal(t, "", userRelation)
+	require.Empty(t, userRelation)
 
 	userObjectType, userObjectID, userRelation = ToUserParts("user:*")
 	require.Equal(t, "user", userObjectType)
 	require.Equal(t, "*", userObjectID)
-	require.Equal(t, "", userRelation)
+	require.Empty(t, userRelation)
 
 	userObjectType, userObjectID, userRelation = ToUserParts("group:eng#member")
 	require.Equal(t, "group", userObjectType)
@@ -744,7 +744,7 @@ func TestToUserPartsFromObjectRelation(t *testing.T) {
 	userObjectType, userObjectID, userRelation = ToUserPartsFromObjectRelation(&openfgav1.ObjectRelation{Object: "user:*"})
 	require.Equal(t, "user", userObjectType)
 	require.Equal(t, "*", userObjectID)
-	require.Equal(t, "", userRelation)
+	require.Empty(t, userRelation)
 }
 
 func TestIsSelfDefining(t *testing.T) {

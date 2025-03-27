@@ -102,8 +102,8 @@ func TestValidateModelsCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
 	validateCommand := NewValidateCommand()
 	validateCommand.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
-		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.Empty(t, viper.GetString(datastoreEngineFlag))
+		require.Empty(t, viper.GetString(datastoreURIFlag))
 		return nil
 	}
 

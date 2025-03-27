@@ -99,8 +99,8 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 	t.Run("empty_clone", func(t *testing.T) {
 		var orig *ResolveCheckRequest
 		r := orig.clone()
-		require.Equal(t, "", r.GetStoreID())
-		require.Equal(t, "", r.GetAuthorizationModelID())
+		require.Empty(t, r.GetStoreID())
+		require.Empty(t, r.GetAuthorizationModelID())
 		require.Nil(t, r.GetTupleKey())
 		require.Nil(t, r.GetContextualTuples())
 		require.Nil(t, r.GetRequestMetadata())
@@ -170,8 +170,8 @@ func TestCloneResolveCheckRequest(t *testing.T) {
 
 func TestDefaultValueRequestMetadata(t *testing.T) {
 	var r *ResolveCheckRequest
-	require.Equal(t, "", r.GetStoreID())
-	require.Equal(t, "", r.GetAuthorizationModelID())
+	require.Empty(t, r.GetStoreID())
+	require.Empty(t, r.GetAuthorizationModelID())
 	require.Nil(t, r.GetTupleKey())
 	require.Nil(t, r.GetContextualTuples())
 	require.Nil(t, r.GetRequestMetadata())

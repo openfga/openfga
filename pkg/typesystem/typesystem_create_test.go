@@ -24,7 +24,7 @@ func usersetsEquals(t *testing.T, a, b *openfgav1.Usersets) {
 
 	childA, childB := a.GetChild(), b.GetChild()
 	// nil case covered by len check
-	require.Equal(t, len(childA), len(childB))
+	require.Len(t, childB, len(childA))
 	for ndx, v := range childA {
 		rewriteEquals(t, v, childB[ndx])
 	}
@@ -164,7 +164,7 @@ func relationTypeInfoEquals(t *testing.T, a, b *openfgav1.RelationTypeInfo) {
 
 	directA, directB := a.GetDirectlyRelatedUserTypes(), b.GetDirectlyRelatedUserTypes()
 	// nil case covered by len check
-	require.Equal(t, len(directA), len(directB))
+	require.Len(t, directB, len(directA))
 	for ndx, v := range directA {
 		relationReferenceEquals(t, v, directB[ndx])
 	}
@@ -213,7 +213,7 @@ func relationMetadataEquals(t *testing.T, a, b *openfgav1.RelationMetadata) {
 
 	directA, directB := a.GetDirectlyRelatedUserTypes(), b.GetDirectlyRelatedUserTypes()
 	// nil case covered by len check
-	require.Equal(t, len(directA), len(directB))
+	require.Len(t, directB, len(directA))
 	for ndx, v := range directA {
 		relationReferenceEquals(t, v, directB[ndx])
 	}
@@ -234,7 +234,7 @@ func metadataEquals(t *testing.T, a, b *openfgav1.Metadata) {
 
 	relationA, relationB := a.GetRelations(), b.GetRelations()
 	// nil case covered by len check
-	require.Equal(t, len(relationA), len(relationB))
+	require.Len(t, relationB, len(relationA))
 	for nameA, rA := range relationA {
 		rB, ok := relationB[nameA]
 		require.True(t, ok, nameA)
@@ -256,7 +256,7 @@ func typeDefinitionEquals(t *testing.T, a, b *openfgav1.TypeDefinition) {
 
 	relationsA, relationsB := a.GetRelations(), b.GetRelations()
 	// nil case covered by len check
-	require.Equal(t, len(relationsA), len(relationsB))
+	require.Len(t, relationsB, len(relationsA))
 	for nameA, rA := range relationsA {
 		rB, ok := relationsB[nameA]
 		require.True(t, ok, nameA)
@@ -279,7 +279,7 @@ func conditionParamTypeDefEquals(t *testing.T, a, b *openfgav1.ConditionParamTyp
 
 	paramsA, paramsB := a.GetGenericTypes(), b.GetGenericTypes()
 	// nil case covered by len check
-	require.Equal(t, len(paramsA), len(paramsB))
+	require.Len(t, paramsB, len(paramsA))
 	for ndx, pA := range paramsA {
 		pB := paramsB[ndx]
 		conditionParamTypeDefEquals(t, pA, pB)
@@ -316,7 +316,7 @@ func conditionEquals(t *testing.T, a, b *openfgav1.Condition) {
 
 	paramsA, paramsB := a.GetParameters(), b.GetParameters()
 	// nil case covered by len check
-	require.Equal(t, len(paramsA), len(paramsB))
+	require.Len(t, paramsB, len(paramsA))
 	for pName, pA := range paramsA {
 		pB, ok := paramsB[pName]
 		require.True(t, ok, pName)
@@ -350,7 +350,7 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	assert.Equal(t, a.GetSchemaVersion(), b.GetSchemaVersion())
 
 	// nil case covered by len check
-	require.Equal(t, len(a.typeDefinitions), len(b.typeDefinitions))
+	require.Len(t, b.typeDefinitions, len(a.typeDefinitions))
 	for nameA, tdA := range a.typeDefinitions {
 		tdB, ok := b.typeDefinitions[nameA]
 		require.True(t, ok, nameA)
@@ -358,11 +358,11 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	}
 
 	// nil case covered by len check
-	require.Equal(t, len(a.relations), len(b.relations))
+	require.Len(t, b.relations, len(a.relations))
 	for typeNameA, relationsA := range a.relations {
 		relationsB, ok := b.relations[typeNameA]
 		require.True(t, ok)
-		require.Equal(t, len(relationsA), len(relationsB))
+		require.Len(t, relationsB, len(relationsA))
 		for relationNameA, relationA := range relationsA {
 			relationB, ok := relationsB[relationNameA]
 			require.True(t, ok)
@@ -371,19 +371,19 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	}
 
 	// nil case covered by len check
-	require.Equal(t, len(a.ttuRelations), len(b.ttuRelations))
+	require.Len(t, b.ttuRelations, len(a.ttuRelations))
 	for typeNameA, relationsA := range a.ttuRelations {
 		relationsB, ok := b.ttuRelations[typeNameA]
 		require.True(t, ok, typeNameA)
 
 		// nil case covered by len check
-		require.Equal(t, len(relationsA), len(relationsB))
+		require.Len(t, relationsB, len(relationsA))
 		for relationNameA, relationA := range relationsA {
 			relationB, ok := relationsB[relationNameA]
 			require.True(t, ok, relationNameA)
 
 			// nil case covered by len check
-			require.Equal(t, len(relationA), len(relationB))
+			require.Len(t, relationB, len(relationA))
 			for i := 0; i < len(relationA); i++ {
 				tupleToUsersetEquals(t, relationA[i], relationB[i])
 			}
@@ -391,7 +391,7 @@ func typeSystemEquals(t *testing.T, a, b *TypeSystem) {
 	}
 
 	// nil case covered by len check
-	require.Equal(t, len(a.conditions), len(b.conditions))
+	require.Len(t, b.conditions, len(a.conditions))
 	for conditionNameA, conditionA := range a.conditions {
 		conditionB, ok := b.conditions[conditionNameA]
 		require.True(t, ok, conditionNameA)
