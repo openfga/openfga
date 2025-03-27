@@ -468,7 +468,7 @@ func (cfg *Config) VerifyBinarySettings() error {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
 
-		if !(cfg.Authn.Method == "none" || cfg.Authn.Method == "preshared") {
+		if cfg.Authn.Method != "none" && cfg.Authn.Method != "preshared" {
 			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
 		}
 	}
