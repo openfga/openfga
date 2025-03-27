@@ -323,7 +323,7 @@ func (q *ListObjectsQuery) evaluate(
 					break ConsumerReadLoop
 				}
 
-				if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+				if (maxResults != 0) && objectsFound.Load() >= maxResults {
 					cancel() // cancel any inflight work if we already found enough results
 					break ConsumerReadLoop
 				}
@@ -381,7 +381,7 @@ func (q *ListObjectsQuery) evaluate(
 }
 
 func trySendObject(ctx context.Context, object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if !(maxResults == 0) {
+	if maxResults != 0 {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}
