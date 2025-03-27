@@ -57,4 +57,53 @@ var usersets = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "usersets_user_alg_combined_oneline",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:oneline_1", Relation: "userset_alg_combined_oneline", User: "directs:oneline_1#alg_combined_oneline"},
+			{Object: "usersets-user:oneline_2", Relation: "userset_alg_combined_oneline", User: "directs:oneline_2#alg_combined_oneline"},
+
+			{Object: "usersets-user:oneline_3", Relation: "userset_alg_combined_oneline", User: "directs-employee:oneline_1#alg_combined_oneline"},
+			{Object: "usersets-user:oneline_4", Relation: "userset_alg_combined_oneline", User: "directs-employee:oneline_2#alg_combined_oneline"},
+
+			// This satisfies directs#alg_combined_oneline
+			{Object: "directs:oneline_1", Relation: "direct", User: "user:oneline_1"},
+			{Object: "directs:oneline_1", Relation: "other_rel", User: "user:oneline_1"},
+			// This does not
+			{Object: "directs:oneline_2", Relation: "other_rel", User: "user:oneline_1"},
+
+			// This satisfies directs-employee#alg_combined_oneline
+			{Object: "directs-employee:oneline_1", Relation: "direct", User: "employee:oneline_1"},
+			// This does not
+			{Object: "directs-employee:oneline_2", Relation: "other_rel", User: "employee:oneline_1"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs:oneline_1#alg_combined_oneline",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+				Expectation: []string{"usersets-user:oneline_1"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_1",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+
+				Expectation: []string{"usersets-user:oneline_1"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:oneline_1",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+
+				Expectation: []string{"usersets-user:oneline_3"},
+			},
+		},
+	},
 }
