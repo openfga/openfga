@@ -3,6 +3,7 @@ package listobjects
 import (
 	"context"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -156,6 +157,7 @@ type complexity3
     define userset_ttu_alg_combined: [ttus#alg_combined_computed]
     define or_userset_ttu: userset_ttu or userset_ttu_other_rel 
     define and_userset_ttu: or_userset_ttu and userset_ttu_inner_alg_combined
+
     define alg_combined_userset_ttu: and_userset_ttu but not userset_ttu_public
     
     define tuple_cycle_len3: [user, employee] or tuple_cycle_len3 from userset_parent
@@ -172,7 +174,7 @@ condition xcond(x: string) {
   x == '1'
 }`,
 
-	Tests: append(directs, usersets...),
+	Tests: slices.Concat(directs, usersets, ttus),
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
