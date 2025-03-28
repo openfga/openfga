@@ -172,7 +172,8 @@ condition xcond(x: string) {
   x == '1'
 }`,
 
-	Tests: append(directs, usersets...),
+	//Tests: append(directs, usersets...),
+	Tests: ttus,
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
