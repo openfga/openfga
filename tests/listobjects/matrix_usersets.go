@@ -203,4 +203,87 @@ var usersets = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "usersets_tuple_cycle_len2_userset",
+		Tuples: []*openfgav1.TupleKey{
+			// cycle
+			{Object: "usersets-user:len2_1", Relation: "tuple_cycle_len2_userset", User: "directs:len2_1#tuple_cycle_len2_userset"},
+			{Object: "directs:len2_1", Relation: "tuple_cycle_len2_userset", User: "usersets-user:len2_2#tuple_cycle_len2_userset"},
+			{Object: "usersets-user:len2_2", Relation: "tuple_cycle_len2_userset", User: "user:len2_anne"},
+			{Object: "directs:len2_2", Relation: "tuple_cycle_len2_userset", User: "usersets-user:len2_1#tuple_cycle_len2_userset"},
+
+			// Evaluate the condition path
+			{Object: "usersets-user:len2_2", Relation: "tuple_cycle_len2_userset", User: "directs-employee:len2_1#tuple_cycle_len2_userset", Condition: xCond},
+			{Object: "directs-employee:len2_1", Relation: "tuple_cycle_len2_userset", User: "employee:len2_bob"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:len2_anne",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Expectation: []string{
+					"usersets-user:len2_1",
+					"usersets-user:len2_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:len2_anne",
+					Type:     "directs",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Expectation: []string{
+					"directs:len2_1",
+					"directs:len2_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:len2_bob",
+					Type:     "directs",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"directs:len2_1",
+					"directs:len2_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:len2_bob",
+					Type:     "directs",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:len2_bob",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:len2_1",
+					"usersets-user:len2_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs-employee:len2_1#tuple_cycle_len2_userset",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:len2_1",
+					"usersets-user:len2_2",
+				},
+			},
+		},
+	},
 }
