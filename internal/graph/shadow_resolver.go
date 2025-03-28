@@ -16,6 +16,12 @@ const Hundred = 100
 
 type ShadowResolverOpt func(*ShadowResolver)
 
+func ShadowResolverWithName(name string) ShadowResolverOpt {
+	return func(shadowResolver *ShadowResolver) {
+		shadowResolver.name = name
+	}
+}
+
 func ShadowResolverWithTimeout(timeout time.Duration) ShadowResolverOpt {
 	return func(shadowResolver *ShadowResolver) {
 		shadowResolver.shadowTimeout = timeout
@@ -35,6 +41,7 @@ func ShadowResolverWithLogger(logger logger.Logger) ShadowResolverOpt {
 }
 
 type ShadowResolver struct {
+	name             string
 	main             CheckResolver
 	shadow           CheckResolver
 	shadowTimeout    time.Duration
@@ -64,6 +71,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			defer func() {
 				if r := recover(); r != nil {
 					s.logger.ErrorWithContext(ctx, "shadow check panic",
+						zap.String("resolver", s.name),
 						zap.Any("error", err),
 						zap.String("request", reqClone.GetTupleKey().String()),
 						zap.String("store_id", reqClone.GetStoreID()),
@@ -73,10 +81,10 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 				cancel()
 				s.wg.Done()
 			}()
-
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",
+					zap.String("resolver", s.name),
 					zap.Error(err),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
@@ -86,6 +94,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 			}
 			if shadowRes.GetAllowed() != resClone.GetAllowed() {
 				s.logger.InfoWithContext(ctx, "shadow check difference",
+					zap.String("resolver", s.name),
 					zap.String("request", reqClone.GetTupleKey().String()),
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
@@ -116,7 +125,7 @@ func (s ShadowResolver) GetDelegate() CheckResolver {
 }
 
 func NewShadowChecker(main CheckResolver, shadow CheckResolver, opts ...ShadowResolverOpt) *ShadowResolver {
-	r := &ShadowResolver{main: main, shadow: shadow, wg: &sync.WaitGroup{}}
+	r := &ShadowResolver{name: "check", main: main, shadow: shadow, wg: &sync.WaitGroup{}}
 
 	for _, opt := range opts {
 		opt(r)
