@@ -284,6 +284,18 @@ var usersets = []matrixTest{
 					"usersets-user:len2_2",
 				},
 			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs-employee:len2_1#tuple_cycle_len2_userset",
+					Type:     "directs",
+					Relation: "tuple_cycle_len2_userset",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"directs:len2_1",
+					"directs:len2_2",
+				},
+			},
 		},
 	},
 }
