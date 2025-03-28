@@ -55,7 +55,7 @@ func TestUsersetTupleMapper(t *testing.T) {
 		// second tk is not a userset so can't be mapped
 		res, err := mapper.Next(context.Background())
 		require.Error(t, err)
-		require.Equal(t, "", res)
+		require.Empty(t, res)
 	})
 }
 

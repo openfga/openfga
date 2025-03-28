@@ -114,7 +114,7 @@ func TestBatchCheckCommand(t *testing.T) {
 		require.NoError(t, err)
 
 		// Quantity of correlation IDs should be equal
-		require.Equal(t, len(ids), len(result))
+		require.Len(t, result, len(ids))
 		require.Equal(t, 9, meta.DuplicateCheckCount)
 
 		// And each ID should appear in the response

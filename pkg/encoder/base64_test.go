@@ -21,7 +21,7 @@ func TestBase64EmptyEncode(t *testing.T) {
 	got, err := encoder.Encode([]byte{})
 	require.NoError(t, err)
 
-	require.Equal(t, "", got)
+	require.Empty(t, got)
 }
 
 func TestBase64DecodeEncode(t *testing.T) {

@@ -80,6 +80,14 @@ var usersets = []matrixTest{
 		ListObjectAssertions: []*listobjectstest.Assertion{
 			{
 				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs:oneline_2#alg_combined_oneline",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+				Expectation: []string{"usersets-user:oneline_2"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
 					User:     "directs:oneline_1#alg_combined_oneline",
 					Type:     "usersets-user",
 					Relation: "userset_alg_combined_oneline",
