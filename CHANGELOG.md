@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Separate out experimental list objects optimization flag (`enable-list-objects-optimizations`) from experimental check optimization flag (`enable-check-optimizations`) to allow individual optimization. [#2341](https://github.com/openfga/openfga/pull/2341).
+
 ## [1.8.8] - 2025-03-18
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.7...v1.8.8)
 

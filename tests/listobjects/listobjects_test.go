@@ -36,7 +36,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"})
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
@@ -70,7 +70,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.ListObjectsDeadline = 0 // no deadline
