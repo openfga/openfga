@@ -679,7 +679,7 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithShadowListObjectsCheckResolverEnabled turns of shadow check resolver to allow result comparison.
+// WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsCheckResolverEnabled = enabled
@@ -693,7 +693,7 @@ func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAS
 	}
 }
 
-// WithShadowCheckResolverSamplePercentage is the percentage of requests to sample.
+// WithShadowListObjectsCheckResolverSamplePercentage is the percentage of requests to sample.
 func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsCheckResolverSamplePercentage = rate
