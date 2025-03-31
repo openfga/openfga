@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -954,17 +955,25 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			span.End()
 		}()
 
-		for {
-			res, err := iter.Next(ctx)
-			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
+		var pc panics.Catcher
+
+		pc.Try(func() {
+			for {
+				res, err := iter.Next(ctx)
+				if err != nil {
+					if storage.IterIsDoneOrCancelled(err) {
+						return
+					}
+					telemetry.TraceError(span, err)
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
 					return
 				}
-				telemetry.TraceError(span, err)
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
-				return
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
 			}
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
+		})
+
+		if err := pc.Recovered(); err != nil {
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("panic occurred: %v", err)}, usersetMessageChan)
 		}
 	}()
 	return usersetMessageChan
