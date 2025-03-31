@@ -1,88 +1,97 @@
+version: "2"
 run:
-  timeout: 3m
-  modules-download-mode: readonly
-  allow-parallel-runners: true
   build-tags:
     - docker
-
+  modules-download-mode: readonly
+  allow-parallel-runners: true
 linters:
-  enable: # please keep in sorted order
+  enable:
     - bodyclose
-    - errcheck
     - errname
-    - gci
     - gocritic
     - gocyclo
     - godot
-    - gofmt
-    - goimports
-    - gosimple
-    - govet
     - importas
-    - ineffassign
     - mirror
     - misspell
     - perfsprint
     - protogetter
     - revive
     - staticcheck
-    - stylecheck
     - tagalign
     - testifylint
-    - typecheck
     - unconvert
     - unparam
-    - unused
     - wastedassign
     - whitespace
-    #- gosec Too many different issues. Needs to be tackled in a separate PR.
-
-linters-settings:
-  gofmt:
-    simplify: true
-  staticcheck:
-    checks: [ "all" ]
-  gocyclo:
-    min-complexity: 58 # This is our baseline at the moment.
-  godot:
-    scope: declarations
-    capital: true
-    period: true
-  govet:
-    enable-all: true
-    disable:
-      - shadow
-      - fieldalignment
-  importas:
-    no-unaliased: true # Do not allow unaliased imports of aliased packages.
-    no-extra-aliases: false # Do not allow non-required aliases.
-    alias:
-      - pkg: github.com/openfga/api/proto/openfga/v1
-        alias: openfgav1
-      - pkg: github.com/openfga/language/pkg/go/transformer
-        alias: parser
-  gci:
-    sections:
-      - standard # Standard section: captures all standard packages.
-      - default # Default section: contains all imports that could not be matched to another section type.
-      - prefix(github.com/openfga)  # Custom section: groups all imports with the specified Prefix.
-      - localmodule
-  perfsprint:
-    errorf: false
-    err-error: false
-
-issues:
-  exclude-use-default: false
-  exclude-rules:
-    - path: "(.+)_test.go"
-      linters:
-        - bodyclose
-        - perfsprint
-  exclude:
-    - "should have a package comment" # stylecheck | revive
-    - "exported (.+) should have comment" # revive
-    - "comment on exported (.+) should be of the form" # revive
-    - "(.+) name will be used as (.+) by other packages, and that stutters; consider calling this (.+)" # revive
-    - "Error return value of (.+) is not checked" # errcheck
-    - "unused-parameter" # revive
-    - "exported func (.+) returns unexported type (.+), which can be annoying to use" # revive
+  settings:
+    gocyclo:
+      min-complexity: 58
+    godot:
+      scope: declarations
+      capital: true
+      period: true
+    govet:
+      disable:
+        - shadow
+        - fieldalignment
+      enable-all: true
+    importas:
+      alias:
+        - pkg: github.com/openfga/api/proto/openfga/v1
+          alias: openfgav1
+        - pkg: github.com/openfga/language/pkg/go/transformer
+          alias: parser
+      no-unaliased: true
+      no-extra-aliases: false
+    perfsprint:
+      err-error: false
+      errorf: false
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - bodyclose
+          - perfsprint
+        path: (.+)_test.go
+      - path: (.+)\.go$
+        text: should have a package comment
+      - path: (.+)\.go$
+        text: exported (.+) should have comment
+      - path: (.+)\.go$
+        text: comment on exported (.+) should be of the form
+      - path: (.+)\.go$
+        text: (.+) name will be used as (.+) by other packages, and that stutters; consider calling this (.+)
+      - path: (.+)\.go$
+        text: Error return value of (.+) is not checked
+      - path: (.+)\.go$
+        text: unused-parameter
+      - path: (.+)\.go$
+        text: exported func (.+) returns unexported type (.+), which can be annoying to use
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/openfga)
+        - localmodule
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -37,6 +37,7 @@ const (
 
 	gatewayUserAgentHeader string = "grpcgateway-user-agent"
 	userAgentHeader        string = "user-agent"
+	healthCheckService     string = "grpc.health.v1.Health"
 )
 
 // NewLoggingInterceptor creates a new logging interceptor for gRPC unary server requests.
@@ -54,6 +55,7 @@ type reporter struct {
 	logger         logger.Logger
 	fields         []zap.Field
 	protomarshaler protojson.MarshalOptions
+	serviceName    string
 }
 
 // PostCall is invoked after all PostMsgSend operations.
@@ -79,7 +81,11 @@ func (r *reporter) PostCall(err error, rpcDuration time.Duration) {
 		return
 	}
 
-	r.logger.Info(grpcReqCompleteKey, r.fields...)
+	if r.serviceName == healthCheckService {
+		r.logger.Debug(grpcReqCompleteKey, r.fields...)
+	} else {
+		r.logger.Info(grpcReqCompleteKey, r.fields...)
+	}
 }
 
 // PostMsgSend is invoked once after a unary response or multiple times in
@@ -151,6 +157,7 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			logger:         l,
 			fields:         fields,
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
+			serviceName:    c.Service,
 		}, ctx
 	}
 }

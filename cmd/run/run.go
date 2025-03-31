@@ -803,7 +803,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		authMethod := config.Authn.Method
-		if !(authMethod == "none" || authMethod == "preshared") {
+		if authMethod != "none" && authMethod != "preshared" {
 			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
 		}
 
@@ -834,7 +834,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		playgroundAPIToken := ""
 		if authMethod == "preshared" {
-			playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
+			playgroundAPIToken = config.Authn.Keys[0]
 		}
 
 		mux := http.NewServeMux()

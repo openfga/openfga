@@ -83,7 +83,7 @@ func TestGetStoreID(t *testing.T) {
 		mockServer := mocks.NewMockServerInterface(mockController)
 
 		authorizer := NewAuthorizer(nil, mockServer, logger.NewNoopLogger())
-		require.Equal(t, "", authorizer.AccessControlStoreID())
+		require.Empty(t, authorizer.AccessControlStoreID())
 	})
 }
 

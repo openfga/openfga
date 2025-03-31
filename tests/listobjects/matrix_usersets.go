@@ -57,4 +57,150 @@ var usersets = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "usersets_user_alg_combined_oneline",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "usersets-user:oneline_1", Relation: "userset_alg_combined_oneline", User: "directs:oneline_1#alg_combined_oneline"},
+			{Object: "usersets-user:oneline_2", Relation: "userset_alg_combined_oneline", User: "directs:oneline_2#alg_combined_oneline"},
+
+			{Object: "usersets-user:oneline_3", Relation: "userset_alg_combined_oneline", User: "directs-employee:oneline_1#alg_combined_oneline"},
+			{Object: "usersets-user:oneline_4", Relation: "userset_alg_combined_oneline", User: "directs-employee:oneline_2#alg_combined_oneline"},
+
+			// This satisfies directs#alg_combined_oneline
+			{Object: "directs:oneline_1", Relation: "direct", User: "user:oneline_1"},
+			{Object: "directs:oneline_1", Relation: "other_rel", User: "user:oneline_1"},
+			// This does not
+			{Object: "directs:oneline_2", Relation: "other_rel", User: "user:oneline_1"},
+
+			// This satisfies directs-employee#alg_combined_oneline
+			{Object: "directs-employee:oneline_1", Relation: "direct", User: "employee:oneline_1"},
+			// This does not
+			{Object: "directs-employee:oneline_2", Relation: "other_rel", User: "employee:oneline_1"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs:oneline_2#alg_combined_oneline",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+				Expectation: []string{"usersets-user:oneline_2"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "directs:oneline_1#alg_combined_oneline",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+				Expectation: []string{"usersets-user:oneline_1"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_1",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+
+				Expectation: []string{"usersets-user:oneline_1"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:oneline_1",
+					Type:     "usersets-user",
+					Relation: "userset_alg_combined_oneline",
+				},
+
+				Expectation: []string{"usersets-user:oneline_3"},
+			},
+		},
+	},
+	{
+		Name: "usersets_user_userset_recursive",
+		Tuples: []*openfgav1.TupleKey{
+			// Create a recursive chain
+			{Object: "usersets-user:recursive_level_1", Relation: "userset_recursive", User: "user:recursive_1"},
+			{Object: "usersets-user:recursive_level_2", Relation: "userset_recursive", User: "usersets-user:recursive_level_1#userset_recursive"},
+			{Object: "usersets-user:recursive_level_3", Relation: "userset_recursive", User: "usersets-user:recursive_level_2#userset_recursive"},
+			{Object: "usersets-user:recursive_level_4", Relation: "userset_recursive", User: "usersets-user:recursive_level_3#userset_recursive"},
+
+			// Attach another user in the middle of the chain
+			{Object: "usersets-user:recursive_level_3", Relation: "userset_recursive", User: "user:recursive_2"},
+
+			// Add another branch
+			{Object: "usersets-user:branch_2_level_1", Relation: "userset_recursive", User: "user:other_branch"},
+			{Object: "usersets-user:branch_2_level_2", Relation: "userset_recursive", User: "usersets-user:branch_2_level_1#userset_recursive"},
+			// Now tie it to the first branch created above
+			{Object: "usersets-user:recursive_level_3", Relation: "userset_recursive", User: "usersets-user:branch_2_level_2#userset_recursive"},
+
+			{Object: "usersets-user:branch_with_cycle_1", Relation: "userset_recursive", User: "user:cycle_1"},
+			{Object: "usersets-user:branch_with_cycle_2", Relation: "userset_recursive", User: "usersets-user:branch_with_cycle_1#userset_recursive"},
+			{Object: "usersets-user:branch_with_cycle_3", Relation: "userset_recursive", User: "usersets-user:branch_with_cycle_2#userset_recursive"},
+			{Object: "usersets-user:branch_with_cycle_4", Relation: "userset_recursive", User: "usersets-user:branch_with_cycle_3#userset_recursive"},
+			// Create cycle
+			{Object: "usersets-user:branch_with_cycle_2", Relation: "userset_recursive", User: "usersets-user:branch_with_cycle_4#userset_recursive"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "usersets-user:recursive_level_3#userset_recursive",
+					Type:     "usersets-user",
+					Relation: "userset_recursive",
+				},
+				Expectation: []string{
+					"usersets-user:recursive_level_3",
+					"usersets-user:recursive_level_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:recursive_1",
+					Type:     "usersets-user",
+					Relation: "userset_recursive",
+				},
+				Expectation: []string{
+					"usersets-user:recursive_level_1",
+					"usersets-user:recursive_level_2",
+					"usersets-user:recursive_level_3",
+					"usersets-user:recursive_level_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:recursive_2",
+					Type:     "usersets-user",
+					Relation: "userset_recursive",
+				},
+				Expectation: []string{
+					"usersets-user:recursive_level_3",
+					"usersets-user:recursive_level_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:other_branch",
+					Type:     "usersets-user",
+					Relation: "userset_recursive",
+				},
+				Expectation: []string{
+					"usersets-user:branch_2_level_2",
+					"usersets-user:branch_2_level_1",
+					"usersets-user:recursive_level_3",
+					"usersets-user:recursive_level_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:cycle_1",
+					Type:     "usersets-user",
+					Relation: "userset_recursive",
+				},
+				Expectation: []string{
+					"usersets-user:branch_with_cycle_1",
+					"usersets-user:branch_with_cycle_2",
+					"usersets-user:branch_with_cycle_3",
+					"usersets-user:branch_with_cycle_4",
+				},
+			},
+		},
+	},
 }

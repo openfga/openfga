@@ -3341,7 +3341,7 @@ func TestIsPubliclyAssignable(t *testing.T) {
 }
 
 func TestGetRelationReferenceAsString(t *testing.T) {
-	require.Equal(t, "", GetRelationReferenceAsString(nil))
+	require.Empty(t, GetRelationReferenceAsString(nil))
 	require.Equal(t, "team#member", GetRelationReferenceAsString(DirectRelationReference("team", "member")))
 	require.Equal(t, "team:*", GetRelationReferenceAsString(WildcardRelationReference("team")))
 }

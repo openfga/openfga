@@ -86,7 +86,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 			require.FailNow(t, "expected immediate closure of result channel")
 		}
 	case err := <-errChan:
-		require.FailNow(t, "unexpected error received on error channel :%v", err)
+		require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
 	case <-time.After(30 * time.Millisecond):
 		require.FailNow(t, "unexpected timeout on channel receive, expected receive on error channel")
 	}
@@ -454,7 +454,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			}
 			results = append(results, res.Object)
 		case err := <-errChan:
-			require.FailNow(t, "unexpected error received on error channel :%v", err)
+			require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
 			return
 		case <-ctx.Done():
 			return
@@ -731,7 +731,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 						break ConsumerLoop
 					}
 				case err := <-errChan:
-					require.FailNow(t, "unexpected error received on error channel :%v", err)
+					require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
 					break ConsumerLoop
 				case <-ctx.Done():
 					break ConsumerLoop

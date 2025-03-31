@@ -1332,7 +1332,6 @@ func TestCheckDispatchCount(t *testing.T) {
 		require.True(t, resp.Allowed)
 
 		require.LessOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(1))
-		require.GreaterOrEqual(t, checkRequestMetadata.DispatchCounter.Load(), uint32(0))
 
 		checkRequestMetadata = NewCheckRequestMetadata()
 		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
@@ -2102,7 +2101,7 @@ func TestProduceUsersets(t *testing.T) {
 				require.Equal(t, expectedUsersetsChannelResult[idx].err, result.err)
 				if expectedUsersetsChannelResult[idx].err == nil {
 					require.Equal(t, expectedUsersetsChannelResult[idx].objectRelation, result.objectRelation)
-					require.EqualValues(t, expectedUsersetsChannelResult[idx].objectIDs.Values(), result.objectIDs.Values())
+					require.Equal(t, expectedUsersetsChannelResult[idx].objectIDs.Values(), result.objectIDs.Values())
 				}
 			}
 		})
