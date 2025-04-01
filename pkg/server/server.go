@@ -807,8 +807,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
 			}),
 			// only create the throttler if the feature is enabled, so that we can clean it afterward
-			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
-				"check_dispatch_throttle")),
+			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle"),
 		}
 	}
 
