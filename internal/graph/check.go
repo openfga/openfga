@@ -133,10 +133,12 @@ type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handler
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() {
+func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
 	limiter := make(chan struct{}, concurrencyLimit)
 
 	var wg sync.WaitGroup
+
+	errorChan := make(chan error, 3)
 
 	checker := func(fn CheckHandlerFunc) {
 		defer func() {
@@ -152,8 +154,13 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		}
 
 		go func() {
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
+			recoveredError := panics.Try(func() {
+				resp, err := fn(ctx)
+				resolved <- checkOutcome{resp, err}
+			})
+			if recoveredError != nil {
+				errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+			}
 		}()
 
 		select {
@@ -166,25 +173,45 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 	wg.Add(1)
 	go func() {
-	outer:
-		for _, handler := range handlers {
-			fn := handler // capture loop var
+		recoveredError := panics.Try(func() {
+		outer:
+			for _, handler := range handlers {
+				fn := handler // capture loop var
 
-			select {
-			case limiter <- struct{}{}:
-				wg.Add(1)
-				go checker(fn)
-			case <-ctx.Done():
-				break outer
+				select {
+				case limiter <- struct{}{}:
+					wg.Add(1)
+					go func() {
+						recoveredError := panics.Try(func() {
+							checker(fn)
+						})
+						if recoveredError != nil {
+							errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+						}
+					}()
+				case <-ctx.Done():
+					break outer
+				}
 			}
-		}
 
-		wg.Done()
+			wg.Done()
+		})
+		if recoveredError != nil {
+			errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+		}
 	}()
 
-	return func() {
+	// TODO: refactor to handle the error wherever this is called.
+	return func() error {
 		wg.Wait()
 		close(limiter)
+
+		select {
+		case err := <-errorChan:
+			return err
+		default:
+			return nil
+		}
 	}
 }
 
