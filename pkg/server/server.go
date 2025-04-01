@@ -45,9 +45,10 @@ const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
-	ExperimentalCheckOptimizations  ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalAccessControlParams ExperimentalFeatureFlag = "enable-access-control"
-	allowedLabel                                            = "allowed"
+	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
+	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
+	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
+	allowedLabel                                                 = "allowed"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -179,9 +180,16 @@ type Server struct {
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
 
+	listObjectsCheckResolver       graph.CheckResolver
+	listObjectsCheckResolverCloser func()
+
 	shadowCheckResolverEnabled          bool
 	shadowCheckResolverSamplePercentage int
 	shadowCheckResolverTimeout          time.Duration
+
+	shadowListObjectsCheckResolverEnabled          bool
+	shadowListObjectsCheckResolverSamplePercentage int
+	shadowListObjectsCheckResolverTimeout          time.Duration
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -671,6 +679,27 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
+func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowListObjectsCheckResolverEnabled = enabled
+	}
+}
+
+// WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
+func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowListObjectsCheckResolverTimeout = threshold
+	}
+}
+
+// WithShadowListObjectsCheckResolverSamplePercentage is the percentage of requests to sample.
+func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.shadowListObjectsCheckResolverSamplePercentage = rate
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -696,12 +725,17 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		cacheSettings: serverconfig.NewDefaultCacheSettings(),
-		checkResolver: nil,
+		cacheSettings:            serverconfig.NewDefaultCacheSettings(),
+		checkResolver:            nil,
+		listObjectsCheckResolver: nil,
 
 		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
 		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
 		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
+
+		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
+		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
+		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -773,8 +807,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
 			}),
 			// only create the throttler if the feature is enabled, so that we can clean it afterward
-			graph.WithThrottler(throttler.NewConstantRateThrottler(s.checkDispatchThrottlingFrequency,
-				"check_dispatch_throttle")),
+			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle"),
 		}
 	}
 
@@ -827,6 +861,31 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
+	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithName("list-objects"),
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, err
+	}
+
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
@@ -850,6 +909,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	s.checkResolverCloser()
+	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
 	if s.listObjectsDispatchThrottler != nil {

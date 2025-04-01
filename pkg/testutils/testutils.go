@@ -262,7 +262,7 @@ func EnsureServiceHealthy(t testing.TB, grpcAddr, httpAddr string, transportCred
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	config := serverconfig.MustDefaultConfig()
-	config.Experimentals = append(config.Experimentals, "enable-check-optimizations")
+	config.Experimentals = append(config.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
 
 	httpPort, httpPortReleaser := TCPRandomPort()
 	defer httpPortReleaser()

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -46,6 +47,13 @@ func WithDispatchThrottlingCheckResolverConfig(config DispatchThrottlingCheckRes
 func WithThrottler(throttler throttler.Throttler) DispatchThrottlingCheckResolverOpt {
 	return func(r *DispatchThrottlingCheckResolver) {
 		r.throttler = throttler
+	}
+}
+
+// WithConstantRateThrottler sets the constant rate throttler to be used for DispatchThrottlingCheckResolver.
+func WithConstantRateThrottler(frequency time.Duration, metricLabel string) DispatchThrottlingCheckResolverOpt {
+	return func(r *DispatchThrottlingCheckResolver) {
+		r.throttler = throttler.NewConstantRateThrottler(frequency, metricLabel)
 	}
 }
 
