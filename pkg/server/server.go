@@ -659,6 +659,7 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 }
 
 // WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
+// Note that ShadowCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowCheckResolverEnabled = enabled
@@ -680,13 +681,14 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 }
 
 // WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
+// Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsCheckResolverEnabled = enabled
 	}
 }
 
-// WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
+// WithShadowListObjectsCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
 func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsCheckResolverTimeout = threshold
