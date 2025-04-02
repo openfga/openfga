@@ -256,6 +256,162 @@ var usersets = []matrixTest{
 		},
 	},
 	{
+		Name: "userset_recursive_combined_w3",
+		Tuples: []*openfgav1.TupleKey{
+			// direct assign
+			{Object: "usersets-user:userset_recursive_combined_w3_direct", Relation: "userset_recursive_combined_w3", User: "user:userset_recursive_combined_w3_direct"},
+			// public wildcard direct assign
+			{Object: "usersets-user:userset_recursive_combined_w3_public", Relation: "userset_recursive_combined_w3", User: "user:*"},
+			// recursive via usersets-user#userset_recursive_combined_w3
+			{Object: "usersets-user:userset_recursive_combined_w3_direct_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_direct#userset_recursive_combined_w3"},
+			{Object: "usersets-user:userset_recursive_combined_w3_direct_recursive_2", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_direct_recursive_1#userset_recursive_combined_w3"},
+			{Object: "usersets-user:userset_recursive_combined_w3_public_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_public#userset_recursive_combined_w3"},
+			{Object: "usersets-user:userset_recursive_combined_w3_public_recursive_2", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_public_recursive_1#userset_recursive_combined_w3"},
+			// usersets-user#userset
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_entry", Relation: "userset", User: "directs:userset_recursive_combined_w3_userset#direct_comb"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset_entry#userset"},
+			{Object: "directs:userset_recursive_combined_w3_userset", Relation: "direct_comb", User: "user:userset_recursive_combined_w3_userset_direct"},
+			{Object: "directs:userset_recursive_combined_w3_userset", Relation: "direct_comb", User: "user:userset_recursive_combined_w3_userset_direct_cond", Condition: xCond},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset#userset_recursive_combined_w3"},
+			// employee direct
+			{Object: "usersets-user:userset_recursive_combined_w3_employee_direct", Relation: "userset_recursive_combined_w3", User: "employee:userset_recursive_combined_w3_employee_direct"},
+			{Object: "usersets-user:userset_recursive_combined_w3_employee_direct_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_employee_direct#userset_recursive_combined_w3"},
+			// usersets-user#userset via employee (public and public cond)
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee_entry", Relation: "userset", User: "directs-employee:userset_recursive_combined_w3_userset_employee#direct"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset_employee_entry#userset"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset_employee#userset_recursive_combined_w3"},
+			{Object: "directs-employee:userset_recursive_combined_w3_userset_employee", Relation: "direct", User: "employee:*"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee_entry_cond", Relation: "userset", User: "directs-employee:userset_recursive_combined_w3_userset_employee_cond#direct"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee_cond", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset_employee_entry_cond#userset"},
+			{Object: "usersets-user:userset_recursive_combined_w3_userset_employee_cond_recursive_1", Relation: "userset_recursive_combined_w3", User: "usersets-user:userset_recursive_combined_w3_userset_employee_cond#userset_recursive_combined_w3"},
+			{Object: "directs-employee:userset_recursive_combined_w3_userset_employee_cond", Relation: "direct", User: "employee:*", Condition: xCond},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_combined_w3_direct",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_direct",
+					"usersets-user:userset_recursive_combined_w3_public",
+					"usersets-user:userset_recursive_combined_w3_direct_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_direct_recursive_2",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_public",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "usersets-user:userset_recursive_combined_w3_userset_entry#userset",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_userset",
+					"usersets-user:userset_recursive_combined_w3_userset_recursive_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_combined_w3_userset_direct",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_public",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_2",
+					"usersets-user:userset_recursive_combined_w3_userset",
+					"usersets-user:userset_recursive_combined_w3_userset_recursive_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_combined_w3_userset_direct_cond",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_public",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_2",
+					"usersets-user:userset_recursive_combined_w3_userset",
+					"usersets-user:userset_recursive_combined_w3_userset_recursive_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_combined_w3_userset_direct_cond",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Context: invalidConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_public",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_userset_employee",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_cond",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_cond_recursive_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Context: invalidConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_userset_employee",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_recursive_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:userset_recursive_combined_w3_employee_direct",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_combined_w3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_combined_w3_userset_employee",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_cond",
+					"usersets-user:userset_recursive_combined_w3_userset_employee_cond_recursive_1",
+					"usersets-user:userset_recursive_combined_w3_employee_direct",
+					"usersets-user:userset_recursive_combined_w3_employee_direct_recursive_1",
+				},
+			},
+		},
+	},
+	{
 		Name: "usersets_tuple_cycle_len2_userset",
 		Tuples: []*openfgav1.TupleKey{
 			// cycle
