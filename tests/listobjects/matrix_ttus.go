@@ -80,4 +80,50 @@ var ttus = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "ttus_recursive",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:recursive_1", Relation: "ttu_recursive", User: "user:recursive_anne"},
+			{Object: "ttus:recursive_2", Relation: "ttu_parent", User: "ttus:recursive_1"},
+			{Object: "ttus:recursive_3", Relation: "ttu_parent", User: "ttus:recursive_2"},
+
+			// Connect anne twice, recursive_3 should only return once
+			{Object: "ttus:recursive_3", Relation: "ttu_recursive", User: "user:recursive_anne"},
+
+			{Object: "ttus:recursive_2", Relation: "ttu_recursive_public", User: "user:*"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "ttus:recursive_2",
+					Type:     "ttus",
+					Relation: "ttu_parent",
+				},
+				Expectation: []string{"ttus:recursive_3"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:public",
+					Type:     "ttus",
+					Relation: "ttu_recursive_public",
+				},
+				Expectation: []string{
+					"ttus:recursive_2",
+					"ttus:recursive_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:recursive_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive",
+				},
+				Expectation: []string{
+					"ttus:recursive_1",
+					"ttus:recursive_2",
+					"ttus:recursive_3",
+				},
+			},
+		},
+	},
 }
