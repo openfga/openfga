@@ -227,7 +227,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	defer func() {
 		cancel()
-		err = drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+		}
 		close(resultChan)
 	}()
 
@@ -289,7 +292,10 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 
 	defer func() {
 		cancel()
-		err = drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+		}
 		close(resultChan)
 	}()
 
