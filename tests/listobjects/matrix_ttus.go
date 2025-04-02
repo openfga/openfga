@@ -57,9 +57,11 @@ var ttus = []matrixTest{
 		Name: "ttus_recursive",
 		Tuples: []*openfgav1.TupleKey{
 			{Object: "ttus:recursive_1", Relation: "ttu_recursive", User: "user:recursive_anne"},
-
 			{Object: "ttus:recursive_2", Relation: "ttu_parent", User: "ttus:recursive_1"},
 			{Object: "ttus:recursive_3", Relation: "ttu_parent", User: "ttus:recursive_2"},
+
+			// Connect anne twice, recursive_3 should only return once
+			{Object: "ttus:recursive_3", Relation: "ttu_recursive", User: "user:recursive_anne"},
 
 			{Object: "ttus:recursive_2", Relation: "ttu_recursive_public", User: "user:*"},
 		},
