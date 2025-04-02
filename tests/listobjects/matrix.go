@@ -129,8 +129,8 @@ type ttus
     
     define ttu_parent: [ttus]
   	define ttu_recursive: [user] or ttu_recursive from ttu_parent
-  	define ttu_recursive_public: [user:*] or ttu_recursive_public from ttu_parent
-  	define ttu_recursive_combined_w3: [user, user:*, employee] or ttu_recursive_combined_w3 from ttu_parent or direct from direct_parent
+    define ttu_recursive_public: [user:*] or ttu_recursive_public from ttu_parent
+    define ttu_recursive_combined_w3: [user, user:*, employee] or ttu_recursive_combined_w3 from ttu_parent or direct from direct_parent
     define ttu_recursive_alg_combined_oneline: ([user] or ttu_recursive_alg_combined_oneline from ttu_parent) or (user_rel1 or (user_rel2 and user_rel3)) 
     define ttu_recursive_alg_combined_w2: ([user] or ttu_recursive_alg_combined from ttu_parent) or (user_rel1 or (user_rel2 and ttu_direct)) 
     define ttu_recursive_alg_combined: ttu_recursive_alg_combined from ttu_parent or user_rel4
