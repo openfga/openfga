@@ -126,4 +126,91 @@ var ttus = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "ttus_recursive_alg_combined_w2",
+		Tuples: []*openfgav1.TupleKey{
+			// Direct, should always return
+			{Object: "ttus:recursive_w2_1", Relation: "ttu_recursive_alg_combined_w2", User: "user:w2_anne"},
+
+			// Satisfies the ttu_recursive_alg_combined relation needed in ttu_parent links below iff condition valid
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel2", User: "user:w2_anne", Condition: xCond},
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel3", User: "user:w2_anne"},
+
+			// Recursive chain, will return as well if condition above is valid
+			{Object: "ttus:recursive_w2_2", Relation: "ttu_parent", User: "ttus:recursive_w2_1c"},
+			{Object: "ttus:recursive_w2_3", Relation: "ttu_parent", User: "ttus:recursive_w2_2"},
+
+			// This satisfies the rightmost AND iff the condition is valid
+			{Object: "ttus:recursive_w2_a", Relation: "user_rel2", User: "user:w2_bob", Condition: xCond},
+			{Object: "directs:recursive_w2_a", Relation: "direct", User: "user:w2_bob"},
+			{Object: "ttus:recursive_w2_a", Relation: "direct_parent", User: "directs:recursive_w2_a"},
+
+			// Satisfies the ttu_recursive_alg_combined relation also, testing wildcard with condition
+			{Object: "ttus:recursive_w2_ab", Relation: "user_rel2", User: "user:w2_charlie"},
+			{Object: "ttus:recursive_w2_ab", Relation: "user_rel3", User: "user:*", Condition: xCond},
+			{Object: "ttus:recursive_w2_abc", Relation: "ttu_parent", User: "ttus:recursive_w2_ab"},
+			{Object: "ttus:recursive_w2_abcd", Relation: "ttu_parent", User: "ttus:recursive_w2_abc"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Expectation: []string{
+					"ttus:recursive_w2_1",
+					"ttus:recursive_w2_2",
+					"ttus:recursive_w2_3",
+				},
+				Context: validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				// only the direct [user] relation returns when condition fails
+				Expectation: []string{"ttus:recursive_w2_1"},
+				Context:     invalidConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil, // nil due to failed condition
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{"ttus:recursive_w2_a"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_charlie",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{"ttus:recursive_w2_abc", "ttus:recursive_w2_abcd"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_charlie",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil,
+			},
+		},
+	},
 }
