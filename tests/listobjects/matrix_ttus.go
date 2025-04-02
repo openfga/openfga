@@ -126,4 +126,181 @@ var ttus = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "ttus_recursive_alg_combined_w2",
+		Tuples: []*openfgav1.TupleKey{
+			// Direct, should always return
+			{Object: "ttus:recursive_w2_1", Relation: "ttu_recursive_alg_combined_w2", User: "user:w2_anne"},
+
+			// Satisfies the ttu_recursive_alg_combined relation needed in ttu_parent links below iff condition valid
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel2", User: "user:w2_anne", Condition: xCond},
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel3", User: "user:w2_anne"},
+
+			// Recursive chain, will return as well if condition above is valid
+			{Object: "ttus:recursive_w2_2", Relation: "ttu_parent", User: "ttus:recursive_w2_1c"},
+			{Object: "ttus:recursive_w2_3", Relation: "ttu_parent", User: "ttus:recursive_w2_2"},
+
+			// This satisfies the rightmost AND iff the condition is valid
+			{Object: "ttus:recursive_w2_a", Relation: "user_rel2", User: "user:w2_bob", Condition: xCond},
+			{Object: "directs:recursive_w2_a", Relation: "direct", User: "user:w2_bob"},
+			{Object: "ttus:recursive_w2_a", Relation: "direct_parent", User: "directs:recursive_w2_a"},
+
+			// Satisfies the ttu_recursive_alg_combined relation also, testing wildcard with condition
+			{Object: "ttus:recursive_w2_ab", Relation: "user_rel2", User: "user:w2_charlie"},
+			{Object: "ttus:recursive_w2_ab", Relation: "user_rel3", User: "user:*", Condition: xCond},
+			{Object: "ttus:recursive_w2_abc", Relation: "ttu_parent", User: "ttus:recursive_w2_ab"},
+			{Object: "ttus:recursive_w2_abcd", Relation: "ttu_parent", User: "ttus:recursive_w2_abc"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Expectation: []string{
+					"ttus:recursive_w2_1",
+					"ttus:recursive_w2_2",
+					"ttus:recursive_w2_3",
+				},
+				Context: validConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				// only the direct [user] relation returns when condition fails
+				Expectation: []string{"ttus:recursive_w2_1"},
+				Context:     invalidConditionContext,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil, // nil due to failed condition
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{"ttus:recursive_w2_a"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_charlie",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{"ttus:recursive_w2_abc", "ttus:recursive_w2_abcd"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:w2_charlie",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_w2",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil,
+			},
+		},
+	},
+	{
+		Name: "ttus_recursive_alg_combined_oneline",
+		Tuples: []*openfgav1.TupleKey{
+			// This satisfies rel2 AND rel3 iff condition passes
+			{Object: "ttus:oneline_public_1", Relation: "user_rel2", User: "user:oneline_anne"},
+			{Object: "ttus:oneline_public_1", Relation: "user_rel3", User: "user:*", Condition: xCond},
+			{Object: "ttus:oneline_public_2", Relation: "ttu_parent", User: "ttus:oneline_public_1"},
+
+			// oneline_public_3 should not return below
+			{Object: "ttus:oneline_public_2", Relation: "ttu_parent", User: "ttus:oneline_public_3"},
+
+			// This also satisfies rel2 and rel3 but puts the condition on the other rel
+			{Object: "ttus:oneline_public_1", Relation: "user_rel2", User: "user:oneline_bob", Condition: xCond},
+			{Object: "ttus:oneline_public_1", Relation: "user_rel3", User: "user:oneline_bob"},
+
+			// Testing user_rel1 part of OR
+			{Object: "ttus:oneline_rel1_1", Relation: "ttu_parent", User: "ttus:oneline_rel1_2"},
+			{Object: "ttus:oneline_rel1_2", Relation: "ttu_parent", User: "ttus:oneline_rel1_3"},
+			{Object: "ttus:oneline_rel1_3", Relation: "ttu_parent", User: "ttus:oneline_rel1_4"},
+
+			// Attach user on _3, which is a parent of _2 and _1 (but not _4)
+			{Object: "ttus:oneline_rel1_3", Relation: "user_rel1", User: "user:oneline_charlie"},
+
+			// simplest, direct relation
+			{Object: "ttus:oneline_direct", Relation: "ttu_recursive_alg_combined_oneline", User: "user:oneline_direct"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				Context: validConditionContext,
+				// With valid condition, should get public_1 and public_2
+				Expectation: []string{"ttus:oneline_public_1", "ttus:oneline_public_2"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				Context: invalidConditionContext,
+				// With invalid condition, should get neither
+				Expectation: nil,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				Context: validConditionContext,
+				// With valid condition, should get both
+				Expectation: []string{"ttus:oneline_public_1", "ttus:oneline_public_2"},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				Context: invalidConditionContext,
+				// With invalid condition, should get neither
+				Expectation: nil,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_charlie",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				// ttus:oneline_rel1_4 should not appear here
+				Expectation: []string{
+					"ttus:oneline_rel1_1",
+					"ttus:oneline_rel1_2",
+					"ttus:oneline_rel1_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:oneline_direct",
+					Type:     "ttus",
+					Relation: "ttu_recursive_alg_combined_oneline",
+				},
+				Expectation: []string{"ttus:oneline_direct"},
+			},
+		},
+	},
 }
