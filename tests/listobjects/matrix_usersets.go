@@ -204,6 +204,58 @@ var usersets = []matrixTest{
 		},
 	},
 	{
+		Name: "userset_recursive_public",
+		Tuples: []*openfgav1.TupleKey{
+			// Create a recursive chain
+			{Object: "usersets-user:recursive_public_level_1", Relation: "userset_recursive_public", User: "user:*"},
+			{Object: "usersets-user:recursive_public_level_2", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_level_1#userset_recursive_public"},
+			{Object: "usersets-user:recursive_public_level_3", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_level_2#userset_recursive_public"},
+			{Object: "usersets-user:recursive_public_level_4", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_level_3#userset_recursive_public"},
+
+			// Attach another user in the middle of the chain
+			{Object: "usersets-user:recursive_public_level_3", Relation: "userset_recursive_public", User: "user:*"},
+
+			// Another branch-chain
+			{Object: "usersets-user:recursive_public_branch_level_1", Relation: "userset_recursive_public", User: "user:*"},
+			{Object: "usersets-user:recursive_public_branch_level_2", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_branch_level_1#userset_recursive_public"},
+			{Object: "usersets-user:recursive_public_branch_level_3", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_branch_level_2#userset_recursive_public"},
+			{Object: "usersets-user:recursive_public_branch_level_4", Relation: "userset_recursive_public", User: "usersets-user:recursive_public_branch_level_3#userset_recursive_public"},
+
+			// Attach another user in the middle of the chain
+			{Object: "usersets-user:recursive_public_branch_level_2", Relation: "userset_recursive_public", User: "user:*"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "usersets-user:recursive_public_level_3#userset_recursive_public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_public",
+				},
+				Expectation: []string{
+					"usersets-user:recursive_public_level_3",
+					"usersets-user:recursive_public_level_4",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_public",
+				},
+				Expectation: []string{
+					"usersets-user:recursive_public_level_1",
+					"usersets-user:recursive_public_level_2",
+					"usersets-user:recursive_public_level_3",
+					"usersets-user:recursive_public_level_4",
+					"usersets-user:recursive_public_branch_level_1",
+					"usersets-user:recursive_public_branch_level_2",
+					"usersets-user:recursive_public_branch_level_3",
+					"usersets-user:recursive_public_branch_level_4",
+				},
+			},
+		},
+	},
+	{
 		Name: "usersets_tuple_cycle_len2_userset",
 		Tuples: []*openfgav1.TupleKey{
 			// cycle
