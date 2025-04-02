@@ -106,11 +106,11 @@ var ttus = []matrixTest{
 			{Object: "ttus:recursive_w2_1", Relation: "ttu_recursive_alg_combined_w2", User: "user:w2_anne"},
 
 			// Satisfies the ttu_recursive_alg_combined relation needed in ttu_parent links below iff condition valid
-			{Object: "ttus:recursive_w2_1", Relation: "user_rel2", User: "user:w2_anne", Condition: xCond},
-			{Object: "ttus:recursive_w2_1", Relation: "user_rel3", User: "user:w2_anne"},
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel2", User: "user:w2_anne", Condition: xCond},
+			{Object: "ttus:recursive_w2_1c", Relation: "user_rel3", User: "user:w2_anne"},
 
 			// Recursive chain, will return as well if condition above is valid
-			{Object: "ttus:recursive_w2_2", Relation: "ttu_parent", User: "ttus:recursive_w2_1"},
+			{Object: "ttus:recursive_w2_2", Relation: "ttu_parent", User: "ttus:recursive_w2_1c"},
 			{Object: "ttus:recursive_w2_3", Relation: "ttu_parent", User: "ttus:recursive_w2_2"},
 
 			// This satisfies the rightmost AND iff the condition is valid
