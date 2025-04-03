@@ -378,4 +378,71 @@ var ttus = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "ttus_recursive_combined_w3",
+		Tuples: []*openfgav1.TupleKey{
+			// Create a recursive chain
+			{Object: "ttus:rc_2", Relation: "ttu_parent", User: "ttus:rc_1"},
+			{Object: "ttus:rc_3", Relation: "ttu_parent", User: "ttus:rc_2"},
+
+			// anne is the only user who should see rc_1, everyone else relates to one of its children
+			{Object: "ttus:rc_1", Relation: "ttu_recursive_combined_w3", User: "user:rc_anne"},
+
+			// Bob relates to rc_2 and its children (rc_3). He should not see ttus:rc_1
+			{Object: "directs:rc_2", Relation: "direct", User: "user:rc_bob"},
+			{Object: "ttus:rc_2", Relation: "direct_parent", User: "directs:rc_2"},
+
+			// Create a fork in the recursive chain, rc_2 now has multiple ttu_parent chains
+			{Object: "ttus:rc_2", Relation: "ttu_parent", User: "ttus:rc_a"},
+			{Object: "ttus:rc_a", Relation: "ttu_parent", User: "ttus:rc_b"},
+
+			// employee can see rc_a and its children (rc_2, rc_3)
+			{Object: "ttus:rc_a", Relation: "ttu_recursive_combined_w3", User: "employee:rc_a"},
+
+			// Returns for any user
+			{Object: "ttus:rc_wild_parent", Relation: "ttu_recursive_combined_w3", User: "user:*"},
+			{Object: "ttus:rc_wild_child", Relation: "ttu_parent", User: "ttus:rc_wild_parent"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:rc_anne",
+					Type:     "ttus",
+					Relation: "ttu_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"ttus:rc_1",
+					"ttus:rc_2",
+					"ttus:rc_3",
+					"ttus:rc_wild_parent",
+					"ttus:rc_wild_child",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:rc_bob",
+					Type:     "ttus",
+					Relation: "ttu_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"ttus:rc_2",
+					"ttus:rc_3",
+					"ttus:rc_wild_parent",
+					"ttus:rc_wild_child",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:rc_a",
+					Type:     "ttus",
+					Relation: "ttu_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"ttus:rc_a",
+					"ttus:rc_2",
+					"ttus:rc_3",
+				},
+			},
+		},
+	},
 }
