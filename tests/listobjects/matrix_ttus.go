@@ -303,4 +303,79 @@ var ttus = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "ttus_tuple_cycle_len2_ttu",
+		Tuples: []*openfgav1.TupleKey{
+			// Create a cycle of ttus -> directs
+			{Object: "ttus:cycle_1", Relation: "mult_parent_types", User: "directs:cycle_1"},
+			{Object: "directs:cycle_1", Relation: "cycle_len2_parent", User: "ttus:cycle_2"},
+			{Object: "ttus:cycle_2", Relation: "mult_parent_types", User: "directs:cycle_2"},
+			{Object: "directs:cycle_2", Relation: "cycle_len2_parent", User: "ttus:cycle_3"},
+
+			// Conditionally relate directs
+			{Object: "ttus:cycle_3", Relation: "mult_parent_types", User: "directs:cycle_3", Condition: xCond},
+			{Object: "directs:cycle_3", Relation: "tuple_cycle_len2_ttu", User: "user:ttu_cycle_bob"},
+
+			// Conditionally relate directs-employee in the same place
+			{Object: "ttus:cycle_3", Relation: "mult_parent_types", User: "directs-employee:cycle_3", Condition: xCond},
+			{Object: "directs-employee:cycle_3", Relation: "tuple_cycle_len2_ttu", User: "user:ttu_cycle_employee"},
+
+			// User attached unconditionally in the middle of the chain, charlie should not receive ttus:cycle_3
+			{Object: "directs:cycle_2", Relation: "tuple_cycle_len2_ttu", User: "user:ttu_charlie"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:ttu_cycle_bob",
+					Type:     "ttus",
+					Relation: "tuple_cycle_len2_ttu",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"ttus:cycle_1",
+					"ttus:cycle_2",
+					"ttus:cycle_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:ttu_cycle_bob",
+					Type:     "ttus",
+					Relation: "tuple_cycle_len2_ttu",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:ttu_cycle_employee",
+					Type:     "ttus",
+					Relation: "tuple_cycle_len2_ttu",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"ttus:cycle_1",
+					"ttus:cycle_2",
+					"ttus:cycle_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:ttu_cycle_employee",
+					Type:     "ttus",
+					Relation: "tuple_cycle_len2_ttu",
+				},
+				Context:     invalidConditionContext,
+				Expectation: nil,
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:ttu_charlie",
+					Type:     "ttus",
+					Relation: "tuple_cycle_len2_ttu",
+				},
+				Expectation: []string{"ttus:cycle_1", "ttus:cycle_2"},
+			},
+		},
+	},
 }
