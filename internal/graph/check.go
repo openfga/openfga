@@ -162,6 +162,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 				resolved <- checkOutcome{resp, err}
 			})
 			if recoveredError != nil {
+				// TODO: test this
 				errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 			}
 		}()
@@ -189,6 +190,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 							checker(fn)
 						})
 						if recoveredError != nil {
+							// TODO: test this
 							errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 						}
 					}()
@@ -200,6 +202,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 			wg.Done()
 		})
 		if recoveredError != nil {
+			// TODO: test this -> maybe don't need this test because it won't panic?
 			errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 		}
 	}()
@@ -230,6 +233,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		drainErr := drain()
 		if drainErr != nil {
 			err = drainErr
+			resp = nil
 		}
 		close(resultChan)
 	}()
@@ -913,6 +917,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
+			// TODO: test this
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %v", recoveredError)}, outcomes)
 		}
@@ -976,9 +981,9 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	defer span.End()
 
 	usersetsMap := make(usersetsMapType)
+	defer close(usersetsChan)
 
 	recoveredError := panics.Try(func() {
-		defer close(usersetsChan)
 		for {
 			t, err := iter.Next(ctx)
 			if err != nil {
@@ -1061,6 +1066,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			}
 		})
 		if recoveredError != nil {
+			// TODO: test this
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("panic occurred: %v", recoveredError)}, usersetMessageChan)
 		}

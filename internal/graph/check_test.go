@@ -65,6 +65,24 @@ var (
 	}
 )
 
+const panicErr = "mock panic for testing"
+
+// mockTupleKeyIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
+type mockTupleKeyIterator struct{}
+
+func (m *mockTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+	panic(panicErr)
+}
+
+func (m *mockTupleKeyIterator) Stop() {
+	panic(panicErr)
+}
+
+// Head is a mock implementation of the Head method for the storage.Iterator interface.
+func (m *mockTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	panic(panicErr)
+}
+
 // usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
@@ -460,6 +478,26 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		wg.Wait() // just to make sure to avoid test leaks
 	})
+
+	t.Run("should_error_if_base_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, panicHandler, falseHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.Nil(t, resp)
+	})
+
+	t.Run("should_error_if_sub_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.Nil(t, resp)
+	})
 }
 
 func TestIntersectionCheckFuncReducer(t *testing.T) {
@@ -755,6 +793,16 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.Nil(t, resp)
 	})
 }
 
@@ -1637,6 +1685,16 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		wg.Wait() // just to make sure to avoid test leaks
 	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := union(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.Nil(t, resp)
+	})
 }
 
 func TestCheckWithFastPathOptimization(t *testing.T) {
@@ -2106,6 +2164,47 @@ func TestProduceUsersets(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		iter := &mockTupleKeyIterator{}
+
+		localChecker := NewLocalChecker(WithUsersetBatchSize(serverconfig.DefaultUsersetBatchSize))
+		usersetsChan := make(chan usersetsChannelType)
+		usersetDetails := func(t *openfgav1.TupleKey) (string, string, error) {
+			return "", "", nil
+		}
+
+		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+		pool := concurrency.NewPool(context.Background(), 2)
+
+		pool.Go(func(ctx context.Context) error {
+			localChecker.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+			return nil
+		})
+		var results []usersetsChannelType
+		pool.Go(func(ctx context.Context) error {
+			for {
+				select {
+				case <-ctx.Done():
+					return nil
+				case newBatch, channelOpen := <-usersetsChan:
+					if !channelOpen {
+						return nil
+					}
+					results = append(results, usersetsChannelType{
+						err:            newBatch.err,
+						objectRelation: newBatch.objectRelation,
+						objectIDs:      newBatch.objectIDs,
+					})
+				}
+			}
+		})
+		err := pool.Wait()
+		require.NoError(t, err)
+		for _, result := range results {
+			require.ErrorContains(t, result.err, panicErr)
+		}
+	})
 }
 
 func TestCheckAssociatedObjects(t *testing.T) {
@@ -3242,6 +3341,44 @@ func TestProcessDispatch(t *testing.T) {
 			require.Equal(t, tt.expectedOutcomes, outcomes)
 		})
 	}
+
+	// TODO: how to test this?
+	t.Run("should_error_if_dispatch_panics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		checker := NewLocalChecker()
+		defer checker.Close()
+		mockResolver := NewMockCheckResolver(ctrl)
+		checker.SetDelegate(mockResolver)
+		mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(&ResolveCheckResponse{
+			Allowed: true,
+		}, nil)
+
+		dispatchMsgChan := make(chan dispatchMsg, 2)
+		dispatchMsgChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: req,
+				tk:        nil,
+			},
+		}
+		dispatchMsgChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: req,
+				tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			},
+		}
+
+		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchMsgChan)
+		close(outcomeChan)
+		close(dispatchMsgChan)
+		outcomes := helperReceivedOutcome(outcomeChan)
+		fmt.Printf("outcomes: %v\n", outcomes)
+
+		require.Equal(t, nil, outcomes)
+	})
 }
 
 func TestConsumeDispatch(t *testing.T) {
@@ -3512,6 +3649,44 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_produceUsersetDispatches_panics", func(t *testing.T) {
+		iter := &mockTupleKeyIterator{}
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+		resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
+		require.ErrorContains(t, err, panicErr)
+		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
+}
+
+func TestCheckMembership(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_error_if_produceUsersets_panics", func(t *testing.T) {
+		iter := &mockTupleKeyIterator{}
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+		resp, err := checker.checkMembership(ctx, req, iter, func(*openfgav1.TupleKey) (string, string, error) {
+			return "", "", nil
+		})
+		require.ErrorContains(t, err, panicErr)
+		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
 }
 
 func TestCheckTTUSlowPath(t *testing.T) {
@@ -3632,6 +3807,21 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_produceTTUDispatches_panics", func(t *testing.T) {
+		iter := &mockTupleKeyIterator{}
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+		rewrite := typesystem.TupleToUserset("owner", "member")
+		resp, err := checker.checkTTUSlowPath(ctx, req, rewrite, iter)
+		require.ErrorContains(t, err, panicErr)
+		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
 }
 
 func TestStreamedLookupUsersetFromIterator(t *testing.T) {
@@ -3815,6 +4005,22 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 			require.Equal(t, tt.expected, userToUsersetMessages)
 		})
 	}
+
+	// t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+	// 	ctx := context.Background()
+	// 	iter := &mockTupleKeyIterator{}
+	// 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
+
+	// 	var userToUsersetMessages []usersetMessage
+
+	// 	for userToUsersetMessage := range userToUsersetMessageChan {
+	// 		userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
+	// 	}
+
+	// 	require.Equal(t, tt.expected, userToUsersetMessages)
+	// 	require.ErrorContains(t, err, panicErr)
+	// 	require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	// })
 }
 
 func TestProcessUsersetMessage(t *testing.T) {
