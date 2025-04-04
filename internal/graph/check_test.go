@@ -110,8 +110,9 @@ func TestResolver(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
+	ctx := context.Background()
+
 	t.Run("should_return_error_if_handler_panics", func(t *testing.T) {
-		ctx := context.Background()
 		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
 			panic(panicErr)
 		}
@@ -124,7 +125,6 @@ func TestResolver(t *testing.T) {
 	})
 
 	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
-		ctx, _ := context.WithCancel(context.Background())
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, nil
 		}
@@ -4078,7 +4078,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 		for userToUsersetMessage := range userToUsersetMessageChan {
 			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
-			require.Equal(t, "", userToUsersetMessage.userset)
+			require.Empty(t, userToUsersetMessage.userset)
 		}
 	})
 }
