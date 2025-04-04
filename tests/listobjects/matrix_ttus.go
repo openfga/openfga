@@ -443,6 +443,17 @@ var ttus = []matrixTest{
 					"ttus:rc_3",
 				},
 			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:public",
+					Type:     "ttus",
+					Relation: "ttu_recursive_combined_w3",
+				},
+				Expectation: []string{
+					"ttus:rc_wild_parent",
+					"ttus:rc_wild_child",
+				},
+			},
 		},
 	},
 }
