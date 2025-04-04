@@ -142,7 +142,6 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 	checker := func(fn CheckHandlerFunc) {
 		defer func() {
-			wg.Done()
 			<-limiter
 		}()
 
@@ -162,7 +161,6 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 				resolved <- checkOutcome{resp, err}
 			})
 			if recoveredError != nil {
-				// TODO: test this
 				errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 			}
 		}()
@@ -177,34 +175,29 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 	wg.Add(1)
 	go func() {
-		recoveredError := panics.Try(func() {
-		outer:
-			for _, handler := range handlers {
-				fn := handler // capture loop var
+		// This goroutine can't panic
+	outer:
+		for _, handler := range handlers {
+			fn := handler // capture loop var
 
-				select {
-				case limiter <- struct{}{}:
-					wg.Add(1)
-					go func() {
-						recoveredError := panics.Try(func() {
-							checker(fn)
-						})
-						if recoveredError != nil {
-							// TODO: test this
-							errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
-						}
-					}()
-				case <-ctx.Done():
-					break outer
-				}
+			select {
+			case limiter <- struct{}{}:
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					recoveredError := panics.Try(func() {
+						checker(fn)
+					})
+					if recoveredError != nil {
+						errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+					}
+				}()
+			case <-ctx.Done():
+				break outer
 			}
-
-			wg.Done()
-		})
-		if recoveredError != nil {
-			// TODO: test this -> maybe don't need this test because it won't panic?
-			errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 		}
+
+		wg.Done()
 	}()
 
 	return func() error {
@@ -662,9 +655,10 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
+	panicChan := make(chan error, 1)
 
 	go func() {
 		recoveredError := panics.Try(func() {
@@ -672,8 +666,8 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 				// We need to wait always to avoid a goroutine leak.
 				_ = dispatchPool.Wait()
 				close(outcomes)
+				close(panicChan)
 			}()
-
 			for {
 				select {
 				case <-ctx.Done():
@@ -705,17 +699,16 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 			}
 		})
 		if recoveredError != nil {
-			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %v", recoveredError)}, outcomes)
+			panicChan <- fmt.Errorf("panic occurred: %v", recoveredError)
 		}
 	}()
 
-	return outcomes
+	return outcomes, panicChan
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
+	outcomeChannel, panicChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -727,6 +720,11 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
+		case err := <-panicChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
+			}
 		case outcome, ok := <-outcomeChannel:
 			if !ok {
 				break ConsumerLoop
@@ -761,36 +759,42 @@ ConsumerLoop:
 
 // checkUsersetSlowPath will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
+	}()
 
-	recoveredError := panics.Try(func() {
-		pool := concurrency.NewPool(cancellableCtx, 1)
-		defer func() {
-			cancelFunc()
-			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
-		}()
-		pool.Go(func(ctx context.Context) error {
+	pool.Go(func(ctx context.Context) error {
+		recoveredError := panics.Try(func() {
 			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
-			return nil
 		})
-	})
-	if recoveredError != nil {
-		return nil, fmt.Errorf("panic occurred: %v", recoveredError)
-	}
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+		if recoveredError != nil {
+			return fmt.Errorf("panic occurred: %v", recoveredError)
+		}
+
+		return nil
+	})
+
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkUsersetFastPath is the fast path to evaluate userset.
@@ -847,38 +851,44 @@ type usersetsChannelType struct {
 // 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
 // 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
 // 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
-func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
 	// all at least 1 userset to queue up
 	usersetsChan := make(chan usersetsChannelType, 2)
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
+	}()
 
-	recoveredError := panics.Try(func() {
-		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-		pool := concurrency.NewPool(cancellableCtx, 1)
-		defer func() {
-			cancelFunc()
-			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
-		}()
-		pool.Go(func(ctx context.Context) error {
+	pool.Go(func(ctx context.Context) error {
+		recoveredError := panics.Try(func() {
 			c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
-			return nil
 		})
-	})
-	if recoveredError != nil {
-		return nil, fmt.Errorf("panic occurred: %v", recoveredError)
-	}
 
-	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
+		if recoveredError != nil {
+			return fmt.Errorf("panic occurred: %v", recoveredError)
+		}
+
+		return nil
+	})
+
+	resp, err = c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, err
+	return
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
@@ -917,7 +927,6 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			// TODO: test this
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %v", recoveredError)}, outcomes)
 		}
@@ -1046,12 +1055,12 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 	usersetMessageChan := make(chan usersetMessage, 100)
 
 	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				close(usersetMessageChan)
-				span.End()
-			}()
+		defer func() {
+			close(usersetMessageChan)
+			span.End()
+		}()
 
+		recoveredError := panics.Try(func() {
 			for {
 				res, err := iter.Next(ctx)
 				if err != nil {
@@ -1066,7 +1075,6 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			}
 		})
 		if recoveredError != nil {
-			// TODO: test this
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("panic occurred: %v", recoveredError)}, usersetMessageChan)
 		}

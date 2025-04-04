@@ -67,19 +67,19 @@ var (
 
 const panicErr = "mock panic for testing"
 
-// mockTupleKeyIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
-type mockTupleKeyIterator struct{}
+// mockIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
+type mockIterator[T any] struct{}
 
-func (m *mockTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+func (m *mockIterator[T]) Next(ctx context.Context) (T, error) {
 	panic(panicErr)
 }
 
-func (m *mockTupleKeyIterator) Stop() {
+func (m *mockIterator[T]) Stop() {
 	panic(panicErr)
 }
 
 // Head is a mock implementation of the Head method for the storage.Iterator interface.
-func (m *mockTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+func (m *mockIterator[T]) Head(ctx context.Context) (T, error) {
 	panic(panicErr)
 }
 
@@ -103,6 +103,39 @@ func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []us
 		}
 	}
 	return output
+}
+
+func TestResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_return_error_if_handler_panics", func(t *testing.T) {
+		ctx := context.Background()
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+		resultChan := make(chan checkOutcome, 1)
+
+		drain := resolver(ctx, uint32(1), resultChan, panicHandler)
+		err := drain()
+
+		require.ErrorContains(t, err, panicErr)
+	})
+
+	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
+		ctx, _ := context.WithCancel(context.Background())
+		handler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, nil
+		}
+		resultChan := make(chan checkOutcome, 1)
+		close(resultChan)
+
+		drain := resolver(ctx, uint32(1), resultChan, handler)
+		err := drain()
+
+		require.ErrorContains(t, err, "send on closed channel")
+	})
 }
 
 func TestCheck_CorrectContext(t *testing.T) {
@@ -2166,7 +2199,7 @@ func TestProduceUsersets(t *testing.T) {
 	}
 
 	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
-		iter := &mockTupleKeyIterator{}
+		iter := &mockIterator[*openfgav1.TupleKey]{}
 
 		localChecker := NewLocalChecker(WithUsersetBatchSize(serverconfig.DefaultUsersetBatchSize))
 		usersetsChan := make(chan usersetsChannelType)
@@ -3332,17 +3365,25 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan, panicChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
 			outcomes := helperReceivedOutcome(outcomeChan)
 
+			var err error
+
+			select {
+			case err = <-panicChan:
+			case <-time.After(1 * time.Second):
+				t.Fatal("timeout waiting for panic")
+			}
+
 			require.Equal(t, tt.expectedOutcomes, outcomes)
+			require.NoError(t, err)
 		})
 	}
 
-	// TODO: how to test this?
 	t.Run("should_error_if_dispatch_panics", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -3353,31 +3394,30 @@ func TestProcessDispatch(t *testing.T) {
 		defer checker.Close()
 		mockResolver := NewMockCheckResolver(ctrl)
 		checker.SetDelegate(mockResolver)
-		mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(&ResolveCheckResponse{
-			Allowed: true,
-		}, nil)
-
+		mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Do(func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			return nil, nil
+		})
 		dispatchMsgChan := make(chan dispatchMsg, 2)
-		dispatchMsgChan <- dispatchMsg{
-			dispatchParams: &dispatchParams{
-				parentReq: req,
-				tk:        nil,
-			},
-		}
-		dispatchMsgChan <- dispatchMsg{
-			dispatchParams: &dispatchParams{
-				parentReq: req,
-				tk:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-			},
-		}
 
-		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchMsgChan)
+		outcomeChan, panicChan := checker.processDispatches(ctx, uint32(1), dispatchMsgChan)
 		close(outcomeChan)
+		dispatchMsgChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: req,
+				tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+			},
+		}
 		close(dispatchMsgChan)
-		outcomes := helperReceivedOutcome(outcomeChan)
-		fmt.Printf("outcomes: %v\n", outcomes)
 
-		require.Equal(t, nil, outcomes)
+		var err error
+
+		select {
+		case err = <-panicChan:
+		case <-time.After(1 * time.Second):
+			t.Fatal("timeout waiting for panic")
+		}
+
+		require.ErrorContains(t, err, "send on closed channel")
 	})
 }
 
@@ -3651,7 +3691,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 	}
 
 	t.Run("should_error_if_produceUsersetDispatches_panics", func(t *testing.T) {
-		iter := &mockTupleKeyIterator{}
+		iter := &mockIterator[*openfgav1.TupleKey]{}
 		checker := NewLocalChecker()
 		defer checker.Close()
 
@@ -3673,7 +3713,7 @@ func TestCheckMembership(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should_error_if_produceUsersets_panics", func(t *testing.T) {
-		iter := &mockTupleKeyIterator{}
+		iter := &mockIterator[*openfgav1.TupleKey]{}
 		checker := NewLocalChecker()
 		defer checker.Close()
 
@@ -3686,6 +3726,31 @@ func TestCheckMembership(t *testing.T) {
 		})
 		require.ErrorContains(t, err, panicErr)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
+}
+
+func TestProcessUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+		usersetsChan := make(chan usersetsChannelType, 1)
+		close(usersetsChan)
+		outcomes := checker.processUsersets(ctx, req, usersetsChan, uint32(1))
+
+		for outcome := range outcomes {
+			require.ErrorContains(t, outcome.err, panicErr)
+		}
 	})
 }
 
@@ -3809,7 +3874,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 	}
 
 	t.Run("should_error_if_produceTTUDispatches_panics", func(t *testing.T) {
-		iter := &mockTupleKeyIterator{}
+		iter := &mockIterator[*openfgav1.TupleKey]{}
 		checker := NewLocalChecker()
 		defer checker.Close()
 
@@ -4006,21 +4071,16 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 		})
 	}
 
-	// t.Run("should_error_if_panic_occurs", func(t *testing.T) {
-	// 	ctx := context.Background()
-	// 	iter := &mockTupleKeyIterator{}
-	// 	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		iter := &mockIterator[string]{}
+		userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
 
-	// 	var userToUsersetMessages []usersetMessage
-
-	// 	for userToUsersetMessage := range userToUsersetMessageChan {
-	// 		userToUsersetMessages = append(userToUsersetMessages, userToUsersetMessage)
-	// 	}
-
-	// 	require.Equal(t, tt.expected, userToUsersetMessages)
-	// 	require.ErrorContains(t, err, panicErr)
-	// 	require.Equal(t, (*ResolveCheckResponse)(nil), resp)
-	// })
+		for userToUsersetMessage := range userToUsersetMessageChan {
+			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
+			require.Equal(t, "", userToUsersetMessage.userset)
+		}
+	})
 }
 
 func TestProcessUsersetMessage(t *testing.T) {
