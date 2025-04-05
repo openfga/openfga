@@ -30,6 +30,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added `storage.ErrTransactionThrottled` for throttling errors applied at the datastore level. [#2304](https://github.com/openfga/openfga/pull/2304).
 
+### Changed
+- Rewrite some of the check resolution logic to keep track of running go routines and ensure that all routines have synchronized back into the original parent thread of execution before continuing. [#2275](https://github.com/openfga/openfga/pull/2275)
+
 ### Removed
 - Removed recently-added `tuples_iterator_cache_invalid_hit_count` metric. The `cachecontroller_cache_invalidation_count` from 1.8.6 better accomplishes the same goal. [#2296)[https://github.com/openfga/openfga/pull/2296/]
 
