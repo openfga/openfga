@@ -3233,7 +3233,7 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan, _ := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
