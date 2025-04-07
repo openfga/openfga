@@ -566,6 +566,157 @@ var usersets = []matrixTest{
 		},
 	},
 	{
+		Name: "alg_combined_computed",
+		Tuples: []*openfgav1.TupleKey{
+			// directs#alg_combined -> (((direct or direct_comb or direct_mult_types) and other_rel) but not direct_comb) but not direct
+			// directs#computed_mult_types -> direct_mult_types
+			// directs#alg_combined_oneline -> (direct or direct_comb) and (direct_mult_types or other_rel)
+
+			// (([directs#direct_comb, directs-employee#direct] or [directs#alg_combined, directs-employee#alg_combined]) and
+			//     [directs#computed_mult_types with xcond, directs-employee#computed_3_times])
+			//     but not [directs#alg_combined_oneline, directs-employee#alg_combined_oneline]
+
+			// (userset or userset_alg_combined) and userset_combined_cond but not userset_alg_combined_oneline
+
+			// first case: user is in both userset and userset_combined_cond via directs
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only", Relation: "userset", User: "directs:alg_combined_computed_direct_mult_types_only#direct_comb"},
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only", Relation: "userset_combined_cond", User: "directs:alg_combined_computed_direct_mult_types_only#computed_mult_types", Condition: xCond},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only", Relation: "direct_comb", User: "user:alg_combined_computed_direct_mult_types_only"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_only"},
+
+			// second case: user is in both userset and userset_combined_cond via directs, but they are actually different directs object
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_1", Relation: "userset", User: "directs:alg_combined_computed_direct_mult_types_only_1a#direct_comb"},
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_1", Relation: "userset_combined_cond", User: "directs:alg_combined_computed_direct_mult_types_only_1b#computed_mult_types", Condition: xCond},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_1a", Relation: "direct_comb", User: "user:alg_combined_computed_direct_mult_types_only_1"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_1b", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_only_1"},
+
+			// third case: user is in userset_alg_combined and userset_combined_cond via directs, but userset_alg_combined yield to false because direct_comb is in but not
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_alg_combined", Relation: "userset_alg_combined", User: "directs:alg_combined_computed_direct_mult_types_alg_combined#alg_combined"},
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_alg_combined", Relation: "userset_combined_cond", User: "directs:alg_combined_computed_direct_mult_types_alg_combined#computed_mult_types", Condition: xCond},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct_comb", User: "user:alg_combined_computed_direct_mult_types_alg_combined"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "other_rel", User: "user:alg_combined_computed_direct_mult_types_alg_combined"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_alg_combined"},
+			// fourth case, user is in userset_alg_combined and userset_combined_cond via directs, but userset_alg_combined yield to true
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct_mult_types"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "other_rel", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct_mult_types"},
+			// fifth case, user is in userset_alg_combined and userset_combined_cond via directs, but userset_alg_combined yield to false because direct is in but not
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "other_rel", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct"},
+			// sixth case.  Similar to fourth case except it is false because missing other_rel
+			{Object: "directs:alg_combined_computed_direct_mult_types_alg_combined", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_alg_combined_direct_mult_types_missing_other_rel"},
+			// seventh case - similar to second case except that userset_alg_combined_oneline is true in the top level (which makes the whole thing false)
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_2", Relation: "userset", User: "directs:alg_combined_computed_direct_mult_types_only_2a#direct_comb"},
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_2", Relation: "userset_combined_cond", User: "directs:alg_combined_computed_direct_mult_types_only_2b#computed_mult_types", Condition: xCond},
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_2", Relation: "userset_alg_combined_oneline", User: "directs:alg_combined_computed_direct_mult_types_only_2c#alg_combined_oneline"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_2a", Relation: "direct_comb", User: "user:alg_combined_computed_direct_mult_types_only_2"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_2b", Relation: "direct_mult_types", User: "user:alg_combined_computed_direct_mult_types_only_2"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_2c", Relation: "direct", User: "user:alg_combined_computed_direct_mult_types_only_2"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_2c", Relation: "other_rel", User: "user:alg_combined_computed_direct_mult_types_only_2"},
+			// eight case - similar to first case except userset_combined_cond missing
+			{Object: "usersets-user:alg_combined_computed_direct_mult_types_only_missing_combined", Relation: "userset", User: "directs:alg_combined_computed_direct_mult_types_only_missing_combined#direct_comb"},
+			{Object: "directs:alg_combined_computed_direct_mult_types_only_missing_combined", Relation: "direct_comb", User: "user:alg_combined_computed_direct_mult_types_only_missing_combined"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:alg_combined_computed_direct_mult_types_only",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     invalidConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only_1",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:alg_combined_computed_direct_mult_types_only_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only_1",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     invalidConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_alg_combined",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_alg_combined_direct_mult_types",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:alg_combined_computed_direct_mult_types_alg_combined",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_alg_combined_direct",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_alg_combined_direct_mult_types_missing_other_rel",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only_2",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:alg_combined_computed_direct_mult_types_only_missing_combined",
+					Type:     "usersets-user",
+					Relation: "alg_combined_computed",
+				},
+				Context:     validConditionContext,
+				Expectation: []string{},
+			},
+		},
+	},
+	{
 		Name: "userset_recursive_alg_combined",
 		Tuples: []*openfgav1.TupleKey{
 			// user_rel4 = user_rel1 or (user_rel2 and user_rel3)
