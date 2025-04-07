@@ -135,7 +135,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["enable-check-optimizations", "enable-access-control"]
+                "enum": ["enable-check-optimizations", "enable-list-objects-optimizations", "enable-access-control"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"

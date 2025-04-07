@@ -3,6 +3,7 @@ package listobjects
 import (
 	"context"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -127,9 +128,9 @@ type ttus
     define user_rel5: user_rel2 and user_rel3
     
     define ttu_parent: [ttus]
-  define ttu_recursive: [user] or ttu_recursive from ttu_parent
-  define ttu_recursive_public: [user:*] or ttu_recursive_public from ttu_parent
-  define ttu_recursive_combined_w3: [user, user:*, employee] or ttu_recursive_combined_w3 from ttu_parent or direct from direct_parent
+    define ttu_recursive: [user] or ttu_recursive from ttu_parent
+    define ttu_recursive_public: [user:*] or ttu_recursive_public from ttu_parent
+    define ttu_recursive_combined_w3: [user, user:*, employee] or ttu_recursive_combined_w3 from ttu_parent or direct from direct_parent
     define ttu_recursive_alg_combined_oneline: ([user] or ttu_recursive_alg_combined_oneline from ttu_parent) or (user_rel1 or (user_rel2 and user_rel3)) 
     define ttu_recursive_alg_combined_w2: ([user] or ttu_recursive_alg_combined from ttu_parent) or (user_rel1 or (user_rel2 and ttu_direct)) 
     define ttu_recursive_alg_combined: ttu_recursive_alg_combined from ttu_parent or user_rel4
@@ -156,6 +157,7 @@ type complexity3
     define userset_ttu_alg_combined: [ttus#alg_combined_computed]
     define or_userset_ttu: userset_ttu or userset_ttu_other_rel 
     define and_userset_ttu: or_userset_ttu and userset_ttu_inner_alg_combined
+
     define alg_combined_userset_ttu: and_userset_ttu but not userset_ttu_public
     
     define tuple_cycle_len3: [user, employee] or tuple_cycle_len3 from userset_parent
@@ -172,7 +174,7 @@ condition xcond(x: string) {
   x == '1'
 }`,
 
-	Tests: append(directs, usersets...),
+	Tests: slices.Concat(directs, usersets, ttus),
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
