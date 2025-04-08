@@ -1111,4 +1111,158 @@ var usersets = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "userset_recursive_alg_combined_w2",
+		Tuples: []*openfgav1.TupleKey{
+			// ([user, usersets-user#userset_recursive_alg_combined_w2] or user_rel1) or (user_rel2 and userset)
+
+			// recursive
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_recursive_1", Relation: "userset_recursive_alg_combined_w2", User: "usersets-user:userset_recursive_alg_combined_w2#userset_recursive_alg_combined_w2"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_recursive_2", Relation: "userset_recursive_alg_combined_w2", User: "usersets-user:userset_recursive_alg_combined_w2_recursive_1#userset_recursive_alg_combined_w2"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_recursive_3", Relation: "userset_recursive_alg_combined_w2", User: "usersets-user:userset_recursive_alg_combined_w2_recursive_2#userset_recursive_alg_combined_w2"},
+
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "userset_recursive_alg_combined_w2", User: "user:userset_recursive_alg_combined_w2_direct"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "user_rel1", User: "user:userset_recursive_alg_combined_w2_rel1"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "user_rel2", User: "user:userset_recursive_alg_combined_w2_rel2"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "userset", User: "directs:userset_recursive_alg_combined_w2_userset#direct_comb"},
+			{Object: "directs:userset_recursive_alg_combined_w2_userset", Relation: "direct_comb", User: "user:userset_recursive_alg_combined_w2_userset"},
+
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "user_rel2", User: "user:userset_recursive_alg_combined_w2_rel2_userset"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "userset", User: "directs:userset_recursive_alg_combined_w2_rel2_userset#direct_comb"},
+			{Object: "directs:userset_recursive_alg_combined_w2_rel2_userset", Relation: "direct_comb", User: "user:userset_recursive_alg_combined_w2_rel2_userset"},
+
+			{Object: "usersets-user:userset_recursive_alg_combined_w2", Relation: "userset", User: "directs:userset_recursive_alg_combined_w2_rel2_userset_cond#direct_comb"},
+			{Object: "directs:userset_recursive_alg_combined_w2_rel2_userset_cond", Relation: "direct_comb", User: "user:*", Condition: xCond},
+
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_public", Relation: "user_rel1", User: "user:*"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_public_recursive_1", Relation: "userset_recursive_alg_combined_w2", User: "usersets-user:userset_recursive_alg_combined_w2_public#userset_recursive_alg_combined_w2"},
+			{Object: "usersets-user:userset_recursive_alg_combined_w2_public_recursive_2", Relation: "userset_recursive_alg_combined_w2", User: "usersets-user:userset_recursive_alg_combined_w2_public_recursive_1#userset_recursive_alg_combined_w2"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_direct",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_3",
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_rel1",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_3",
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_rel2",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_3",
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_rel2",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: invalidConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_userset",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_rel2_userset",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_3",
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:userset_recursive_alg_combined_w2_rel2_userset",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_2",
+					"usersets-user:userset_recursive_alg_combined_w2_recursive_3",
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:public",
+					Type:     "usersets-user",
+					Relation: "userset_recursive_alg_combined_w2",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:userset_recursive_alg_combined_w2_public",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_1",
+					"usersets-user:userset_recursive_alg_combined_w2_public_recursive_2",
+				},
+			},
+		},
+	},
 }
