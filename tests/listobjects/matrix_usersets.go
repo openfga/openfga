@@ -942,4 +942,173 @@ var usersets = []matrixTest{
 			},
 		},
 	},
+	{
+		Name: "usersets_tuple_cycle_len3",
+		Tuples: []*openfgav1.TupleKey{
+			// [directs#tuple_cycle_len3, directs-employee#tuple_cycle_len3]
+			// define directs#tuple_cycle_len3: [user, employee, complexity3#tuple_cycle_len3]
+			// define directs-employee#tuple_cycle_len3: [employee, complexity3#tuple_cycle_len3]
+			// define complexity3#tuple_cycle_len3: [user, employee] or tuple_cycle_len3 from userset_parent
+			// define complexity3#userset_parent: [usersets-user, usersets-user with xcond]
+
+			// non cycle
+			{Object: "directs:usersets_tuple_cycle_len3_userset_1", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_1#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_userset_1", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_userset_1#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_2", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_userset_1"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_2", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_2#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_userset_2", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_userset_2#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_3", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_userset_2"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_3", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_3#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_userset_3", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_userset_3#tuple_cycle_len3"},
+
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_1", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_1_complex3_assign"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_1", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_1_direct_assign"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_2", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_2_complex3_assign"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_2", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_2_direct_assign"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_3", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_3_complex3_assign"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_3", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_3_direct_assign"},
+
+			// cycle
+			{Object: "directs:usersets_tuple_cycle_len3_userset_cycle", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_cycle#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_userset_cycle", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_userset_cycle#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_cycle", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_userset_cycle"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_cycle", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_cycle_1#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_userset_cycle_1", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_userset_cycle_1#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_cycle_1", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_userset_cycle_1"},
+			{Object: "directs:usersets_tuple_cycle_len3_userset_cycle_1", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_userset_cycle_1#tuple_cycle_len3"},
+
+			{Object: "complexity3:usersets_tuple_cycle_len3_userset_cycle_1", Relation: "tuple_cycle_len3", User: "user:usersets_tuple_cycle_len3_userset_cycle"},
+
+			// multiple path resulting in the same object
+			{Object: "directs:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_1#tuple_cycle_len3"},
+			{Object: "directs-employee:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_1#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_multiple_1#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "directs-employee:usersets_tuple_cycle_len3_multiple_1#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_multiple_2", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_multiple_1"},
+			{Object: "directs:usersets_tuple_cycle_len3_multiple_2", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_2#tuple_cycle_len3"},
+			{Object: "directs-employee:usersets_tuple_cycle_len3_multiple_2", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_2#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_2", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_multiple_2#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_2", Relation: "tuple_cycle_len3", User: "directs-employee:usersets_tuple_cycle_len3_multiple_2#tuple_cycle_len3"},
+			{Object: "complexity3:usersets_tuple_cycle_len3_multiple_3", Relation: "userset_parent", User: "usersets-user:usersets_tuple_cycle_len3_multiple_2"},
+			{Object: "directs:usersets_tuple_cycle_len3_multiple_3", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_3#tuple_cycle_len3"},
+			{Object: "directs-employee:usersets_tuple_cycle_len3_multiple_3", Relation: "tuple_cycle_len3", User: "complexity3:usersets_tuple_cycle_len3_multiple_3#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_3", Relation: "tuple_cycle_len3", User: "directs:usersets_tuple_cycle_len3_multiple_3#tuple_cycle_len3"},
+			{Object: "usersets-user:usersets_tuple_cycle_len3_multiple_3", Relation: "tuple_cycle_len3", User: "directs-employee:usersets_tuple_cycle_len3_multiple_3#tuple_cycle_len3"},
+			{Object: "directs:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "employee:usersets_tuple_cycle_len3_multiple_1_direct_assign"},
+			{Object: "directs-employee:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "employee:usersets_tuple_cycle_len3_multiple_1_direct_assign"},
+			{Object: "directs-employee:usersets_tuple_cycle_len3_multiple_1", Relation: "tuple_cycle_len3", User: "employee:usersets_tuple_cycle_len3_multiple_1_employee_only"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_1_complex3_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_1",
+					"usersets-user:usersets_tuple_cycle_len3_userset_2",
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_1_direct_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_1",
+					"usersets-user:usersets_tuple_cycle_len3_userset_2",
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_2_complex3_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_2",
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_2_direct_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_2",
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_3_complex3_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_3_direct_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:usersets_tuple_cycle_len3_userset_cycle",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_userset_cycle",
+					"usersets-user:usersets_tuple_cycle_len3_userset_cycle_1",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:usersets_tuple_cycle_len3_multiple_1_direct_assign",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_multiple_1",
+					"usersets-user:usersets_tuple_cycle_len3_multiple_2",
+					"usersets-user:usersets_tuple_cycle_len3_multiple_3",
+				},
+			},
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "employee:usersets_tuple_cycle_len3_multiple_1_employee_only",
+					Type:     "usersets-user",
+					Relation: "tuple_cycle_len3",
+				},
+				Context: validConditionContext,
+				Expectation: []string{
+					"usersets-user:usersets_tuple_cycle_len3_multiple_1",
+					"usersets-user:usersets_tuple_cycle_len3_multiple_2",
+					"usersets-user:usersets_tuple_cycle_len3_multiple_3",
+				},
+			},
+		},
+	},
 }
