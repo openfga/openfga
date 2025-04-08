@@ -14,7 +14,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/go-logr/logr v1.4.2
-	github.com/go-sql-driver/mysql v1.9.1
+	github.com/go-sql-driver/mysql v1.9.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/cel-go v0.24.1
 	github.com/google/go-cmp v0.7.0
@@ -30,7 +30,7 @@ require (
 	github.com/openfga/api/proto v0.0.0-20250127102726-f9709139a369
 	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20250220223040-ed0cfba54336
 	github.com/pressly/goose/v3 v3.24.2
-	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/client_golang v1.22.0
 	github.com/rs/cors v1.11.1
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.9.1
@@ -46,11 +46,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0
 	go.opentelemetry.io/proto/otlp v1.5.0
 	go.uber.org/goleak v1.3.0
-	go.uber.org/mock v0.5.0
+	go.uber.org/mock v0.5.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
-	golang.org/x/sync v0.12.0
-	google.golang.org/grpc v1.71.0
+	golang.org/x/sync v0.13.0
+	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.6
 	modernc.org/sqlite v1.37.0
 	sigs.k8s.io/controller-runtime v0.20.4
@@ -92,7 +92,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
