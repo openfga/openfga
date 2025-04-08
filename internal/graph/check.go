@@ -1407,12 +1407,12 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+	defer cancelFunc()
 
 	recoveredError := panics.Try(func() {
 		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 		pool := concurrency.NewPool(cancellableCtx, 1)
 		defer func() {
-			cancelFunc()
 			// We need to wait always to avoid a goroutine leak.
 			_ = pool.Wait()
 		}()
