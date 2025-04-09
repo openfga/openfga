@@ -132,7 +132,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	}
 
 	resp.ResolutionMetadata.Duration = time.Since(startTime)
-	resp.ResolutionMetadata.DatastoreQueryCount = requestDatastore.GetMetrics().DatastoreQueryCount
+	resp.ResolutionMetadata.DatastoreQueryCount = datastoreWithTupleCache.GetMetrics().DatastoreQueryCount
 
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
