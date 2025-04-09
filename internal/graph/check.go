@@ -1400,38 +1400,45 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
 	defer span.End()
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
 
-	recoveredError := panics.Try(func() {
-		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-		pool := concurrency.NewPool(cancellableCtx, 1)
-		defer func() {
+	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+	pool := concurrency.NewPool(cancellableCtx, 1)
+	defer func() {
+		recoveredErr := panics.Try(func() {
+			cancelFunc()
 			// We need to wait always to avoid a goroutine leak.
 			_ = pool.Wait()
-		}()
+		})
+		if recoveredErr != nil {
+			err = fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+			resp = nil
+		}
+	}()
+	recoveredErr := panics.Try(func() {
 		pool.Go(func(ctx context.Context) error {
 			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
 			return nil
 		})
 	})
-	if recoveredError != nil {
-		return nil, fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+	if recoveredErr != nil {
+		err = fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+		return
 	}
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
