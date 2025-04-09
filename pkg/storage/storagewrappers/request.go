@@ -18,22 +18,36 @@ type RequestStorageWrapper struct {
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
-func NewRequestStorageWrapperForCheckAPI(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32,
+// NewRequestStorageWrapper wraps the existing datstore to enable caching of iterators.
+func NewRequestStorageWrapper(
+	ds storage.RelationshipTupleReader,
+	requestContextualTuples []*openfgav1.TupleKey,
+	maxConcurrentReads uint32,
 	resources *shared.SharedCheckResources,
-	cacheSettings config.CacheSettings, logger logger.Logger) *RequestStorageWrapper {
-	var a storage.RelationshipTupleReader
-	a = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
+	cacheSettings config.CacheSettings,
+	logger logger.Logger,
+) *RequestStorageWrapper {
+	var tupleReader storage.RelationshipTupleReader
+	tupleReader = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	if cacheSettings.ShouldCacheIterators() {
-		// TODO(miparnisari): pass cacheSettings and resources directly, i can't now because i would create a package import cycle
-		a = NewCachedDatastore(resources.ServerCtx, a, resources.CheckCache, int(cacheSettings.CheckIteratorCacheMaxResults), cacheSettings.CheckIteratorCacheTTL, resources.SingleflightGroup, resources.WaitGroup,
-			WithCachedDatastoreLogger(logger)) // to read tuples from cache
+		// Reads tuples from cache where possible
+		tupleReader = NewCachedDatastore(
+			resources.ServerCtx,
+			tupleReader,
+			resources.CheckCache,
+			int(cacheSettings.CheckIteratorCacheMaxResults),
+			cacheSettings.CheckIteratorCacheTTL,
+			resources.SingleflightGroup,
+			resources.WaitGroup,
+			WithCachedDatastoreLogger(logger),
+		)
 	}
-	b := NewInstrumentedOpenFGAStorage(a)                   // to capture metrics
-	c := NewCombinedTupleReader(b, requestContextualTuples) // to read the contextual tuples
+	instrumentedStorage := NewInstrumentedOpenFGAStorage(tupleReader)                           // to capture metrics
+	combinedTupleReader := NewCombinedTupleReader(instrumentedStorage, requestContextualTuples) // to read the contextual tuples
 
 	return &RequestStorageWrapper{
-		RelationshipTupleReader: c,
-		InstrumentedStorage:     b,
+		RelationshipTupleReader: combinedTupleReader,
+		InstrumentedStorage:     instrumentedStorage,
 	}
 }
 

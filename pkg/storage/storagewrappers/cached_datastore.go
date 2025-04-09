@@ -328,7 +328,6 @@ func (c *CachedDatastore) newCachedIteratorByObjectRelation(
 	object string,
 	relation string,
 ) (storage.TupleIterator, error) {
-	println("-------------JUSTIN newCachedIteratorByObjectRelation----------------------------")
 	objectType, objectID := tuple.SplitObject(object)
 	invalidEntityKey := storage.GetInvalidIteratorByObjectRelationCacheKey(store, object, relation)
 	return c.newCachedIterator(ctx, operation, store, dsIterFunc, cacheKey, []string{invalidEntityKey}, objectType, objectID, relation, "")
@@ -344,7 +343,6 @@ func (c *CachedDatastore) newCachedIteratorByUserObjectType(
 	objectType string,
 ) (storage.TupleIterator, error) {
 	// if all users in filter are of the same type, we can store in cache without the value
-	println("-------------JUSTIN newCachedIteratorByUserObjectType----------------------------")
 	var userType string
 	for _, user := range users {
 		userObjectType, _ := tuple.SplitObject(user)
@@ -379,7 +377,6 @@ func (c *CachedDatastore) newCachedIterator(
 	tuplesCacheTotalCounter.WithLabelValues(operation).Inc()
 
 	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger); ok {
-		println("--------------JUSTIN it actually hit the cache-------------------")
 		tuplesCacheHitCounter.WithLabelValues(operation).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
@@ -399,7 +396,6 @@ func (c *CachedDatastore) newCachedIterator(
 		return nil, err
 	}
 
-	println("--------------JUSTIN it did not hit the cache-------------------")
 	return &cachedIterator{
 		ctx:       c.ctx,
 		iter:      iter,
