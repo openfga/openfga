@@ -161,7 +161,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 				resolved <- checkOutcome{resp, err}
 			})
 			if recoveredError != nil {
-				errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+				errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 			}
 		}()
 
@@ -189,7 +189,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 						checker(fn)
 					})
 					if recoveredError != nil {
-						errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+						errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 					}
 				}()
 			case <-ctx.Done():
@@ -369,7 +369,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			baseChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 	}()
 
@@ -384,7 +384,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			subChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 	}()
 
@@ -699,7 +699,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 			}
 		})
 		if recoveredError != nil {
-			panicChan <- fmt.Errorf("panic occurred: %v", recoveredError)
+			panicChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 	}()
 
@@ -782,7 +782,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %v", recoveredError)
+			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 
 		return nil
@@ -876,7 +876,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %v", recoveredError)
+			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 
 		return nil
@@ -928,7 +928,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 
 		if recoveredError != nil {
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %v", recoveredError)}, outcomes)
+			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, outcomes)
 		}
 	}()
 
@@ -1030,7 +1030,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	})
 	if recoveredError != nil {
 		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: fmt.Errorf("panic occurred: %v", recoveredError)}, usersetsChan)
+		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, usersetsChan)
 	}
 
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
@@ -1076,7 +1076,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 		})
 		if recoveredError != nil {
 			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("panic occurred: %v", recoveredError)}, usersetMessageChan)
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, usersetMessageChan)
 		}
 	}()
 
@@ -1422,7 +1422,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		})
 	})
 	if recoveredError != nil {
-		return nil, fmt.Errorf("panic occurred: %v", recoveredError)
+		return nil, fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 	}
 
 	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
