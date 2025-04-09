@@ -41,6 +41,7 @@ services:
       - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
       - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100 #see postgres container
       - OPENFGA_PLAYGROUND_ENABLED=true
+      - OPENFGA_CHECK_ITERATOR_CACHE_ENABLED=true
     networks:
       - default
     ports:

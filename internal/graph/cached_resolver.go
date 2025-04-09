@@ -156,7 +156,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 		checkCacheTotalCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
-			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
+			isValid := res.LastModified.After(req.LastCacheInvalidationTime) // TODO: this is where it gets used
 			c.logger.Debug("CachedCheckResolver found cache key",
 				zap.String("store_id", req.GetStoreID()),
 				zap.String("authorization_model_id", req.GetAuthorizationModelID()),

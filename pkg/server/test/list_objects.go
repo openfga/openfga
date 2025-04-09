@@ -638,6 +638,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	return model, modelID, numberObjectsAccesible
 }
 
+// TODO: do this with and without the iterator cache and see the difference
 func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	ctx := context.Background()
 	store := ulid.Make().String()

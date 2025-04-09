@@ -434,6 +434,12 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
+	// ListObjects can take a long time, what if there's a write while it's running?
+	cacheInvalidationTime := time.Time{}
+	// determine invalidation time
+	if req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = q.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, req.StoreId)
+	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err

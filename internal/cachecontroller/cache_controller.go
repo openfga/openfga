@@ -143,6 +143,9 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	if !present {
 		span.SetAttributes(attribute.Bool("check_invalidation", true))
 
+		// hmm does this introduce a race?
+		// could check return super fast (from subproblem cache maybe) before this has gone through
+		// its invalidations?
 		go func() {
 			// we do not want to propagate context to avoid early cancellation
 			// and pollute span.
