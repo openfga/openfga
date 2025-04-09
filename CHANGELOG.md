@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Changed
+- Panics in check are converted to errors. [#2361](https://github.com/openfga/openfga/pull/2361).
+
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
 
