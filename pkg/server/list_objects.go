@@ -78,6 +78,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithListObjectsCache(s.sharedCheckResources, s.cacheSettings),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
