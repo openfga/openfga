@@ -497,6 +497,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	}
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
+	// TODO: this is ReadStartingWithUser entrypoint
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   relationFilter,
@@ -523,6 +524,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 LoopOnIterator:
 	for {
+		// Loops throught iterator here
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {

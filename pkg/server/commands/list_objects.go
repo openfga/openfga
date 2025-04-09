@@ -15,10 +15,12 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
@@ -59,7 +61,9 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
-	checkResolver graph.CheckResolver
+	checkResolver        graph.CheckResolver
+	cacheSettings        serverconfig.CacheSettings
+	sharedCheckResources *shared.SharedCheckResources
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -133,6 +137,14 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
+// TODO: rename these things.
+func WithListObjectsCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.cacheSettings = cacheSettings
+		d.sharedCheckResources = sharedCheckResources
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -161,6 +173,10 @@ func NewListObjectsQuery(
 			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
 		checkResolver: checkResolver,
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
+		sharedCheckResources: &shared.SharedCheckResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -267,7 +283,26 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		ds := storagewrappers.NewRequestStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
+		var ds *storagewrappers.RequestStorageWrapper
+
+		noCache := req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+		if noCache {
+			ds = storagewrappers.NewRequestStorageWrapper(
+				q.datastore,
+				req.GetContextualTuples().GetTupleKeys(),
+				q.maxConcurrentReads,
+			)
+		} else {
+			ds = storagewrappers.NewRequestStorageWrapperWithCache(
+				q.datastore,
+				req.GetContextualTuples().GetTupleKeys(),
+				q.maxConcurrentReads,
+				q.sharedCheckResources,
+				q.cacheSettings,
+				q.logger,
+			)
+		}
+
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -395,6 +430,7 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
+	q.logger.Debug("\n\n-----------------------------\n\n")
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
@@ -410,6 +446,14 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
+	//cacheInvalidationTime := time.Time{}
+	// This does the trick, figure out how to make the invalidating part of this logic separate
+	// and reusable
+	// TODO: high consistency requires us to skip the cache altogether, how is that working for check rn?
+	// Ahh check defaults the invalidation time to t0 and passes it down, that's how
+	if req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		_ = q.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, req.StoreId)
+	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err
