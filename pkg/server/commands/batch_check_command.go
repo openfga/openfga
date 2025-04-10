@@ -45,6 +45,7 @@ type BatchCheckOutcome struct {
 }
 
 type BatchCheckMetadata struct {
+	DispatchCount       uint32
 	DatastoreQueryCount uint32
 	DuplicateCheckCount int
 }
@@ -151,6 +152,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
+	var totalDispatchCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -181,7 +183,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			response, _, err := checkQuery.Execute(ctx, checkParams)
+			response, metadata, err := checkQuery.Execute(ctx, checkParams)
 
 			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,
@@ -189,6 +191,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			})
 
 			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
+			totalDispatchCount.Add(metadata.DispatchCounter.Load())
 
 			return nil
 		})
@@ -211,6 +214,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	return results, &BatchCheckMetadata{
 		DatastoreQueryCount: totalQueryCount.Load(),
+		DispatchCount:       totalDispatchCount.Load(),
 		DuplicateCheckCount: len(params.Checks) - len(cacheKeyMap),
 	}, nil
 }

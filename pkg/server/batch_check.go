@@ -79,6 +79,9 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
+	dispatchCount := float64(metadata.DispatchCount)
+	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+
 	methodName := "batchcheck"
 	queryCount := float64(metadata.DatastoreQueryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
