@@ -192,8 +192,10 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Err:           err,
 			})
 
-			if metadata.WasThrottled.Load() {
-				totalThrottleCount.Add(1)
+			if metadata != nil {
+				if metadata.WasThrottled.Load() {
+					totalThrottleCount.Add(1)
+				}
 			}
 
 			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
