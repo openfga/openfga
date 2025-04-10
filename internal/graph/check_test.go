@@ -2197,47 +2197,6 @@ func TestProduceUsersets(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
-		iter := &mockIterator[*openfgav1.TupleKey]{}
-
-		localChecker := NewLocalChecker(WithUsersetBatchSize(serverconfig.DefaultUsersetBatchSize))
-		usersetsChan := make(chan usersetsChannelType)
-		usersetDetails := func(t *openfgav1.TupleKey) (string, string, error) {
-			return "", "", nil
-		}
-
-		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-		pool := concurrency.NewPool(context.Background(), 2)
-
-		pool.Go(func(ctx context.Context) error {
-			localChecker.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
-			return nil
-		})
-		var results []usersetsChannelType
-		pool.Go(func(ctx context.Context) error {
-			for {
-				select {
-				case <-ctx.Done():
-					return nil
-				case newBatch, channelOpen := <-usersetsChan:
-					if !channelOpen {
-						return nil
-					}
-					results = append(results, usersetsChannelType{
-						err:            newBatch.err,
-						objectRelation: newBatch.objectRelation,
-						objectIDs:      newBatch.objectIDs,
-					})
-				}
-			}
-		})
-		err := pool.Wait()
-		require.NoError(t, err)
-		for _, result := range results {
-			require.ErrorContains(t, result.err, panicErr)
-		}
-	})
 }
 
 func TestCheckAssociatedObjects(t *testing.T) {
@@ -3604,6 +3563,26 @@ func TestConsumeDispatch(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		dispatchChan := make(chan dispatchMsg, 1)
+		dispatchChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: nil, // This will cause a panic when accessed in `dispatch`
+				tk:        nil, // Invalid TupleKey to trigger a panic
+			},
+		}
+		close(dispatchChan)
+
+		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "panic occurred")
+	})
 }
 
 func TestCheckUsersetSlowPath(t *testing.T) {
@@ -3744,13 +3723,20 @@ func TestProcessUsersets(t *testing.T) {
 			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata: NewCheckRequestMetadata(),
 		}
-		usersetsChan := make(chan usersetsChannelType, 1)
-		close(usersetsChan)
-		outcomes := checker.processUsersets(ctx, req, usersetsChan, uint32(1))
 
-		for outcome := range outcomes {
-			require.ErrorContains(t, outcome.err, panicErr)
+		usersetsChan := make(chan usersetsChannelType, 1)
+		usersetsChan <- usersetsChannelType{
+			err:            nil,
+			objectRelation: "group#member",
+			objectIDs:      nil, // This will cause a panic in checkAssociatedObjects
 		}
+		close(usersetsChan)
+
+		outcomes := checker.processUsersets(ctx, req, usersetsChan, 1)
+
+		outcome := <-outcomes
+		require.Error(t, outcome.err)
+		require.Contains(t, outcome.err.Error(), "panic occurred")
 	})
 }
 

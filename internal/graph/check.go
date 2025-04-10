@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -136,7 +137,7 @@ type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handler
 func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	var wg sync.WaitGroup
+	var wg conc.WaitGroup
 
 	errorChan := make(chan error, 3)
 
@@ -152,18 +153,13 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 			return
 		}
 
-		go func() {
+		wg.Go(func() {
 			defer func() {
 				close(resolved)
 			}()
-			recoveredError := panics.Try(func() {
-				resp, err := fn(ctx)
-				resolved <- checkOutcome{resp, err}
-			})
-			if recoveredError != nil {
-				errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
-			}
-		}()
+			resp, err := fn(ctx)
+			resolved <- checkOutcome{resp, err}
+		})
 
 		select {
 		case <-ctx.Done():
@@ -173,35 +169,27 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		}
 	}
 
-	wg.Add(1)
-	go func() {
-		// This goroutine can't panic
+	wg.Go(func() {
 	outer:
 		for _, handler := range handlers {
 			fn := handler // capture loop var
 
 			select {
 			case limiter <- struct{}{}:
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					recoveredError := panics.Try(func() {
-						checker(fn)
-					})
-					if recoveredError != nil {
-						errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
-					}
-				}()
+				wg.Go(func() {
+					checker(fn)
+				})
 			case <-ctx.Done():
 				break outer
 			}
 		}
-
-		wg.Done()
-	}()
+	})
 
 	return func() error {
-		wg.Wait()
+		recoveredError := wg.WaitAndRecover()
+		if recoveredError != nil {
+			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+		}
 		close(limiter)
 
 		select {
@@ -992,45 +980,39 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
 
-	recoveredError := panics.Try(func() {
-		for {
-			t, err := iter.Next(ctx)
-			if err != nil {
-				// cancelled doesn't need to flush nor send errors back to main routine
-				if !storage.IterIsDoneOrCancelled(err) {
-					concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
-				}
-				break
-			}
-
-			objectRel, objectID, err := usersetDetails(t)
-			if err != nil {
-				if errors.Is(err, typesystem.ErrRelationUndefined) {
-					continue
-				}
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			// cancelled doesn't need to flush nor send errors back to main routine
+			if !storage.IterIsDoneOrCancelled(err) {
 				concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
-				break
 			}
+			break
+		}
 
-			if _, ok := usersetsMap[objectRel]; !ok {
-				if len(usersetsMap) > 0 {
-					// Flush results from a previous objectRel it begin processing immediately.
-					// The assumption (which may not be true) is that the datastore yields objectRel in order.
-					trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
-				}
-				usersetsMap[objectRel] = storage.NewSortedSet()
+		objectRel, objectID, err := usersetDetails(t)
+		if err != nil {
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				continue
 			}
+			concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: err}, usersetsChan)
+			break
+		}
 
-			usersetsMap[objectRel].Add(objectID)
-
-			if usersetsMap[objectRel].Size() >= c.usersetBatchSize {
+		if _, ok := usersetsMap[objectRel]; !ok {
+			if len(usersetsMap) > 0 {
+				// Flush results from a previous objectRel it begin processing immediately.
+				// The assumption (which may not be true) is that the datastore yields objectRel in order.
 				trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
 			}
+			usersetsMap[objectRel] = storage.NewSortedSet()
 		}
-	})
-	if recoveredError != nil {
-		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-		concurrency.TrySendThroughChannel(ctx, usersetsChannelType{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, usersetsChan)
+
+		usersetsMap[objectRel].Add(objectID)
+
+		if usersetsMap[objectRel].Size() >= c.usersetBatchSize {
+			trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
+		}
 	}
 
 	trySendUsersetsAndDeleteFromMap(ctx, usersetsMap, usersetsChan)
@@ -1411,26 +1393,26 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
-		recoveredErr := panics.Try(func() {
-			cancelFunc()
-			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
-		})
-		if recoveredErr != nil {
-			err = fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+		cancelFunc()
+		// We need to wait always to avoid a goroutine leak.
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
 			resp = nil
 		}
 	}()
-	recoveredErr := panics.Try(func() {
-		pool.Go(func(ctx context.Context) error {
+
+	pool.Go(func(ctx context.Context) error {
+		recoveredErr := panics.Try(func() {
 			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
-			return nil
 		})
+
+		if recoveredErr != nil {
+			return fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+		}
+
+		return nil
 	})
-	if recoveredErr != nil {
-		err = fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
-		return
-	}
 
 	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
