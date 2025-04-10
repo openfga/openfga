@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "dispatch_count" histogram metric to batch-check requests.
 - Added "request.throttled" boolean to the context tags for check and batch-check
 - Added "throttled_requests_count" metric to batch-check requests.
+- Added tests.BuildServer to start a FGA server and return the HTTP addr for use with SDK client based tests.
 
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)

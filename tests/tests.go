@@ -73,8 +73,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
 }
 
-// BuildClientInterface sets up test client interface to be used for matrix test.
-func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
+func buildAndStartServer(t *testing.T, engine string, experimentals []string) *serverconfig.Config {
 	cfg := serverconfig.MustDefaultConfig()
 	if len(experimentals) > 0 {
 		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
@@ -90,7 +89,18 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.ContextPropagationToDatastore = true
 
 	StartServer(t, cfg)
+	return cfg
+}
 
+// BuildClientInterface sets up test client interface to be used for matrix test.
+func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
+	cfg := buildAndStartServer(t, engine, experimentals)
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	return openfgav1.NewOpenFGAServiceClient(conn)
+}
+
+// BuildServer sets up a server to use for tests that use the SDK client.
+func BuildServer(t *testing.T, engine string, experimentals []string) string {
+	cfg := buildAndStartServer(t, engine, experimentals)
+	return cfg.HTTP.Addr
 }
