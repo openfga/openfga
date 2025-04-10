@@ -350,8 +350,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	wg.Add(1)
 	go func() {
 		recoveredError := panics.Try(func() {
-			defer wg.Done()
-			defer func() { <-limiter }()
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
 
 			resp, err := baseHandler(ctx)
 			baseChan <- checkOutcome{resp, err}
@@ -365,8 +367,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	wg.Add(1)
 	go func() {
 		recoveredError := panics.Try(func() {
-			defer wg.Done()
-			defer func() { <-limiter }()
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
 
 			resp, err := subHandler(ctx)
 			subChan <- checkOutcome{resp, err}
