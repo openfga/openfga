@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	tracer = otel.Tracer("openfga/pkg/storagewrappers/check_caching")
+	tracer = otel.Tracer("openfga/pkg/storagewrappers/cached_datastore")
 
 	_ storage.RelationshipTupleReader = (*CachedDatastore)(nil)
 
@@ -74,7 +74,6 @@ func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
 }
 
 // CachedDatastore is a wrapper over a datastore that caches iterators in memory.
-// It can only be used for Check API requests.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
 
@@ -95,7 +94,6 @@ type CachedDatastore struct {
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
-// It can only be used for Check API requests, where the iterators _always_ have object/relation defined.
 func NewCachedDatastore(
 	ctx context.Context,
 	inner storage.RelationshipTupleReader,
@@ -150,7 +148,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
 	)
 
-	// NOTE: while CachedDatastore is only used in Check there is no need to limit the length of this
+	// NOTE: There is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
