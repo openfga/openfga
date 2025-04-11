@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.8.10] - 2025-04-11
 ### Added
-- Added "dispatch_count" to the context tags of batch-check requests.
-- Added "dispatch_count" histogram metric to batch-check requests.
-- Added "request.throttled" boolean to the context tags for check and batch-check
-- Added "throttled_requests_count" metric to batch-check requests.
+- Added "dispatch_count" attribute to batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "dispatch_count" histogram metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "request.throttled" boolean for check and batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "throttled_requests_count" metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
 
 ## [1.8.9] - 2025-04-01
@@ -1251,7 +1253,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.9...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.10...HEAD
+[1.8.10]: https://github.com/openfga/openfga/compare/v1.8.9...v1.8.10
 [1.8.9]: https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9
 [1.8.8]: https://github.com/openfga/openfga/compare/v1.8.7...v1.8.8
 [1.8.7]: https://github.com/openfga/openfga/compare/v1.8.6...v1.8.7
