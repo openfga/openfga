@@ -888,41 +888,42 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 	outcomes := make(chan checkOutcome, limit)
 	pool := concurrency.NewPool(ctx, int(limit))
 
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				// We need to wait always to avoid a goroutine leak.
-				_ = pool.Wait()
-				close(outcomes)
-			}()
+	as := NewAsync()
 
-			for {
-				select {
-				case <-ctx.Done():
+	errorChan := as.RunAsync(ctx, func(ctx context.Context) {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			_ = pool.Wait()
+			close(outcomes)
+		}()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-usersetsChan:
+				if !ok {
 					return
-				case msg, ok := <-usersetsChan:
-					if !ok {
-						return
-					}
-					if msg.err != nil {
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
-						break // continue
-					}
-
-					pool.Go(func(ctx context.Context) error {
-						resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
-						return nil
-					})
 				}
-			}
-		})
+				if msg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
+					break // continue
+				}
 
-		if recoveredError != nil {
-			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, outcomes)
+				pool.Go(func(ctx context.Context) error {
+					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					return nil
+				})
+			}
 		}
-	}()
+	})
+	defer close(errorChan)
+
+	err := <-errorChan
+	if err != nil {
+		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+	}
 
 	return outcomes
 }
