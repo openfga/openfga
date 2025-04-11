@@ -115,10 +115,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		return nil, nil, err
 	}
 
-	requestDatastore := storagewrappers.NewRequestStorageWrapperForCheckAPI(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings, c.logger)
+	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapper(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings, c.logger)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, requestDatastore)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
 
 	startTime := time.Now()
 
@@ -132,7 +132,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	}
 
 	resp.ResolutionMetadata.Duration = time.Since(startTime)
-	resp.ResolutionMetadata.DatastoreQueryCount = requestDatastore.GetMetrics().DatastoreQueryCount
+	resp.ResolutionMetadata.DatastoreQueryCount = datastoreWithTupleCache.GetMetrics().DatastoreQueryCount
 
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }

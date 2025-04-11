@@ -176,6 +176,7 @@ func TestServerLogs(t *testing.T) {
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
+				"request.throttled":      false,
 			},
 		},
 		{
@@ -199,6 +200,7 @@ func TestServerLogs(t *testing.T) {
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent",
+				"request.throttled":      false,
 			},
 		},
 		{
@@ -263,6 +265,7 @@ func TestServerLogs(t *testing.T) {
 				"store_id":               storeID,
 				"authorization_model_id": authorizationModelID,
 				"user_agent":             "test-user-agent",
+				"request.throttled":      nil,
 			},
 		},
 	}
@@ -314,7 +317,8 @@ func TestServerLogs(t *testing.T) {
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
-				require.Len(t, fields, 15)
+				require.Equal(t, test.expectedContext["request.throttled"], fields["request.throttled"])
+				require.GreaterOrEqual(t, len(fields), 15)
 			} else {
 				require.Len(t, fields, 13)
 			}
