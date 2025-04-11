@@ -77,6 +77,19 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	})
 
 	const methodName = "check"
+
+	if checkRequestMetadata != nil {
+		rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+		dispatchCount := float64(rawDispatchCount)
+
+		grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
+		span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
+		dispatchCountHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+		).Observe(dispatchCount)
+	}
+
 	if err != nil {
 		telemetry.TraceError(span, err)
 		finalErr := commands.CheckCommandErrorToServerError(err)
@@ -101,19 +114,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		methodName,
 	).Observe(queryCount)
 
-	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
-	dispatchCount := float64(rawDispatchCount)
-
-	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
-	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
-	dispatchCountHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
-	).Observe(dispatchCount)
-
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
 	}
+
+	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
 
 	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
 

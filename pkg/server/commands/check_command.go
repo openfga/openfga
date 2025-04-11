@@ -125,10 +125,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			return nil, nil, &ThrottledError{Cause: err}
+			return nil, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
 		}
 
-		return nil, nil, err
+		return nil, resolveCheckRequest.GetRequestMetadata(), err
 	}
 
 	resp.ResolutionMetadata.Duration = time.Since(startTime)
