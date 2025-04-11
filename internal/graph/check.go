@@ -889,11 +889,13 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 	pool := concurrency.NewPool(ctx, int(limit))
 
 	as := NewAsync()
-
 	errorChan := as.RunAsync(ctx, func(ctx context.Context) {
 		defer func() {
 			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
+			err := pool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
 			close(outcomes)
 		}()
 
@@ -911,21 +913,26 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 				}
 
 				pool.Go(func(ctx context.Context) error {
-					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					recoveredError := panics.Try(func() {
+						resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
+						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					})
+					if recoveredError != nil {
+						return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+					}
 					return nil
 				})
 			}
 		}
 	})
-	defer close(errorChan)
 
-	err := <-errorChan
-	if err != nil {
+	select {
+	case err := <-errorChan:
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+		return nil
+	default:
+		return outcomes
 	}
-
-	return outcomes
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
@@ -1408,12 +1415,12 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	}()
 
 	pool.Go(func(ctx context.Context) error {
-		recoveredErr := panics.Try(func() {
+		recoveredError := panics.Try(func() {
 			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
 		})
 
-		if recoveredErr != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+		if recoveredError != nil {
+			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
 
 		return nil
