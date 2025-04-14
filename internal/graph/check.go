@@ -698,6 +698,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 
 	select {
 	case err := <-errorChan:
+		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
 		return outcomes, errorChan
 	default:
@@ -934,6 +935,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 
 	select {
 	case err := <-errorChan:
+		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
 		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
 		return nil
 	default:

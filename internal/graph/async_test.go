@@ -39,7 +39,7 @@ func TestRunAsync(t *testing.T) {
 		err := <-errorChan
 
 		require.Error(t, err)
-		require.True(t, errors.Is(err, ErrPanic))
+		require.ErrorIs(t, err, ErrPanic)
 		require.ErrorContains(t, err, "test panic")
 	})
 }
