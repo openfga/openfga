@@ -122,6 +122,7 @@ func TestResolver(t *testing.T) {
 		err := drain()
 
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 	})
 
 	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
@@ -135,6 +136,7 @@ func TestResolver(t *testing.T) {
 		err := drain()
 
 		require.ErrorContains(t, err, "send on closed channel")
+		require.ErrorIs(t, err, ErrPanic)
 	})
 }
 
@@ -519,6 +521,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		resp, err := exclusion(ctx, concurrencyLimit, panicHandler, falseHandler)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Nil(t, resp)
 	})
 
@@ -529,6 +532,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, panicHandler)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -835,6 +839,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -1726,6 +1731,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		resp, err := union(ctx, concurrencyLimit, panicHandler)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -3377,6 +3383,7 @@ func TestProcessDispatch(t *testing.T) {
 		}
 
 		require.ErrorContains(t, err, "send on closed channel")
+		require.ErrorIs(t, err, ErrPanic)
 	})
 }
 
@@ -3581,7 +3588,7 @@ func TestConsumeDispatch(t *testing.T) {
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
 
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "panic occurred")
+		require.ErrorIs(t, err, ErrPanic)
 	})
 }
 
@@ -3680,6 +3687,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 		}
 		resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
 	})
 }
@@ -3704,6 +3712,7 @@ func TestCheckMembership(t *testing.T) {
 			return "", "", nil
 		})
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
 	})
 }
@@ -3736,7 +3745,7 @@ func TestProcessUsersets(t *testing.T) {
 
 		outcome := <-outcomes
 		require.Error(t, outcome.err)
-		require.Contains(t, outcome.err.Error(), "panic occurred")
+		require.ErrorIs(t, outcome.err, ErrPanic)
 	})
 }
 
@@ -3871,6 +3880,7 @@ func TestCheckTTUSlowPath(t *testing.T) {
 		rewrite := typesystem.TupleToUserset("owner", "member")
 		resp, err := checker.checkTTUSlowPath(ctx, req, rewrite, iter)
 		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
 	})
 }
@@ -4064,6 +4074,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 		for userToUsersetMessage := range userToUsersetMessageChan {
 			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
+			require.ErrorIs(t, userToUsersetMessage.err, ErrPanic)
 			require.Empty(t, userToUsersetMessage.userset)
 		}
 	})

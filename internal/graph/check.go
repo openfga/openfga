@@ -187,7 +187,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 	return func() error {
 		recoveredError := wg.WaitAndRecover()
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			errorChan <- fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 		close(limiter)
 
@@ -358,7 +358,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			baseChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			errorChan <- fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 	}()
 
@@ -375,7 +375,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			subChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			errorChan <- fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 	}()
 
@@ -687,7 +687,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						})
 						if recoveredError != nil {
-							return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+							return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 						}
 						return nil
 					})
@@ -781,7 +781,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
@@ -875,7 +875,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
@@ -924,7 +924,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 					})
 					if recoveredError != nil {
-						return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+						return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 					}
 					return nil
 				})
@@ -1427,7 +1427,7 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
