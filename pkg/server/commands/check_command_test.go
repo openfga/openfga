@@ -215,6 +215,36 @@ type doc
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("metadata_on_error", func(t *testing.T) {
+		ctx := context.Background()
+
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Times(1)
+
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				req.GetRequestMetadata().Depth++
+				req.GetRequestMetadata().DispatchCounter.Add(1)
+				req.GetRequestMetadata().WasThrottled.Store(true)
+				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				return nil, context.DeadlineExceeded
+			})
+
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		checkResp, checkRequestMetadata, err := cmd.Execute(ctx, &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+
+		require.Error(t, err)
+		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
+		require.Equal(t, uint32(1), checkRequestMetadata.Depth)
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.Equal(t, true, checkRequestMetadata.WasThrottled.Load())
+	})
 }
 
 func TestCheckCommandErrorToServerError(t *testing.T) {

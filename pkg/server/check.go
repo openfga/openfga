@@ -24,7 +24,9 @@ import (
 )
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
-	start := time.Now()
+	const methodName = "check"
+
+	startTime := time.Now()
 
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, authz.Check, trace.WithAttributes(
@@ -76,10 +78,16 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Consistency:      req.GetConsistency(),
 	})
 
-	const methodName = "check"
+	endTime := time.Since(startTime).Milliseconds()
+
+	var (
+		wasRequestThrottled bool
+		rawDispatchCount    uint32
+	)
 
 	if checkRequestMetadata != nil {
-		rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
+		wasRequestThrottled = checkRequestMetadata.WasThrottled.Load()
+		rawDispatchCount = checkRequestMetadata.DispatchCounter.Load()
 		dispatchCount := float64(rawDispatchCount)
 
 		grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
@@ -88,6 +96,38 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			s.serviceName,
 			methodName,
 		).Observe(dispatchCount)
+	}
+
+	if resp != nil {
+		queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+		datastoreQueryCountHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+		).Observe(queryCount)
+
+		requestDurationHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+			req.GetConsistency().String(),
+		).Observe(float64(endTime))
+
+		if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
+			accessControlStoreCheckDurationHistogram.WithLabelValues(
+				utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
+				utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
+				req.GetConsistency().String(),
+			).Observe(float64(endTime))
+		}
+
+		if wasRequestThrottled {
+			throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
+		}
+		grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
 	}
 
 	if err != nil {
@@ -101,48 +141,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, finalErr
 	}
 
+	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
+
 	span.SetAttributes(
 		attribute.Bool("cycle_detected", resp.GetCycleDetected()),
 		attribute.Bool("allowed", resp.GetAllowed()))
 
-	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
-
-	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-	datastoreQueryCountHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
-	).Observe(queryCount)
-
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
 	}
-
-	rawDispatchCount := checkRequestMetadata.DispatchCounter.Load()
-
-	checkResultCounter.With(prometheus.Labels{allowedLabel: strconv.FormatBool(resp.GetAllowed())}).Inc()
-
-	requestDurationHistogram.WithLabelValues(
-		s.serviceName,
-		methodName,
-		utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-		utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
-		req.GetConsistency().String(),
-	).Observe(float64(time.Since(start).Milliseconds()))
-
-	if s.authorizer.AccessControlStoreID() == req.GetStoreId() {
-		accessControlStoreCheckDurationHistogram.WithLabelValues(
-			utils.Bucketize(uint(queryCount), s.requestDurationByQueryHistogramBuckets),
-			utils.Bucketize(uint(rawDispatchCount), s.requestDurationByDispatchCountHistogramBuckets),
-			req.GetConsistency().String(),
-		).Observe(float64(time.Since(start).Milliseconds()))
-	}
-
-	wasRequestThrottled := checkRequestMetadata.WasThrottled.Load()
-	if wasRequestThrottled {
-		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
-	}
-	grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
 
 	return res, nil
 }
