@@ -332,7 +332,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	ctx, cancel := context.WithCancel(ctx)
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
-	errorChan := make(chan error, 2)
 
 	var wg sync.WaitGroup
 
@@ -359,7 +358,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			baseChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -376,7 +375,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			subChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -428,8 +427,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			if subResult.resp.GetAllowed() {
 				return response, nil
 			}
-		case err := <-errorChan:
-			return nil, err
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
