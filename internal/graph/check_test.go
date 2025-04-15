@@ -4056,7 +4056,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 				return
 			}
 
-			userToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, mapper)
+			userToUsersetMessageChan, _ := streamedLookupUsersetFromIterator(cancellableCtx, mapper)
 
 			var userToUsersetMessages []usersetMessage
 
@@ -4071,7 +4071,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
 		ctx := context.Background()
 		iter := &mockIterator[string]{}
-		userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
+		userToUsersetMessageChan, _ := streamedLookupUsersetFromIterator(ctx, iter)
 
 		for userToUsersetMessage := range userToUsersetMessageChan {
 			require.ErrorContains(t, userToUsersetMessage.err, panicErr)

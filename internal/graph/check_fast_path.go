@@ -434,7 +434,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
-	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
+	rightChan, errorChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
 
@@ -457,6 +457,10 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case err := <-errorChan:
+		if err != nil {
+			return nil, err
+		}
 	case r, ok := <-rightChan:
 		if !ok {
 			return res, ctx.Err()
@@ -829,7 +833,7 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	defer cancel()
 	objectToUsersetIter := storage.WrapIterator(mapping.kind, iter)
 	defer objectToUsersetIter.Stop()
-	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
+	objectToUsersetMessageChan, errorChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
@@ -841,6 +845,10 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case err := <-errorChan:
+		if err != nil {
+			return nil, err
+		}
 	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
 		if !ok {
 			return res, ctx.Err()

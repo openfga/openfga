@@ -53,7 +53,12 @@ func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRe
 	s.mapper = usersetFromUserIter
 
 	// note: this function will close the channel
-	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, usersetFromUserIter)
+	userToUsersetMessageChan, errorChan := streamedLookupUsersetFromIterator(ctx, usersetFromUserIter)
+
+	err = <-errorChan
+	if err != nil {
+		return nil, err
+	}
 
 	return userToUsersetMessageChan, nil
 }

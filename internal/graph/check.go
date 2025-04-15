@@ -944,6 +944,11 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
+			}
 		case outcome, channelOpen := <-outcomeChannel:
 			if !channelOpen {
 				break ConsumerLoop
@@ -961,11 +966,6 @@ ConsumerLoop:
 				finalErr = nil
 				finalResult = outcome.resp
 				break ConsumerLoop
-			}
-		case err := <-errorChan:
-			if err != nil {
-				finalErr = err
-				break ConsumerLoop // end
 			}
 		}
 	}
@@ -1041,7 +1041,7 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
 // It closes the channel in the end.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) (chan usersetMessage, <-chan error) {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
@@ -1065,14 +1065,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 		}
 	})
 
-	select {
-	case err := <-errorChan:
-		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-		concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
-		return nil
-	default:
-		return usersetMessageChan
-	}
+	return usersetMessageChan, errorChan
 }
 
 // processUsersetMessage will add the userset in the primarySet.
