@@ -923,15 +923,6 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 		}
 	})
 
-	// select {
-	// case <-errorChan:
-	// 	// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-	// 	// concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
-	// 	return outcomes
-	// default:
-	// 	return outcomes
-	// }
-
 	return outcomes, errorChan
 }
 
