@@ -24,6 +24,7 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -3581,7 +3582,7 @@ func TestConsumeDispatch(t *testing.T) {
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
 
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "panic occurred")
+		require.ErrorIs(t, err, utils.ErrPanic)
 	})
 }
 
@@ -3732,11 +3733,11 @@ func TestProcessUsersets(t *testing.T) {
 		}
 		close(usersetsChan)
 
-		outcomes := checker.processUsersets(ctx, req, usersetsChan, 1)
+		outcomes, _ := checker.processUsersets(ctx, req, usersetsChan, 1)
 
 		outcome := <-outcomes
 		require.Error(t, outcome.err)
-		require.Contains(t, outcome.err.Error(), "panic occurred")
+		require.ErrorIs(t, outcome.err, utils.ErrPanic)
 	})
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -154,9 +155,8 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		}
 
 		wg.Go(func() {
-			defer func() {
-				close(resolved)
-			}()
+			defer close(resolved)
+
 			resp, err := fn(ctx)
 			resolved <- checkOutcome{resp, err}
 		})
@@ -188,7 +188,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 	return func() error {
 		recoveredError := wg.WaitAndRecover()
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			errorChan <- fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
 		}
 		close(limiter)
 
@@ -332,7 +332,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	ctx, cancel := context.WithCancel(ctx)
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
-	errorChan := make(chan error, 2)
 
 	var wg sync.WaitGroup
 
@@ -359,7 +358,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			baseChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -376,7 +375,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			subChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			errorChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -428,8 +427,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			if subResult.resp.GetAllowed() {
 				return response, nil
 			}
-		case err := <-errorChan:
-			return nil, err
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -647,60 +644,61 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, chan error) {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
-	panicChan := make(chan error, 1)
 
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				// We need to wait always to avoid a goroutine leak.
-				_ = dispatchPool.Wait()
-				close(outcomes)
-				close(panicChan)
-			}()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case msg, ok := <-dispatchChan:
-					if !ok {
-						return
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			err := dispatchPool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
+			close(outcomes)
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case msg, ok := <-dispatchChan:
+				if !ok {
+					return nil
+				}
+				if msg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
+					break // continue
+				}
+				if msg.shortCircuit {
+					resp := &ResolveCheckResponse{
+						Allowed: true,
 					}
-					if msg.err != nil {
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
-						break // continue
-					}
-					if msg.shortCircuit {
-						resp := &ResolveCheckResponse{
-							Allowed: true,
-						}
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-						return
-					}
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
+					return nil
+				}
 
-					if msg.dispatchParams != nil {
-						dispatchPool.Go(func(ctx context.Context) error {
+				if msg.dispatchParams != nil {
+					dispatchPool.Go(func(ctx context.Context) error {
+						recoveredError := panics.Try(func() {
 							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
-							return nil
 						})
-					}
+						if recoveredError != nil {
+							return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+						}
+						return nil
+					})
 				}
 			}
-		})
-		if recoveredError != nil {
-			panicChan <- fmt.Errorf("panic occurred: %w", recoveredError.AsError())
 		}
-	}()
+	})
 
-	return outcomes, panicChan
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel, panicChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
+	outcomeChannel, errorChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -712,7 +710,7 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
-		case err := <-panicChan:
+		case err := <-errorChan:
 			if err != nil {
 				finalErr = err
 				break ConsumerLoop // end
@@ -774,7 +772,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
@@ -868,7 +866,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredError.AsError())
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
@@ -884,47 +882,57 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) chan checkOutcome {
+func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	pool := concurrency.NewPool(ctx, int(limit))
 
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				// We need to wait always to avoid a goroutine leak.
-				_ = pool.Wait()
-				close(outcomes)
-			}()
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
+		defer func() {
+			// We need to wait always to avoid a goroutine leak.
+			err := pool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
+			close(outcomes)
+		}()
 
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case msg, ok := <-usersetsChan:
-					if !ok {
-						return
-					}
-					if msg.err != nil {
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
-						break // continue
-					}
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case msg, ok := <-usersetsChan:
+				if !ok {
+					return nil
+				}
+				if msg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
+					break // continue
+				}
 
-					pool.Go(func(ctx context.Context) error {
+				pool.Go(func(ctx context.Context) error {
+					recoveredError := panics.Try(func() {
 						resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
 						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
-						return nil
 					})
-				}
+					if recoveredError != nil {
+						return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+					}
+					return nil
+				})
 			}
-		})
-
-		if recoveredError != nil {
-			// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("panic occurred: %w", recoveredError.AsError())}, outcomes)
 		}
-	}()
+	})
 
-	return outcomes
+	// select {
+	// case <-errorChan:
+	// 	// TODO: this can cause a panic too, but would require heavy refactoring to fix.
+	// 	// concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+	// 	return outcomes
+	// default:
+	// 	return outcomes
+	// }
+
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
@@ -932,7 +940,7 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 	defer span.End()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
+	outcomeChannel, errorChan := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -961,6 +969,11 @@ ConsumerLoop:
 				finalErr = nil
 				finalResult = outcome.resp
 				break ConsumerLoop
+			}
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
 			}
 		}
 	}
@@ -1407,12 +1420,12 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	}()
 
 	pool.Go(func(ctx context.Context) error {
-		recoveredErr := panics.Try(func() {
+		recoveredError := panics.Try(func() {
 			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
 		})
 
-		if recoveredErr != nil {
-			return fmt.Errorf("panic occurred: %w", recoveredErr.AsError())
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
