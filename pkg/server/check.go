@@ -137,6 +137,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if wasRequestThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
+	grpc_ctxtags.Extract(ctx).Set("request.throttled", wasRequestThrottled)
 
 	return res, nil
 }
