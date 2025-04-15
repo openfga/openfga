@@ -243,7 +243,7 @@ type doc
 		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
 		require.Equal(t, uint32(1), checkRequestMetadata.Depth)
 		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
-		require.Equal(t, true, checkRequestMetadata.WasThrottled.Load())
+		require.True(t, checkRequestMetadata.WasThrottled.Load())
 	})
 }
 
