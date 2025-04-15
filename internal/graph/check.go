@@ -694,14 +694,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 		}
 	})
 
-	select {
-	case err := <-errorChan:
-		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
-		return outcomes, errorChan
-	default:
-		return outcomes, errorChan
-	}
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
@@ -890,7 +883,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) chan checkOutcome {
+func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	pool := concurrency.NewPool(ctx, int(limit))
 
@@ -931,14 +924,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 		}
 	})
 
-	select {
-	case err := <-errorChan:
-		// TODO: this can cause a panic too, but would require heavy refactoring to fix.
-		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
-		return nil
-	default:
-		return outcomes
-	}
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
@@ -946,7 +932,7 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 	defer span.End()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
+	outcomeChannel, errorChan := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -975,6 +961,11 @@ ConsumerLoop:
 				finalErr = nil
 				finalResult = outcome.resp
 				break ConsumerLoop
+			}
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
 			}
 		}
 	}

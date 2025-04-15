@@ -3742,7 +3742,7 @@ func TestProcessUsersets(t *testing.T) {
 		}
 		close(usersetsChan)
 
-		outcomes := checker.processUsersets(ctx, req, usersetsChan, 1)
+		outcomes, _ := checker.processUsersets(ctx, req, usersetsChan, 1)
 
 		outcome := <-outcomes
 		require.Error(t, outcome.err)
