@@ -817,9 +817,6 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 
 	go func() {
 		defer func() {
-			if r := recover(); r != nil {
-				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, r)}, outcomes)
-			}
 			// We need to wait always to avoid a goroutine leak.
 			_ = pool.Wait()
 			close(outcomes)
