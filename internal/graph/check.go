@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -132,14 +135,13 @@ type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handler
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() {
+func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	var wg sync.WaitGroup
+	var wg conc.WaitGroup
 
 	checker := func(fn CheckHandlerFunc) {
 		defer func() {
-			wg.Done()
 			<-limiter
 		}()
 
@@ -150,10 +152,12 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 			return
 		}
 
-		go func() {
+		wg.Go(func() {
+			defer close(resolved)
+
 			resp, err := fn(ctx)
 			resolved <- checkOutcome{resp, err}
-		}()
+		})
 
 		select {
 		case <-ctx.Done():
@@ -163,33 +167,36 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		}
 	}
 
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 	outer:
 		for _, handler := range handlers {
 			fn := handler // capture loop var
 
 			select {
 			case limiter <- struct{}{}:
-				wg.Add(1)
-				go checker(fn)
+				wg.Go(func() {
+					checker(fn)
+				})
 			case <-ctx.Done():
 				break outer
 			}
 		}
+	})
 
-		wg.Done()
-	}()
-
-	return func() {
-		wg.Wait()
+	return func() error {
+		recoveredError := wg.WaitAndRecover()
 		close(limiter)
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+		}
+
+		return nil
 	}
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -197,17 +204,21 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	defer func() {
 		cancel()
-		drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+			resp = nil
+		}
 		close(resultChan)
 	}()
 
-	var err error
+	var elErr error
 	var cycleDetected bool
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				err = result.err
+				elErr = result.err
 				continue
 			}
 
@@ -216,32 +227,38 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 			}
 
 			if result.resp.GetAllowed() {
-				return result.resp, nil
+				resp = result.resp
+				return
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err = ctx.Err()
+			return
 		}
 	}
 
-	if err != nil {
-		return nil, err
+	if elErr != nil {
+		err = elErr
+		return
 	}
 
-	return &ResolveCheckResponse{
+	resp = &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: ResolveCheckResponseMetadata{
 			CycleDetected: cycleDetected,
 		},
-	}, nil
+	}
+
+	return
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) == 0 {
-		return &ResolveCheckResponse{
+		resp = &ResolveCheckResponse{
 			Allowed: false,
-		}, nil
+		}
+		return
 	}
 
 	span := trace.SpanFromContext(ctx)
@@ -253,36 +270,44 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 
 	defer func() {
 		cancel()
-		drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+		}
 		close(resultChan)
 	}()
 
-	var err error
+	var elErr error
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
 				telemetry.TraceError(span, result.err)
-				err = errors.Join(err, result.err)
+				elErr = errors.Join(elErr, result.err)
 				continue
 			}
 
 			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				return result.resp, nil
+				resp = result.resp
+				return
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err = ctx.Err()
+			return
 		}
 	}
 
 	// all operands are either truthy or we've seen at least one error
-	if err != nil {
-		return nil, err
+	if elErr != nil {
+		err = elErr
+		return
 	}
 
-	return &ResolveCheckResponse{
+	resp = &ResolveCheckResponse{
 		Allowed: true,
-	}, nil
+	}
+
+	return
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -316,19 +341,35 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(ctx)
-		baseChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := baseHandler(ctx)
+			baseChan <- checkOutcome{resp, err}
+		})
+		if recoveredError != nil {
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(ctx)
-		subChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := subHandler(ctx)
+			subChan <- checkOutcome{resp, err}
+		})
+		if recoveredError != nil {
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	response := &ResolveCheckResponse{
@@ -596,24 +637,27 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
 
-	go func() {
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
 		defer func() {
 			// We need to wait always to avoid a goroutine leak.
-			_ = dispatchPool.Wait()
+			err := dispatchPool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
 			close(outcomes)
 		}()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 			case msg, ok := <-dispatchChan:
 				if !ok {
-					return
+					return nil
 				}
 				if msg.err != nil {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
@@ -624,26 +668,31 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 						Allowed: true,
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-					return
+					return nil
 				}
 
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
-						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						recoveredError := panics.Try(func() {
+							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						})
+						if recoveredError != nil {
+							return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+						}
 						return nil
 					})
 				}
 			}
 		}
-	}()
+	})
 
-	return outcomes
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
+	outcomeChannel, errorChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -655,6 +704,11 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
+			}
 		case outcome, ok := <-outcomeChannel:
 			if !ok {
 				break ConsumerLoop
@@ -689,31 +743,42 @@ ConsumerLoop:
 
 // checkUsersetSlowPath will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
-
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
 	}()
+
 	pool.Go(func(ctx context.Context) error {
-		c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		recoveredError := panics.Try(func() {
+			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		})
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+		}
+
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkUsersetFastPath is the fast path to evaluate userset.
@@ -770,54 +835,68 @@ type usersetsChannelType struct {
 // 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
 // 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
 // 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
-func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
 	// all at least 1 userset to queue up
 	usersetsChan := make(chan usersetsChannelType, 2)
-
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
 	}()
+
 	pool.Go(func(ctx context.Context) error {
-		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+		recoveredError := panics.Try(func() {
+			c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+		})
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+		}
+
 		return nil
 	})
 
-	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
+	resp, err = c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, err
+	return
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) chan checkOutcome {
+func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	pool := concurrency.NewPool(ctx, int(limit))
 
-	go func() {
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
 		defer func() {
 			// We need to wait always to avoid a goroutine leak.
-			_ = pool.Wait()
+			err := pool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
 			close(outcomes)
 		}()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 			case msg, ok := <-usersetsChan:
 				if !ok {
-					return
+					return nil
 				}
 				if msg.err != nil {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
@@ -825,15 +904,20 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 				}
 
 				pool.Go(func(ctx context.Context) error {
-					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					recoveredError := panics.Try(func() {
+						resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
+						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					})
+					if recoveredError != nil {
+						return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+					}
 					return nil
 				})
 			}
 		}
-	}()
+	})
 
-	return outcomes
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType) (*ResolveCheckResponse, error) {
@@ -841,7 +925,7 @@ func (c *LocalChecker) consumeUsersets(ctx context.Context, req *ResolveCheckReq
 	defer span.End()
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
+	outcomeChannel, errorChan := c.processUsersets(cancellableCtx, req, usersetsChan, 2)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -853,6 +937,11 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
+			}
 		case outcome, channelOpen := <-outcomeChannel:
 			if !channelOpen {
 				break ConsumerLoop
@@ -892,6 +981,7 @@ func (c *LocalChecker) produceUsersets(ctx context.Context, usersetsChan chan us
 
 	usersetsMap := make(usersetsMapType)
 	defer close(usersetsChan)
+
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -944,11 +1034,11 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
 // It closes the channel in the end.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) (chan usersetMessage, <-chan error) {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
-	go func() {
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
 		defer func() {
 			close(usersetMessageChan)
 			span.End()
@@ -958,16 +1048,17 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			res, err := iter.Next(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					return
+					return nil
 				}
 				telemetry.TraceError(span, err)
 				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
-				return
+				return nil
 			}
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
 		}
-	}()
-	return usersetMessageChan
+	})
+
+	return usersetMessageChan, errorChan
 }
 
 // processUsersetMessage will add the userset in the primarySet.
@@ -1287,34 +1378,45 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
 	defer span.End()
 
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
-
 	cancellableCtx, cancelFunc := context.WithCancel(ctx)
+
 	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
 	pool := concurrency.NewPool(cancellableCtx, 1)
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
 	}()
+
 	pool.Go(func(ctx context.Context) error {
-		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		recoveredError := panics.Try(func() {
+			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		})
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+		}
+
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
