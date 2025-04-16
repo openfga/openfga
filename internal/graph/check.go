@@ -843,7 +843,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 					if recoveredError != nil {
 						concurrency.TrySendThroughChannel(
 							ctx,
-							checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())},
+							checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
 							outcomes,
 						)
 					}

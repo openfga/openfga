@@ -3588,7 +3588,7 @@ func TestProcessUsersets(t *testing.T) {
 
 		outcome := <-outcomes
 		require.Error(t, outcome.err)
-		require.ErrorIs(t, outcome.err, utils.ErrPanic)
+		require.ErrorIs(t, outcome.err, ErrPanic)
 	})
 }
 
