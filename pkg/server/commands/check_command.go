@@ -121,18 +121,30 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
 
 	startTime := time.Now()
-
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
-			return nil, nil, &ThrottledError{Cause: err}
-		}
+	endTime := time.Since(startTime)
 
-		return nil, nil, err
+	// ResolveCheck might fail half way throughout (e.g. due to a timeout) and return a nil response.
+	// Partial resolution metadata is still useful for obsevability.
+	// From here on, we can assume that request metadata and response are not nil even if
+	// there is an error present.
+	if resp == nil {
+		resp = &graph.ResolveCheckResponse{
+			Allowed:            false,
+			ResolutionMetadata: graph.ResolveCheckResponseMetadata{},
+		}
 	}
 
-	resp.ResolutionMetadata.Duration = time.Since(startTime)
+	resp.ResolutionMetadata.Duration = endTime
 	resp.ResolutionMetadata.DatastoreQueryCount = datastoreWithTupleCache.GetMetrics().DatastoreQueryCount
+
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {
+			return resp, resolveCheckRequest.GetRequestMetadata(), &ThrottledError{Cause: err}
+		}
+
+		return resp, resolveCheckRequest.GetRequestMetadata(), err
+	}
 
 	return resp, resolveCheckRequest.GetRequestMetadata(), nil
 }
