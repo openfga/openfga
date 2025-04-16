@@ -18,7 +18,6 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -33,6 +32,7 @@ type setOperatorType int
 
 var (
 	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+	ErrPanic              = errors.New("panic captured")
 )
 
 const (
@@ -638,7 +638,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 						if recoveredError != nil {
 							concurrency.TrySendThroughChannel(
 								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())},
+								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
 								outcomes,
 							)
 						}
