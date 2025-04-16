@@ -15,7 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Panics in goroutines in check are converted to errors.
-  - Applied to `processDispatches` in graph/check.go.
+  - Applied to `processDispatches`, and `processUsersets` in graph/check.go.
 
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
