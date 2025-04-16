@@ -199,7 +199,7 @@ func TestReadStartingWithUser(t *testing.T) {
 		protocmp.Transform(),
 	}
 
-	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5#", "user:*#"}, filter.ObjectType)
+	invalidEntityKeys := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{"user:5", "user:*"}, filter.ObjectType)
 
 	t.Run("cache_miss", func(t *testing.T) {
 		gomock.InOrder(
