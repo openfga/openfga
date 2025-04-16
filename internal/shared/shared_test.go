@@ -10,7 +10,7 @@ import (
 
 	"github.com/openfga/openfga/internal/cachecontroller"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/server/config"
 )
 
 func TestSharedCheckResources(t *testing.T) {

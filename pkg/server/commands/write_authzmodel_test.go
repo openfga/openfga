@@ -16,7 +16,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
