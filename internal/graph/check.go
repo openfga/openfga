@@ -604,9 +604,6 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 
 	go func() {
 		defer func() {
-			if r := recover(); r != nil {
-				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, r)}, outcomes)
-			}
 			// We need to wait always to avoid a goroutine leak.
 			_ = dispatchPool.Wait()
 			close(outcomes)
