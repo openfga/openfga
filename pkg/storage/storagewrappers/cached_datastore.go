@@ -152,7 +152,10 @@ func (c *CachedDatastore) ReadStartingWithUser(
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
-		subject := tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
+		subject := objectRel.GetObject()
+		if objectRel.GetRelation() != "" {
+			subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
+		}
 		subjects = append(subjects, subject)
 		b.WriteString("/" + subject)
 	}
