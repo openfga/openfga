@@ -3561,6 +3561,38 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 	}
 }
 
+func TestProcessUsersets(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+
+		usersetsChan := make(chan usersetsChannelType, 1)
+		usersetsChan <- usersetsChannelType{
+			err:            nil,
+			objectRelation: "group#member",
+			objectIDs:      nil, // This will cause a panic in checkAssociatedObjects
+		}
+		close(usersetsChan)
+
+		outcomes := checker.processUsersets(ctx, req, usersetsChan, 1)
+
+		outcome := <-outcomes
+		require.Error(t, outcome.err)
+		require.ErrorIs(t, outcome.err, utils.ErrPanic)
+	})
+}
+
 func TestCheckTTUSlowPath(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
