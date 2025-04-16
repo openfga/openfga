@@ -14,7 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
