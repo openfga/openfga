@@ -3587,7 +3587,7 @@ func TestProcessUsersets(t *testing.T) {
 		outcomes := checker.processUsersets(ctx, req, usersetsChan, 1)
 
 		outcome := <-outcomes
-		require.Error(t, outcome.err)
+		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
 		require.ErrorIs(t, outcome.err, ErrPanic)
 	})
 }
