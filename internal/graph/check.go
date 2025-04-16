@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -596,24 +598,27 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, <-chan error) {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
 
-	go func() {
+	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
 		defer func() {
 			// We need to wait always to avoid a goroutine leak.
-			_ = dispatchPool.Wait()
+			err := dispatchPool.Wait()
+			if err != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			}
 			close(outcomes)
 		}()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 			case msg, ok := <-dispatchChan:
 				if !ok {
-					return
+					return nil
 				}
 				if msg.err != nil {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
@@ -624,26 +629,31 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 						Allowed: true,
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-					return
+					return nil
 				}
 
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
-						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						recoveredError := panics.Try(func() {
+							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						})
+						if recoveredError != nil {
+							return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+						}
 						return nil
 					})
 				}
 			}
 		}
-	}()
+	})
 
-	return outcomes
+	return outcomes, errorChan
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
+	outcomeChannel, errorChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -655,6 +665,11 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
+		case err := <-errorChan:
+			if err != nil {
+				finalErr = err
+				break ConsumerLoop // end
+			}
 		case outcome, ok := <-outcomeChannel:
 			if !ok {
 				break ConsumerLoop

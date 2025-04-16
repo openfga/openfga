@@ -24,6 +24,7 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -3233,15 +3234,61 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan, errorChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
 			outcomes := helperReceivedOutcome(outcomeChan)
 
+			var err error
+
+			select {
+			case err = <-errorChan:
+			case <-time.After(1 * time.Second):
+				t.Fatal("timeout waiting for panic")
+			}
+
 			require.Equal(t, tt.expectedOutcomes, outcomes)
+			require.NoError(t, err)
 		})
 	}
+
+	t.Run("should_error_if_dispatch_panics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		checker := NewLocalChecker()
+		defer checker.Close()
+		mockResolver := NewMockCheckResolver(ctrl)
+		checker.SetDelegate(mockResolver)
+		mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Do(func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
+			return nil, nil
+		})
+		dispatchMsgChan := make(chan dispatchMsg, 2)
+
+		outcomeChan, errorChan := checker.processDispatches(ctx, uint32(1), dispatchMsgChan)
+		close(outcomeChan)
+		dispatchMsgChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: req,
+				tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+			},
+		}
+		close(dispatchMsgChan)
+
+		var err error
+
+		select {
+		case err = <-errorChan:
+		case <-time.After(1 * time.Second):
+			t.Fatal("timeout waiting for panic")
+		}
+
+		require.ErrorContains(t, err, "send on closed channel")
+		require.ErrorIs(t, err, utils.ErrPanic)
+	})
 }
 
 func TestConsumeDispatch(t *testing.T) {
@@ -3427,6 +3474,26 @@ func TestConsumeDispatch(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		dispatchChan := make(chan dispatchMsg, 1)
+		dispatchChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: nil, // This will cause a panic when accessed in `dispatch`
+				tk:        nil, // Invalid TupleKey to trigger a panic
+			},
+		}
+		close(dispatchChan)
+
+		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
+
+		require.Error(t, err)
+		require.ErrorIs(t, err, utils.ErrPanic)
+	})
 }
 
 func TestCheckUsersetSlowPath(t *testing.T) {
