@@ -3075,7 +3075,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 
 // helperReceivedOutcome is a helper function that listen to chan checkOutcome and return
 // all the checkOutcomes when channel is closed.
-func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
+func helperReceivedOutcome(outcomes <-chan checkOutcome) []checkOutcome {
 	var checkOutcome []checkOutcome
 	for outcome := range outcomes {
 		checkOutcome = append(checkOutcome, outcome)
@@ -3234,22 +3234,13 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan, errorChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
 			outcomes := helperReceivedOutcome(outcomeChan)
 
-			var err error
-
-			select {
-			case err = <-errorChan:
-			case <-time.After(1 * time.Second):
-				t.Fatal("timeout waiting for panic")
-			}
-
 			require.Equal(t, tt.expectedOutcomes, outcomes)
-			require.NoError(t, err)
 		})
 	}
 
@@ -3263,31 +3254,20 @@ func TestProcessDispatch(t *testing.T) {
 		defer checker.Close()
 		mockResolver := NewMockCheckResolver(ctrl)
 		checker.SetDelegate(mockResolver)
-		mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Do(func(_ context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
-			return nil, nil
-		})
-		dispatchMsgChan := make(chan dispatchMsg, 2)
 
-		outcomeChan, errorChan := checker.processDispatches(ctx, uint32(1), dispatchMsgChan)
-		close(outcomeChan)
-		dispatchMsgChan <- dispatchMsg{
+		dispatchChan := make(chan dispatchMsg, 1)
+		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchChan)
+		dispatchChan <- dispatchMsg{
 			dispatchParams: &dispatchParams{
-				parentReq: req,
-				tk:        tuple.NewTupleKey("group:2", "member", "user:maria"),
+				parentReq: nil, // This will cause a panic when accessed in `dispatch`
+				tk:        nil, // Invalid TupleKey to trigger a panic
 			},
 		}
-		close(dispatchMsgChan)
+		close(dispatchChan)
 
-		var err error
-
-		select {
-		case err = <-errorChan:
-		case <-time.After(1 * time.Second):
-			t.Fatal("timeout waiting for panic")
-		}
-
-		require.ErrorContains(t, err, "send on closed channel")
-		require.ErrorIs(t, err, utils.ErrPanic)
+		outcome := <-outcomeChan
+		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
+		require.ErrorIs(t, outcome.err, utils.ErrPanic)
 	})
 }
 
@@ -3491,7 +3471,7 @@ func TestConsumeDispatch(t *testing.T) {
 
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
 
-		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid memory address or nil pointer")
 		require.ErrorIs(t, err, utils.ErrPanic)
 	})
 }

@@ -598,27 +598,27 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (chan checkOutcome, <-chan error) {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) <-chan checkOutcome {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
 
-	errorChan := utils.RunAsync(ctx, func(ctx context.Context) error {
+	go func() {
 		defer func() {
-			// We need to wait always to avoid a goroutine leak.
-			err := dispatchPool.Wait()
-			if err != nil {
-				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, outcomes)
+			if r := recover(); r != nil {
+				concurrency.TrySendThroughChannel(ctx, checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, r)}, outcomes)
 			}
+			// We need to wait always to avoid a goroutine leak.
+			_ = dispatchPool.Wait()
 			close(outcomes)
 		}()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return nil
+				return
 			case msg, ok := <-dispatchChan:
 				if !ok {
-					return nil
+					return
 				}
 				if msg.err != nil {
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
@@ -629,7 +629,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 						Allowed: true,
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-					return nil
+					return
 				}
 
 				if msg.dispatchParams != nil {
@@ -639,21 +639,25 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
 						})
 						if recoveredError != nil {
-							return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
+							concurrency.TrySendThroughChannel(
+								ctx,
+								checkOutcome{err: fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())},
+								outcomes,
+							)
 						}
 						return nil
 					})
 				}
 			}
 		}
-	})
+	}()
 
-	return outcomes, errorChan
+	return outcomes
 }
 
 func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel, errorChan := c.processDispatches(cancellableCtx, limit, dispatchChan)
+	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -665,11 +669,6 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			break ConsumerLoop
-		case err := <-errorChan:
-			if err != nil {
-				finalErr = err
-				break ConsumerLoop // end
-			}
 		case outcome, ok := <-outcomeChannel:
 			if !ok {
 				break ConsumerLoop
