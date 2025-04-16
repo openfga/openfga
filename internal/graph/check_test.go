@@ -3074,7 +3074,7 @@ func TestProduceTTUDispatches(t *testing.T) {
 
 // helperReceivedOutcome is a helper function that listen to chan checkOutcome and return
 // all the checkOutcomes when channel is closed.
-func helperReceivedOutcome(outcomes chan checkOutcome) []checkOutcome {
+func helperReceivedOutcome(outcomes <-chan checkOutcome) []checkOutcome {
 	var checkOutcome []checkOutcome
 	for outcome := range outcomes {
 		checkOutcome = append(checkOutcome, outcome)
@@ -3242,6 +3242,32 @@ func TestProcessDispatch(t *testing.T) {
 			require.Equal(t, tt.expectedOutcomes, outcomes)
 		})
 	}
+
+	t.Run("should_error_if_dispatch_panics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		checker := NewLocalChecker()
+		defer checker.Close()
+		mockResolver := NewMockCheckResolver(ctrl)
+		checker.SetDelegate(mockResolver)
+
+		dispatchChan := make(chan dispatchMsg, 1)
+		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchChan)
+		dispatchChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: nil, // This will cause a panic when accessed in `dispatch`
+				tk:        nil, // Invalid TupleKey to trigger a panic
+			},
+		}
+		close(dispatchChan)
+
+		outcome := <-outcomeChan
+		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
+		require.ErrorIs(t, outcome.err, ErrPanic)
+	})
 }
 
 func TestConsumeDispatch(t *testing.T) {
@@ -3427,6 +3453,26 @@ func TestConsumeDispatch(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		dispatchChan := make(chan dispatchMsg, 1)
+		dispatchChan <- dispatchMsg{
+			dispatchParams: &dispatchParams{
+				parentReq: nil, // This will cause a panic when accessed in `dispatch`
+				tk:        nil, // Invalid TupleKey to trigger a panic
+			},
+		}
+		close(dispatchChan)
+
+		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
+
+		require.ErrorContains(t, err, "invalid memory address or nil pointer")
+		require.ErrorIs(t, err, ErrPanic)
+	})
 }
 
 func TestCheckUsersetSlowPath(t *testing.T) {
