@@ -140,8 +140,6 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 	var wg conc.WaitGroup
 
-	errorChan := make(chan error, 3)
-
 	checker := func(fn CheckHandlerFunc) {
 		defer func() {
 			<-limiter
@@ -187,17 +185,12 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 	return func() error {
 		recoveredError := wg.WaitAndRecover()
-		if recoveredError != nil {
-			errorChan <- fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
-		}
 		close(limiter)
-
-		select {
-		case err := <-errorChan:
-			return err
-		default:
-			return nil
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", utils.ErrPanic, recoveredError.AsError())
 		}
+
+		return nil
 	}
 }
 
