@@ -24,7 +24,6 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -3267,7 +3266,7 @@ func TestProcessDispatch(t *testing.T) {
 
 		outcome := <-outcomeChan
 		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
-		require.ErrorIs(t, outcome.err, utils.ErrPanic)
+		require.ErrorIs(t, outcome.err, ErrPanic)
 	})
 }
 
@@ -3472,7 +3471,7 @@ func TestConsumeDispatch(t *testing.T) {
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
 
 		require.ErrorContains(t, err, "invalid memory address or nil pointer")
-		require.ErrorIs(t, err, utils.ErrPanic)
+		require.ErrorIs(t, err, ErrPanic)
 	})
 }
 
