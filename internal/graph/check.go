@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,6 +32,7 @@ type setOperatorType int
 
 var (
 	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
+	ErrPanic              = errors.New("panic captured")
 )
 
 const (
@@ -596,7 +598,7 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) chan checkOutcome {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) <-chan checkOutcome {
 	outcomes := make(chan checkOutcome, limit)
 	dispatchPool := concurrency.NewPool(ctx, int(limit))
 
@@ -629,8 +631,17 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 
 				if msg.dispatchParams != nil {
 					dispatchPool.Go(func(ctx context.Context) error {
-						resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						recoveredError := panics.Try(func() {
+							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
+							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+						})
+						if recoveredError != nil {
+							concurrency.TrySendThroughChannel(
+								ctx,
+								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+								outcomes,
+							)
+						}
 						return nil
 					})
 				}
@@ -944,12 +955,16 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
 // It closes the channel in the end.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) <-chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", ErrPanic, r)}, usersetMessageChan)
+			}
+
 			close(usersetMessageChan)
 			span.End()
 		}()
@@ -967,6 +982,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
 		}
 	}()
+
 	return usersetMessageChan
 }
 
