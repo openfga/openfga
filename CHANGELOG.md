@@ -17,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
 
+### Fixed
+- Add limit to goroutine concurrency when processing iterator [#2386](https://github.com/openfga/openfga/pull/2386)
+
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
 
