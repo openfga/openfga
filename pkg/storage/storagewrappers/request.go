@@ -3,9 +3,9 @@ package storagewrappers
 import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 )
 

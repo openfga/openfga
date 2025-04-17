@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/server/config"
 )
 
 // Metrics provides access to Condition metrics.
