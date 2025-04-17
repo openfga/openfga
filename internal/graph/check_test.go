@@ -65,6 +65,8 @@ var (
 	}
 )
 
+const panicErr = "mock panic for testing"
+
 // usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
@@ -459,6 +461,28 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_base_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, panicHandler, falseHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
+	})
+
+	t.Run("should_error_if_sub_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
 	})
 }
 
