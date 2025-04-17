@@ -700,7 +700,7 @@ ConsumerLoop:
 
 // checkUsersetSlowPath will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
 	defer span.End()
 
@@ -711,20 +711,30 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
 	}()
 	pool.Go(func(ctx context.Context) error {
-		c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		recoveredError := panics.Try(func() {
+			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+		})
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+		}
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkUsersetFastPath is the fast path to evaluate userset.
