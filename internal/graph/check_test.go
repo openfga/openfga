@@ -65,6 +65,8 @@ var (
 	}
 )
 
+const panicErr = "mock panic for testing"
+
 // usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
@@ -85,6 +87,41 @@ func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []us
 		}
 	}
 	return output
+}
+
+func TestResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_return_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+		resultChan := make(chan checkOutcome, 1)
+
+		drain := resolver(ctx, uint32(1), resultChan, panicHandler)
+		err := drain()
+
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+	})
+
+	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
+		handler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, nil
+		}
+		resultChan := make(chan checkOutcome, 1)
+		close(resultChan)
+
+		drain := resolver(ctx, uint32(1), resultChan, handler)
+		err := drain()
+
+		require.ErrorContains(t, err, "send on closed channel")
+		require.ErrorIs(t, err, ErrPanic)
+	})
 }
 
 func TestCheck_CorrectContext(t *testing.T) {
@@ -755,6 +792,17 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
 	})
 }
 
@@ -1636,6 +1684,17 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := union(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
 	})
 }
 
