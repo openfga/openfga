@@ -246,33 +246,80 @@ func TestReadStartingWithUser(t *testing.T) {
 	})
 
 	t.Run("cache_hit", func(t *testing.T) {
-		gomock.InOrder(
-			mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
-			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
-			mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
-			mockCache.EXPECT().Get(invalidEntityKeys[1]).Return(nil),
-		)
+		t.Run("without_user_filter_relation", func(t *testing.T) {
+			gomock.InOrder(
+				mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
+				mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+				mockCache.EXPECT().Get(invalidEntityKeys[0]).Return(nil),
+				mockCache.EXPECT().Get(invalidEntityKeys[1]).Return(nil),
+			)
 
-		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
-		require.NoError(t, err)
+			iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
+			require.NoError(t, err)
 
-		var actual []*openfgav1.Tuple
+			var actual []*openfgav1.Tuple
 
-		for {
-			tuple, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
+			for {
+				tuple, err := iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					require.Fail(t, "no error was expected")
 					break
 				}
-				require.Fail(t, "no error was expected")
-				break
+				actual = append(actual, tuple)
 			}
-			actual = append(actual, tuple)
-		}
 
-		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
+			if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+
+		t.Run("with_user_filter_relation", func(t *testing.T) {
+			filterWithUserRelation := storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{
+					{Object: "user:5", Relation: "viewer"}, // one with Relation
+					{Object: "user:*"},
+				},
+				ObjectIDs: storage.NewSortedSet("1"),
+			}
+			invalidEntityKeysWithRelation := storage.GetInvalidIteratorByUserObjectTypeCacheKeys(
+				storeID, []string{"user:5#viewer", "user:*"}, filterWithUserRelation.ObjectType,
+			)
+			gomock.InOrder(
+				mockCache.EXPECT().Get(gomock.Any()).Return(&storage.TupleIteratorCacheEntry{Tuples: cachedTuples}),
+				mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
+
+				// These should not be found, the cache_controller does not include relations
+				// in the invalidation record keys when calling invalidateIteratorCacheByUserAndObjectType
+				mockCache.EXPECT().Get(invalidEntityKeysWithRelation[0]).Return(nil),
+				mockCache.EXPECT().Get(invalidEntityKeysWithRelation[1]).Return(nil),
+			)
+
+			iter, err := ds.ReadStartingWithUser(ctx, storeID, filterWithUserRelation, options)
+			require.NoError(t, err)
+
+			var actual []*openfgav1.Tuple
+
+			for {
+				tuple, err := iter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					require.Fail(t, "no error was expected")
+					break
+				}
+				actual = append(actual, tuple)
+			}
+
+			if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
+				t.Fatalf("mismatch (-want +got):\n%s", diff)
+			}
+		})
 	})
 
 	t.Run("cache_empty_response", func(t *testing.T) {
