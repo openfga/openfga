@@ -7,8 +7,8 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
