@@ -811,7 +811,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) chan checkOutcome {
+func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckRequest, usersetsChan chan usersetsChannelType, limit uint32) <-chan checkOutcome {
 	outcomes := make(chan checkOutcome, limit)
 	pool := concurrency.NewPool(ctx, int(limit))
 
@@ -836,8 +836,17 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 				}
 
 				pool.Go(func(ctx context.Context) error {
-					resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					recoveredError := panics.Try(func() {
+						resp, err := checkAssociatedObjects(ctx, req, msg.objectRelation, msg.objectIDs)
+						concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
+					})
+					if recoveredError != nil {
+						concurrency.TrySendThroughChannel(
+							ctx,
+							checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+							outcomes,
+						)
+					}
 					return nil
 				})
 			}
