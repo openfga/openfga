@@ -2,6 +2,8 @@ name: Pull Request
 on:
   merge_group:
   pull_request:
+    paths-ignore:
+      - '**/*.md'
 
 permissions:
   contents: read
@@ -53,7 +55,6 @@ jobs:
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
-
 
   goreleaser-dryrun:
     name: Dry Run GoReleaser
