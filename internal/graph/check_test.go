@@ -3593,6 +3593,31 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 	})
 }
 
+func TestCheckMembership(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_error_if_produceUsersets_panics", func(t *testing.T) {
+		iter := &mockIterator[*openfgav1.TupleKey]{}
+		checker := NewLocalChecker()
+		defer checker.Close()
+
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+		resp, err := checker.checkMembership(ctx, req, iter, func(*openfgav1.TupleKey) (string, string, error) {
+			return "", "", nil
+		})
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
+}
+
 func TestProcessUsersets(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

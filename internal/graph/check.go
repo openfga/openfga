@@ -791,7 +791,7 @@ type usersetsChannelType struct {
 // 1. We build a map with folder#viewer:[1...N], org#viewer:[1...M] that are parents of doc:1. We send those through a channel.
 // 2. The consumer of the channel finds all the folders (and orgs) by looking at tuples of the form folder:X#viewer@user:maria (and org:Y#viewer@user:maria).
 // 3. If there is one folder or org found in step (2) that appears in the map found in step (1), it returns allowed=true immediately.
-func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersetDetails checkutil.UsersetDetailsFunc) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkMembership")
 	defer span.End()
 
@@ -804,20 +804,30 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			err = poolErr
+			resp = nil
+		}
 	}()
 	pool.Go(func(ctx context.Context) error {
-		c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+		recoveredError := panics.Try(func() {
+			c.produceUsersets(ctx, usersetsChan, iter, usersetDetails)
+		})
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+		}
 		return nil
 	})
 
-	resp, err := c.consumeUsersets(ctx, req, usersetsChan)
+	resp, err = c.consumeUsersets(ctx, req, usersetsChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		return
 	}
 
-	return resp, err
+	return
 }
 
 // processUsersets returns a channel where the outcomes of the checkAssociatedObjects checks are sent, and begins sending messages to this channel.
