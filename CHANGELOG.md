@@ -17,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
 
+### Fixed
+- Fixes case where cached_datastore.ReadStartingWithUser generated bad cache invalidation keys. [#2381](https://github.com/openfga/openfga/pull/2381)
+
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
 
