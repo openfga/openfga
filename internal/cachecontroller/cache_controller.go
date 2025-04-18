@@ -63,7 +63,7 @@ type CacheController interface {
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress,
 	// and if not it will spawn a goroutine to invalidate cached records conditionally
 	// based on timestamp.
-	InvalidateIfNeeded(storeID string, parentSpan trace.Span)
+	InvalidateIfNeeded(ctx context.Context, storeID string, parentSpan trace.Span)
 }
 
 type NoopCacheController struct{}
@@ -72,7 +72,7 @@ func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ str
 	return time.Time{}
 }
 
-func (c *NoopCacheController) InvalidateIfNeeded(_ string, _ trace.Span) {
+func (c *NoopCacheController) InvalidateIfNeeded(_ context.Context, _ string, _ trace.Span) {
 	return
 }
 
@@ -149,7 +149,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		return entry.LastModified
 	}
 
-	c.InvalidateIfNeeded(storeID, span)
+	c.InvalidateIfNeeded(ctx, storeID, span)
 
 	return time.Time{}
 }
@@ -164,21 +164,22 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) InvalidateIfNeeded(storeID string, span trace.Span) {
+func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeID string, span trace.Span) {
+	_, span = tracer.Start(ctx, "cacheController.InvalidateIfNeeded")
+	defer span.End()
+
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if present {
 		// If invalidation is already in process, abort.
 		return
 	}
 
-	if span != nil {
-		span.SetAttributes(attribute.Bool("cache_controller_invalidation", true))
-	}
+	span.SetAttributes(attribute.Bool("cache_controller_invalidation", true))
 
 	go func() {
 		// we do not want to propagate context to avoid early cancellation
 		// and pollute span.
-		c.findChangesAndInvalidateIfNecessary(context.Background(), storeID, nil)
+		c.findChangesAndInvalidateIfNecessary(context.Background(), storeID, span)
 		c.inflightInvalidations.Delete(storeID)
 	}()
 }
@@ -193,9 +194,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 	defer span.End()
 
 	link := trace.LinkFromContext(ctx)
-	if parentSpan != nil {
-		parentSpan.AddLink(link)
-	}
+	parentSpan.AddLink(link)
 
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result

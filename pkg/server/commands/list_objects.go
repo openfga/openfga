@@ -283,25 +283,14 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		var ds *storagewrappers.RequestStorageWrapper
-
-		noCache := req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
-		if noCache {
-			ds = storagewrappers.NewRequestStorageWrapper(
-				q.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-				q.maxConcurrentReads,
-			)
-		} else {
-			ds = storagewrappers.NewRequestStorageWrapperWithCache(
-				q.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-				q.maxConcurrentReads,
-				q.sharedCheckResources,
-				q.cacheSettings,
-				q.logger,
-			)
-		}
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			q.maxConcurrentReads,
+			q.sharedCheckResources,
+			q.cacheSettings,
+			q.logger,
+		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
@@ -447,7 +436,10 @@ func (q *ListObjectsQuery) Execute(
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		q.sharedCheckResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId(), nil)
+		_, span := tracer.Start(ctx, "commands.listObjects")
+		defer span.End()
+
+		q.sharedCheckResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId(), span)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
