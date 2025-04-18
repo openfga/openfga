@@ -1,6 +1,6 @@
   services:
     mssql:              
-      image: mcr.microsoft.com/mssql/server:2022-latest
+      image: mcr.microsoft.com/mssql/server:2019-latest
       container_name: mssql
       networks:
         - default
@@ -8,9 +8,9 @@
         - "1433:1433"
       environment:
         - ACCEPT_EULA=Y
-        - MSSQL_SA_PASSWORD=Password123
+        - MSSQL_SA_PASSWORD=Password123Str0ng!
       healthcheck:
-        test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123' -Q 'SELECT 1' -C 'TrustServerCertificate=yes'"]
+        test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123Str0ng!' -Q 'SELECT 1' -C"]
         interval: 10s
         timeout: 3s
         retries: 10
@@ -24,7 +24,7 @@
       depends_on:
         mssql:
           condition: service_healthy
-      command: /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Password123' -Q 'IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = ''openfga'') CREATE DATABASE openfga;'
+      command: /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Password123Str0ng!' -Q 'IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = ''openfga'') CREATE DATABASE openfga;'
 
     migrate:
       depends_on:
@@ -34,7 +34,7 @@
       container_name: migrate
       environment:
         - OPENFGA_DATASTORE_ENGINE=mssql
-        - OPENFGA_DATASTORE_URI=server=mssql;user id=sa;password=Password123;database=openfga;TrustServerCertificate=true
+        - OPENFGA_DATASTORE_URI=server=mssql;user id=sa;password=Password123Str0ng!;database=openfga;TrustServerCertificate=true
         - OPENFGA_LOG_LEVEL=debug
       command: migrate
       networks:
