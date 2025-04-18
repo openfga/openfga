@@ -283,25 +283,14 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		var ds *storagewrappers.RequestStorageWrapper
-
-		noCache := req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
-		if noCache {
-			ds = storagewrappers.NewRequestStorageWrapper(
-				q.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-				q.maxConcurrentReads,
-			)
-		} else {
-			ds = storagewrappers.NewRequestStorageWrapperWithCache(
-				q.datastore,
-				req.GetContextualTuples().GetTupleKeys(),
-				q.maxConcurrentReads,
-				q.sharedCheckResources,
-				q.cacheSettings,
-				q.logger,
-			)
-		}
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			q.maxConcurrentReads,
+			q.sharedCheckResources,
+			q.cacheSettings,
+			q.logger,
+		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
@@ -446,13 +435,11 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	//cacheInvalidationTime := time.Time{}
-	// This does the trick, figure out how to make the invalidating part of this logic separate
-	// and reusable
-	// TODO: high consistency requires us to skip the cache altogether, how is that working for check rn?
-	// Ahh check defaults the invalidation time to t0 and passes it down, that's how
-	if req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		_ = q.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, req.StoreId)
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		_, span := tracer.Start(ctx, "commands.listObjects")
+		defer span.End()
+
+		q.sharedCheckResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId(), span)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
