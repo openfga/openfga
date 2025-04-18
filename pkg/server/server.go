@@ -175,7 +175,7 @@ type Server struct {
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
 	// sharedCheckResources are created by the server
-	sharedCheckResources *shared.SharedCheckResources
+	sharedCheckResources *shared.SharedDatastoreResources
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
@@ -825,7 +825,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedCheckResources, err = shared.NewSharedCheckResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedCheckResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedCheckResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
 	}
