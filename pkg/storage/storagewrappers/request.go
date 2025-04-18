@@ -23,7 +23,7 @@ func NewRequestStorageWrapper(
 	ds storage.RelationshipTupleReader,
 	requestContextualTuples []*openfgav1.TupleKey,
 	maxConcurrentReads uint32,
-	resources *shared.SharedCheckResources,
+	resources *shared.SharedDatastoreResources,
 	cacheSettings config.CacheSettings,
 	logger logger.Logger,
 ) *RequestStorageWrapper {

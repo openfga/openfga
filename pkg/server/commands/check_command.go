@@ -31,7 +31,7 @@ type CheckQuery struct {
 	checkResolver        graph.CheckResolver
 	typesys              *typesystem.TypeSystem
 	datastore            storage.RelationshipTupleReader
-	sharedCheckResources *shared.SharedCheckResources
+	sharedCheckResources *shared.SharedDatastoreResources
 	cacheSettings        config.CacheSettings
 	maxConcurrentReads   uint32
 	shouldCacheIterators bool
@@ -59,7 +59,7 @@ func WithCheckCommandLogger(l logger.Logger) CheckQueryOption {
 	}
 }
 
-func WithCheckCommandCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) CheckQueryOption {
+func WithCheckCommandCache(sharedCheckResources *shared.SharedDatastoreResources, cacheSettings config.CacheSettings) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
@@ -76,7 +76,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
-		sharedCheckResources: &shared.SharedCheckResources{
+		sharedCheckResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 	}

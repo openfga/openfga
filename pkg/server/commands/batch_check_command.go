@@ -22,7 +22,7 @@ import (
 )
 
 type BatchCheckQuery struct {
-	sharedCheckResources *shared.SharedCheckResources
+	sharedCheckResources *shared.SharedDatastoreResources
 	cacheSettings        config.CacheSettings
 	checkResolver        graph.CheckResolver
 	datastore            storage.RelationshipTupleReader
@@ -69,7 +69,7 @@ type checkAndCorrelationIDs struct {
 
 type BatchCheckQueryOption func(*BatchCheckQuery)
 
-func WithBatchCheckCacheOptions(sharedCheckResources *shared.SharedCheckResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
+func WithBatchCheckCacheOptions(sharedCheckResources *shared.SharedDatastoreResources, cacheSettings config.CacheSettings) BatchCheckQueryOption {
 	return func(c *BatchCheckQuery) {
 		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
@@ -103,7 +103,7 @@ func NewBatchCheckCommand(datastore storage.RelationshipTupleReader, checkResolv
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 		cacheSettings:       config.NewDefaultCacheSettings(),
-		sharedCheckResources: &shared.SharedCheckResources{
+		sharedCheckResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 	}

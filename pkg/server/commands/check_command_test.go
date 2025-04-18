@@ -190,7 +190,7 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedCheckResources{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedDatastoreResources{
 			CacheController: cacheController,
 			Logger:          logger.NewNoopLogger(),
 		}, config.CacheSettings{}))
