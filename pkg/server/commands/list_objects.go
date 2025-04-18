@@ -447,7 +447,7 @@ func (q *ListObjectsQuery) Execute(
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		q.sharedCheckResources.CacheController.FindChangesAndInvalidateIfNecessary(ctx, req.GetStoreId(), nil)
+		q.sharedCheckResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId(), nil)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
