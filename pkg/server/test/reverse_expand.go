@@ -1314,7 +1314,7 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 
-			ds := storagewrappers.NewRequestStorageWrapperForListAPIs(ds, test.request.ContextualTuples, 30)
+			ds := storagewrappers.NewRequestStorageWrapper(ds, test.request.ContextualTuples, 30)
 			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, ts, opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)

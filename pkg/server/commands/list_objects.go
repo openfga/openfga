@@ -283,15 +283,26 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		// ds := storagewrappers.NewRequestStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
-		ds := storagewrappers.NewRequestStorageWrapper(
-			q.datastore,
-			req.GetContextualTuples().GetTupleKeys(),
-			q.maxConcurrentReads,
-			q.sharedCheckResources,
-			q.cacheSettings,
-			q.logger,
-		)
+		var ds *storagewrappers.RequestStorageWrapper
+
+		noCache := req.GetConsistency() == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
+		if noCache {
+			ds = storagewrappers.NewRequestStorageWrapper(
+				q.datastore,
+				req.GetContextualTuples().GetTupleKeys(),
+				q.maxConcurrentReads,
+			)
+		} else {
+			ds = storagewrappers.NewRequestStorageWrapperWithCache(
+				q.datastore,
+				req.GetContextualTuples().GetTupleKeys(),
+				q.maxConcurrentReads,
+				q.sharedCheckResources,
+				q.cacheSettings,
+				q.logger,
+			)
+		}
+
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -419,6 +430,7 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
+	q.logger.Debug("\n\n-----------------------------\n\n")
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
@@ -437,6 +449,8 @@ func (q *ListObjectsQuery) Execute(
 	//cacheInvalidationTime := time.Time{}
 	// This does the trick, figure out how to make the invalidating part of this logic separate
 	// and reusable
+	// TODO: high consistency requires us to skip the cache altogether, how is that working for check rn?
+	// Ahh check defaults the invalidation time to t0 and passes it down, that's how
 	if req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		_ = q.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, req.StoreId)
 	}

@@ -162,7 +162,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		opt(l)
 	}
 
-	l.datastore = storagewrappers.NewRequestStorageWrapperForListAPIs(ds, contextualTuples, l.maxConcurrentReads)
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
 
 	return l
 }
