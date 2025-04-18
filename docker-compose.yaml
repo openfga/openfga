@@ -1,6 +1,6 @@
   services:
     mssql:              
-      image: mcr.microsoft.com/mssql/server:2019-latest
+      image: mcr.microsoft.com/mssql/server:2022-latest
       container_name: mssql
       networks:
         - default
@@ -34,7 +34,7 @@
       container_name: migrate
       environment:
         - OPENFGA_DATASTORE_ENGINE=mssql
-        - OPENFGA_DATASTORE_URI=server=mssql;user id=sa;password=Password123Str0ng!;database=openfga;TrustServerCertificate=true
+        - OPENFGA_DATASTORE_URI=sqlserver://sa:Password123Str0ng!@mssql:1433?database=openfga
         - OPENFGA_LOG_LEVEL=debug
       command: migrate
       networks:
@@ -49,8 +49,7 @@
       command: run
       environment:
         - OPENFGA_DATASTORE_ENGINE=mssql
-        - OPENFGA_DATASTORE_URI=server=mssql;user id=sa;password=Password123;database=openfga;TrustServerCertificate=true
-        - OPENFGA_PLAYGROUND_ENABLED=true               
+        - OPENFGA_DATASTORE_URI=sqlserver://sa:Password123Str0ng!@mssql:1433?database=openfga
         - OPENFGA_LOG_LEVEL=debug
       networks:
         - default
