@@ -59,12 +59,18 @@ type CacheController interface {
 	// DetermineInvalidationTime returns the timestamp of the last write for the specified store.
 	// It may return a cached timestamp.
 	DetermineInvalidationTime(ctx context.Context, storeID string) time.Time
+
+	FindChangesAndInvalidateIfNecessary(ctx context.Context, storeID string, parentSpan trace.Span)
 }
 
 type NoopCacheController struct{}
 
 func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) time.Time {
 	return time.Time{}
+}
+
+func (c *NoopCacheController) FindChangesAndInvalidateIfNecessary(_ context.Context, _ string, _ trace.Span) {
+	return
 }
 
 func NewNoopCacheController() CacheController {
@@ -129,7 +135,10 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	cacheResp := c.cache.Get(cacheKey)
-	c.logger.Debug("InMemoryCacheController DetermineInvalidationTime cache hit", zap.String("store_id", storeID), zap.Bool("hit", cacheResp != nil))
+	c.logger.Debug("InMemoryCacheController DetermineInvalidationTime cache attempt",
+		zap.String("store_id", storeID),
+		zap.Bool("hit", cacheResp != nil),
+	)
 	if cacheResp != nil {
 		entry := cacheResp.(*storage.ChangelogCacheEntry)
 		cacheHitCounter.Inc()
@@ -146,7 +155,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		go func() {
 			// we do not want to propagate context to avoid early cancellation
 			// and pollute span.
-			c.findChangesAndInvalidate(context.Background(), storeID, span)
+			c.FindChangesAndInvalidateIfNecessary(context.Background(), storeID, span)
 			c.inflightInvalidations.Delete(storeID)
 		}()
 	}
@@ -166,13 +175,15 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, storeID string, parentSpan trace.Span) {
+func (c *InMemoryCacheController) FindChangesAndInvalidateIfNecessary(ctx context.Context, storeID string, parentSpan trace.Span) {
 	start := time.Now()
-	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidate")
+	ctx, span := tracer.Start(ctx, "cacheController.FindChangesAndInvalidateIfNecessary")
 	defer span.End()
 
 	link := trace.LinkFromContext(ctx)
-	parentSpan.AddLink(link)
+	if parentSpan != nil {
+		parentSpan.AddLink(link)
+	}
 
 	// TODO: this should have a deadline since it will hold up everything if it doesn't return
 	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
@@ -213,7 +224,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 	if entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
-		c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation as entry.LastModified before last verified",
+		c.logger.Debug("InMemoryCacheController FindChangesAndInvalidateIfNecessary invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
 			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
@@ -263,7 +274,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidate(ctx context.Context, 
 		}
 	}
 
-	c.logger.Debug("InMemoryCacheController findChangesAndInvalidate invalidation",
+	c.logger.Debug("InMemoryCacheController FindChangesAndInvalidateIfNecessary invalidation",
 		zap.String("store_id", storeID),
 		zap.Time("entry.LastModified", entry.LastModified),
 		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
@@ -287,5 +298,6 @@ func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeI
 // invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
+	c.logger.Debug("InMemoryCacheController invalidateIteratorCacheByUserAndObjectType invalidation")
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }

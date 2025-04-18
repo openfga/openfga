@@ -446,13 +446,8 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	//cacheInvalidationTime := time.Time{}
-	// This does the trick, figure out how to make the invalidating part of this logic separate
-	// and reusable
-	// TODO: high consistency requires us to skip the cache altogether, how is that working for check rn?
-	// Ahh check defaults the invalidation time to t0 and passes it down, that's how
-	if req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		_ = q.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, req.StoreId)
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		q.sharedCheckResources.CacheController.FindChangesAndInvalidateIfNecessary(ctx, req.GetStoreId(), nil)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
