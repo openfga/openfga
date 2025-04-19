@@ -10,7 +10,8 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/cenkalti/backoff/v4" // MSSQL driver.
+	"github.com/cenkalti/backoff/v4"
+	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
@@ -79,7 +80,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		uri = parsed.String()
 	}
 
-	db, err := sql.Open("sqlserver", uri)
+	db, err := sql.Open("mssql", uri)
 	if err != nil {
 		return nil, fmt.Errorf("initialize mssql connection: %w", err)
 	}

@@ -11,13 +11,13 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
+	// MSSQL driver.
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
-	"github.com/openfga/openfga/pkg/storage/mssql"
 )
 
 const (
@@ -118,6 +118,25 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+	case "mssql":
+		driver = "mssql"
+		migrationsPath = assets.MSSQLMigrationDir
+
+		// Parse the database uri with url.Parse() and update username/password, if set via flags
+		dbURI, err := url.Parse(uri)
+		if err != nil {
+			return fmt.Errorf("invalid database uri: %v", err)
+		}
+		if username == "" && dbURI.User != nil {
+			username = dbURI.User.Username()
+		}
+		if password == "" && dbURI.User != nil {
+			password, _ = dbURI.User.Password()
+		}
+		dbURI.User = url.UserPassword(username, password)
+
+		// Replace CLI uri with the one we just updated.
+		uri = dbURI.String()
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:
