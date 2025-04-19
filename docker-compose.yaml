@@ -24,13 +24,13 @@
       depends_on:
         mssql:
           condition: service_healthy
-      command: /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Password123Str0ng!' -Q 'IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = ''openfga'') CREATE DATABASE openfga;'
+      command: /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Password123Str0ng!' -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'openfga') CREATE DATABASE openfga;" -C
 
     migrate:
       depends_on:
         mssql-init:
           condition: service_completed_successfully
-      image: openfga/openfga:latest
+      build: .
       container_name: migrate
       environment:
         - OPENFGA_DATASTORE_ENGINE=mssql
