@@ -1,64 +1,56 @@
 -- +goose Up
 CREATE TABLE tuple (
-    store NVARCHAR(MAX) NOT NULL,
-    object_type NVARCHAR(MAX) NOT NULL,
-    object_id NVARCHAR(MAX) NOT NULL,
-    relation NVARCHAR(MAX) NOT NULL,
-    _user NVARCHAR(MAX) NOT NULL,
-    user_type NVARCHAR(MAX) NOT NULL,
-    ulid NVARCHAR(255) NOT NULL,
-    inserted_at DATETIMEOFFSET NOT NULL,
+    store CHAR(26) NOT NULL,
+    object_type VARCHAR(128) NOT NULL,
+    object_id VARCHAR(128) NOT NULL,
+    relation VARCHAR(50) NOT NULL,
+    _user VARCHAR(256) NOT NULL,
+    user_type VARCHAR(7) NOT NULL,
+    ulid CHAR(26) NOT NULL,
+    inserted_at DATETIME2 NOT NULL,
     PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
-
-CREATE INDEX idx_tuple_partial_user
-ON tuple (store, object_type, object_id, relation, _user)
-WHERE user_type = 'user';
-
-CREATE INDEX idx_tuple_partial_userset
-ON tuple (store, object_type, object_id, relation, _user)
-WHERE user_type = 'userset';
 
 CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);
 
 CREATE TABLE authorization_model (
-    store NVARCHAR(MAX) NOT NULL,
-    authorization_model_id NVARCHAR(MAX) NOT NULL,
-    type NVARCHAR(MAX) NOT NULL,
+    store CHAR(26) NOT NULL,
+    authorization_model_id CHAR(26) NOT NULL,
+    type VARCHAR(256) NOT NULL,
     type_definition VARBINARY(MAX),
     PRIMARY KEY (store, authorization_model_id, type)
 );
 
 CREATE TABLE store (
-    id NVARCHAR(MAX) PRIMARY KEY,
-    name NVARCHAR(MAX) NOT NULL,
-    created_at DATETIMEOFFSET NOT NULL,
-    updated_at DATETIMEOFFSET,
-    deleted_at DATETIMEOFFSET
+    id CHAR(26) PRIMARY KEY,
+    name VARCHAR(64) NOT NULL,
+    created_at DATETIME2 NOT NULL,
+    updated_at DATETIME2 NULL,
+    deleted_at DATETIME2 NULL
 );
 
 CREATE TABLE assertion (
-    store NVARCHAR(MAX) NOT NULL,
-    authorization_model_id NVARCHAR(MAX) NOT NULL,
+    store CHAR(26) NOT NULL,
+    authorization_model_id CHAR(26) NOT NULL,
     assertions VARBINARY(MAX),
     PRIMARY KEY (store, authorization_model_id)
 );
 
 CREATE TABLE changelog (
-    store NVARCHAR(MAX) NOT NULL,
-    object_type NVARCHAR(MAX) NOT NULL,
-    object_id NVARCHAR(MAX) NOT NULL,
-    relation NVARCHAR(MAX) NOT NULL,
-    _user NVARCHAR(MAX) NOT NULL,
+    store CHAR(26) NOT NULL,
+    object_type VARCHAR(256) NOT NULL,
+    object_id VARCHAR(256) NOT NULL,
+    relation VARCHAR(50) NOT NULL,
+    _user VARCHAR(512) NOT NULL,
     operation INT NOT NULL,
-    ulid NVARCHAR(255) NOT NULL,
-    inserted_at DATETIMEOFFSET NOT NULL,
+    ulid CHAR(26) NOT NULL,
+    inserted_at DATETIME2 NOT NULL,
     PRIMARY KEY (store, ulid, object_type)
 );
 
 -- +goose Down
-DROP TABLE changelog;
-DROP TABLE assertion;
-DROP TABLE store;
-DROP TABLE authorization_model;
 DROP TABLE tuple;
+DROP TABLE authorization_model;
+DROP TABLE store;
+DROP TABLE assertion;
+DROP TABLE changelog;
