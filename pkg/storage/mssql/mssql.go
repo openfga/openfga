@@ -572,15 +572,13 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		whereClause = append(whereClause, sq.GtOrEq{"id": options.Pagination.From})
 	}
 
+	pageSize := options.Pagination.PageSize + 1 // used to detect continuation
+
 	sb := s.stbl.
-		Select("id", "name", "created_at", "updated_at").
+		Select(fmt.Sprintf("TOP %d id, name, created_at, updated_at", pageSize)).
 		From("store").
 		Where(whereClause).
 		OrderBy("id")
-
-	if options.Pagination.PageSize > 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
-	}
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
@@ -588,11 +586,18 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 	defer rows.Close()
 
-	var stores []*openfgav1.Store
-	var id string
+	var (
+		stores []*openfgav1.Store
+		id     string
+	)
+
 	for rows.Next() {
-		var name string
-		var createdAt, updatedAt time.Time
+		var (
+			name      string
+			createdAt time.Time
+			updatedAt time.Time
+		)
+
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
 			return nil, "", HandleSQLError(err)
@@ -610,6 +615,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		return nil, "", HandleSQLError(err)
 	}
 
+	// Return continuation token if there are more results than PageSize
 	if len(stores) > options.Pagination.PageSize {
 		return stores[:options.Pagination.PageSize], id, nil
 	}
