@@ -492,16 +492,21 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	ctx, span := startTrace(ctx, "CreateStore")
 	defer span.End()
 
-	var id, name string
-	var createdAt, updatedAt time.Time
+	var (
+		id        string
+		name      string
+		createdAt time.Time
+		updatedAt time.Time
+	)
 
-	err := s.stbl.
-		Insert("store").
-		Columns("id", "name", "created_at", "updated_at").
-		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
-		Suffix("returning id, name, created_at, updated_at").
-		QueryRowContext(ctx).
-		Scan(&id, &name, &createdAt, &updatedAt)
+	query := `
+	INSERT INTO store (id, name, created_at, updated_at)
+	OUTPUT inserted.id, inserted.name, inserted.created_at, inserted.updated_at
+	VALUES (?, ?, GETDATE(), GETDATE());
+	`
+
+	row := s.db.QueryRowContext(ctx, query, store.GetId(), store.GetName())
+	err := row.Scan(&id, &name, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -619,7 +624,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 
 	_, err := s.stbl.
 		Update("store").
-		Set("deleted_at", sq.Expr("NOW()")).
+		Set("deleted_at", sq.Expr("GETDATE()")).
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
