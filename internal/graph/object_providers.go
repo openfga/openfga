@@ -64,10 +64,10 @@ type recursiveTTUObjectProvider struct {
 	computedRelation string
 	cancel           context.CancelFunc
 	pool             *pool.ContextPool
-	concurrencyLimit uint32
+	concurrencyLimit int
 }
 
-func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset, concurrencyLimit uint32) *recursiveTTUObjectProvider {
+func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset, concurrencyLimit int) *recursiveTTUObjectProvider {
 	tuplesetRelation := ttu.GetTupleset().GetRelation()
 	computedRelation := ttu.GetComputedUserset().GetRelation()
 	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation, concurrencyLimit: concurrencyLimit}
@@ -111,10 +111,10 @@ type recursiveUsersetObjectProvider struct {
 	ts               *typesystem.TypeSystem
 	cancel           context.CancelFunc
 	pool             *pool.ContextPool
-	concurrencyLimit uint32
+	concurrencyLimit int
 }
 
-func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem, concurrencyLimit uint32) *recursiveUsersetObjectProvider {
+func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem, concurrencyLimit int) *recursiveUsersetObjectProvider {
 	return &recursiveUsersetObjectProvider{ts: ts, concurrencyLimit: concurrencyLimit}
 }
 

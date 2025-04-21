@@ -528,7 +528,13 @@ ConsumerLoop:
 	return res, lastErr
 }
 
-func constructLeftChannels(ctx context.Context, req *ResolveCheckRequest, relationReferences []*openfgav1.RelationReference, relationFunc checkutil.V2RelationFunc, concurrencyLimit uint32) ([]chan *iterator.Msg, error) {
+func constructLeftChannels(
+	ctx context.Context,
+	req *ResolveCheckRequest,
+	relationReferences []*openfgav1.RelationReference,
+	relationFunc checkutil.V2RelationFunc,
+	concurrencyLimit int,
+) ([]chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
@@ -614,7 +620,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit uint32) chan *iterator.Msg {
+func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit int) chan *iterator.Msg {
 	limit := len(chans)
 
 	out := make(chan *iterator.Msg, limit)
@@ -626,7 +632,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, conc
 
 	// It is ok if the limit is < concurrencyLimit because that
 	// is the pool's max limit.
-	pool := concurrency.NewPool(ctx, int(concurrencyLimit))
+	pool := concurrency.NewPool(ctx, concurrencyLimit)
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
