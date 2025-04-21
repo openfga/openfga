@@ -22,9 +22,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func TestmssqlDatastore(t *testing.T) {
+func TestMSSQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mssql")
-
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
@@ -32,9 +31,8 @@ func TestmssqlDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestmssqlDatastoreAfterCloseIsNotReady(t *testing.T) {
+func TestMSSQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mssql")
-
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
@@ -284,7 +282,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -308,7 +306,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -349,14 +347,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -370,14 +368,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (@p1, @p2, @p3, @p4, @p5, @p6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -413,7 +411,7 @@ func TestAllowNullCondition(t *testing.T) {
 		INSERT INTO tuple (
 			store, object_type, object_id, relation, _user, user_type, ulid,
 			condition_name, condition_context, inserted_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
+		) VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, GETUTCDATE());
 	`
 	_, err = ds.db.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
@@ -475,8 +473,8 @@ func TestAllowNullCondition(t *testing.T) {
 	INSERT INTO changelog (
 		store, object_type, object_id, relation, _user, ulid,
 		condition_name, condition_context, inserted_at, operation
-	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9);
-`
+	) VALUES (@p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, GETUTCDATE(), @p9);
+	`
 	_, err = ds.db.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
@@ -513,9 +511,9 @@ func TestMarshalledAssertions(t *testing.T) {
 
 	// Note: this represents an assertion written on v1.3.7.
 	stmt := `
-		INSERT INTO assertion (
-			store, authorization_model_id, assertions
-		) VALUES ($1, $2, DECODE('0a2b0a270a12666f6c6465723a323032312d62756467657412056f776e65721a0a757365723a616e6e657a1001','hex'));
+	INSERT INTO assertion (
+		store, authorization_model_id, assertions
+	) VALUES (@p1, @p2, 0x0A2B0A270A12666F6C6465723A323032312D62756467657412056F776E65721A0A757365723A616E6E657A1001);
 	`
 	_, err = ds.db.ExecContext(ctx, stmt, "store", "model")
 	require.NoError(t, err)
