@@ -61,9 +61,9 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
-	checkResolver        graph.CheckResolver
-	cacheSettings        serverconfig.CacheSettings
-	sharedCheckResources *shared.SharedCheckResources
+	checkResolver            graph.CheckResolver
+	cacheSettings            serverconfig.CacheSettings
+	sharedDatastoreResources *shared.SharedDatastoreResources
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -138,10 +138,10 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 }
 
 // TODO: rename these things.
-func WithListObjectsCache(sharedCheckResources *shared.SharedCheckResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
+func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.cacheSettings = cacheSettings
-		d.sharedCheckResources = sharedCheckResources
+		d.sharedDatastoreResources = sharedDatastoreResources
 	}
 }
 
@@ -174,7 +174,7 @@ func NewListObjectsQuery(
 		},
 		checkResolver: checkResolver,
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
-		sharedCheckResources: &shared.SharedCheckResources{
+		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 	}
@@ -287,7 +287,7 @@ func (q *ListObjectsQuery) evaluate(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
 			q.maxConcurrentReads,
-			q.sharedCheckResources,
+			q.sharedDatastoreResources,
 			q.cacheSettings,
 			q.logger,
 		)
@@ -439,7 +439,7 @@ func (q *ListObjectsQuery) Execute(
 		_, span := tracer.Start(ctx, "commands.listObjects")
 		defer span.End()
 
-		q.sharedCheckResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId(), span)
+		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(req.GetStoreId(), span)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {

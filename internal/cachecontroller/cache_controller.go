@@ -63,7 +63,7 @@ type CacheController interface {
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress for a store,
 	// and if not it will spawn a goroutine to invalidate cached records conditionally
 	// based on timestamp. It may invalidate all cache records, some, or none.
-	InvalidateIfNeeded(ctx context.Context, storeID string, parentSpan trace.Span)
+	InvalidateIfNeeded(storeID string, parentSpan trace.Span)
 }
 
 type NoopCacheController struct{}
@@ -72,8 +72,7 @@ func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ str
 	return time.Time{}
 }
 
-func (c *NoopCacheController) InvalidateIfNeeded(_ context.Context, _ string, _ trace.Span) {
-	return
+func (c *NoopCacheController) InvalidateIfNeeded(_ string, _ trace.Span) {
 }
 
 func NewNoopCacheController() CacheController {
@@ -148,7 +147,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		return entry.LastModified
 	}
 
-	c.InvalidateIfNeeded(ctx, storeID, span)
+	c.InvalidateIfNeeded(storeID, span)
 
 	return time.Time{}
 }
@@ -163,10 +162,7 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeID string, span trace.Span) {
-	_, span = tracer.Start(ctx, "cacheController.InvalidateIfNeeded")
-	defer span.End()
-
+func (c *InMemoryCacheController) InvalidateIfNeeded(storeID string, span trace.Span) {
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if present {
 		// If invalidation is already in process, abort.
