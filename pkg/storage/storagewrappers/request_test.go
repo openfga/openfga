@@ -35,7 +35,10 @@ func TestRequestStorageWrapper(t *testing.T) {
 			}, config.CacheSettings{
 				CheckIteratorCacheEnabled: true,
 				CheckCacheLimit:           1,
-			}, logger.NewNoopLogger())
+			},
+			logger.NewNoopLogger(),
+			Check,
+		)
 		require.NotNil(t, br)
 
 		// assert on the chain
@@ -70,7 +73,10 @@ func TestRequestStorageWrapper(t *testing.T) {
 			mockDatastore,
 			requestContextualTuples,
 			maxConcurrentReads,
-			&shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()}, config.CacheSettings{}, logger.NewNoopLogger(),
+			&shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()},
+			config.CacheSettings{},
+			logger.NewNoopLogger(),
+			Check,
 		)
 		require.NotNil(t, br)
 

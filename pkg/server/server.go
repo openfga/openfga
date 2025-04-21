@@ -174,8 +174,8 @@ type Server struct {
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
-	// sharedCheckResources are created by the server
-	sharedCheckResources *shared.SharedDatastoreResources
+	// sharedDatastoreResources are created by the server
+	sharedDatastoreResources *shared.SharedDatastoreResources
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
@@ -825,7 +825,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedCheckResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
 	}
@@ -833,7 +833,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.cacheSettings.ShouldCacheCheckQueries() {
 		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.sharedCheckResources.CheckCache),
+			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		)
@@ -921,7 +921,7 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.sharedCheckResources.Close()
+	s.sharedDatastoreResources.Close()
 	s.datastore.Close()
 }
 

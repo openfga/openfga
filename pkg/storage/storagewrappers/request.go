@@ -9,6 +9,13 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+type Operation int
+
+const (
+	Check Operation = iota
+	ListObjects
+)
+
 // RequestStorageWrapper uses the decorator pattern to wrap a RelationshipTupleReader with various functionalities,
 // which includes exposing metrics.
 type RequestStorageWrapper struct {
@@ -26,10 +33,11 @@ func NewRequestStorageWrapperWithCache(
 	resources *shared.SharedDatastoreResources,
 	cacheSettings config.CacheSettings,
 	logger logger.Logger,
+	operation Operation,
 ) *RequestStorageWrapper {
 	var tupleReader storage.RelationshipTupleReader
 	tupleReader = NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
-	if cacheSettings.ShouldCacheIterators() {
+	if operation == Check && cacheSettings.ShouldCacheCheckIterators() {
 		// Reads tuples from cache where possible
 		tupleReader = NewCachedDatastore(
 			resources.ServerCtx,
@@ -37,6 +45,17 @@ func NewRequestStorageWrapperWithCache(
 			resources.CheckCache,
 			int(cacheSettings.CheckIteratorCacheMaxResults),
 			cacheSettings.CheckIteratorCacheTTL,
+			resources.SingleflightGroup,
+			resources.WaitGroup,
+			WithCachedDatastoreLogger(logger),
+		)
+	} else if operation == ListObjects && cacheSettings.ShouldCacheListObjectsIterators() {
+		tupleReader = NewCachedDatastore(
+			resources.ServerCtx,
+			tupleReader,
+			resources.CheckCache,
+			int(cacheSettings.ListObjectsIteratorCacheMaxResults),
+			cacheSettings.ListObjectsIteratorCacheTTL,
 			resources.SingleflightGroup,
 			resources.WaitGroup,
 			WithCachedDatastoreLogger(logger),

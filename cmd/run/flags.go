@@ -237,6 +237,15 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("checkQueryCache.ttl", flags.Lookup("check-query-cache-ttl"))
 		util.MustBindEnv("checkQueryCache.ttl", "OPENFGA_CHECK_QUERY_CACHE_TTL")
 
+		util.MustBindPFlag("listObjectsIteratorCache.enabled", flags.Lookup("list-objects-iterator-cache-enabled"))
+		util.MustBindEnv("listObjectsIteratorCache.enabled", "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED")
+
+		util.MustBindPFlag("listObjectsIteratorCache.maxResults", flags.Lookup("list-objects-iterator-cache-max-results"))
+		util.MustBindEnv("listObjectsIteratorCache.maxResults", "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS")
+
+		util.MustBindPFlag("listObjectsIteratorCache.ttl", flags.Lookup("list-objects-iterator-cache-ttl"))
+		util.MustBindEnv("listObjectsIteratorCache.ttl", "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL")
+
 		util.MustBindPFlag("requestDurationDatastoreQueryCountBuckets", flags.Lookup("request-duration-datastore-query-count-buckets"))
 		util.MustBindEnv("requestDurationDatastoreQueryCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS")
 

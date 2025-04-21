@@ -137,7 +137,6 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
-// TODO: rename these things.
 func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.cacheSettings = cacheSettings
@@ -290,6 +289,7 @@ func (q *ListObjectsQuery) evaluate(
 			q.sharedDatastoreResources,
 			q.cacheSettings,
 			q.logger,
+			storagewrappers.ListObjects,
 		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(

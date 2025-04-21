@@ -122,6 +122,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		c.sharedCheckResources,
 		c.cacheSettings,
 		c.logger,
+		storagewrappers.Check,
 	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)

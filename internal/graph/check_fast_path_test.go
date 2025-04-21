@@ -37,6 +37,7 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 		nil,
 		config.CacheSettings{},
 		nil,
+		storagewrappers.Check,
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
