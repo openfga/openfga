@@ -56,13 +56,13 @@ func (mr *MockCacheControllerMockRecorder) DetermineInvalidationTime(ctx, storeI
 }
 
 // InvalidateIfNeeded mocks base method.
-func (m *MockCacheController) InvalidateIfNeeded(ctx context.Context, storeID string, parentSpan trace.Span) {
+func (m *MockCacheController) InvalidateIfNeeded(storeID string, parentSpan trace.Span) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "InvalidateIfNeeded", ctx, storeID, parentSpan)
+	m.ctrl.Call(m, "InvalidateIfNeeded", storeID, parentSpan)
 }
 
 // InvalidateIfNeeded indicates an expected call of InvalidateIfNeeded.
-func (mr *MockCacheControllerMockRecorder) InvalidateIfNeeded(ctx, storeID, parentSpan any) *gomock.Call {
+func (mr *MockCacheControllerMockRecorder) InvalidateIfNeeded(storeID, parentSpan any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateIfNeeded", reflect.TypeOf((*MockCacheController)(nil).InvalidateIfNeeded), ctx, storeID, parentSpan)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateIfNeeded", reflect.TypeOf((*MockCacheController)(nil).InvalidateIfNeeded), storeID, parentSpan)
 }
