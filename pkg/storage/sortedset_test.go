@@ -9,8 +9,8 @@ import (
 func TestRedBlackTree(t *testing.T) {
 	t.Run("empty_tree", func(t *testing.T) {
 		tree := NewSortedSet()
-		assert.Equal(t, "", tree.Min())
-		assert.Equal(t, "", tree.Max())
+		assert.Empty(t, tree.Min())
+		assert.Empty(t, tree.Max())
 		assert.Equal(t, []string{}, tree.Values())
 		assert.Equal(t, 0, tree.Size())
 		assert.False(t, tree.Exists("1"))

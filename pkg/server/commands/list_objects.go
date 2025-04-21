@@ -19,12 +19,12 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -323,7 +323,7 @@ func (q *ListObjectsQuery) evaluate(
 					break ConsumerReadLoop
 				}
 
-				if !(maxResults == 0) && objectsFound.Load() >= maxResults {
+				if (maxResults != 0) && objectsFound.Load() >= maxResults {
 					cancel() // cancel any inflight work if we already found enough results
 					break ConsumerReadLoop
 				}
@@ -381,7 +381,7 @@ func (q *ListObjectsQuery) evaluate(
 }
 
 func trySendObject(ctx context.Context, object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if !(maxResults == 0) {
+	if maxResults != 0 {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}

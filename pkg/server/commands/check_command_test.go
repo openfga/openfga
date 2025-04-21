@@ -16,9 +16,9 @@ import (
 	ofga_errors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -214,6 +214,36 @@ type doc
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
 		require.Error(t, err)
+	})
+
+	t.Run("metadata_on_error", func(t *testing.T) {
+		ctx := context.Background()
+
+		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Times(1)
+
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+				req.GetRequestMetadata().Depth++
+				req.GetRequestMetadata().DispatchCounter.Add(1)
+				req.GetRequestMetadata().WasThrottled.Store(true)
+				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				return nil, context.DeadlineExceeded
+			})
+
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		checkResp, checkRequestMetadata, err := cmd.Execute(ctx, &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
+
+		require.Error(t, err)
+		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
+		require.Equal(t, uint32(1), checkRequestMetadata.Depth)
+		require.Equal(t, uint32(1), checkRequestMetadata.DispatchCounter.Load())
+		require.True(t, checkRequestMetadata.WasThrottled.Load())
 	})
 }
 

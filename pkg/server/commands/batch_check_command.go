@@ -14,9 +14,9 @@ import (
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -45,6 +45,8 @@ type BatchCheckOutcome struct {
 }
 
 type BatchCheckMetadata struct {
+	ThrottleCount       uint32
+	DispatchCount       uint32
 	DatastoreQueryCount uint32
 	DuplicateCheckCount int
 }
@@ -151,6 +153,8 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 
 	var resultMap = new(sync.Map)
 	var totalQueryCount atomic.Uint32
+	var totalDispatchCount atomic.Uint32
+	var totalThrottleCount atomic.Uint32
 
 	pool := concurrency.NewPool(ctx, int(bq.maxConcurrentChecks))
 	for key, item := range cacheKeyMap {
@@ -181,12 +185,19 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			response, _, err := checkQuery.Execute(ctx, checkParams)
+			response, metadata, err := checkQuery.Execute(ctx, checkParams)
 
 			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,
 				Err:           err,
 			})
+
+			if metadata != nil {
+				if metadata.WasThrottled.Load() {
+					totalThrottleCount.Add(1)
+				}
+				totalDispatchCount.Add(metadata.DispatchCounter.Load())
+			}
 
 			totalQueryCount.Add(response.GetResolutionMetadata().DatastoreQueryCount)
 
@@ -210,7 +221,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	}
 
 	return results, &BatchCheckMetadata{
+		ThrottleCount:       totalThrottleCount.Load(),
 		DatastoreQueryCount: totalQueryCount.Load(),
+		DispatchCount:       totalDispatchCount.Load(),
 		DuplicateCheckCount: len(params.Checks) - len(cacheKeyMap),
 	}, nil
 }

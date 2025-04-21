@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"sigs.k8s.io/yaml"
 
@@ -20,7 +19,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests/check"
+	"github.com/openfga/openfga/tests"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
@@ -40,13 +39,8 @@ type stage struct {
 	ListUsersAssertions []*listuserstest.Assertion `json:"listUsersAssertions"`
 }
 
-type ClientInterface interface {
-	check.ClientInterface
-	ListUsers(ctx context.Context, in *openfgav1.ListUsersRequest, opts ...grpc.CallOption) (*openfgav1.ListUsersResponse, error)
-}
-
 // RunAllTests will invoke all ListUsers tests.
-func RunAllTests(t *testing.T, client ClientInterface) {
+func RunAllTests(t *testing.T, client tests.ClientInterface) {
 	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListUsers", func(t *testing.T) {
 			t.Parallel()
@@ -79,7 +73,7 @@ func RunAllTests(t *testing.T, client ClientInterface) {
 	})
 }
 
-func runTest(t *testing.T, test individualTest, client ClientInterface, contextTupleTest bool) {
+func runTest(t *testing.T, test individualTest, client tests.ClientInterface, contextTupleTest bool) {
 	ctx := context.Background()
 	name := test.Name
 

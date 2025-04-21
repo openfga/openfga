@@ -41,12 +41,12 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
@@ -266,11 +266,11 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		expectedStatusCode: 401,
 	}, {
 		_name:              "Correct_key_one_succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[0]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.Keys[0]),
 		expectedStatusCode: 200,
 	}, {
 		_name:              "Correct_key_two_succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[1]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.Keys[1]),
 		expectedStatusCode: 200,
 	}}
 
@@ -281,7 +281,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		})
 
 		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, cfg.Authn.AuthnPresharedKeyConfig.Keys[0])
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, cfg.Authn.Keys[0])
 		})
 	}
 }
@@ -1098,7 +1098,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.maxConditionEvaluationCost.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Uint(), cfg.MaxConditionEvaluationCost)
+	require.Equal(t, val.Uint(), cfg.MaxConditionEvaluationCost)
 
 	val = res.Get("properties.maxConcurrentReadsForListUsers.default")
 	require.True(t, val.Exists())
@@ -1142,7 +1142,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
-	require.Equal(t, len(val.Array()), len(cfg.Experimentals))
+	require.Len(t, cfg.Experimentals, len(val.Array()))
 
 	val = res.Get("properties.metrics.properties.enabled.default")
 	require.True(t, val.Exists())
@@ -1202,14 +1202,14 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
-	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
+	require.Len(t, cfg.RequestDurationDatastoreQueryCountBuckets, len(val.Array()))
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
 
 	val = res.Get("properties.requestDurationDispatchCountBuckets.default")
 	require.True(t, val.Exists())
-	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDispatchCountBuckets))
+	require.Len(t, cfg.RequestDurationDispatchCountBuckets, len(val.Array()))
 	for index, arrayVal := range val.Array() {
 		require.Equal(t, arrayVal.String(), cfg.RequestDurationDispatchCountBuckets[index])
 	}
@@ -1268,15 +1268,15 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.String(), cfg.RequestTimeout.String())
+	require.Equal(t, val.String(), cfg.RequestTimeout.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
-		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.Empty(t, viper.GetString(datastoreEngineFlag))
+		require.Empty(t, viper.GetString(datastoreURIFlag))
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
 		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))

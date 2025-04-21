@@ -53,6 +53,10 @@ const (
 	DefaultShadowCheckSamplePercentage = 10
 	DefaultShadowCheckResolverTimeout  = 1 * time.Second
 
+	DefaultShadowListObjectsCheckResolverEnabled  = false
+	DefaultShadowListObjectsCheckSamplePercentage = 10
+	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
+
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100
@@ -468,7 +472,7 @@ func (cfg *Config) VerifyBinarySettings() error {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
 
-		if !(cfg.Authn.Method == "none" || cfg.Authn.Method == "preshared") {
+		if cfg.Authn.Method != "none" && cfg.Authn.Method != "preshared" {
 			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
 		}
 	}

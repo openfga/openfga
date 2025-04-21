@@ -52,7 +52,6 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -64,6 +63,7 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
@@ -92,7 +92,7 @@ func NewRunCommand() *cobra.Command {
 	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
-	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-access-control`")
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable. Allowed values: `enable-consistency-params`, `enable-check-optimizations`, `enable-list-objects-optimizations`, `enable-access-control`")
 
 	flags.Bool("access-control-enabled", defaultConfig.AccessControl.Enabled, "enable/disable the access control feature")
 
@@ -803,7 +803,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		authMethod := config.Authn.Method
-		if !(authMethod == "none" || authMethod == "preshared") {
+		if authMethod != "none" && authMethod != "preshared" {
 			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
 		}
 
@@ -834,7 +834,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 		playgroundAPIToken := ""
 		if authMethod == "preshared" {
-			playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
+			playgroundAPIToken = config.Authn.Keys[0]
 		}
 
 		mux := http.NewServeMux()

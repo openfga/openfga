@@ -21,8 +21,8 @@ import (
 
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -52,32 +52,11 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := buildClientInterface(t, engine, true)
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := buildClientInterface(t, engine, false)
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
 	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
-}
-
-func buildClientInterface(t *testing.T, engine string, experimentalsEnabled bool) ClientInterface {
-	cfg := config.MustDefaultConfig()
-	if experimentalsEnabled {
-		cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
-	}
-	cfg.Log.Level = "error"
-	cfg.Datastore.Engine = engine
-	cfg.ListUsersDeadline = 0   // no deadline
-	cfg.ListObjectsDeadline = 0 // no deadline
-	// extend the timeout for the tests, coverage makes them slower
-	cfg.RequestTimeout = 10 * time.Second
-
-	cfg.CheckIteratorCache.Enabled = true
-	cfg.ContextPropagationToDatastore = true
-
-	tests.StartServer(t, cfg)
-
-	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
-	return openfgav1.NewOpenFGAServiceClient(conn)
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -197,6 +176,7 @@ func TestServerLogs(t *testing.T) {
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
+				"request.throttled":      false,
 			},
 		},
 		{
@@ -220,6 +200,7 @@ func TestServerLogs(t *testing.T) {
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
 				"user_agent":             "test-user-agent",
+				"request.throttled":      false,
 			},
 		},
 		{
@@ -284,6 +265,7 @@ func TestServerLogs(t *testing.T) {
 				"store_id":               storeID,
 				"authorization_model_id": authorizationModelID,
 				"user_agent":             "test-user-agent",
+				"request.throttled":      nil,
 			},
 		},
 	}
@@ -335,7 +317,8 @@ func TestServerLogs(t *testing.T) {
 			if !test.expectedError {
 				require.NotEmpty(t, fields["datastore_query_count"])
 				require.GreaterOrEqual(t, fields["dispatch_count"], float64(0))
-				require.Len(t, fields, 15)
+				require.Equal(t, test.expectedContext["request.throttled"], fields["request.throttled"])
+				require.GreaterOrEqual(t, len(fields), 15)
 			} else {
 				require.Len(t, fields, 13)
 			}

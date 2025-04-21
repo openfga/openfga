@@ -429,7 +429,7 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			}
 
 			scopesList := strings.Split(scopes, " ")
-			require.Equal(t, len(scopesList), len(authClaims.Scopes))
+			require.Len(t, authClaims.Scopes, len(scopesList))
 			for _, scope := range scopesList {
 				_, ok := authClaims.Scopes[scope]
 				require.True(t, ok)

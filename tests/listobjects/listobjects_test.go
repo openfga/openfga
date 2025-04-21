@@ -8,10 +8,40 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/tests"
 )
+
+func TestMatrixMemory(t *testing.T) {
+	runMatrixWithEngine(t, "memory")
+}
+
+func TestMatrixPostgres(t *testing.T) {
+	runMatrixWithEngine(t, "postgres")
+}
+
+// TODO: re-enable
+// func TestMatrixMysql(t *testing.T) {
+//	runMatrixWithEngine(t, "mysql")
+//}
+
+// TODO: re-enable after investigating write contention in test
+// func TestMatrixSqlite(t *testing.T) {
+//	runMatrixWithEngine(t, "sqlite")
+//}
+
+func runMatrixWithEngine(t *testing.T, engine string) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
+	RunMatrixTests(t, engine, true, clientWithExperimentals)
+
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
+	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+}
 
 func TestListObjectsMemory(t *testing.T) {
 	testRunAll(t, "memory")
@@ -40,7 +70,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1"))
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations", "enable-list-objects-optimizations")
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	cfg.ListObjectsDeadline = 0 // no deadline
