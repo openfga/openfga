@@ -1180,17 +1180,17 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
 
-	val = res.Get("properties.checkIteratorCache.properties.enabled.default")
+	val = res.Get("properties.iteratorCache.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckIteratorCache.Enabled)
+	require.Equal(t, val.Bool(), cfg.IteratorCache.Enabled)
 
-	val = res.Get("properties.checkIteratorCache.properties.maxResults.default")
+	val = res.Get("properties.iteratorCache.properties.maxResults.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckIteratorCache.MaxResults)
+	require.EqualValues(t, val.Int(), cfg.IteratorCache.MaxResults)
 
-	val = res.Get("properties.checkIteratorCache.properties.ttl.default")
+	val = res.Get("properties.iteratorCache.properties.ttl.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckIteratorCache.TTL.String())
+	require.Equal(t, val.String(), cfg.IteratorCache.TTL.String())
 
 	val = res.Get("properties.cacheController.properties.enabled.default")
 	require.True(t, val.Exists())

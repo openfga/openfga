@@ -31,8 +31,8 @@ func TestCacheSettings(t *testing.T) {
 			{
 				name: "not_when_limit_is_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:           0,
-					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:      0,
+					IteratorCacheEnabled: true,
 				},
 				expectedCreateNewCache: false,
 			},
@@ -47,8 +47,8 @@ func TestCacheSettings(t *testing.T) {
 			{
 				name: "when_limit_over_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:           10,
-					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:      10,
+					IteratorCacheEnabled: true,
 				},
 				expectedCreateNewCache: true,
 			},
@@ -87,9 +87,9 @@ func TestCacheSettings(t *testing.T) {
 			{
 				name: "when_limit_over_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:           10,
-					CheckIteratorCacheEnabled: true,
-					CacheControllerEnabled:    true,
+					CheckCacheLimit:        10,
+					IteratorCacheEnabled:   true,
+					CacheControllerEnabled: true,
 				},
 				expectedCreateCacheController: true,
 			},
@@ -157,15 +157,15 @@ func TestCacheSettings(t *testing.T) {
 			{
 				name: "not_when_iterator_cache_disabled",
 				cacheSettings: CacheSettings{
-					CheckIteratorCacheEnabled: false,
+					IteratorCacheEnabled: false,
 				},
 				expectedCacheIterators: false,
 			},
 			{
 				name: "when_limit_over_zero_and_iterator_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:           10,
-					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:      10,
+					IteratorCacheEnabled: true,
 				},
 				expectedCacheIterators: true,
 			},

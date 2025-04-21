@@ -57,7 +57,7 @@ func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.G
 	}
 
 	if settings.ShouldCreateCacheController() {
-		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.IteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
 	return s, nil

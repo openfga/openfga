@@ -33,8 +33,8 @@ func TestRequestStorageWrapper(t *testing.T) {
 				CheckCache: mockCache,
 				Logger:     logger.NewNoopLogger(),
 			}, config.CacheSettings{
-				CheckIteratorCacheEnabled: true,
-				CheckCacheLimit:           1,
+				IteratorCacheEnabled: true,
+				CheckCacheLimit:      1,
 			}, logger.NewNoopLogger())
 		require.NotNil(t, br)
 

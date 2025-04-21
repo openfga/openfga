@@ -337,7 +337,7 @@ func testRunAll(t *testing.T, engine string) {
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
-	cfg.CheckIteratorCache.Enabled = true
+	cfg.IteratorCache.Enabled = true
 
 	if engine == "mysql" {
 		cfg.ContextPropagationToDatastore = true
@@ -346,7 +346,7 @@ func testRunAll(t *testing.T, engine string) {
 	// Some tests/stages are sensitive to the cache TTL,
 	// so we set it to a very low value to still exercise
 	// the Check iterator cache.
-	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
+	cfg.IteratorCache.TTL = 1 * time.Nanosecond
 
 	tests.StartServer(t, cfg)
 

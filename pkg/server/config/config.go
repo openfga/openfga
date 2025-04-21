@@ -42,9 +42,9 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultCheckIteratorCacheEnabled    = false
-	DefaultCheckIteratorCacheMaxResults = 10000
-	DefaultCheckIteratorCacheTTL        = 10 * time.Second
+	DefaultIteratorCacheEnabled    = false
+	DefaultIteratorCacheMaxResults = 10000
+	DefaultIteratorCacheTTL        = 10 * time.Second
 
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
@@ -228,8 +228,8 @@ type CheckCacheConfig struct {
 	Limit uint32
 }
 
-// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
-type CheckIteratorCacheConfig struct {
+// IteratorCacheConfig defines configuration to cache storage iterator results.
+type IteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
 	TTL        time.Duration
@@ -351,7 +351,7 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	CheckCache                    CheckCacheConfig
-	CheckIteratorCache            CheckIteratorCacheConfig
+	IteratorCache                 IteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
@@ -589,12 +589,12 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CheckQueryCache.Enabled && cfg.CheckQueryCache.TTL <= 0 {
 		return errors.New("'checkQueryCache.ttl' must be greater than zero")
 	}
-	if cfg.CheckIteratorCache.Enabled {
-		if cfg.CheckIteratorCache.TTL <= 0 {
-			return errors.New("'checkIteratorCache.ttl' must be greater than zero")
+	if cfg.IteratorCache.Enabled {
+		if cfg.IteratorCache.TTL <= 0 {
+			return errors.New("'iteratorCache.ttl' must be greater than zero")
 		}
-		if cfg.CheckIteratorCache.MaxResults <= 0 {
-			return errors.New("'checkIteratorCache.maxResults' must be greater than zero")
+		if cfg.IteratorCache.MaxResults <= 0 {
+			return errors.New("'iteratorCache.maxResults' must be greater than zero")
 		}
 	}
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
@@ -683,10 +683,10 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		CheckIteratorCache: CheckIteratorCacheConfig{
-			Enabled:    DefaultCheckIteratorCacheEnabled,
-			MaxResults: DefaultCheckIteratorCacheMaxResults,
-			TTL:        DefaultCheckIteratorCacheTTL,
+		IteratorCache: IteratorCacheConfig{
+			Enabled:    DefaultIteratorCacheEnabled,
+			MaxResults: DefaultIteratorCacheMaxResults,
+			TTL:        DefaultIteratorCacheTTL,
 		},
 		CheckQueryCache: CheckQueryCache{
 			Enabled: DefaultCheckQueryCacheEnabled,

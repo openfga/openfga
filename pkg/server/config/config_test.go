@@ -357,45 +357,45 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("check_iterator_cache", func(t *testing.T) {
 		t.Run("enable_but_ttl_zero", func(t *testing.T) {
 			cfg := DefaultConfig()
-			cfg.CheckIteratorCache.Enabled = true
-			cfg.CheckIteratorCache.TTL = 0
-			cfg.CheckIteratorCache.MaxResults = 1000
+			cfg.IteratorCache.Enabled = true
+			cfg.IteratorCache.TTL = 0
+			cfg.IteratorCache.MaxResults = 1000
 			err := cfg.Verify()
 			require.Error(t, err)
 		})
 
 		t.Run("enable_but_ttl_negative", func(t *testing.T) {
 			cfg := DefaultConfig()
-			cfg.CheckIteratorCache.Enabled = true
-			cfg.CheckIteratorCache.TTL = -2 * time.Second
-			cfg.CheckIteratorCache.MaxResults = 1000
+			cfg.IteratorCache.Enabled = true
+			cfg.IteratorCache.TTL = -2 * time.Second
+			cfg.IteratorCache.MaxResults = 1000
 			err := cfg.Verify()
 			require.Error(t, err)
 		})
 
 		t.Run("enable_but_max_results_zero", func(t *testing.T) {
 			cfg := DefaultConfig()
-			cfg.CheckIteratorCache.Enabled = true
-			cfg.CheckIteratorCache.TTL = 2 * time.Second
-			cfg.CheckIteratorCache.MaxResults = 0
+			cfg.IteratorCache.Enabled = true
+			cfg.IteratorCache.TTL = 2 * time.Second
+			cfg.IteratorCache.MaxResults = 0
 			err := cfg.Verify()
 			require.Error(t, err)
 		})
 
 		t.Run("disable_but_ttl_and_max_results_zero", func(t *testing.T) {
 			cfg := DefaultConfig()
-			cfg.CheckIteratorCache.Enabled = false
-			cfg.CheckIteratorCache.TTL = 0
-			cfg.CheckIteratorCache.MaxResults = 0
+			cfg.IteratorCache.Enabled = false
+			cfg.IteratorCache.TTL = 0
+			cfg.IteratorCache.MaxResults = 0
 			err := cfg.Verify()
 			require.NoError(t, err)
 		})
 
 		t.Run("enable_and_ttl_and_max_results_positive", func(t *testing.T) {
 			cfg := DefaultConfig()
-			cfg.CheckIteratorCache.Enabled = true
-			cfg.CheckIteratorCache.TTL = 10 * time.Second
-			cfg.CheckIteratorCache.MaxResults = 10000
+			cfg.IteratorCache.Enabled = true
+			cfg.IteratorCache.TTL = 10 * time.Second
+			cfg.IteratorCache.MaxResults = 10000
 			err := cfg.Verify()
 			require.NoError(t, err)
 		})

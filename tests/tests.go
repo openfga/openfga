@@ -86,7 +86,7 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
-	cfg.CheckIteratorCache.Enabled = true
+	cfg.IteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
 	StartServer(t, cfg)

@@ -3,26 +3,26 @@ package config
 import "time"
 
 type CacheSettings struct {
-	CheckCacheLimit              uint32
-	CacheControllerEnabled       bool
-	CacheControllerTTL           time.Duration
-	CheckQueryCacheEnabled       bool
-	CheckQueryCacheTTL           time.Duration
-	CheckIteratorCacheEnabled    bool
-	CheckIteratorCacheMaxResults uint32
-	CheckIteratorCacheTTL        time.Duration
+	CheckCacheLimit         uint32
+	CacheControllerEnabled  bool
+	CacheControllerTTL      time.Duration
+	CheckQueryCacheEnabled  bool
+	CheckQueryCacheTTL      time.Duration
+	IteratorCacheEnabled    bool
+	IteratorCacheMaxResults uint32
+	IteratorCacheTTL        time.Duration
 }
 
 func NewDefaultCacheSettings() CacheSettings {
 	return CacheSettings{
-		CheckCacheLimit:              DefaultCheckCacheLimit,
-		CacheControllerEnabled:       DefaultCacheControllerEnabled,
-		CacheControllerTTL:           DefaultCacheControllerTTL,
-		CheckQueryCacheEnabled:       DefaultCheckQueryCacheEnabled,
-		CheckQueryCacheTTL:           DefaultCheckQueryCacheTTL,
-		CheckIteratorCacheEnabled:    DefaultCheckIteratorCacheEnabled,
-		CheckIteratorCacheMaxResults: DefaultCheckIteratorCacheMaxResults,
-		CheckIteratorCacheTTL:        DefaultCheckIteratorCacheTTL,
+		CheckCacheLimit:         DefaultCheckCacheLimit,
+		CacheControllerEnabled:  DefaultCacheControllerEnabled,
+		CacheControllerTTL:      DefaultCacheControllerTTL,
+		CheckQueryCacheEnabled:  DefaultCheckQueryCacheEnabled,
+		CheckQueryCacheTTL:      DefaultCheckQueryCacheTTL,
+		IteratorCacheEnabled:    DefaultIteratorCacheEnabled,
+		IteratorCacheMaxResults: DefaultIteratorCacheMaxResults,
+		IteratorCacheTTL:        DefaultIteratorCacheTTL,
 	}
 }
 
@@ -39,5 +39,5 @@ func (c CacheSettings) ShouldCacheCheckQueries() bool {
 }
 
 func (c CacheSettings) ShouldCacheIterators() bool {
-	return c.CheckCacheLimit > 0 && c.CheckIteratorCacheEnabled
+	return c.CheckCacheLimit > 0 && c.IteratorCacheEnabled
 }

@@ -456,7 +456,7 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 // WithCheckIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
 func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.CheckIteratorCacheEnabled = enabled
+		s.cacheSettings.IteratorCacheEnabled = enabled
 	}
 }
 
@@ -464,7 +464,7 @@ func WithCheckIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 // Needs WithCheckIteratorCacheEnabled set to true.
 func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.CheckIteratorCacheMaxResults = limit
+		s.cacheSettings.IteratorCacheMaxResults = limit
 	}
 }
 
@@ -472,7 +472,7 @@ func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 // Needs WithCheckIteratorCacheEnabled set to true.
 func WithCheckIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.CheckIteratorCacheTTL = ttl
+		s.cacheSettings.IteratorCacheTTL = ttl
 	}
 }
 

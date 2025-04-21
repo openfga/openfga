@@ -38,8 +38,8 @@ func TestSharedCheckResources(t *testing.T) {
 
 	t.Run("with_cache", func(t *testing.T) {
 		settings := config.CacheSettings{
-			CheckCacheLimit:           1,
-			CheckIteratorCacheEnabled: true,
+			CheckCacheLimit:      1,
+			IteratorCacheEnabled: true,
 		}
 
 		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
@@ -51,9 +51,9 @@ func TestSharedCheckResources(t *testing.T) {
 
 	t.Run("with_cache_controller", func(t *testing.T) {
 		settings := config.CacheSettings{
-			CheckCacheLimit:           1,
-			CheckIteratorCacheEnabled: true,
-			CacheControllerEnabled:    true,
+			CheckCacheLimit:        1,
+			IteratorCacheEnabled:   true,
+			CacheControllerEnabled: true,
 		}
 
 		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
