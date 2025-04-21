@@ -48,6 +48,7 @@ func NewRequestStorageWrapperWithCache(
 			resources.SingleflightGroup,
 			resources.WaitGroup,
 			WithCachedDatastoreLogger(logger),
+			WithCachedDatastoreMethodName("check"),
 		)
 	} else if operation == ListObjects && cacheSettings.ShouldCacheListObjectsIterators() {
 		tupleReader = NewCachedDatastore(
@@ -59,6 +60,7 @@ func NewRequestStorageWrapperWithCache(
 			resources.SingleflightGroup,
 			resources.WaitGroup,
 			WithCachedDatastoreLogger(logger),
+			WithCachedDatastoreMethodName("listObjects"),
 		)
 	}
 	instrumentedStorage := NewInstrumentedOpenFGAStorage(tupleReader)                           // to capture metrics
