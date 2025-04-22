@@ -168,7 +168,7 @@ func (s *Datastore) Read(
 func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
-
+	
 	iter, err := s.read(ctx, store, tupleKey, &options)
 	if err != nil {
 		return nil, "", err
@@ -182,7 +182,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	ctx, span := startTrace(ctx, "read")
 	defer span.End()
 
-	sb := s.stbl.
+	query := s.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -190,32 +190,45 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
+	
+	// In MSSQL, ORDER BY is required for OFFSET/FETCH.
 	if options != nil {
-		sb = sb.OrderBy("ulid")
+		query = query.OrderBy("ulid")
 	}
 
+	// Add filters based on the TupleKey.
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
-		sb = sb.Where(sq.Eq{"object_type": objectType})
+		query = query.Where(sq.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
-		sb = sb.Where(sq.Eq{"object_id": objectID})
+		query = query.Where(sq.Eq{"object_id": objectID})
 	}
 	if tupleKey.GetRelation() != "" {
-		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
+		query = query.Where(sq.Eq{"relation": tupleKey.GetRelation()})
 	}
 	if tupleKey.GetUser() != "" {
-		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
+		query = query.Where(sq.Eq{"_user": tupleKey.GetUser()})
+	}
+ 
+	// Adaptation for pagination in MSSQL using OFFSET/FETCH.
+	if options != nil {
+		if options.Pagination.From != "" {
+			query = query.Where(sq.GtOrEq{"ulid": options.Pagination.From})
+		}
+		
+		if options.Pagination.PageSize != 0 {
+			// In MSSQL, we use OFFSET/FETCH for pagination
+			// Since we're using Squirrel, we need to add .Suffix for OFFSET/FETCH
+			// We start with OFFSET 0 for the first page
+			offset := 0
+			limit := options.Pagination.PageSize + 1 // +1 to determine if there is more data
+			
+			query = query.Suffix(fmt.Sprintf("OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit))
+		}
 	}
 
-	if options != nil && options.Pagination.From != "" {
-		sb = sb.Where(sq.GtOrEq{"ulid": options.Pagination.From})
-	}
-	if options != nil && options.Pagination.PageSize != 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
-	}
-
-	rows, err := sb.QueryContext(ctx)
+	rows, err := query.QueryContext(ctx)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -419,7 +432,8 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": options.Pagination.From})
 	}
 	if options.Pagination.PageSize > 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+		//sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+		sb = sb.OrderBy("authorization_model_id DESC").Offset(0).Limit(uint64(options.Pagination.PageSize + 1))
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -716,7 +730,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
+		Where(fmt.Sprintf("inserted_at < DATEADD(MILLISECOND, -%d, GETUTCDATE())", horizonOffset.Milliseconds())).
 		OrderBy(orderBy)
 
 	if objectTypeFilter != "" {
@@ -726,7 +740,8 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
-		sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+		//sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+		sb = sb.OrderBy("ulid").Offset(0).Limit(uint64(options.Pagination.PageSize + 1))
 	}
 
 	rows, err := sb.QueryContext(ctx)
