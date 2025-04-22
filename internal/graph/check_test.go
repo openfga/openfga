@@ -132,7 +132,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
 		_, err := exclusion(ctx, concurrencyLimit)
@@ -493,7 +493,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	t.Run("no_handlers_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit)
@@ -1377,7 +1377,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
@@ -3257,7 +3257,7 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan := checker.processDispatches(ctx, tt.poolSize, dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
@@ -3279,7 +3279,7 @@ func TestProcessDispatch(t *testing.T) {
 		checker.SetDelegate(mockResolver)
 
 		dispatchChan := make(chan dispatchMsg, 1)
-		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchChan)
+		outcomeChan := checker.processDispatches(ctx, 1, dispatchChan)
 		dispatchChan <- dispatchMsg{
 			dispatchParams: &dispatchParams{
 				parentReq: nil, // This will cause a panic when accessed in `dispatch`
@@ -3304,7 +3304,7 @@ func TestConsumeDispatch(t *testing.T) {
 	}
 	tests := []struct {
 		name                   string
-		limit                  uint32
+		limit                  int
 		ctxCancelled           bool
 		dispatchMsgs           []dispatchMsg
 		mockedDispatchResponse []*ResolveCheckResponse

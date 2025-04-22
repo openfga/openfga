@@ -152,7 +152,10 @@ func (c *CachedDatastore) ReadStartingWithUser(
 	// since at most it will have 2 entries (user and wildcard if possible)
 	subjects := make([]string, 0, len(filter.UserFilter))
 	for _, objectRel := range filter.UserFilter {
-		subject := tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
+		subject := objectRel.GetObject()
+		if objectRel.GetRelation() != "" {
+			subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
+		}
 		subjects = append(subjects, subject)
 		b.WriteString("/" + subject)
 	}
@@ -483,6 +486,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if c.tuples != nil {
 		c.tuples = append(c.tuples, t)
 		if len(c.tuples) >= c.maxResultSize {
+			tuplesCacheDiscardCounter.WithLabelValues(c.operation).Inc()
 			c.tuples = nil // don't store results that are incomplete
 		}
 	}
