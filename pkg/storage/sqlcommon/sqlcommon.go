@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	//"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
@@ -451,11 +452,10 @@ func Write(
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
-	nowExpr := getNowExpr(dbInfo.db)
-
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
 
 		res, err := deleteBuilder.
 			Where(sq.Eq{
@@ -489,7 +489,7 @@ func Write(
 			tk.GetRelation(), tk.GetUser(),
 			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, nowExpr,
+			id, getNowExpr(dbInfo.db),
 		)
 	}
 
@@ -520,7 +520,7 @@ func Write(
 				conditionName,
 				conditionContext,
 				id,
-				nowExpr,
+				getNowExpr(dbInfo.db),
 			).
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
@@ -538,12 +538,20 @@ func Write(
 			conditionContext,
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
-			nowExpr,
+			getNowExpr(dbInfo.db),
 		)
 	}
-
+	/*fmt.Println("writes=",writes)
+	fmt.Println("deletes=",deletes)
+	fmt.Println("txn=",txn)
+	fmt.Println("ctx=",ctx)
+*/
 	if len(writes) > 0 || len(deletes) > 0 {
+		//sqlStr, args, _ := changelogBuilder.ToSql()
+		//fmt.Println("SQL:", sqlStr)
+		//fmt.Println("ARGS:", args)
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
+		//fmt.Println("err5=",err)
 		if err != nil {
 			return dbInfo.HandleSQLError(err)
 		}
