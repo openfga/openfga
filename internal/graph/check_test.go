@@ -102,7 +102,7 @@ func TestResolver(t *testing.T) {
 		}
 		resultChan := make(chan checkOutcome, 1)
 
-		drain := resolver(ctx, uint32(1), resultChan, panicHandler)
+		drain := resolver(ctx, 1, resultChan, panicHandler)
 		err := drain()
 
 		require.ErrorContains(t, err, panicErr)
@@ -116,7 +116,7 @@ func TestResolver(t *testing.T) {
 		resultChan := make(chan checkOutcome, 1)
 		close(resultChan)
 
-		drain := resolver(ctx, uint32(1), resultChan, handler)
+		drain := resolver(ctx, 1, resultChan, handler)
 		err := drain()
 
 		require.ErrorContains(t, err, "send on closed channel")
