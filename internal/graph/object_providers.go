@@ -22,12 +22,6 @@ type objectProvider interface {
 	Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error)
 }
 
-type recursiveObjectProvider struct {
-	mapper storage.TupleMapper
-	ts     *typesystem.TypeSystem
-	ds     storage.RelationshipTupleReader
-}
-
 type recursiveTTUObjectProvider struct {
 	ts               *typesystem.TypeSystem
 	tuplesetRelation string

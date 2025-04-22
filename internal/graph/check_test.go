@@ -63,28 +63,6 @@ var (
 	}
 )
 
-// usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
-type usersetsChannelStruct struct {
-	err            error
-	objectRelation string
-	objectIDs      []string
-}
-
-func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []usersetsChannelType {
-	output := make([]usersetsChannelType, len(orig))
-	for i, result := range orig {
-		output[i] = usersetsChannelType{
-			err:            result.err,
-			objectRelation: result.objectRelation,
-			objectIDs:      storage.NewSortedSet(),
-		}
-		for _, objectID := range result.objectIDs {
-			output[i].objectIDs.Add(objectID)
-		}
-	}
-	return output
-}
-
 func TestCheck_CorrectContext(t *testing.T) {
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)

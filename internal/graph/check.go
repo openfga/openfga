@@ -690,12 +690,6 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 	return resp, nil
 }
 
-type usersetsChannelType struct {
-	err            error
-	objectRelation string            // e.g. group#member
-	objectIDs      storage.SortedSet // eg. [1,2,3] (no duplicates allowed, sorted)
-}
-
 type usersetMessage struct {
 	userset string
 	err     error
