@@ -907,21 +907,6 @@ func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckR
 	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
 }
 
-func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveTTUFastPath")
-	defer span.End()
-
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
-
-	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
-		kind:             storage.TTUKind,
-		tuplesetRelation: rewrite.GetTupleToUserset().GetTupleset().GetRelation(),
-	}, objectProvider)
-}
-
 // recursiveTTUFastPathV2 solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
 func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -937,22 +922,6 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
 		tuplesetRelation: ttu.GetTupleset().GetRelation(),
-	}, objectProvider)
-}
-
-func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveUsersetFastPath")
-	defer span.End()
-
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
-
-	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
-		kind:                        storage.UsersetKind,
-		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 	}, objectProvider)
 }
 
