@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	//"fmt"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/oklog/ulid/v2"
@@ -541,17 +540,9 @@ func Write(
 			getNowExpr(dbInfo.db),
 		)
 	}
-	/*fmt.Println("writes=",writes)
-	fmt.Println("deletes=",deletes)
-	fmt.Println("txn=",txn)
-	fmt.Println("ctx=",ctx)
-*/
+
 	if len(writes) > 0 || len(deletes) > 0 {
-		//sqlStr, args, _ := changelogBuilder.ToSql()
-		//fmt.Println("SQL:", sqlStr)
-		//fmt.Println("ARGS:", args)
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
-		//fmt.Println("err5=",err)
 		if err != nil {
 			return dbInfo.HandleSQLError(err)
 		}
