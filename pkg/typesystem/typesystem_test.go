@@ -5989,7 +5989,6 @@ type group
 				},
 			})
 			require.True(t, v2)
-
 		})
 	}
 }
