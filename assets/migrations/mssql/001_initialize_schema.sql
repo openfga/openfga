@@ -7,7 +7,7 @@ CREATE TABLE tuple (
     _user VARCHAR(256) NOT NULL,
     user_type VARCHAR(7) NOT NULL,
     ulid CHAR(26) NOT NULL,
-    inserted_at DATETIME2 NOT NULL,
+    inserted_at DATETIMEOFFSET NOT NULL,
     PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
 
@@ -24,9 +24,9 @@ CREATE TABLE authorization_model (
 CREATE TABLE store (
     id CHAR(26) PRIMARY KEY,
     name VARCHAR(64) NOT NULL,
-    created_at DATETIME2 NOT NULL,
-    updated_at DATETIME2 NULL,
-    deleted_at DATETIME2 NULL
+    created_at DATETIMEOFFSET NOT NULL,
+    updated_at DATETIMEOFFSET NULL,
+    deleted_at DATETIMEOFFSET NULL
 );
 
 CREATE TABLE assertion (
@@ -44,7 +44,7 @@ CREATE TABLE changelog (
     _user VARCHAR(512) NOT NULL,
     operation INT NOT NULL,
     ulid CHAR(26) NOT NULL,
-    inserted_at DATETIME2 NOT NULL,
+    inserted_at DATETIMEOFFSET NOT NULL,
     PRIMARY KEY (store, ulid, object_type)
 );
 
