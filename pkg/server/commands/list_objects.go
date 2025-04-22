@@ -434,7 +434,7 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY && q.cacheSettings.ShouldCacheListObjectsIterators() {
 		_, span := tracer.Start(ctx, "commands.listObjects")
 		defer span.End()
 
