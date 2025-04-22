@@ -230,7 +230,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 	if entry.LastModified.Before(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
-		c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary invalidation as entry.LastModified before last verified",
+		c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary no invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
 			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))

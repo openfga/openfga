@@ -166,7 +166,6 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		if objectRel.GetRelation() != "" {
 			subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
 		}
-		//subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
 		subjects = append(subjects, subject)
 		b.WriteString("/" + subject)
 	}

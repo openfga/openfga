@@ -2123,9 +2123,9 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.sharedCheckResources.CheckCache)
+		require.NotNil(t, s.sharedDatastoreResources.CheckCache)
 		require.True(t, s.cacheSettings.ShouldCacheCheckQueries())
-		require.True(t, s.cacheSettings.ShouldCacheIterators())
+		require.True(t, s.cacheSettings.ShouldCacheCheckIterators())
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_enabled", func(t *testing.T) {
@@ -2139,7 +2139,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.sharedCheckResources.CheckCache)
+		require.NotNil(t, s.sharedDatastoreResources.CheckCache)
 	})
 
 	t.Run("query_cache_enabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2153,7 +2153,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.NotNil(t, s.sharedCheckResources.CheckCache)
+		require.NotNil(t, s.sharedDatastoreResources.CheckCache)
 	})
 
 	t.Run("query_cache_disabled_iterator_cache_disabled", func(t *testing.T) {
@@ -2167,7 +2167,7 @@ func TestServerCheckCache(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 
-		require.Nil(t, s.sharedCheckResources.CheckCache)
+		require.Nil(t, s.sharedDatastoreResources.CheckCache)
 	})
 }
 
@@ -2191,8 +2191,8 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
-		_, ok := s.sharedCheckResources.CacheController.(*cachecontroller.NoopCacheController)
+		require.NotNil(t, s.sharedDatastoreResources.CacheController)
+		_, ok := s.sharedDatastoreResources.CacheController.(*cachecontroller.NoopCacheController)
 		require.True(t, ok)
 	})
 
@@ -2212,7 +2212,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
+		require.NotNil(t, s.sharedDatastoreResources.CacheController)
 	})
 
 	t.Run("cache_controller_is_not_nil_if_check_iterator_cache_enabled", func(t *testing.T) {
@@ -2231,7 +2231,7 @@ func TestCheckWithCachedControllerEnabled(t *testing.T) {
 			s.Close()
 		})
 
-		require.NotNil(t, s.sharedCheckResources.CacheController)
+		require.NotNil(t, s.sharedDatastoreResources.CacheController)
 	})
 }
 

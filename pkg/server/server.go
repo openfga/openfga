@@ -476,6 +476,29 @@ func WithCheckIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
+// WithListObjectsIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
+func WithListObjectsIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheEnabled = enabled
+	}
+}
+
+// WithListObjectsIteratorCacheMaxResults sets the limit of an iterator size to cache (in items)
+// Needs WithListObjectsIteratorCacheEnabled set to true.
+func WithListObjectsIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheMaxResults = limit
+	}
+}
+
+// WithListObjectsIteratorCacheTTL sets the TTL of iterator caches.
+// Needs WithListObjectsCheckIteratorCacheEnabled set to true.
+func WithListObjectsIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheTTL = ttl
+	}
+}
+
 // WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryAndDispatchHistogram.
 func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {

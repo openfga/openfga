@@ -72,7 +72,7 @@ func NewRequestStorageWrapperWithCache(
 	}
 }
 
-// NewRequestStorageWrapper can be used for ListObjects or ListUsers.
+// NewRequestStorageWrapper is used for ListUsers.
 func NewRequestStorageWrapper(ds storage.RelationshipTupleReader, requestContextualTuples []*openfgav1.TupleKey, maxConcurrentReads uint32) *RequestStorageWrapper {
 	a := NewBoundedConcurrencyTupleReader(ds, maxConcurrentReads) // to rate-limit reads
 	b := NewInstrumentedOpenFGAStorage(a)                         // to capture metrics

@@ -232,8 +232,8 @@ type CheckCacheConfig struct {
 	Limit uint32
 }
 
-// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
-type CheckIteratorCacheConfig struct {
+// IteratorCacheConfig defines configuration to cache storage iterator results.
+type IteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
 	TTL        time.Duration
@@ -355,11 +355,12 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	CheckCache                    CheckCacheConfig
-	CheckIteratorCache            CheckIteratorCacheConfig
+	CheckIteratorCache            IteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListObjectsIteratorCache      IteratorCacheConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
@@ -589,6 +590,7 @@ func (cfg *Config) verifyRequestDurationDatastoreQueryCountBuckets() error {
 	return nil
 }
 
+// TODO: should this be updated also?
 func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CheckQueryCache.Enabled && cfg.CheckQueryCache.TTL <= 0 {
 		return errors.New("'checkQueryCache.ttl' must be greater than zero")
@@ -687,7 +689,7 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		CheckIteratorCache: CheckIteratorCacheConfig{
+		CheckIteratorCache: IteratorCacheConfig{
 			Enabled:    DefaultCheckIteratorCacheEnabled,
 			MaxResults: DefaultCheckIteratorCacheMaxResults,
 			TTL:        DefaultCheckIteratorCacheTTL,
@@ -720,6 +722,11 @@ func DefaultConfig() *Config {
 			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
+		},
+		ListObjectsIteratorCache: IteratorCacheConfig{
+			Enabled:    DefaultListObjectsIteratorCacheEnabled,
+			MaxResults: DefaultListObjectsIteratorCacheMaxResults,
+			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,
