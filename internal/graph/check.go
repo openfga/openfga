@@ -318,19 +318,36 @@ func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandl
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(ctx)
-		baseChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := baseHandler(ctx)
+			baseChan <- checkOutcome{resp, err}
+		})
+
+		if recoveredError != nil {
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(ctx)
-		subChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := subHandler(ctx)
+			subChan <- checkOutcome{resp, err}
+		})
+		if recoveredError != nil {
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	response := &ResolveCheckResponse{
