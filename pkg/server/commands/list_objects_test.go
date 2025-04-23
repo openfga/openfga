@@ -478,7 +478,9 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 
 	// Don't care about the resolver for this test
 	mockCheckResolver := graph.NewMockCheckResolver(ctrl)
-	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().Return(&graph.ResolveCheckResponse{}, nil)
+	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{}, nil
+	})
 
 	// Need to make sure list objects attempts to invalidate when cache is enabled
 	mockCacheController := mocks.NewMockCacheController(ctrl)
