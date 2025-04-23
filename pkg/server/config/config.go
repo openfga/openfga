@@ -590,7 +590,6 @@ func (cfg *Config) verifyRequestDurationDatastoreQueryCountBuckets() error {
 	return nil
 }
 
-// TODO: should this be updated also?
 func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CheckQueryCache.Enabled && cfg.CheckQueryCache.TTL <= 0 {
 		return errors.New("'checkQueryCache.ttl' must be greater than zero")
@@ -601,6 +600,14 @@ func (cfg *Config) verifyCacheConfig() error {
 		}
 		if cfg.CheckIteratorCache.MaxResults <= 0 {
 			return errors.New("'checkIteratorCache.maxResults' must be greater than zero")
+		}
+	}
+	if cfg.ListObjectsIteratorCache.Enabled {
+		if cfg.ListObjectsIteratorCache.TTL <= 0 {
+			return errors.New("'listObjectsIteratorCache.ttl' must be greater than zero")
+		}
+		if cfg.ListObjectsIteratorCache.MaxResults <= 0 {
+			return errors.New("'listObjectsIteratorCache.maxResults' must be greater than zero")
 		}
 	}
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
