@@ -498,7 +498,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if c.tuples != nil {
 		c.tuples = append(c.tuples, t)
 		if len(c.tuples) >= c.maxResultSize {
-			tuplesCacheDiscardCounter.WithLabelValues(c.operation).Inc()
+			tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 			c.tuples = nil // don't store results that are incomplete
 		}
 	}
