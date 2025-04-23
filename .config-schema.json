@@ -590,6 +590,30 @@
                 }
             }
         },
+        "listObjectsIteratorCache": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable caching of datastore iterators in list objects. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED"
+                },
+                "maxResults": {
+                    "description": "if caching of datastore iterators of ListObjects requests is enabled, this is the limit of tuples to cache per key",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS"
+                },
+                "ttl": {
+                    "description": "if caching of datastore iterators of ListObjects requests is enabled, this is the TTL of each value",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL"
+                }
+            }
+        },
         "listObjectsDispatchThrottling": {
             "type": "object",
             "properties": {
