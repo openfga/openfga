@@ -654,25 +654,44 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 
 // WriteAssertions see [storage.AssertionsBackend].WriteAssertions.
 func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
-	ctx, span := startTrace(ctx, "WriteAssertions")
-	defer span.End()
+    ctx, span := startTrace(ctx, "WriteAssertions")
+    defer span.End()
 
-	marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
-	if err != nil {
-		return err
-	}
+    marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
+    if err != nil {
+        return err
+    }
 
-	_, err = s.stbl.
-		Insert("assertion").
-		Columns("store", "authorization_model_id", "assertions").
-		Values(store, modelID, marshalledAssertions).
-		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
-		ExecContext(ctx)
-	if err != nil {
-		return HandleSQLError(err)
-	}
+    var exists bool
+    err = s.stbl.
+        Select("1").
+        From("assertion").
+        Where("store = ? AND authorization_model_id = ?", store, modelID).
+        ScanContext(ctx, &exists)
+    
+    if err != nil && err != sql.ErrNoRows {
+        return HandleSQLError(err)
+    }
 
-	return nil
+    if exists {
+        _, err = s.stbl.
+            Update("assertion").
+            Set("assertions", marshalledAssertions).
+            Where("store = ? AND authorization_model_id = ?", store, modelID).
+            ExecContext(ctx)
+    } else {
+        _, err = s.stbl.
+            Insert("assertion").
+            Columns("store", "authorization_model_id", "assertions").
+            Values(store, modelID, marshalledAssertions).
+            ExecContext(ctx)
+    }
+
+    if err != nil {
+        return HandleSQLError(err)
+    }
+
+    return nil
 }
 
 // ReadAssertions see [storage.AssertionsBackend].ReadAssertions.
