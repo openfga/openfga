@@ -425,6 +425,12 @@ func getNowExpr(db *sql.DB) sq.Sqlizer {
 	return sq.Expr("NOW()")
 }
 
+func getNiltoMSSQL(db *sql.DB) sq.Sqlizer {
+	if isMSSQLDriver(db) {
+		return sq.Expr("CONVERT(VARBINARY(MAX), NULL)")
+	}
+	return nil
+}
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
@@ -486,7 +492,7 @@ func Write(
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			"", getNiltoMSSQL(dbInfo.db), // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id, getNowExpr(dbInfo.db),
 		)
@@ -577,7 +583,7 @@ func WriteAuthorizationModel(
 	_, err = dbInfo.stbl.
 		Insert("authorization_model").
 		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
+		Values(store, model.GetId(), schemaVersion, "", getNiltoMSSQL(dbInfo.db), pbdata).
 		ExecContext(ctx)
 	if err != nil {
 		return dbInfo.HandleSQLError(err)
