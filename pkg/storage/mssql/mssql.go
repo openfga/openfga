@@ -217,14 +217,11 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 			query = query.Where(sq.GtOrEq{"ulid": options.Pagination.From})
 		}
 		
-		if options.Pagination.PageSize != 0 {
-			// In MSSQL, we use OFFSET/FETCH for pagination
-			// Since we're using Squirrel, we need to add .Suffix for OFFSET/FETCH
-			// We start with OFFSET 0 for the first page
-			offset := 0
-			limit := options.Pagination.PageSize + 1 // +1 to determine if there is more data
-			
-			query = query.Suffix(fmt.Sprintf("OFFSET %d ROWS FETCH NEXT %d ROWS ONLY", offset, limit))
+		if options.Pagination.PageSize > 0 {
+			// Instead of using Limit(), which is not compatible with MSSQL in the same way,
+			// we use the OFFSET-FETCH syntax of MSSQL
+			query = query.Suffix("OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY", options.Pagination.PageSize+1)
+			// The +1 is still used to determine whether to return a continuation token
 		}
 	}
 
@@ -432,8 +429,9 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 		sb = sb.Where(sq.LtOrEq{"authorization_model_id": options.Pagination.From})
 	}
 	if options.Pagination.PageSize > 0 {
-		//sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
-		sb = sb.OrderBy("authorization_model_id DESC").Offset(0).Limit(uint64(options.Pagination.PageSize + 1))
+		// sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+		// Using OFFSET-FETCH syntax for MSSQL instead of Limit() which is not supported
+		sb = sb.Suffix("OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY", options.Pagination.PageSize+1)
 	}
 
 	rows, err := sb.QueryContext(ctx)
@@ -740,8 +738,9 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		sb = sqlcommon.AddFromUlid(sb, options.Pagination.From, options.SortDesc)
 	}
 	if options.Pagination.PageSize > 0 {
-		//sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
-		sb = sb.OrderBy("ulid").Offset(0).Limit(uint64(options.Pagination.PageSize + 1))
+		// sb = sb.Limit(uint64(options.Pagination.PageSize)) // + 1 is NOT used here as we always return a continuation token.
+		// Using OFFSET-FETCH syntax for MSSQL instead of Limit() which is not supported
+		sb = sb.Suffix("OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY", options.Pagination.PageSize)
 	}
 
 	rows, err := sb.QueryContext(ctx)
