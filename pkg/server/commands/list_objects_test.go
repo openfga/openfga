@@ -518,5 +518,6 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 		User:     "user:jon",
 	})
 
+	sharedResources.Close()
 	require.NoError(t, err)
 }
