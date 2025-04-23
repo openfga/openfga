@@ -510,7 +510,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 		WithListObjectsCache(sharedResources, cacheSettings),
 	)
 
-	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
+	// Run a check, mockCacheController should receive its invalidate call
 	_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
 		StoreId:  storeID,
 		Type:     "folder",
