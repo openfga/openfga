@@ -1,8 +1,10 @@
 services:
   migrate:
+    image: !reset null
     build: .
 
   openfga:
+    image: !reset null
     build: .
     depends_on:
       otel-collector:

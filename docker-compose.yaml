@@ -1,69 +1,60 @@
-  services:
-    mssql:              
-      image: mcr.microsoft.com/mssql/server:2022-latest
-      container_name: mssql
-      networks:
-        - default
-      ports:
-        - "1433:1433"
-      environment:
-        - ACCEPT_EULA=Y
-        - MSSQL_SA_PASSWORD=Password123Str0ng!
-      healthcheck:
-        test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123Str0ng!' -Q 'SELECT 1' -C"]
-        interval: 10s
-        timeout: 3s
-        retries: 10
-        start_period: 40s
+services:
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    command: postgres -c 'max_connections=100'
+    networks:
+      - default
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-    mssql-init:
-      image: mcr.microsoft.com/mssql-tools
-      container_name: mssql-init
-      networks:
-        - default
-      depends_on:
-        mssql:
-          condition: service_healthy
-      command: /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'Password123Str0ng!' -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'openfga') CREATE DATABASE openfga;" -C
+  migrate:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: openfga/openfga:latest
+    container_name: migrate
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
+    command: migrate
+    networks:
+      - default
 
-    migrate:
-      depends_on:
-        mssql-init:
-          condition: service_completed_successfully
-      build: .
-      container_name: migrate
-      environment:
-        - OPENFGA_DATASTORE_ENGINE=mssql
-        - OPENFGA_DATASTORE_URI=sqlserver://sa:Password123Str0ng!@mssql:1433?database=openfga
-        - OPENFGA_LOG_LEVEL=debug
-      command: migrate
-      networks:
-        - default
-
-    openfga:
-      depends_on:
-        - migrate
-        - mssql
-      build: .
-      container_name: openfga
-      command: run
-      environment:
-        - OPENFGA_DATASTORE_ENGINE=mssql
-        - OPENFGA_DATASTORE_URI=sqlserver://sa:Password123Str0ng!@mssql:1433?database=openfga
-        - OPENFGA_LOG_LEVEL=debug
-      networks:
-        - default
-      ports:
-        - "8080:8080" #http
-        - "8081:8081" #grpc
-        - "3000:3000" #playground
-      healthcheck:
-        test:
-          [
-            "CMD",
-            "/usr/local/bin/grpc_health_probe",
-            "-addr=openfga:8081"
-          ]
-        interval: 5s
-        timeout: 30s
-        retries: 3
+  openfga:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    image: openfga/openfga:latest
+    container_name: openfga
+    command: run
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
+      - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100 #see postgres container
+      - OPENFGA_PLAYGROUND_ENABLED=true
+    networks:
+      - default
+    ports:
+      - "8080:8080" #http
+      - "8081:8081" #grpc
+      - "3000:3000" #playground
+      - "2112:2112" #prometheus metrics
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/usr/local/bin/grpc_health_probe",
+          "-addr=openfga:8081"
+        ]
+      interval: 5s
+      timeout: 30s
+      retries: 3
