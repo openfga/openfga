@@ -44,6 +44,12 @@ var (
 		Name:      "check_cache_invalid_hit_count",
 		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
 	})
+
+	checkCacheSetCount = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_set_count",
+		Help:      "The total number of times we store items in the cache",
+	})
 )
 
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
@@ -189,6 +195,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	clonedResp := resp.clone()
 
+	checkCacheSetCount.Inc()
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
 	return resp, nil
 }
