@@ -59,9 +59,9 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation"})
 
-	currentCacheCount = promauto.NewGauge(prometheus.GaugeOpts{
+	currentIteratorCacheCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
-		Name:      "current_cache_count",
+		Name:      "current_iterator_cache_count",
 		Help:      "The current number of items of cache iterator.",
 	})
 )
@@ -390,7 +390,7 @@ func (c *CachedDatastore) newCachedIterator(
 		span.SetAttributes(attribute.Bool("cached", true))
 
 		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
-		currentCacheCount.Inc()
+		currentIteratorCacheCount.Inc()
 
 		return &cachedTupleIterator{
 			objectID:   objectID,
@@ -406,7 +406,7 @@ func (c *CachedDatastore) newCachedIterator(
 		return nil, err
 	}
 
-	currentCacheCount.Inc()
+	currentIteratorCacheCount.Inc()
 	return &cachedIterator{
 		ctx:       c.ctx,
 		iter:      iter,
@@ -511,7 +511,7 @@ func (c *cachedIterator) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	currentCacheCount.Dec()
+	currentIteratorCacheCount.Dec()
 
 	swapped := c.closing.CompareAndSwap(false, true)
 	if !swapped {

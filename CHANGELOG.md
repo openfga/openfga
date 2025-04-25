@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "request.throttled" boolean to the context tags for check and batch-check
 - Added "throttled_requests_count" metric to batch-check requests.
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
+- Added "current_iterator_cache_count" gauge metric to current number of iterator cache. [#2397](https://github.com/openfga/openfga/pull/2397)
 
 ### Changed
 - The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
