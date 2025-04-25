@@ -2192,7 +2192,7 @@ func TestServerListObjectsCache(t *testing.T) {
 	t.Run("all_caches_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
-			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheEnabled(true),
 			WithCheckQueryCacheTTL(1*time.Minute),
 			WithCheckCacheLimit(10),
 			WithCheckIteratorCacheEnabled(true),
