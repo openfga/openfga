@@ -58,6 +58,12 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation"})
+
+	currentCacheCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "current_cache_count",
+		Help:      "The current number of items of cache iterator.",
+	})
 )
 
 // iterFunc is a function closure that returns an iterator
@@ -384,6 +390,7 @@ func (c *CachedDatastore) newCachedIterator(
 		span.SetAttributes(attribute.Bool("cached", true))
 
 		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
+		currentCacheCount.Inc()
 
 		return &cachedTupleIterator{
 			objectID:   objectID,
@@ -399,6 +406,7 @@ func (c *CachedDatastore) newCachedIterator(
 		return nil, err
 	}
 
+	currentCacheCount.Inc()
 	return &cachedIterator{
 		ctx:       c.ctx,
 		iter:      iter,
@@ -502,6 +510,8 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 func (c *cachedIterator) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	currentCacheCount.Dec()
 
 	swapped := c.closing.CompareAndSwap(false, true)
 	if !swapped {
