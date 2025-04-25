@@ -87,6 +87,7 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.RequestTimeout = 10 * time.Second
 
 	cfg.CheckIteratorCache.Enabled = true
+	cfg.ListObjectsIteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
 	StartServer(t, cfg)
