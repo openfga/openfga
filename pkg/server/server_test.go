@@ -2171,6 +2171,50 @@ func TestServerCheckCache(t *testing.T) {
 	})
 }
 
+func TestServerListObjectsCache(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("list_objects_cache_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithListObjectsIteratorCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.sharedDatastoreResources.CheckCache)
+		require.True(t, s.cacheSettings.ShouldCacheListObjectsIterators())
+		require.False(t, s.cacheSettings.ShouldCacheCheckQueries())
+		require.False(t, s.cacheSettings.ShouldCacheCheckIterators())
+	})
+
+	t.Run("all_caches_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithCheckQueryCacheEnabled(false),
+			WithCheckQueryCacheTTL(1*time.Minute),
+			WithCheckCacheLimit(10),
+			WithCheckIteratorCacheEnabled(true),
+			WithCheckIteratorCacheMaxResults(10),
+			WithListObjectsIteratorCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+
+		require.NotNil(t, s.sharedDatastoreResources.CheckCache)
+		require.True(t, s.cacheSettings.ShouldCacheListObjectsIterators())
+		require.True(t, s.cacheSettings.ShouldCacheCheckQueries())
+		require.True(t, s.cacheSettings.ShouldCacheCheckIterators())
+	})
+
+	t.Run("no_caches_enabled", func(t *testing.T) {
+		s := MustNewServerWithOpts(WithDatastore(memory.New()))
+		t.Cleanup(s.Close)
+
+		require.Nil(t, s.sharedDatastoreResources.CheckCache)
+	})
+}
+
 func TestCheckWithCachedControllerEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
