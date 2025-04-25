@@ -48,7 +48,7 @@ var (
 	CheckCacheItemCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "check_cache_item_count",
-		Help:      "The total number of times we store items in the cache",
+		Help:      "The total number of items stored in the check query cache",
 	})
 )
 
