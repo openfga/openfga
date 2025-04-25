@@ -234,7 +234,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("check-iterator-cache-ttl", defaultConfig.CheckIteratorCache.TTL, "if caching of datastore iterators of Check requests is enabled, this is the TTL of each value")
 
-	flags.Bool("list-objects-iterator-cache-enabled", defaultConfig.ListObjectsIteratorCache.Enabled, "enable caching of datastore iterators for list objects. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.")
+	flags.Bool("list-objects-iterator-cache-enabled", defaultConfig.ListObjectsIteratorCache.Enabled, "enable caching of datastore iterators for ListObjects. The key is a string representing a database query, and the value is a list of tuples. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. If the request's consistency is HIGHER_CONSISTENCY, this cache is not used.")
 
 	flags.Uint32("list-objects-iterator-cache-max-results", defaultConfig.ListObjectsIteratorCache.MaxResults, "if caching of datastore iterators of ListObjects requests is enabled, this is the limit of tuples to cache per key.")
 
@@ -271,7 +271,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-dispatch-throttling-threshold", defaultConfig.ListObjectsDispatchThrottling.Threshold, "defines the number of dispatches above which ListObjects requests will be throttled.")
 
-	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list objects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
+	flags.Uint32("listObjects-dispatch-throttling-max-threshold", defaultConfig.ListObjectsDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a ListObjects requests will be throttled. 0 will use the 'listObjects-dispatch-throttling-threshold' value as maximum")
 
 	flags.Bool("listUsers-dispatch-throttling-enabled", defaultConfig.ListUsersDispatchThrottling.Enabled, "enable throttling when a ListUsers request's number of dispatches is high. Enabling this feature will prioritize dispatched requests requiring less than the configured dispatch threshold over requests whose dispatch count exceeds the configured threshold.")
 
