@@ -304,6 +304,5 @@ func (c *InMemoryCacheController) invalidateIteratorCacheByObjectRelation(storeI
 // invalidateIteratorCacheByUserAndObjectType writes a new key to the cache.
 // An alternative implementation could delete invalid keys, but this approach is faster (see storagewrappers.findInCache).
 func (c *InMemoryCacheController) invalidateIteratorCacheByUserAndObjectType(storeID, user, objectType string, ts time.Time) {
-	c.logger.Debug("InMemoryCacheController invalidateIteratorCacheByUserAndObjectType invalidation")
 	c.cache.Set(storage.GetInvalidIteratorByUserObjectTypeCacheKeys(storeID, []string{user}, objectType)[0], &storage.InvalidEntityCacheEntry{LastModified: ts}, c.iteratorCacheTTL)
 }
