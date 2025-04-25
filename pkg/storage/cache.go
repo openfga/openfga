@@ -43,9 +43,10 @@ type InMemoryCache[T any] interface {
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
-	client      *theine.Cache[string, T]
-	maxElements int64
-	stopOnce    *sync.Once
+	client          *theine.Cache[string, T]
+	maxElements     int64
+	stopOnce        *sync.Once
+	removalListener func(string, T, theine.RemoveReason)
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -56,20 +57,30 @@ func WithMaxCacheSize[T any](maxElements int64) InMemoryLRUCacheOpt[T] {
 	}
 }
 
+func WithRemovalListener[T any](removalListener func(string, T, theine.RemoveReason)) InMemoryLRUCacheOpt[T] {
+	return func(i *InMemoryLRUCache[T]) {
+		i.removalListener = removalListener
+	}
+}
+
 var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCache[T], error) {
 	t := &InMemoryLRUCache[T]{
-		maxElements: defaultMaxCacheSize,
-		stopOnce:    &sync.Once{},
+		maxElements:     defaultMaxCacheSize,
+		stopOnce:        &sync.Once{},
+		removalListener: func(string, T, theine.RemoveReason) {},
 	}
 
 	for _, opt := range opts {
 		opt(t)
 	}
 
+	cacheBuilder := theine.NewBuilder[string, T](t.maxElements)
+	cacheBuilder.RemovalListener(t.removalListener)
+
 	var err error
-	t.client, err = theine.NewBuilder[string, T](t.maxElements).Build()
+	t.client, err = cacheBuilder.Build()
 	if err != nil {
 		return nil, err
 	}
