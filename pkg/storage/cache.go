@@ -344,7 +344,6 @@ func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	_, err := w.WriteString(
 		" " + // space to separate from user in the TupleCacheKey, where spaces cannot be present
-			SubproblemCachePrefix +
 			params.StoreID +
 			"/" +
 			params.AuthorizationModelID,

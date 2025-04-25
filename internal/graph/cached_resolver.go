@@ -209,5 +209,5 @@ func BuildCacheKey(req ResolveCheckRequest) string {
 	// Digest.WriteString returns int and a nil error, ignoring
 	_, _ = hasher.WriteString(cacheKeyString)
 
-	return strconv.FormatUint(hasher.Sum64(), 10)
+	return storage.SubproblemCachePrefix + strconv.FormatUint(hasher.Sum64(), 10)
 }
