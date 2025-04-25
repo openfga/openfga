@@ -2,9 +2,10 @@ package shared
 
 import (
 	"context"
+	"sync"
+
 	"github.com/Yiling-J/theine-go"
 	"github.com/openfga/openfga/internal/graph"
-	"sync"
 
 	"golang.org/x/sync/singleflight"
 
