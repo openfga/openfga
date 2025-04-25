@@ -438,6 +438,7 @@ func (q *ListObjectsQuery) Execute(
 		_, span := tracer.Start(ctx, "commands.listObjects")
 		defer span.End()
 
+		// Kick off background job to check if cache records are stale, inavlidating where needed
 		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(req.GetStoreId(), span)
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
