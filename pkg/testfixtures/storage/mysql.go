@@ -61,11 +61,13 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	require.NoError(t, err)
 
 	foundMysqlImage := false
+
+AllImages:
 	for _, image := range allImages {
 		for _, tag := range image.RepoTags {
 			if strings.Contains(tag, mySQLImage) {
 				foundMysqlImage = true
-				break
+				break AllImages
 			}
 		}
 	}
