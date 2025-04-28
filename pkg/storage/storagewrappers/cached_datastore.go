@@ -3,13 +3,10 @@ package storagewrappers
 import (
 	"context"
 	"errors"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
@@ -153,10 +150,10 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		return iter(ctx)
 	}
 
-	var b strings.Builder
-	b.WriteString(
-		storage.GetReadStartingWithUserCacheKeyPrefix(store, filter.ObjectType, filter.Relation),
-	)
+	cacheKey, err := readStartingWithUserKey(store, filter)
+	if err != nil {
+		return nil, err
+	}
 
 	// NOTE: There is no need to limit the length of this
 	// since at most it will have 2 entries (user and wildcard if possible)
@@ -167,21 +164,9 @@ func (c *CachedDatastore) ReadStartingWithUser(
 			subject = tuple.ToObjectRelationString(objectRel.GetObject(), objectRel.GetRelation())
 		}
 		subjects = append(subjects, subject)
-		b.WriteString("/" + subject)
 	}
 
-	if filter.ObjectIDs != nil {
-		hasher := xxhash.New()
-		for _, oid := range filter.ObjectIDs.Values() {
-			if _, err := hasher.WriteString(oid); err != nil {
-				return nil, err
-			}
-		}
-
-		b.WriteString("/" + strconv.FormatUint(hasher.Sum64(), 10))
-	}
-
-	return c.newCachedIteratorByUserObjectType(ctx, "ReadStartingWithUser", store, iter, b.String(), subjects, filter.ObjectType)
+	return c.newCachedIteratorByUserObjectType(ctx, "ReadStartingWithUser", store, iter, cacheKey, subjects, filter.ObjectType)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
@@ -206,33 +191,13 @@ func (c *CachedDatastore) ReadUsersetTuples(
 		return iter(ctx)
 	}
 
-	var b strings.Builder
-	b.WriteString(
-		storage.GetReadUsersetTuplesCacheKeyPrefix(store, filter.Object, filter.Relation),
-	)
-
-	var rb strings.Builder
-	var wb strings.Builder
-
-	for _, userset := range filter.AllowedUserTypeRestrictions {
-		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
-			rb.WriteString("/" + userset.GetType() + "#" + userset.GetRelation())
-		}
-		if _, ok := userset.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
-			wb.WriteString("/" + userset.GetType() + ":*")
-		}
-	}
-
-	// wildcard should have precedence
-	if wb.Len() > 0 {
-		b.WriteString(wb.String())
-	}
-
-	if rb.Len() > 0 {
-		b.WriteString(rb.String())
-	}
-
-	return c.newCachedIteratorByObjectRelation(ctx, "ReadUsersetTuples", store, iter, b.String(), filter.Object, filter.Relation)
+	return c.newCachedIteratorByObjectRelation(ctx,
+		"ReadUsersetTuples",
+		store,
+		iter,
+		readUsersetTuplesKey(store, filter),
+		filter.Object,
+		filter.Relation)
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -262,11 +227,13 @@ func (c *CachedDatastore) Read(
 		return iter(ctx)
 	}
 
-	var b strings.Builder
-	b.WriteString(
-		storage.GetReadCacheKey(store, tuple.TupleKeyToString(tupleKey)),
-	)
-	return c.newCachedIteratorByObjectRelation(ctx, "Read", store, iter, b.String(), tupleKey.GetObject(), tupleKey.GetRelation())
+	return c.newCachedIteratorByObjectRelation(ctx,
+		"Read",
+		store,
+		iter,
+		readKey(store, tupleKey),
+		tupleKey.GetObject(),
+		tupleKey.GetRelation())
 }
 
 // findInCache tries to find a key in the cache.
