@@ -12,10 +12,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.9...v1.8.10)
 
 ### Added
-- Added "dispatch_count" to the context tags of batch-check requests.
-- Added "dispatch_count" histogram metric to batch-check requests.
-- Added "request.throttled" boolean to the context tags for check and batch-check
-- Added "throttled_requests_count" metric to batch-check requests.
+- Added "dispatch_count" attribute to batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "dispatch_count" histogram metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "request.throttled" boolean for check and batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
+- Added "throttled_requests_count" metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
 - Adds cached iterators to ListObjects [#2388](https://github.com/openfga/openfga/pull/2388)
 
