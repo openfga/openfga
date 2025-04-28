@@ -67,19 +67,19 @@ var (
 
 const panicErr = "mock panic for testing"
 
-// mockIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
-type mockIterator[T any] struct{}
+// mockPanicIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
+type mockPanicIterator[T any] struct{}
 
-func (m *mockIterator[T]) Next(ctx context.Context) (T, error) {
+func (m *mockPanicIterator[T]) Next(ctx context.Context) (T, error) {
 	panic(panicErr)
 }
 
-func (m *mockIterator[T]) Stop() {
+func (m *mockPanicIterator[T]) Stop() {
 	panic(panicErr)
 }
 
 // Head is a mock implementation of the Head method for the storage.Iterator interface.
-func (m *mockIterator[T]) Head(ctx context.Context) (T, error) {
+func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
 	panic(panicErr)
 }
 
@@ -3914,7 +3914,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
 		ctx := context.Background()
-		iter := &mockIterator[string]{}
+		iter := &mockPanicIterator[string]{}
 		userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
 
 		for userToUsersetMessage := range userToUsersetMessageChan {
