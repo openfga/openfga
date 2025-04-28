@@ -115,7 +115,15 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		return nil, nil, err
 	}
 
-	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapper(c.datastore, params.ContextualTuples.GetTupleKeys(), c.maxConcurrentReads, c.sharedCheckResources, c.cacheSettings, c.logger)
+	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
+		c.datastore,
+		params.ContextualTuples.GetTupleKeys(),
+		c.maxConcurrentReads,
+		c.sharedCheckResources,
+		c.cacheSettings,
+		c.logger,
+		storagewrappers.Check,
+	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)

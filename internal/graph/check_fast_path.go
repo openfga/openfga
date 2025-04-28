@@ -20,7 +20,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const IteratorMinBatchThreshold = 1000
+const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
