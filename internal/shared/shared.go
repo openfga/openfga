@@ -26,6 +26,13 @@ func WithLogger(logger logger.Logger) SharedDatastoreResourcesOpt {
 	}
 }
 
+// WithCacheController allows overriding the default cacheController created in NewSharedDatastoreResources().
+func WithCacheController(cacheController cachecontroller.CacheController) SharedDatastoreResourcesOpt {
+	return func(scr *SharedDatastoreResources) {
+		scr.CacheController = cacheController
+	}
+}
+
 // SharedDatastoreResources contains resources that can be shared across Check requests.
 type SharedDatastoreResources struct {
 	SingleflightGroup *singleflight.Group
@@ -51,10 +58,6 @@ func NewSharedDatastoreResources(
 		Logger:            logger.NewNoopLogger(),
 	}
 
-	for _, opt := range opts {
-		opt(s)
-	}
-
 	if settings.ShouldCreateNewCache() {
 		var err error
 		s.CheckCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
@@ -74,6 +77,10 @@ func NewSharedDatastoreResources(
 
 	if settings.ShouldCreateCacheController() {
 		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	return s, nil

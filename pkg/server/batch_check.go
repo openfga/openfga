@@ -56,7 +56,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		s.datastore,
 		s.checkResolver,
 		typesys,
-		commands.WithBatchCheckCacheOptions(s.sharedCheckResources, s.cacheSettings),
+		commands.WithBatchCheckCacheOptions(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),

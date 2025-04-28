@@ -1192,6 +1192,18 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckIteratorCache.TTL.String())
 
+	val = res.Get("properties.listObjectsIteratorCache.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsIteratorCache.Enabled)
+
+	val = res.Get("properties.listObjectsIteratorCache.properties.maxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsIteratorCache.MaxResults)
+
+	val = res.Get("properties.listObjectsIteratorCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsIteratorCache.TTL.String())
+
 	val = res.Get("properties.cacheController.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CacheController.Enabled)
