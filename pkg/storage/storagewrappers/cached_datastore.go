@@ -35,19 +35,19 @@ var (
 		Namespace: build.ProjectName,
 		Name:      "tuples_cache_total_count",
 		Help:      "The total number of created cached iterator instances.",
-	}, []string{"operation"})
+	}, []string{"operation", "method"})
 
 	tuplesCacheHitCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "tuples_cache_hit_count",
 		Help:      "The total number of cache hits from cached iterator instances.",
-	}, []string{"operation"})
+	}, []string{"operation", "method"})
 
 	tuplesCacheDiscardCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "tuples_cache_discard_count",
 		Help:      "The total number of discards from cached iterator instances.",
-	}, []string{"operation"})
+	}, []string{"operation", "method"})
 
 	tuplesCacheSizeHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
@@ -57,7 +57,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"operation"})
+	}, []string{"operation", "method"})
 
 	currentIteratorCacheCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
@@ -79,6 +79,13 @@ func WithCachedDatastoreLogger(logger logger.Logger) CachedDatastoreOpt {
 	}
 }
 
+// WithCachedDatastoreMethodName is used in metric differentiation to tell us if this was Check or ListObjects.
+func WithCachedDatastoreMethodName(method string) CachedDatastoreOpt {
+	return func(b *CachedDatastore) {
+		b.method = method
+	}
+}
+
 // CachedDatastore is a wrapper over a datastore that caches iterators in memory.
 type CachedDatastore struct {
 	storage.RelationshipTupleReader
@@ -97,6 +104,8 @@ type CachedDatastore struct {
 	wg *sync.WaitGroup
 
 	logger logger.Logger
+
+	method string // Whether this datastore is for Check or ListObjects
 }
 
 // NewCachedDatastore returns a wrapper over a datastore that caches iterators in memory.
@@ -119,6 +128,7 @@ func NewCachedDatastore(
 		sf:                      sf,
 		wg:                      wg,
 		logger:                  logger.NewNoopLogger(),
+		method:                  "",
 	}
 
 	for _, opt := range opts {
@@ -383,10 +393,10 @@ func (c *CachedDatastore) newCachedIterator(
 ) (storage.TupleIterator, error) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
-	tuplesCacheTotalCounter.WithLabelValues(operation).Inc()
+	tuplesCacheTotalCounter.WithLabelValues(operation, c.method).Inc()
 
 	if cacheEntry, ok := findInCache(c.cache, store, cacheKey, invalidEntityKeys, c.logger); ok {
-		tuplesCacheHitCounter.WithLabelValues(operation).Inc()
+		tuplesCacheHitCounter.WithLabelValues(operation, c.method).Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
 
 		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
@@ -412,6 +422,7 @@ func (c *CachedDatastore) newCachedIterator(
 		iter:      iter,
 		store:     store,
 		operation: operation,
+		method:    c.method,
 		// set an initial fraction capacity to balance constant reallocation and memory usage
 		tuples:            make([]*openfgav1.Tuple, 0, c.maxResultSize/2),
 		cacheKey:          cacheKey,
@@ -434,6 +445,7 @@ type cachedIterator struct {
 	iter              storage.TupleIterator
 	store             string
 	operation         string
+	method            string
 	cacheKey          string
 	invalidEntityKeys []string
 	cache             storage.InMemoryCache[any]
@@ -494,7 +506,7 @@ func (c *cachedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	if c.tuples != nil {
 		c.tuples = append(c.tuples, t)
 		if len(c.tuples) >= c.maxResultSize {
-			tuplesCacheDiscardCounter.WithLabelValues(c.operation).Inc()
+			tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 			c.tuples = nil // don't store results that are incomplete
 		}
 	}
@@ -628,7 +640,7 @@ func (c *cachedIterator) addToBuffer(t *openfgav1.Tuple) bool {
 	c.records = append(c.records, record)
 
 	if len(c.records) >= c.maxResultSize {
-		tuplesCacheDiscardCounter.WithLabelValues(c.operation).Inc()
+		tuplesCacheDiscardCounter.WithLabelValues(c.operation, c.method).Inc()
 		c.tuples = nil
 		c.records = nil
 	}
@@ -658,5 +670,5 @@ func (c *cachedIterator) flush() {
 	for _, k := range c.invalidEntityKeys {
 		c.cache.Delete(k)
 	}
-	tuplesCacheSizeHistogram.WithLabelValues(c.operation).Observe(float64(len(records)))
+	tuplesCacheSizeHistogram.WithLabelValues(c.operation, c.method).Observe(float64(len(records)))
 }

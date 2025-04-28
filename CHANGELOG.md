@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "throttled_requests_count" metric to batch-check requests.
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
 - Added "current_iterator_cache_count" gauge metric to current number of iterator cache. [#2397](https://github.com/openfga/openfga/pull/2397)
+- Adds cached iterators to ListObjects [#2388](https://github.com/openfga/openfga/pull/2388)
 
 ### Changed
 - The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
