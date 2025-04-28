@@ -10,15 +10,18 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
@@ -59,7 +62,9 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
-	checkResolver graph.CheckResolver
+	checkResolver            graph.CheckResolver
+	cacheSettings            serverconfig.CacheSettings
+	sharedDatastoreResources *shared.SharedDatastoreResources
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -133,6 +138,13 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
+func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.cacheSettings = cacheSettings
+		d.sharedDatastoreResources = sharedDatastoreResources
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -161,6 +173,10 @@ func NewListObjectsQuery(
 			MaxThreshold: serverconfig.DefaultListObjectsDispatchThrottlingMaxThreshold,
 		},
 		checkResolver: checkResolver,
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
+		sharedDatastoreResources: &shared.SharedDatastoreResources{
+			CacheController: cachecontroller.NewNoopCacheController(),
+		},
 	}
 
 	for _, opt := range opts {
@@ -267,7 +283,16 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		objectsFound := atomic.Uint32{}
 
-		ds := storagewrappers.NewRequestStorageWrapperForListAPIs(q.datastore, req.GetContextualTuples().GetTupleKeys(), q.maxConcurrentReads)
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			q.maxConcurrentReads,
+			q.sharedDatastoreResources,
+			q.cacheSettings,
+			q.logger,
+			storagewrappers.ListObjects,
+		)
+
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -410,6 +435,12 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY && q.cacheSettings.ShouldCacheListObjectsIterators() {
+		span := trace.SpanFromContext(ctx)
+
+		// Kick off background job to check if cache records are stale, inavlidating where needed
+		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(req.GetStoreId(), span)
+	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err

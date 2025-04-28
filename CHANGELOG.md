@@ -13,10 +13,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "request.throttled" boolean to the context tags for check and batch-check
 - Added "throttled_requests_count" metric to batch-check requests.
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
+- Adds cached iterators to ListObjects [#2388](https://github.com/openfga/openfga/pull/2388)
 
 ### Changed
 - The serverconfig was moved from internal to pkg to make it available to external users of this package. [#2382](https://github.com/openfga/openfga/pull/2382)
 - Panics in goroutines in check are converted to errors.
+
+### Fixed
+- Add limit to goroutine concurrency when processing iterator [#2386](https://github.com/openfga/openfga/pull/2386)
+- Fixes case where cached_datastore.ReadStartingWithUser generated bad cache invalidation keys. [#2381](https://github.com/openfga/openfga/pull/2381)
 
 ## [1.8.9] - 2025-04-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9)
