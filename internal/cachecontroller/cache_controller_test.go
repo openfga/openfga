@@ -91,7 +91,7 @@ func generateChanges(object, relation, user string, count int) []*openfgav1.Tupl
 	return changes
 }
 
-func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
+func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -352,7 +352,7 @@ func TestInMemoryCacheController_findChangesAndInvalidate(t *testing.T) {
 				inflightInvalidations: sync.Map{},
 				logger:                logger.NewNoopLogger(),
 			}
-			cacheController.findChangesAndInvalidate(context.Background(), test.storeID, span)
+			cacheController.findChangesAndInvalidateIfNecessary(context.Background(), test.storeID, span)
 		})
 	}
 }
