@@ -36,8 +36,8 @@ func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 
 // Stop see [storage.Iterator].Stop.
 func (c *cachedTupleIterator) Stop() {
+	defer currentIteratorCacheCount.Dec()
 	c.iter.Stop()
-	currentIteratorCacheCount.Dec()
 }
 
 // Head will return the first minimal cached tuple of the iterator as

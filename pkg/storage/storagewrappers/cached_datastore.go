@@ -490,7 +490,7 @@ func (c *cachedIterator) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	currentIteratorCacheCount.Dec()
+	defer currentIteratorCacheCount.Dec()
 
 	swapped := c.closing.CompareAndSwap(false, true)
 	if !swapped {
