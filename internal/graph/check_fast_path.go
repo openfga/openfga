@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -392,7 +393,15 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op se
 		return nil, ErrUnknownSetOperator
 	}
 	outChan := make(chan *iterator.Msg, len(children))
-	go resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+	go func() {
+		recoverredError := panics.Try(func() {
+			resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+		})
+
+		if recoverredError != nil {
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: recoverredError.AsError()}, outChan)
+		}
+	}()
 	return outChan, nil
 }
 
