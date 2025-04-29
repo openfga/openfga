@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Changed
+- Update go version to 1.24.2 [#2404](https://github.com/openfga/openfga/pull/2404)
+
 ## [1.8.10] - 2025-04-28
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.9...v1.8.10)
 
