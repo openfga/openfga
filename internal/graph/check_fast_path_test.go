@@ -2871,6 +2871,28 @@ func TestBuildRecursiveMapper(t *testing.T) {
 	})
 }
 
+func TestFastPathOperationSetup(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_error_when_resolver_panics", func(t *testing.T) {
+		ctx := context.Background()
+		errMessage := "deliberate panic in fastPathUnion"
+		resolver := func(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+			panic(errMessage)
+		}
+
+		outChan, err := fastPathOperationSetup(ctx, &ResolveCheckRequest{}, resolver)
+
+		require.NoError(t, err)
+
+		outcome := <-outChan
+		require.ErrorContains(t, outcome.Err, errMessage)
+		require.ErrorIs(t, outcome.Err, ErrPanic)
+	})
+}
+
 func TestCheckUsersetFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
