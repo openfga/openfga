@@ -444,7 +444,15 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
-		go drainIteratorChannel(leftChan)
+		go func() {
+			recoveredError := panics.Try(func() {
+				drainIteratorChannel(leftChan)
+			})
+
+			if recoveredError != nil {
+				leftChan <- &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+			}
+		}()
 	}()
 
 	res := &ResolveCheckResponse{
