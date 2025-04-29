@@ -212,7 +212,7 @@ OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https:/
 
 ## Production Readiness
 
-The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Okta FGA](https://fga.dev) in production since December 2021.
+The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
 
 OpenFGA's Memory Storage Adapter was built for development purposes only, is not optimized for performance, and is not recommended for a production environment.
 
