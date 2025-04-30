@@ -19,6 +19,9 @@ func NewPool(ctx context.Context, maxGoroutines int) *pool.ContextPool {
 // TrySendThroughChannel attempts to send an object through a channel.
 // If the context is canceled, it will not send the object.
 func TrySendThroughChannel[T any](ctx context.Context, msg T, channel chan<- T) bool {
+	if ctx.Err() != nil {
+		return false
+	}
 	select {
 	case <-ctx.Done():
 		return false

@@ -444,15 +444,9 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
-		go func() {
-			recoveredError := panics.Try(func() {
-				drainIteratorChannel(leftChan)
-			})
 
-			if recoveredError != nil {
-				leftChan <- &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-			}
-		}()
+		// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
+		go drainIteratorChannel(leftChan)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -560,6 +554,7 @@ func constructLeftChannels(ctx context.Context,
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
+				// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
 				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans))
 			}
 			return nil, err
@@ -637,14 +632,18 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 	pool := concurrency.NewPool(ctx, limit)
 
 	for _, c := range chans {
+		if c == nil {
+			continue
+		}
 		pool.Go(func(ctx context.Context) error {
 			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
+				if v != nil && !concurrency.TrySendThroughChannel(ctx, v, out) {
 					if v.Iter != nil {
 						v.Iter.Stop()
 					}
 				}
 			}
+
 			return nil
 		})
 	}
@@ -660,7 +659,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 
 func drainIteratorChannel(c chan *iterator.Msg) {
 	for msg := range c {
-		if msg.Iter != nil {
+		if msg != nil && msg.Iter != nil {
 			msg.Iter.Stop()
 		}
 	}
@@ -721,6 +720,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	leftOpen := true
 	defer func() {
 		if leftOpen {
+			// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
 			go drainIteratorChannel(leftChan)
 		}
 	}()
