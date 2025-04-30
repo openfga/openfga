@@ -634,13 +634,14 @@ func TestCachedCheckResolver_FieldsInResponse(t *testing.T) {
 			ResolutionMetadata: ResolveCheckResponseMetadata{
 				CycleDetected: true,
 			},
-		}, nil)
+		}, nil).Times(2)
 
 	resp, err := cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.True(t, resp.GetResolutionMetadata().CycleDetected)
 
+	// we expect the underlying resolve check to be called twice because we are not saving the response.
 	resp, err = cachedCheckResolver.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
