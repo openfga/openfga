@@ -8,6 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.8.11] - 2025-04-29
+[Full changelog](https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11)
+
+### Changed
+- Update go version to 1.24.2 [#2404](https://github.com/openfga/openfga/pull/2404)
+
+### Fixed
+- Do not save to check query cache when result indicates cycle. [CVE-2025-46331](https://github.com/openfga/openfga/security/advisories/GHSA-w222-m46c-mgh6)
+
 ## [1.8.10] - 2025-04-28
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.9...v1.8.10)
 
@@ -1264,7 +1273,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.10...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.11...HEAD
+[1.8.11]: https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11
 [1.8.10]: https://github.com/openfga/openfga/compare/v1.8.9...v1.8.10
 [1.8.9]: https://github.com/openfga/openfga/compare/v1.8.8...v1.8.9
 [1.8.8]: https://github.com/openfga/openfga/compare/v1.8.7...v1.8.8

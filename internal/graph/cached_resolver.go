@@ -187,6 +187,18 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
+	// when the response indicates cycle detected. The result is indeterminate because the
+	// parent of the cycle could have resolved to true. Thus, we don't save the result and let
+	// the parent handle it.
+	if resp.GetCycleDetected() {
+		span.SetAttributes(attribute.Bool("cycle_detected", true))
+		c.logger.Debug("CachedCheckResolver not saving to cache due to cycle",
+			zap.String("store_id", req.GetStoreID()),
+			zap.String("authorization_model_id", req.GetAuthorizationModelID()),
+			zap.String("tuple_key", req.GetTupleKey().String()))
+		return resp, nil
+	}
+
 	clonedResp := resp.clone()
 
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
