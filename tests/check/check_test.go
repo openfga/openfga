@@ -60,19 +60,23 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 }
 
 func TestCheckMemory(t *testing.T) {
-	testRunAll(t, "memory")
+	testRunAll(t, "memory", "memory")
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testRunAll(t, "postgres")
+	for _, containerImages := range testutils.PostgresImages {
+		t.Run(containerImages, func(t *testing.T) {
+			testRunAll(t, "postgres", containerImages)
+		})
+	}
 }
 
 func TestCheckMySQL(t *testing.T) {
-	testRunAll(t, "mysql")
+	testRunAll(t, "mysql", "mysql")
 }
 
 func TestCheckSQLite(t *testing.T) {
-	testRunAll(t, "sqlite")
+	testRunAll(t, "sqlite", "sqlite")
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.
@@ -102,7 +106,7 @@ func TestServerLogs(t *testing.T) {
 
 	// We're starting a full fledged server because the logs we
 	// want to observe are emitted on the interceptors/middleware layer.
-	tests.StartServerWithContext(t, cfg, serverCtx)
+	tests.StartServerWithContext(t, cfg, serverCtx, "memory")
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr,
 		grpc.WithUserAgent("test-user-agent"),
@@ -326,7 +330,7 @@ func TestServerLogs(t *testing.T) {
 	}
 }
 
-func testRunAll(t *testing.T, engine string) {
+func testRunAll(t *testing.T, engine string, containerImage string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -348,7 +352,7 @@ func testRunAll(t *testing.T, engine string) {
 	// the Check iterator cache.
 	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
 
-	tests.StartServer(t, cfg)
+	tests.StartServer(t, cfg, containerImage)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 

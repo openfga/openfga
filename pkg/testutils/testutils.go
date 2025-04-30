@@ -36,6 +36,8 @@ const (
 	AllChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
+var PostgresImages = []string{"postgres14", "postgres17"}
+
 var (
 	TupleCmpTransformer = cmp.Transformer("Sort", func(in []*openfgav1.Tuple) []*openfgav1.Tuple {
 		out := append([]*openfgav1.Tuple(nil), in...) // Copy input to avoid mutating it

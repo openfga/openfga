@@ -15,11 +15,12 @@ import (
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestValidationResult(t *testing.T) {
-	engines := []string{"postgres", "mysql", "sqlite"}
+	engines := append(testutils.PostgresImages, "mysql", "sqlite")
 
 	totalStores := 200
 	totalModelsForOneStore := 200

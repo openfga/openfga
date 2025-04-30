@@ -44,8 +44,10 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 	switch engine {
 	case "mysql":
 		return NewMySQLTestContainer().RunMySQLTestContainer(t)
-	case "postgres":
-		return NewPostgresTestContainer().RunPostgresTestContainer(t)
+	case "postgres14":
+		return NewPostgresTestContainer("14").RunPostgresTestContainer(t)
+	case "postgres17":
+		return NewPostgresTestContainer("17").RunPostgresTestContainer(t)
 	case "memory":
 		return memoryTestContainer{}
 	case "sqlite":

@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	postgresImage = "postgres:14"
+	postgresImage = "postgres"
 )
 
 type postgresTestContainer struct {
@@ -30,12 +30,13 @@ type postgresTestContainer struct {
 	version  int64
 	username string
 	password string
+	imageTag string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
 // for Postgres.
-func NewPostgresTestContainer() *postgresTestContainer {
-	return &postgresTestContainer{}
+func NewPostgresTestContainer(imageTag string) *postgresTestContainer {
+	return &postgresTestContainer{imageTag: imageTag}
 }
 
 func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
@@ -60,6 +61,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	})
 	require.NoError(t, err)
 
+	targetImage := postgresImage + ":" + p.imageTag
 	foundPostgresImage := false
 
 AllImages:
@@ -73,8 +75,8 @@ AllImages:
 	}
 
 	if !foundPostgresImage {
-		t.Logf("Pulling image %s", postgresImage)
-		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, image.PullOptions{})
+		t.Logf("Pulling image %s", targetImage)
+		reader, err := dockerClient.ImagePull(context.Background(), targetImage, image.PullOptions{})
 		require.NoError(t, err)
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
@@ -89,7 +91,7 @@ AllImages:
 		ExposedPorts: nat.PortSet{
 			nat.Port("5432/tcp"): {},
 		},
-		Image: postgresImage,
+		Image: targetImage,
 	}
 
 	hostCfg := container.HostConfig{

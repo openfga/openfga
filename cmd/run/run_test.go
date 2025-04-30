@@ -793,21 +793,23 @@ func TestServerMetricsReporting(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	t.Run("mysql", func(t *testing.T) {
-		testServerMetricsReporting(t, "mysql")
+		testServerMetricsReporting(t, "mysql", "mysql")
 	})
-	t.Run("postgres", func(t *testing.T) {
-		testServerMetricsReporting(t, "postgres")
-	})
+	for _, image := range testutils.PostgresImages {
+		t.Run(image, func(t *testing.T) {
+			testServerMetricsReporting(t, "postgres", image)
+		})
+	}
 	t.Run("sqlite", func(t *testing.T) {
-		testServerMetricsReporting(t, "sqlite")
+		testServerMetricsReporting(t, "sqlite", "sqlite")
 	})
 }
 
-func testServerMetricsReporting(t *testing.T, engine string) {
+func testServerMetricsReporting(t *testing.T, engine string, containerImage string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, containerImage)
 
 	cfg := testutils.MustDefaultConfigWithRandomPorts()
 	cfg.Datastore.Engine = engine

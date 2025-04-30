@@ -36,16 +36,16 @@ type ClientInterface interface {
 }
 
 // StartServer calls StartServerWithContext. See the docs for that.
-func StartServer(t testing.TB, cfg *serverconfig.Config) {
+func StartServer(t testing.TB, cfg *serverconfig.Config, containerEngine string) {
 	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level, cfg.Log.TimestampFormat)
 	serverCtx := &run.ServerContext{Logger: logger}
-	StartServerWithContext(t, cfg, serverCtx)
+	StartServerWithContext(t, cfg, serverCtx, containerEngine)
 }
 
 // StartServerWithContext starts a server in random ports and with a specific ServerContext and waits until it is healthy.
 // When the test ends, all resources are cleaned.
-func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) {
-	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
+func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext, containerEngine string) {
+	container := storage.RunDatastoreTestContainer(t, containerEngine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -90,7 +90,7 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.ListObjectsIteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
-	StartServer(t, cfg)
+	StartServer(t, cfg, "memory")
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	return openfgav1.NewOpenFGAServiceClient(conn)

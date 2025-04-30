@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -17,18 +18,21 @@ const defaultDuration = 1 * time.Minute
 
 func TestMigrateCommandRollbacks(t *testing.T) {
 	type EngineConfig struct {
-		Engine     string
-		MinVersion int64
+		Engine         string
+		ContainerImage string
+		MinVersion     int64
 	}
 	engines := []EngineConfig{
-		{Engine: "postgres"},
-		{Engine: "mysql"},
-		{Engine: "sqlite", MinVersion: 5},
+		{Engine: "mysql", ContainerImage: "mysql"},
+		{Engine: "sqlite", ContainerImage: "sqlite", MinVersion: 5},
+	}
+	for _, engine := range testutils.PostgresImages {
+		engines = append(engines, EngineConfig{Engine: "postgres", ContainerImage: engine})
 	}
 
 	for _, e := range engines {
-		t.Run(e.Engine, func(t *testing.T) {
-			container, _, uri := util.MustBootstrapDatastore(t, e.Engine)
+		t.Run(e.ContainerImage, func(t *testing.T) {
+			container, _, uri := util.MustBootstrapDatastore(t, e.ContainerImage)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
 			version := container.GetDatabaseSchemaVersion() + 1

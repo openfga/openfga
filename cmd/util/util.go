@@ -60,7 +60,9 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	switch engine {
 	case "memory":
 		ds = memory.New()
-	case "postgres":
+	case "postgres14":
+		fallthrough
+	case "postgres17":
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
