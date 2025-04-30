@@ -174,8 +174,8 @@ type Server struct {
 
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
-	// sharedCheckResources are created by the server
-	sharedCheckResources *shared.SharedCheckResources
+	// sharedDatastoreResources are created by the server
+	sharedDatastoreResources *shared.SharedDatastoreResources
 
 	checkResolver       graph.CheckResolver
 	checkResolverCloser func()
@@ -473,6 +473,29 @@ func WithCheckIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
 func WithCheckIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.cacheSettings.CheckIteratorCacheTTL = ttl
+	}
+}
+
+// WithListObjectsIteratorCacheEnabled enables caching of iterators produced within Check for subsequent requests.
+func WithListObjectsIteratorCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheEnabled = enabled
+	}
+}
+
+// WithListObjectsIteratorCacheMaxResults sets the limit of an iterator size to cache (in items)
+// Needs WithListObjectsIteratorCacheEnabled set to true.
+func WithListObjectsIteratorCacheMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheMaxResults = limit
+	}
+}
+
+// WithListObjectsIteratorCacheTTL sets the TTL of iterator caches.
+// Needs WithListObjectsCheckIteratorCacheEnabled set to true.
+func WithListObjectsIteratorCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ListObjectsIteratorCacheTTL = ttl
 	}
 }
 
@@ -825,7 +848,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	s.sharedCheckResources, err = shared.NewSharedCheckResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedCheckResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
 	}
@@ -833,7 +856,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.cacheSettings.ShouldCacheCheckQueries() {
 		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.sharedCheckResources.CheckCache),
+			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
 			graph.WithLogger(s.logger),
 			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
 		)
@@ -921,7 +944,7 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.sharedCheckResources.Close()
+	s.sharedDatastoreResources.Close()
 	s.datastore.Close()
 }
 

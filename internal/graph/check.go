@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -48,7 +49,7 @@ type checkOutcome struct {
 
 type LocalChecker struct {
 	delegate             CheckResolver
-	concurrencyLimit     uint32
+	concurrencyLimit     int
 	usersetBatchSize     int
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -60,7 +61,7 @@ type LocalCheckerOption func(d *LocalChecker)
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.concurrencyLimit = limit
+		d.concurrencyLimit = int(limit)
 	}
 }
 
@@ -128,20 +129,19 @@ type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
 // CheckFuncReducer defines a function that combines or reduces one or more CheckHandlerFunc into
 // a single CheckResponse with a maximum limit on the number of concurrent evaluations that can be
 // in flight at any given time.
-type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
+type CheckFuncReducer func(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
 
 // resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() {
+func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	var wg sync.WaitGroup
+	var wg conc.WaitGroup
 
 	checker := func(fn CheckHandlerFunc) {
 		defer func() {
-			wg.Done()
 			<-limiter
 		}()
 
@@ -152,10 +152,12 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 			return
 		}
 
-		go func() {
+		wg.Go(func() {
+			defer close(resolved)
+
 			resp, err := fn(ctx)
 			resolved <- checkOutcome{resp, err}
-		}()
+		})
 
 		select {
 		case <-ctx.Done():
@@ -165,33 +167,37 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 		}
 	}
 
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 	outer:
 		for _, handler := range handlers {
 			fn := handler // capture loop var
 
 			select {
 			case limiter <- struct{}{}:
-				wg.Add(1)
-				go checker(fn)
+				wg.Go(func() {
+					checker(fn)
+				})
 			case <-ctx.Done():
 				break outer
 			}
 		}
+	})
 
-		wg.Done()
-	}()
-
-	return func() {
-		wg.Wait()
+	return func() error {
+		recoveredError := wg.WaitAndRecover()
 		close(limiter)
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+		}
+
+		return nil
 	}
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -199,17 +205,21 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 
 	defer func() {
 		cancel()
-		drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+			resp = nil
+		}
 		close(resultChan)
 	}()
 
-	var err error
+	var elErr error
 	var cycleDetected bool
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				err = result.err
+				elErr = result.err
 				continue
 			}
 
@@ -218,28 +228,33 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 			}
 
 			if result.resp.GetAllowed() {
-				return result.resp, nil
+				resp = result.resp
+				return
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err = ctx.Err()
+			return
 		}
 	}
 
-	if err != nil {
-		return nil, err
+	if elErr != nil {
+		err = elErr
+		return
 	}
 
-	return &ResolveCheckResponse{
+	resp = &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: ResolveCheckResponseMetadata{
 			CycleDetected: cycleDetected,
 		},
-	}, nil
+	}
+
+	return
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
@@ -255,42 +270,50 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 
 	defer func() {
 		cancel()
-		drain()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+		}
 		close(resultChan)
 	}()
 
-	var err error
+	var elErr error
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
 				telemetry.TraceError(span, result.err)
-				err = errors.Join(err, result.err)
+				elErr = errors.Join(elErr, result.err)
 				continue
 			}
 
 			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				return result.resp, nil
+				resp = result.resp
+				return
 			}
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err = ctx.Err()
+			return
 		}
 	}
 
 	// all operands are either truthy or we've seen at least one error
-	if err != nil {
-		return nil, err
+	if elErr != nil {
+		err = elErr
+		return
 	}
 
-	return &ResolveCheckResponse{
+	resp = &ResolveCheckResponse{
 		Allowed: true,
-	}, nil
+	}
+
+	return
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome. The base and sub computations are
 // handled concurrently relative to one another.
-func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
@@ -318,19 +341,36 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(ctx)
-		baseChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := baseHandler(ctx)
+			baseChan <- checkOutcome{resp, err}
+		})
+
+		if recoveredError != nil {
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(ctx)
-		subChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := subHandler(ctx)
+			subChan <- checkOutcome{resp, err}
+		})
+		if recoveredError != nil {
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
 	}()
 
 	response := &ResolveCheckResponse{
@@ -598,9 +638,9 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) <-chan checkOutcome {
+func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatchChan chan dispatchMsg) <-chan checkOutcome {
 	outcomes := make(chan checkOutcome, limit)
-	dispatchPool := concurrency.NewPool(ctx, int(limit))
+	dispatchPool := concurrency.NewPool(ctx, limit)
 
 	go func() {
 		defer func() {
@@ -652,7 +692,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit uint32, disp
 	return outcomes
 }
 
-func (c *LocalChecker) consumeDispatches(ctx context.Context, limit uint32, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) consumeDispatches(ctx context.Context, limit int, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
 

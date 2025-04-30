@@ -12,19 +12,26 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// SharedCheckResourcesOpt defines an option that can be used to change the behavior of SharedCheckResources
+// SharedDatastoreResourcesOpt defines an option that can be used to change the behavior of SharedDatastoreResources
 // instance.
-type SharedCheckResourcesOpt func(*SharedCheckResources)
+type SharedDatastoreResourcesOpt func(*SharedDatastoreResources)
 
 // WithLogger sets the logger for CachedDatastore.
-func WithLogger(logger logger.Logger) SharedCheckResourcesOpt {
-	return func(scr *SharedCheckResources) {
+func WithLogger(logger logger.Logger) SharedDatastoreResourcesOpt {
+	return func(scr *SharedDatastoreResources) {
 		scr.Logger = logger
 	}
 }
 
-// SharedCheckResources contains resources that can be shared across Check requests.
-type SharedCheckResources struct {
+// WithCacheController allows overriding the default cacheController created in NewSharedDatastoreResources().
+func WithCacheController(cacheController cachecontroller.CacheController) SharedDatastoreResourcesOpt {
+	return func(scr *SharedDatastoreResources) {
+		scr.CacheController = cacheController
+	}
+}
+
+// SharedDatastoreResources contains resources that can be shared across Check requests.
+type SharedDatastoreResources struct {
 	SingleflightGroup *singleflight.Group
 	WaitGroup         *sync.WaitGroup
 	ServerCtx         context.Context
@@ -33,17 +40,19 @@ type SharedCheckResources struct {
 	Logger            logger.Logger
 }
 
-func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.Group, ds storage.OpenFGADatastore, settings serverconfig.CacheSettings, opts ...SharedCheckResourcesOpt) (*SharedCheckResources, error) {
-	s := &SharedCheckResources{
+func NewSharedDatastoreResources(
+	sharedCtx context.Context,
+	sharedSf *singleflight.Group,
+	ds storage.OpenFGADatastore,
+	settings serverconfig.CacheSettings,
+	opts ...SharedDatastoreResourcesOpt,
+) (*SharedDatastoreResources, error) {
+	s := &SharedDatastoreResources{
 		WaitGroup:         &sync.WaitGroup{},
 		SingleflightGroup: sharedSf,
 		ServerCtx:         sharedCtx,
 		CacheController:   cachecontroller.NewNoopCacheController(),
 		Logger:            logger.NewNoopLogger(),
-	}
-
-	for _, opt := range opts {
-		opt(s)
 	}
 
 	if settings.ShouldCreateNewCache() {
@@ -60,10 +69,14 @@ func NewSharedCheckResources(sharedCtx context.Context, sharedSf *singleflight.G
 		s.CacheController = cachecontroller.NewCacheController(ds, s.CheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 	}
 
+	for _, opt := range opts {
+		opt(s)
+	}
+
 	return s, nil
 }
 
-func (s *SharedCheckResources) Close() {
+func (s *SharedDatastoreResources) Close() {
 	// wait for any goroutines still in flight before
 	// closing the cache instance to avoid data races
 	s.WaitGroup.Wait()

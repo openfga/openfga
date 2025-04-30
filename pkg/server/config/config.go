@@ -46,6 +46,10 @@ const (
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
 
+	DefaultListObjectsIteratorCacheEnabled    = false
+	DefaultListObjectsIteratorCacheMaxResults = 10000
+	DefaultListObjectsIteratorCacheTTL        = 10 * time.Second
+
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
@@ -228,8 +232,8 @@ type CheckCacheConfig struct {
 	Limit uint32
 }
 
-// CheckIteratorCacheConfig defines configuration to cache storage iterator results.
-type CheckIteratorCacheConfig struct {
+// IteratorCacheConfig defines configuration to cache storage iterator results.
+type IteratorCacheConfig struct {
 	Enabled    bool
 	MaxResults uint32
 	TTL        time.Duration
@@ -351,11 +355,12 @@ type Config struct {
 	Profiler                      ProfilerConfig
 	Metrics                       MetricConfig
 	CheckCache                    CheckCacheConfig
-	CheckIteratorCache            CheckIteratorCacheConfig
+	CheckIteratorCache            IteratorCacheConfig
 	CheckQueryCache               CheckQueryCache
 	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListObjectsIteratorCache      IteratorCacheConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
@@ -597,6 +602,14 @@ func (cfg *Config) verifyCacheConfig() error {
 			return errors.New("'checkIteratorCache.maxResults' must be greater than zero")
 		}
 	}
+	if cfg.ListObjectsIteratorCache.Enabled {
+		if cfg.ListObjectsIteratorCache.TTL <= 0 {
+			return errors.New("'listObjectsIteratorCache.ttl' must be greater than zero")
+		}
+		if cfg.ListObjectsIteratorCache.MaxResults <= 0 {
+			return errors.New("'listObjectsIteratorCache.maxResults' must be greater than zero")
+		}
+	}
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
 		return errors.New("'cacheController.ttl' must be greater than zero")
 	}
@@ -683,7 +696,7 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		CheckIteratorCache: CheckIteratorCacheConfig{
+		CheckIteratorCache: IteratorCacheConfig{
 			Enabled:    DefaultCheckIteratorCacheEnabled,
 			MaxResults: DefaultCheckIteratorCacheMaxResults,
 			TTL:        DefaultCheckIteratorCacheTTL,
@@ -716,6 +729,11 @@ func DefaultConfig() *Config {
 			Frequency:    DefaultListUsersDispatchThrottlingFrequency,
 			Threshold:    DefaultListUsersDispatchThrottlingDefaultThreshold,
 			MaxThreshold: DefaultListUsersDispatchThrottlingMaxThreshold,
+		},
+		ListObjectsIteratorCache: IteratorCacheConfig{
+			Enabled:    DefaultListObjectsIteratorCacheEnabled,
+			MaxResults: DefaultListObjectsIteratorCacheMaxResults,
+			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,

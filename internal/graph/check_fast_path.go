@@ -20,7 +20,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const IteratorMinBatchThreshold = 1000
+const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
@@ -433,7 +433,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	))
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := fanInIteratorChannels(cancellableCtx, leftChans)
+	leftChan := fanInIteratorChannels(cancellableCtx, leftChans, c.concurrencyLimit)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
@@ -528,10 +528,13 @@ ConsumerLoop:
 	return res, lastErr
 }
 
-func constructLeftChannels(ctx context.Context,
+func constructLeftChannels(
+	ctx context.Context,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
-	relationFunc checkutil.V2RelationFunc) ([]chan *iterator.Msg, error) {
+	relationFunc checkutil.V2RelationFunc,
+	concurrencyLimit int,
+) ([]chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
@@ -552,7 +555,7 @@ func constructLeftChannels(ctx context.Context,
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
-				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans))
+				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans, concurrencyLimit))
 			}
 			return nil, err
 		}
@@ -572,7 +575,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc(), c.concurrencyLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +605,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+	leftChans, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation), c.concurrencyLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -617,7 +620,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 }
 
 // NOTE: Can we make this generic and move it to concurrency pkg?
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan *iterator.Msg {
+func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit int) chan *iterator.Msg {
 	limit := len(chans)
 
 	out := make(chan *iterator.Msg, limit)
@@ -626,7 +629,10 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 		close(out)
 		return out
 	}
-	pool := concurrency.NewPool(ctx, limit)
+
+	// It is ok if the limit is < concurrencyLimit because that
+	// is the pool's max limit.
+	pool := concurrency.NewPool(ctx, concurrencyLimit)
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
@@ -709,7 +715,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 		close(c)
 		chans = append(chans, c)
 	}
-	leftChan := fanInIteratorChannels(ctx, chans)
+	leftChan := fanInIteratorChannels(ctx, chans, c.concurrencyLimit)
 	leftOpen := true
 	defer func() {
 		if leftOpen {
@@ -926,7 +932,7 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 
 	ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
+	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu, c.concurrencyLimit)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -957,7 +963,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider := newRecursiveUsersetObjectProvider(typesys)
+	objectProvider := newRecursiveUsersetObjectProvider(typesys, c.concurrencyLimit)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,
