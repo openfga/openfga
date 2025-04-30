@@ -65,6 +65,24 @@ var (
 	}
 )
 
+const panicErr = "mock panic for testing"
+
+// mockPanicIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
+type mockPanicIterator[T any] struct{}
+
+func (m *mockPanicIterator[T]) Next(ctx context.Context) (T, error) {
+	panic(panicErr)
+}
+
+func (m *mockPanicIterator[T]) Stop() {
+	panic(panicErr)
+}
+
+// Head is a mock implementation of the Head method for the storage.Iterator interface.
+func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
+	panic(panicErr)
+}
+
 // usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
@@ -85,6 +103,41 @@ func usersetsChannelFromUsersetsChannelStruct(orig []usersetsChannelStruct) []us
 		}
 	}
 	return output
+}
+
+func TestResolver(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	t.Run("should_return_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+		resultChan := make(chan checkOutcome, 1)
+
+		drain := resolver(ctx, 1, resultChan, panicHandler)
+		err := drain()
+
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+	})
+
+	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
+		handler := func(context.Context) (*ResolveCheckResponse, error) {
+			return nil, nil
+		}
+		resultChan := make(chan checkOutcome, 1)
+		close(resultChan)
+
+		drain := resolver(ctx, 1, resultChan, handler)
+		err := drain()
+
+		require.ErrorContains(t, err, "send on closed channel")
+		require.ErrorIs(t, err, ErrPanic)
+	})
 }
 
 func TestCheck_CorrectContext(t *testing.T) {
@@ -130,7 +183,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	t.Run("requires_exactly_two_handlers", func(t *testing.T) {
 		_, err := exclusion(ctx, concurrencyLimit)
@@ -460,6 +513,28 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		wg.Wait() // just to make sure to avoid test leaks
 	})
+
+	t.Run("should_error_if_base_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, panicHandler, falseHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
+	})
+
+	t.Run("should_error_if_sub_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
+	})
 }
 
 func TestIntersectionCheckFuncReducer(t *testing.T) {
@@ -469,7 +544,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	t.Run("no_handlers_return_false", func(t *testing.T) {
 		resp, err := intersection(ctx, concurrencyLimit)
@@ -755,6 +830,17 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 		require.Nil(t, resp)
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
 	})
 }
 
@@ -1353,7 +1439,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 	ctx := context.Background()
 
-	concurrencyLimit := uint32(10)
+	concurrencyLimit := 10
 
 	falseHandler := func(context.Context) (*ResolveCheckResponse, error) {
 		return &ResolveCheckResponse{
@@ -1636,6 +1722,17 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 		require.True(t, resp.GetAllowed())
 
 		wg.Wait() // just to make sure to avoid test leaks
+	})
+
+	t.Run("should_error_if_handler_panics", func(t *testing.T) {
+		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
+			panic(panicErr)
+		}
+
+		resp, err := union(ctx, concurrencyLimit, panicHandler)
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Nil(t, resp)
 	})
 }
 
@@ -3233,7 +3330,7 @@ func TestProcessDispatch(t *testing.T) {
 				dispatchMsgChan <- dispatchMsg
 			}
 
-			outcomeChan := checker.processDispatches(ctx, uint32(tt.poolSize), dispatchMsgChan)
+			outcomeChan := checker.processDispatches(ctx, tt.poolSize, dispatchMsgChan)
 
 			// now, close the channel to simulate everything is sent
 			close(dispatchMsgChan)
@@ -3255,7 +3352,7 @@ func TestProcessDispatch(t *testing.T) {
 		checker.SetDelegate(mockResolver)
 
 		dispatchChan := make(chan dispatchMsg, 1)
-		outcomeChan := checker.processDispatches(ctx, uint32(1), dispatchChan)
+		outcomeChan := checker.processDispatches(ctx, 1, dispatchChan)
 		dispatchChan <- dispatchMsg{
 			dispatchParams: &dispatchParams{
 				parentReq: nil, // This will cause a panic when accessed in `dispatch`
@@ -3280,7 +3377,7 @@ func TestConsumeDispatch(t *testing.T) {
 	}
 	tests := []struct {
 		name                   string
-		limit                  uint32
+		limit                  int
 		ctxCancelled           bool
 		dispatchMsgs           []dispatchMsg
 		mockedDispatchResponse []*ResolveCheckResponse
@@ -3893,6 +3990,18 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 			require.Equal(t, tt.expected, userToUsersetMessages)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		iter := &mockPanicIterator[string]{}
+		userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
+
+		for userToUsersetMessage := range userToUsersetMessageChan {
+			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
+			require.ErrorIs(t, userToUsersetMessage.err, ErrPanic)
+			require.Empty(t, userToUsersetMessage.userset)
+		}
+	})
 }
 
 func TestProcessUsersetMessage(t *testing.T) {

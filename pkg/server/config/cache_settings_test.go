@@ -173,7 +173,7 @@ func TestCacheSettings(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got := tt.cacheSettings.ShouldCacheIterators()
+				got := tt.cacheSettings.ShouldCacheCheckIterators()
 				assert.Equal(t, tt.expectedCacheIterators, got)
 			})
 		}

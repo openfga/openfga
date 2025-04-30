@@ -13,7 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/config"
 )
 
-func TestSharedCheckResources(t *testing.T) {
+func TestSharedDatastoreResources(t *testing.T) {
 	sharedCtx := context.Background()
 	sharedSf := &singleflight.Group{}
 	mockController := gomock.NewController(t)
@@ -23,7 +23,7 @@ func TestSharedCheckResources(t *testing.T) {
 
 	t.Run("without", func(t *testing.T) {
 		settings := config.CacheSettings{}
-		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)
 		require.NoError(t, err)
 		t.Cleanup(s.Close)
 
@@ -42,7 +42,7 @@ func TestSharedCheckResources(t *testing.T) {
 			CheckIteratorCacheEnabled: true,
 		}
 
-		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)
 		require.NoError(t, err)
 		t.Cleanup(s.Close)
 
@@ -56,7 +56,7 @@ func TestSharedCheckResources(t *testing.T) {
 			CacheControllerEnabled:    true,
 		}
 
-		s, err := NewSharedCheckResources(sharedCtx, sharedSf, mockDatastore, settings)
+		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)
 		require.NoError(t, err)
 		t.Cleanup(s.Close)
 
