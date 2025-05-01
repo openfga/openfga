@@ -1004,12 +1004,16 @@ type usersetMessage struct {
 
 // streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
 // It closes the channel in the end.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) chan usersetMessage {
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) <-chan usersetMessage {
 	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
 	usersetMessageChan := make(chan usersetMessage, 100)
 
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", ErrPanic, r)}, usersetMessageChan)
+			}
+
 			close(usersetMessageChan)
 			span.End()
 		}()
@@ -1027,6 +1031,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
 		}
 	}()
+
 	return usersetMessageChan
 }
 

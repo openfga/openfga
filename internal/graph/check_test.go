@@ -67,6 +67,22 @@ var (
 
 const panicErr = "mock panic for testing"
 
+// mockPanicIterator is a mock implementation of storage.TupleKeyIterator that triggers a panic.
+type mockPanicIterator[T any] struct{}
+
+func (m *mockPanicIterator[T]) Next(ctx context.Context) (T, error) {
+	panic(panicErr)
+}
+
+func (m *mockPanicIterator[T]) Stop() {
+	panic(panicErr)
+}
+
+// Head is a mock implementation of the Head method for the storage.Iterator interface.
+func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
+	panic(panicErr)
+}
+
 // usersetsChannelStruct is a helper data structure to allow initializing objectIDs with slices.
 type usersetsChannelStruct struct {
 	err            error
@@ -3974,6 +3990,18 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 			require.Equal(t, tt.expected, userToUsersetMessages)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		ctx := context.Background()
+		iter := &mockPanicIterator[string]{}
+		userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, iter)
+
+		for userToUsersetMessage := range userToUsersetMessageChan {
+			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
+			require.ErrorIs(t, userToUsersetMessage.err, ErrPanic)
+			require.Empty(t, userToUsersetMessage.userset)
+		}
+	})
 }
 
 func TestProcessUsersetMessage(t *testing.T) {
