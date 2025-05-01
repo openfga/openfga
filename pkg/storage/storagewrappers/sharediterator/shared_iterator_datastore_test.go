@@ -642,6 +642,5 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
-
 	})
 }
