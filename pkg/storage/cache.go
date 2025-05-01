@@ -12,11 +12,22 @@ import (
 	"time"
 
 	"github.com/Yiling-J/theine-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/tuple"
+)
+
+var (
+	cacheItemCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "cache_item_count",
+		Help:      "The total number of items stored in the cache",
+	}, []string{"entity"})
 )
 
 const (
@@ -27,6 +38,10 @@ const (
 	defaultMaxCacheSize        = 10000
 	oneYear                    = time.Hour * 24 * 365
 )
+
+type CacheItem interface {
+	CacheEntityType() string
+}
 
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
@@ -43,10 +58,9 @@ type InMemoryCache[T any] interface {
 // Specific implementation
 
 type InMemoryLRUCache[T any] struct {
-	client          *theine.Cache[string, T]
-	maxElements     int64
-	stopOnce        *sync.Once
-	removalListener func(string, T, theine.RemoveReason)
+	client      *theine.Cache[string, T]
+	maxElements int64
+	stopOnce    *sync.Once
 }
 
 type InMemoryLRUCacheOpt[T any] func(i *InMemoryLRUCache[T])
@@ -57,19 +71,12 @@ func WithMaxCacheSize[T any](maxElements int64) InMemoryLRUCacheOpt[T] {
 	}
 }
 
-func WithRemovalListener[T any](removalListener func(string, T, theine.RemoveReason)) InMemoryLRUCacheOpt[T] {
-	return func(i *InMemoryLRUCache[T]) {
-		i.removalListener = removalListener
-	}
-}
-
 var _ InMemoryCache[any] = (*InMemoryLRUCache[any])(nil)
 
 func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCache[T], error) {
 	t := &InMemoryLRUCache[T]{
-		maxElements:     defaultMaxCacheSize,
-		stopOnce:        &sync.Once{},
-		removalListener: func(string, T, theine.RemoveReason) {},
+		maxElements: defaultMaxCacheSize,
+		stopOnce:    &sync.Once{},
 	}
 
 	for _, opt := range opts {
@@ -77,7 +84,13 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 	}
 
 	cacheBuilder := theine.NewBuilder[string, T](t.maxElements)
-	cacheBuilder.RemovalListener(t.removalListener)
+	cacheBuilder.RemovalListener(func(key string, value T, reason theine.RemoveReason) {
+		if item, ok := any(value).(CacheItem); ok {
+			cacheItemCount.WithLabelValues(item.CacheEntityType()).Dec()
+		} else {
+			cacheItemCount.WithLabelValues("unspecified").Dec()
+		}
+	})
 
 	var err error
 	t.client, err = cacheBuilder.Build()
@@ -106,6 +119,12 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		ttl = oneYear
 	}
 	i.client.SetWithTTL(key, value, 1, ttl)
+
+	if item, ok := any(value).(CacheItem); ok {
+		cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
+	} else {
+		cacheItemCount.WithLabelValues("unspecified").Inc()
+	}
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
@@ -118,8 +137,18 @@ func (i InMemoryLRUCache[T]) Stop() {
 	})
 }
 
+var (
+	_ CacheItem = (*ChangelogCacheEntry)(nil)
+	_ CacheItem = (*InvalidEntityCacheEntry)(nil)
+	_ CacheItem = (*TupleIteratorCacheEntry)(nil)
+)
+
 type ChangelogCacheEntry struct {
 	LastModified time.Time
+}
+
+func (c *ChangelogCacheEntry) CacheEntityType() string {
+	return "changelog"
 }
 
 func GetChangelogCacheKey(storeID string) string {
@@ -128,6 +157,10 @@ func GetChangelogCacheKey(storeID string) string {
 
 type InvalidEntityCacheEntry struct {
 	LastModified time.Time
+}
+
+func (i *InvalidEntityCacheEntry) CacheEntityType() string {
+	return "invalid_entity"
 }
 
 func GetInvalidIteratorCacheKey(storeID string) string {
@@ -151,6 +184,10 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 type TupleIteratorCacheEntry struct {
 	Tuples       []*TupleRecord
 	LastModified time.Time
+}
+
+func (t *TupleIteratorCacheEntry) CacheEntityType() string {
+	return "tuple_iterator"
 }
 
 func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
@@ -344,6 +381,7 @@ func WriteCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 func WriteInvariantCheckCacheKey(w io.StringWriter, params *CheckCacheKeyParams) error {
 	_, err := w.WriteString(
 		" " + // space to separate from user in the TupleCacheKey, where spaces cannot be present
+			SubproblemCachePrefix +
 			params.StoreID +
 			"/" +
 			params.AuthorizationModelID,

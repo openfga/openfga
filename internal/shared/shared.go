@@ -4,9 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/Yiling-J/theine-go"
-	"github.com/openfga/openfga/internal/graph"
-
 	"golang.org/x/sync/singleflight"
 
 	"github.com/openfga/openfga/internal/cachecontroller"
@@ -62,13 +59,6 @@ func NewSharedDatastoreResources(
 		var err error
 		s.CheckCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
 			storage.WithMaxCacheSize[any](int64(settings.CheckCacheLimit)),
-			storage.WithRemovalListener(func(key string, value any, reason theine.RemoveReason) {
-				// Multiple types go into this cache, this func is only looking for Check subquery entries
-				_, ok := value.(*graph.CheckResponseCacheEntry)
-				if ok {
-					graph.CheckCacheItemCount.Dec()
-				}
-			}),
 		}...)
 		if err != nil {
 			return nil, err
