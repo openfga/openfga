@@ -56,11 +56,11 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "method"})
 
-	currentIteratorCacheCount = promauto.NewGauge(prometheus.GaugeOpts{
+	currentIteratorCacheCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "current_iterator_cache_count",
 		Help:      "The current number of items of cache iterator.",
-	})
+	}, []string{"cached"})
 )
 
 // iterFunc is a function closure that returns an iterator
@@ -367,7 +367,7 @@ func (c *CachedDatastore) newCachedIterator(
 		span.SetAttributes(attribute.Bool("cached", true))
 
 		staticIter := storage.NewStaticIterator[*storage.TupleRecord](cacheEntry.Tuples)
-		currentIteratorCacheCount.Inc()
+		currentIteratorCacheCount.WithLabelValues("true").Inc()
 
 		return &cachedTupleIterator{
 			objectID:   objectID,
@@ -383,7 +383,7 @@ func (c *CachedDatastore) newCachedIterator(
 		return nil, err
 	}
 
-	currentIteratorCacheCount.Inc()
+	currentIteratorCacheCount.WithLabelValues("false").Inc()
 	return &cachedIterator{
 		ctx:       c.ctx,
 		iter:      iter,
@@ -448,7 +448,8 @@ type cachedIterator struct {
 	// when stopping the iterator.
 	wg *sync.WaitGroup
 
-	logger logger.Logger
+	logger  logger.Logger
+	stopped bool
 }
 
 // Next will return the next available tuple from the underlying iterator and
@@ -490,7 +491,13 @@ func (c *cachedIterator) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	defer currentIteratorCacheCount.Dec()
+	newStop := !c.stopped
+	c.stopped = true
+	defer func() {
+		if newStop {
+			currentIteratorCacheCount.WithLabelValues("false").Dec()
+		}
+	}()
 
 	swapped := c.closing.CompareAndSwap(false, true)
 	if !swapped {
