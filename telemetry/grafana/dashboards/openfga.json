@@ -1,4 +1,4 @@
-{
+{ 
   "annotations": {
     "list": [
       {
@@ -44,7 +44,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The 90th percentile request duration of an RPC, grouped by 'grpc_service' and 'grpc_method'.",
       "fieldConfig": {
@@ -125,7 +125,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -146,7 +146,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The 50th percentile request duration of an RPC, grouped by 'grpc_service' and 'grpc_method'.",
       "fieldConfig": {
@@ -227,7 +227,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -248,7 +248,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Percentage of hits to the in-memory Check API cache",
       "fieldConfig": {
@@ -337,7 +337,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "(sum(increase(openfga_check_cache_hit_count_total{service=\"openfga\"}[1m]))\n  /\nsum(increase(openfga_check_cache_count_total{service=\"openfga\"}[1m])))* 100",
@@ -354,7 +354,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -433,7 +433,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "code",
@@ -453,7 +453,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The number of requests per second (aggregated over a 1m interval) per method.",
       "fieldConfig": {
@@ -534,7 +534,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
           "expr": "sum(rate(grpc_server_started_total{job=\"openfga\",grpc_service=\"openfga.v1.OpenFGAService\"}[1m])) by (grpc_method)\n",
@@ -549,7 +549,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The 99th percentile request duration of an RPC, grouped by 'grpc_service' and 'grpc_method'.",
       "fieldConfig": {
@@ -630,7 +630,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "histogram_quantile(0.99, sum by(le, grpc_method, grpc_service) (rate(grpc_server_handling_seconds_bucket{job=\"openfga\", grpc_type=\"unary\", grpc_service=\"openfga.v1.OpenFGAService\"}[2m])))",
@@ -647,7 +647,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -726,7 +726,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -742,7 +742,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -759,7 +759,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "builder",
@@ -793,7 +793,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The number of goroutines reported by the Go runtime.",
       "fieldConfig": {
@@ -873,7 +873,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "go_goroutines{job=\"openfga\"}",
@@ -884,7 +884,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "irate(go_goroutines{job=\"openfga\"}[2m])",
@@ -900,7 +900,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "",
       "fieldConfig": {
@@ -981,7 +981,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "go_gc_duration_seconds{job=\"openfga\", quantile=\"0.5\"}",
@@ -992,7 +992,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "go_gc_duration_seconds{job=\"openfga\", quantile=\"0.75\"}",
@@ -1004,7 +1004,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "go_gc_duration_seconds{job=\"openfga\", quantile=\"1\"}",
@@ -1020,7 +1020,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1100,7 +1100,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "go_memstats_heap_alloc_bytes{job=\"openfga\"}",
@@ -1115,7 +1115,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "The number of heap allocations (mallocs) as a rate (malloc/sec).",
       "fieldConfig": {
@@ -1196,7 +1196,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "rate(go_memstats_mallocs_total{job=\"openfga\"}[2m])",
@@ -1211,7 +1211,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "${DS_PROMETHEUS}"
       },
       "description": "Shows the number of heap allocations (as a byte/sec rate).",
       "fieldConfig": {
@@ -1292,7 +1292,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
+            "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "builder",
           "expr": "rate(go_memstats_alloc_bytes_total{job=\"openfga\"}[2m])",
@@ -1309,7 +1309,20 @@
   "schemaVersion": 39,
   "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "pluginId": "prometheus",
+        "pluginName": "Prometheus",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
   },
   "time": {
     "from": "now-30m",
