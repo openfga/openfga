@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -94,10 +95,12 @@ func New(uri string, crdbfg *CrdbConfig) (*Datastore, error) {
 	if len(crdbfg.cfg.Password) > 0 {
 		c.ConnConfig.Password = crdbfg.cfg.Password
 	}
-	c.MaxConnLifetime = crdbfg.cfg.ConnMaxLifetime
-	c.MaxConnIdleTime = crdbfg.cfg.ConnMaxIdleTime
-	c.MaxConns = int32(crdbfg.cfg.MaxOpenConns)
-	// c.MinConns this should be supported
+	c.MaxConnLifetime = 600      // 10 min//crdbfg.cfg.ConnMaxLifetime
+	c.MaxConnIdleTime = 600      //same as max connection //crdbfg.cfg.ConnMaxIdleTime
+	c.MaxConns = 40              // int32(crdbfg.cfg.MaxOpenConns)
+	c.MinConns = 40              // configuring max = min int32(crdb.cfg)
+	c.MinIdleConns = 40          // configuring to be the same as min connection
+	c.MaxConnLifetimeJitter = 60 // configured to be 10% of the max lifetime
 
 	db, err := pgxpool.NewWithConfig(context.Background(), c)
 	if err != nil {
@@ -174,6 +177,8 @@ func (s *Datastore) Read(
 	tupleKey *openfgav1.TupleKey,
 	_ storage.ReadOptions,
 ) (storage.TupleIterator, error) {
+	s.logger.Error("in the read 1")
+	s.logger.Error(fmt.Sprint("s.regionalByRow: %v", s.regionalByRow))
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
@@ -182,6 +187,7 @@ func (s *Datastore) Read(
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
 func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+	s.logger.Error("in ReadPage.")
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
@@ -196,6 +202,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 }
 
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*CRDBTupleIterator, error) {
+	s.logger.Error("in read 2.")
 	ctx, span := startTrace(ctx, "read")
 	defer span.End()
 
@@ -211,15 +218,23 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		Where(sq.Eq{"store": store})
 
 	if s.regionalByRow {
-		sb.Where(sq.Eq{"crdb_region": "aws-us-east-1"})
+		s.logger.Error("inside the s.regionalByRow if statement.")
+		sb = sb.Where(sq.Eq{"crdb_region": "aws-us-east-1"})
 	}
 	// how does this even make sense, if there are options, automatically sort by ulid?
 	// this is extremely expensive, the order happens in memory instead of using the data ordered by CRDB in the index
 	if options != nil {
-		sb = sb.OrderBy("store, object_type, object_id, relation, is_userset, user_object_type, user_relation, user_object_id")
+		if s.regionalByRow {
+			sb = sb.OrderBy("crdb_region", "store, object_type, object_id, relation, is_userset, user_object_type, user_relation, user_object_id")
+		} else {
+			sb = sb.OrderBy("store, object_type, object_id, relation, is_userset, user_object_type, user_relation, user_object_id")
+		}
 	}
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+
+	s.logger.Error("objec type: " + objectType + "OB ID: " + objectID + "relation: " + tupleKey.GetRelation())
+
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}
@@ -231,13 +246,16 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	}
 	if tupleKey.GetUser() != "" {
 		userObject, userRelation := tupleUtils.SplitObjectRelation(tupleKey.GetUser())
-		userObjectType, userObjectId := tupleUtils.SplitObject(userObject)
+		userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
 		isUserset := userRelation == ""
+
+		s.logger.Error("objec type: " + objectType + "OB ID: " + objectID + "relation: " + tupleKey.GetRelation() + "user Object type: " + userObjectType + "user object id: " + userObjectID)
+
 		if userObjectType != "" {
 			sb = sb.Where(sq.Eq{"user_object_type": userObjectType})
 		}
-		if userObjectId != "" {
-			sb = sb.Where(sq.Eq{"user_object_id": userObjectId})
+		if userObjectID != "" {
+			sb = sb.Where(sq.Eq{"user_object_id": userObjectID})
 		}
 		sb = sb.Where(sq.Eq{"is_userset": isUserset})
 	}
@@ -257,6 +275,10 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	}
 
 	stmt, args, err := sb.ToSql()
+	s.logger.Error("the stmt is: " + stmt)
+	for i := 0; i < len(args); i++ {
+		s.logger.Error(fmt.Sprint("type %T with value %v: ", args[i]))
+	}
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -272,7 +294,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 
 	defer rows.Close()
 
-	return NewCRDBTupleIterator(rows), nil
+	return NewCRDBTupleIterator(rows, s.logger), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -282,6 +304,7 @@ func (s *Datastore) Write(
 	deletes storage.Deletes,
 	writes storage.Writes,
 ) error {
+	s.logger.Error("starting the write method.")
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
@@ -294,42 +317,48 @@ func (s *Datastore) Write(
 		return HandleSQLError(err)
 	}
 
-	changelogBuilder := s.stbl.Insert("changelog")
-
+	changelogInserts := s.stbl.Insert("changelog")
 	if s.regionalByRow {
-		changelogBuilder = changelogBuilder.Columns("crdb_region", "store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
+		changelogInserts = changelogInserts.Columns(
+			"crdb_region", "store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
 			"user_relation", "condition_name", "condition_context", "operation", "ulid", "inserted_at",
-			"condition_name", "condition_context", "operation", "ulid", "inserted_at")
+		)
 	} else {
-		changelogBuilder = changelogBuilder.Columns("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
+		changelogInserts = changelogInserts.Columns(
+			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
 			"user_relation", "condition_name", "condition_context", "operation", "ulid", "inserted_at",
-			"condition_name", "condition_context", "operation", "ulid", "inserted_at")
+		)
 	}
 
 	defer func() {
 		_ = txn.Rollback(ctx)
 	}()
-	err = s.deleteTuples(ctx, store, deletes, txn, changelogBuilder, time.Now())
 
+	changelogInserts, err = s.deleteTuples(ctx, store, deletes, txn, changelogInserts, time.Now())
 	if err != nil {
+		fmt.Println("Error deleting tuples:", err)
 		return err
 	}
 
-	err = s.insertTuples(ctx, store, writes, txn, changelogBuilder, time.Now())
+	changelogInserts, err = s.insertTuples(ctx, store, writes, txn, changelogInserts, time.Now())
 	if err != nil {
+		fmt.Println("Error inserting tuples:", err)
 		return err
 	}
 
-	sqlQuery, args, err := changelogBuilder.ToSql()
+	// Prepare the insert query
+	query, args, err := changelogInserts.ToSql()
+
 	if err != nil {
 		return HandleSQLError(err)
 	}
-	_, err = txn.Exec(ctx, sqlQuery, args...) // Part of a txn.
+	_, err = txn.Exec(ctx, query, args...)
 	if err != nil {
 		return HandleSQLError(err)
 	}
 
 	if err := txn.Commit(ctx); err != nil {
+		fmt.Println("Error committing the transaction:", err)
 		return HandleSQLError(err)
 	}
 
@@ -337,7 +366,7 @@ func (s *Datastore) Write(
 }
 
 func (s *Datastore) deleteTuples(ctx context.Context, store string,
-	deletes storage.Deletes, txn pgx.Tx, changelogBuilder sq.InsertBuilder, now time.Time) error {
+	deletes storage.Deletes, txn pgx.Tx, changelogInserts sq.InsertBuilder, now time.Time) (sq.InsertBuilder, error) {
 
 	batch := &pgx.Batch{}
 
@@ -345,7 +374,7 @@ func (s *Datastore) deleteTuples(ctx context.Context, store string,
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObject, userRelation := tupleUtils.SplitObjectRelation(tk.GetUser())
-		userObjectType, userObjectId := tupleUtils.SplitObject(userObject)
+		userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
 
 		deleteTupleBuilder := s.stbl.Delete("tuple").
 			Where(sq.Eq{
@@ -354,7 +383,7 @@ func (s *Datastore) deleteTuples(ctx context.Context, store string,
 				"object_id":        objectID,
 				"relation":         tk.GetRelation(),
 				"user_object_type": userObjectType,
-				"user_object_id":   userObjectId,
+				"user_object_id":   userObjectID,
 				"user_relation":    userRelation,
 				"is_userset":       userRelation != "",
 			})
@@ -364,132 +393,121 @@ func (s *Datastore) deleteTuples(ctx context.Context, store string,
 		}
 		query, args, err := deleteTupleBuilder.ToSql()
 		if err != nil {
-			return HandleSQLError(err, tk)
+			return changelogInserts, HandleSQLError(err, tk)
 		}
 
 		// Add the delete query to the batch
 		batch.Queue(query, args...)
 
 		if s.regionalByRow {
-			changelogBuilder = changelogBuilder.Values(
-				"aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
-				userRelation, "", nil, "delete", id, sq.Expr("NOW()"),
-			)
+			changelogInserts = changelogInserts.Values("aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
+				userRelation, "", nil, "delete", id, sq.Expr("NOW()"))
 		} else {
-			changelogBuilder = changelogBuilder.Values(
-				store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
-				userRelation, "", nil, "delete", id, sq.Expr("NOW()"),
-			)
+			changelogInserts = changelogInserts.Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
+				userRelation, "", nil, "delete", id, sq.Expr("NOW()"))
 		}
-
 	}
 
 	// Send the batch
 	br := txn.SendBatch(ctx, batch)
-	defer br.Close()
 
 	// Process the results of the batch
 	for i := 0; i < len(deletes); i++ {
 		ct, err := br.Exec()
 		if err != nil {
-			return HandleSQLError(err)
+			return changelogInserts, HandleSQLError(err)
 		}
 
 		rowsAffected := ct.RowsAffected()
 		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(
+			return changelogInserts, storage.InvalidWriteInputError(
 				deletes[i],
 				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			)
 		}
 	}
-	return nil
+
+	err := br.Close()
+	if err != nil {
+		return changelogInserts, HandleSQLError(err)
+	}
+
+	return changelogInserts, nil
 }
 
 func (s *Datastore) insertTuples(ctx context.Context, store string,
-	inserts storage.Writes, txn pgx.Tx, changelogBuilder sq.InsertBuilder, now time.Time) error {
+	inserts storage.Writes, txn pgx.Tx, changelogInserts sq.InsertBuilder, now time.Time) (sq.InsertBuilder, error) {
 
-	batch := &pgx.Batch{}
+	insertBuilder := s.stbl.Insert("tuple")
+	if s.regionalByRow {
+		insertBuilder = insertBuilder.Columns(
+			"crdb_region", "store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
+			"user_relation", "is_userset", "condition_name", "condition_context", "ulid", "inserted_at",
+		)
+	} else {
+		insertBuilder = insertBuilder.Columns(
+			"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
+			"user_relation", "is_userset", "condition_name", "condition_context", "ulid", "inserted_at",
+		)
+	}
+
 	for _, tk := range inserts {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObject, userRelation := tupleUtils.SplitObjectRelation(tk.GetUser())
-		userObjectType, userObjectId := tupleUtils.SplitObject(userObject)
+		userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
 
 		conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
-			return err
+			return changelogInserts, err
 		}
-
-		insertBuilder := s.stbl.Insert("tuple")
 
 		if s.regionalByRow {
-			insertBuilder = insertBuilder.Columns(
-				"crdb_region", "store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
-				"user_relation", "is_userset", "condition_name", "condition_context", "ulid", "inserted_at",
-			).Values("aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
+			insertBuilder = insertBuilder.Values("aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
 				userRelation, userRelation != "", conditionName, conditionContext, id, sq.Expr("NOW()"))
+			changelogInserts = changelogInserts.Values("aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
+				userRelation, conditionName, conditionContext, "write", id, sq.Expr("NOW()"))
 		} else {
-			insertBuilder = insertBuilder.Columns(
-				"store", "object_type", "object_id", "relation", "user_object_type", "user_object_id",
-				"user_relation", "is_userset", "condition_name", "condition_context", "ulid", "inserted_at",
-			).Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
+			insertBuilder = insertBuilder.Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
 				userRelation, userRelation != "", conditionName, conditionContext, id, sq.Expr("NOW()"))
-		}
-		// Prepare the insert query
-		query, args, err := insertBuilder.ToSql()
-
-		if err != nil {
-			return HandleSQLError(err, tk)
-		}
-
-		// Add the insert query to the batch
-		batch.Queue(query, args...)
-
-		if s.regionalByRow {
-			s.logger.Info("change log builder..")
-			changelogBuilder = changelogBuilder.Values(
-				"aws-us-east-1", store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
-				userRelation, conditionName, conditionContext, "write", id, sq.Expr("NOW()"),
-			)
-		} else {
-			changelogBuilder = changelogBuilder.Values(
-				store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectId,
-				userRelation, conditionName, conditionContext, "write", id, sq.Expr("NOW()"),
-			)
+			changelogInserts = changelogInserts.Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID,
+				userRelation, conditionName, conditionContext, "write", id, sq.Expr("NOW()"))
 		}
 	}
 
-	// Send the batch
-	br := txn.SendBatch(ctx, batch)
-	defer br.Close()
+	// Prepare the insert query
+	query, args, err := insertBuilder.ToSql()
+	s.logger.Error("query is: " + query)
+	s.logger.Error(strconv.Itoa(len(args)))
 
-	// Process the results of the batch
-	for i := 0; i < len(inserts); i++ {
-		_, err := br.Exec()
-		if err != nil {
-			return HandleSQLError(err, inserts[i])
-		}
+	if err != nil {
+		return changelogInserts, HandleSQLError(err)
 	}
-
-	return nil
+	_, err = txn.Exec(ctx, query, args...)
+	if err != nil {
+		return changelogInserts, HandleSQLError(err)
+	}
+	return changelogInserts, nil
 
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
 func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+	s.logger.Error("in ReadUserTuple")
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 
 	userObject, userRelation := tupleUtils.SplitObjectRelation(tupleKey.GetUser())
-	userObjectType, userObjectId := tupleUtils.SplitObject(userObject)
+	userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
+
+	s.logger.Error("objec type: " + objectType + "OB ID: " + objectID + "relation: " + tupleKey.GetRelation() + "user Object type: " + userObjectType + "user object id: " + userObjectID)
 
 	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
-	is_userset := userRelation != ""
+	isUserset := userRelation != ""
 
 	stbl := s.stbl.
 		Select(
@@ -504,9 +522,9 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 			"object_id":        objectID,
 			"relation":         tupleKey.GetRelation(),
 			"user_object_type": userObjectType,
-			"user_object_id":   userObjectId,
+			"user_object_id":   userObjectID,
 			"user_relation":    userRelation,
-			"is_userset":       is_userset,
+			"is_userset":       isUserset,
 		})
 
 	if s.regionalByRow {
@@ -560,6 +578,7 @@ func (s *Datastore) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
+	s.logger.Error("in ReadUsersetTuples")
 	ctx, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
@@ -578,6 +597,8 @@ func (s *Datastore) ReadUsersetTuples(
 	}
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
+	s.logger.Error("objec type: " + objectType + "OB ID: " + objectID + "relation: " + filter.Relation)
+
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}
@@ -620,7 +641,7 @@ func (s *Datastore) ReadUsersetTuples(
 		return nil, HandleSQLError(err)
 	}
 
-	return NewCRDBTupleIterator(rows), nil
+	return NewCRDBTupleIterator(rows, s.logger), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -630,18 +651,22 @@ func (s *Datastore) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	_ storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
+	s.logger.Error("in the ReadStartingWithUser.")
 	ctx, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
 	userFilter := sq.Or{}
+
 	for _, u := range filter.UserFilter {
-		objectType, objectId := tupleUtils.SplitObject(u.GetObject())
+		objectType, objectID := tupleUtils.SplitObject(u.GetObject())
 		relation := u.GetRelation()
 		isUserset := relation != ""
 
+		s.logger.Error("objec type: " + objectType + "OB ID: " + objectID + "relation: " + relation)
+
 		userFilter = append(userFilter, sq.Eq{
 			"user_object_type": objectType,
-			"user_object_id":   objectId,
+			"user_object_id":   objectID,
 			"user_relation":    relation,
 			"is_userset":       isUserset,
 		})
@@ -681,7 +706,7 @@ func (s *Datastore) ReadStartingWithUser(
 		return nil, HandleSQLError(err)
 	}
 
-	return NewCRDBTupleIterator(rows), nil
+	return NewCRDBTupleIterator(rows, s.logger), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -743,8 +768,8 @@ func (s *Datastore) readAuthorizationModel(row pgx.Row) (*openfgav1.Authorizatio
 	return &model, nil
 }
 
-// THIS IS VERY INNEFICIENT BUT IT WON'T BE USED IN THE TEST, COPIED FROM SQL COMMON
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
+// THIS IS VERY INNEFICIENT BUT IT WON'T BE USED IN THE TEST, COPIED FROM SQL COMMON
 func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.ReadAuthorizationModelsOptions) ([]*openfgav1.AuthorizationModel, string, error) {
 	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
@@ -777,7 +802,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 		return nil, "", HandleSQLError(err)
 	}
 
-	defer rows.Close()
+	// defer rows.Close()
 
 	var modelIDs []string
 	var modelID string
@@ -813,7 +838,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 		}
 		models = append(models, model)
 	}
-
+	rows.Close()
 	return models, token, nil
 }
 
@@ -881,6 +906,9 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	}
 
 	stmt, args, err := insertBuilder.ToSql()
+	if err != nil {
+		return HandleSQLError(err)
+	}
 	_, err = s.db.Exec(ctx, stmt, args...)
 
 	if err != nil {
@@ -939,9 +967,6 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	}
 
 	row := s.db.QueryRow(ctx, stmt, args...)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
 
 	var storeID, name string
 	var createdAt, updatedAt time.Time
@@ -1066,12 +1091,17 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		return err
 	}
 
-	_, err = s.stbl.
+	stmt, args, err := s.stbl.
 		Insert("assertion").
 		Columns("store", "authorization_model_id", "assertions").
 		Values(store, modelID, marshalledAssertions).
-		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
-		ExecContext(ctx)
+		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).ToSql()
+
+	if err != nil {
+		return HandleSQLError(err)
+	}
+
+	_, err = s.db.Exec(ctx, stmt, args...)
 	if err != nil {
 		return HandleSQLError(err)
 	}
@@ -1084,16 +1114,20 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 	ctx, span := startTrace(ctx, "ReadAssertions")
 	defer span.End()
 
-	var marshalledAssertions []byte
-	err := s.stbl.
+	stmt, args, err := s.stbl.
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
 			"store":                  store,
 			"authorization_model_id": modelID,
-		}).
-		QueryRowContext(ctx).
-		Scan(&marshalledAssertions)
+		}).ToSql()
+
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	rows, err := s.db.Query(ctx, stmt, args...)
+
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
@@ -1101,13 +1135,21 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 		return nil, HandleSQLError(err)
 	}
 
-	var assertions openfgav1.Assertions
-	err = proto.Unmarshal(marshalledAssertions, &assertions)
-	if err != nil {
-		return nil, err
+	defer rows.Close()
+
+	var assertions []*openfgav1.Assertion
+	var assertion *openfgav1.Assertion
+
+	for rows.Next() {
+		err = rows.Scan(&assertion)
+		if err != nil {
+			return nil, HandleSQLError(err)
+		}
+
+		assertions = append(assertions, assertion)
 	}
 
-	return assertions.GetAssertions(), nil
+	return assertions, nil
 }
 
 // ReadChanges see [storage.ChangelogBackend].ReadChanges.

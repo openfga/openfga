@@ -1,46 +1,46 @@
 services:
-  postgres:
-    image: postgres:14
-    container_name: postgres
-    command: postgres -c 'max_connections=100'
-    networks:
-      - default
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+  # postgres:
+  #   image: postgres:14
+  #   container_name: postgres
+  #   command: postgres -c 'max_connections=100'
+  #   networks:
+  #     - default
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=postgres
+  #     - POSTGRES_PASSWORD=password
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
-  migrate:
-    depends_on:
-      postgres:
-        condition: service_healthy
-    image: openfga/openfga:latest
-    container_name: migrate
-    environment:
-      - OPENFGA_DATASTORE_ENGINE=postgres
-      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
-    command: migrate
-    networks:
-      - default
+  # migrate:
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+    # image: openfga/openfga:tim-1
+    # container_name: migrate
+    # environment:
+    #   - OPENFGA_DATASTORE_ENGINE=crdb
+    # command: migrate
+    # networks:
+    #   - default
 
   openfga:
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    image: openfga/openfga:latest
+    # depends_on:
+    #   migrate:
+    #     condition: service_completed_successfully
+    image: openfga/openfga:tim-1
     container_name: openfga
     command: run
     environment:
-      - OPENFGA_DATASTORE_ENGINE=postgres
-      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
-      - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100 #see postgres container
+      - OPENFGA_DATASTORE_ENGINE=crdb
+      # - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_MAX_OPEN_CONNS=10 #see postgres container
       - OPENFGA_PLAYGROUND_ENABLED=true
+      - OPENFGA_REQUEST_TIMEOUT=30s
     networks:
       - default
     ports:
@@ -56,5 +56,5 @@ services:
           "-addr=openfga:8081"
         ]
       interval: 5s
-      timeout: 30s
+      timeout: 60s
       retries: 3

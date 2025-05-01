@@ -395,6 +395,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 
 	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
 
+	// crdbCfg := crdb.NewConfig(dsCfg, true, true)
+
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {

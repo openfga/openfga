@@ -52,6 +52,8 @@ var _ storage.OpenFGADatastore = (*Datastore)(nil)
 // New creates a new [Datastore] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	if cfg.Username != "" || cfg.Password != "" {
+		println("the username is: ", cfg.Username)
+		cfg.Logger.Info(fmt.Sprintf("the username is: '%v' ", cfg.Username))
 		parsed, err := url.Parse(uri)
 		if err != nil {
 			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
@@ -80,6 +82,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		uri = parsed.String()
 	}
 
+	cfg.Logger.Info(fmt.Sprintf("the username is: '%v' ", uri))
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
