@@ -17,6 +17,7 @@ import (
 )
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	s.logger.Error("in the server/read.go....")
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, authz.Read, trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),

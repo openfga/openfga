@@ -63,6 +63,7 @@ func NewReadQuery(datastore storage.OpenFGADatastore, opts ...ReadQueryOption) *
 // Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tuple. Return all tuples if the tuple is
 // nil or empty.
 func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+	q.logger.Error("in the command/read.go....")
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 

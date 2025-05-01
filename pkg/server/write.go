@@ -41,6 +41,9 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
+
+	s.logger.Error("typesys is: " + typesys.GetAuthorizationModelID())
+
 	if err != nil {
 		return nil, err
 	}
@@ -55,10 +58,12 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
+	s.logger.Error("about to new write command")
 	cmd := commands.NewWriteCommand(
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
 	)
+	s.logger.Error("about to cmd.Execute")
 	resp, err := cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -68,9 +73,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 
 	// For now, we only measure the duration if it passes the authz step to make the comparison
 	// apple to apple.
+	s.logger.Error("about to WithLabelValues")
 	writeDurationHistogram.WithLabelValues(
 		strconv.FormatBool(s.IsAccessControlEnabled() && !authclaims.SkipAuthzCheckFromContext(ctx)),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	s.logger.Error("about to return resp...")
 	return resp, err
 }

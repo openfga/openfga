@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -22,14 +24,19 @@ type CRDBTupleIterator struct {
 	// will use this item instead. Otherwise, the first item will be lost.
 	firstRow *storage.TupleRecord // GUARDED_BY(mu)
 	mu       sync.Mutex
+	logger   logger.Logger
+	count    int
 }
 
-// NewSQLTupleIterator returns a SQL tuple iterator.
-func NewCRDBTupleIterator(rows pgx.Rows) *CRDBTupleIterator {
+// NewCRDBTupleIterator returns a SQL tuple iterator.
+func NewCRDBTupleIterator(rows pgx.Rows, logger logger.Logger) *CRDBTupleIterator {
+
 	return &CRDBTupleIterator{
 		rows:     rows,
 		firstRow: nil,
 		mu:       sync.Mutex{},
+		logger:   logger,
+		count:    0,
 	}
 }
 
@@ -47,16 +54,20 @@ func (t *CRDBTupleIterator) next() (*storage.TupleRecord, error) {
 		// [1] first.
 		// If head() was not called, t.firstRow would be nil and we can follow the t.rows.Next() logic below.
 		firstRow := t.firstRow
+		t.count++
 		t.firstRow = nil
 		t.mu.Unlock()
+		t.logger.Error("count is: " + strconv.Itoa(t.count))
 		return firstRow, nil
 	}
 
 	if !t.rows.Next() {
 		t.mu.Unlock()
 		if err := t.rows.Err(); err != nil {
+			t.logger.Error("error on iterator.")
 			return nil, err
 		}
+		t.logger.Error("iterator is done 1 - count is: " + strconv.Itoa(t.count))
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -79,6 +90,7 @@ func (t *CRDBTupleIterator) next() (*storage.TupleRecord, error) {
 	t.mu.Unlock()
 
 	if err != nil {
+		t.logger.Error("error in scanning.")
 		return nil, err
 	}
 
@@ -87,11 +99,12 @@ func (t *CRDBTupleIterator) next() (*storage.TupleRecord, error) {
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			t.logger.Error("error on conditionContext..")
 			return nil, err
 		}
 		record.ConditionContext = &conditionContextStruct
 	}
-
+	t.logger.Error("count is: " + strconv.Itoa(t.count))
 	return &record, nil
 }
 
@@ -115,8 +128,10 @@ func (t *CRDBTupleIterator) head() (*storage.TupleRecord, error) {
 
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
+			t.logger.Error("error head to t.rows.next...")
 			return nil, err
 		}
+		t.logger.Error("iterator is done 2 - count is: " + strconv.Itoa(t.count))
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -137,6 +152,7 @@ func (t *CRDBTupleIterator) head() (*storage.TupleRecord, error) {
 		&record.InsertedAt,
 	)
 	if err != nil {
+		t.logger.Error("error scanning on head")
 		return nil, err
 	}
 
@@ -145,6 +161,7 @@ func (t *CRDBTupleIterator) head() (*storage.TupleRecord, error) {
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
 		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			t.logger.Error("error on parsing condition.")
 			return nil, err
 		}
 		record.ConditionContext = &conditionContextStruct
@@ -159,6 +176,7 @@ func (t *CRDBTupleIterator) head() (*storage.TupleRecord, error) {
 func (t *CRDBTupleIterator) ToArray(
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, string, error) {
+	t.logger.Error("to array function.")
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
