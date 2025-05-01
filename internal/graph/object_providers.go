@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph/iterator"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -24,12 +25,13 @@ type objectProvider interface {
 
 type recursiveObjectProvider struct {
 	mapper storage.TupleMapper
+	logger logger.Logger
 	ts     *typesystem.TypeSystem
 	ds     storage.RelationshipTupleReader
 }
 
-func newRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) *recursiveObjectProvider {
-	return &recursiveObjectProvider{ts: ts, ds: ds}
+func newRecursiveObjectProvider(logger logger.Logger, ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) *recursiveObjectProvider {
+	return &recursiveObjectProvider{logger: logger, ts: ts, ds: ds}
 }
 
 var _ objectProvider = (*recursiveObjectProvider)(nil)
@@ -59,6 +61,7 @@ func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRe
 }
 
 type recursiveTTUObjectProvider struct {
+	logger           logger.Logger
 	ts               *typesystem.TypeSystem
 	tuplesetRelation string
 	computedRelation string
@@ -66,10 +69,10 @@ type recursiveTTUObjectProvider struct {
 	pool             *pool.ContextPool
 }
 
-func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) *recursiveTTUObjectProvider {
+func newRecursiveTTUObjectProvider(logger logger.Logger, ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) *recursiveTTUObjectProvider {
 	tuplesetRelation := ttu.GetTupleset().GetRelation()
 	computedRelation := ttu.GetComputedUserset().GetRelation()
-	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}
+	return &recursiveTTUObjectProvider{logger: logger, ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}
 }
 
 var _ objectProvider = (*recursiveTTUObjectProvider)(nil)
@@ -91,7 +94,7 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChannels, err := constructLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
+	leftChannels, err := constructLeftChannels(ctx, c.logger, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -107,13 +110,14 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 }
 
 type recursiveUsersetObjectProvider struct {
+	logger logger.Logger
 	ts     *typesystem.TypeSystem
 	cancel context.CancelFunc
 	pool   *pool.ContextPool
 }
 
-func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) *recursiveUsersetObjectProvider {
-	return &recursiveUsersetObjectProvider{ts: ts}
+func newRecursiveUsersetObjectProvider(logger logger.Logger, ts *typesystem.TypeSystem) *recursiveUsersetObjectProvider {
+	return &recursiveUsersetObjectProvider{logger: logger, ts: ts}
 }
 
 var _ objectProvider = (*recursiveUsersetObjectProvider)(nil)
@@ -130,7 +134,7 @@ func (c *recursiveUsersetObjectProvider) End() {
 func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
-	leftChans, err := constructLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := constructLeftChannels(ctx, c.logger, req, reference, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}

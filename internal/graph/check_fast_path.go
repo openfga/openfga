@@ -10,6 +10,7 @@ import (
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -445,8 +447,19 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			return
 		}
 
-		// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
-		go drainIteratorChannel(leftChan)
+		go func() {
+			// Returning an error on a panic here would cause us to wait for the channel to be drained,
+			// slowing the overall function down.
+			defer func() {
+				if r := recover(); r != nil {
+					c.logger.ErrorWithContext(ctx, "panic in resolveFastPath",
+						zap.Any("error", r),
+					)
+				}
+			}()
+
+			drainIteratorChannel(leftChan)
+		}()
 	}()
 
 	res := &ResolveCheckResponse{
@@ -531,6 +544,7 @@ ConsumerLoop:
 }
 
 func constructLeftChannels(ctx context.Context,
+	logger logger.Logger,
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc) ([]chan *iterator.Msg, error) {
@@ -554,8 +568,19 @@ func constructLeftChannels(ctx context.Context,
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
-				// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
-				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans))
+				go func() {
+					// Returning an error on a panic here would cause us to wait for the channel to be drained,
+					// slowing the overall function down.
+					defer func() {
+						if r := recover(); r != nil {
+							logger.ErrorWithContext(ctx, "panic in constructLeftChannels",
+								zap.Any("error", r),
+							)
+						}
+					}()
+
+					drainIteratorChannel(fanInIteratorChannels(ctx, leftChans))
+				}()
 			}
 			return nil, err
 		}
@@ -575,7 +600,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := constructLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
+	leftChans, err := constructLeftChannels(cancellableCtx, c.logger, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +630,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := constructLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+	leftChans, err := constructLeftChannels(cancellableCtx, c.logger, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -720,8 +745,19 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	leftOpen := true
 	defer func() {
 		if leftOpen {
-			// Capturing a panic here would cause us to wait for the channel to be drained, slowing the overall function down.
-			go drainIteratorChannel(leftChan)
+			go func() {
+				// Returning an error on a panic here would cause us to wait for the channel to be drained,
+				// slowing the overall function down.
+				defer func() {
+					if r := recover(); r != nil {
+						c.logger.ErrorWithContext(ctx, "panic in breadthFirstRecursiveMatch",
+							zap.Any("error", r),
+						)
+					}
+				}()
+
+				drainIteratorChannel(leftChan)
+			}()
 		}
 	}()
 	nextUsersetLevel := hashset.New()
@@ -916,7 +952,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
+	objectProvider := newRecursiveObjectProvider(c.logger, typesys, ds)
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -934,7 +970,7 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 
 	ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
+	objectProvider := newRecursiveTTUObjectProvider(c.logger, typesys, ttu)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -949,7 +985,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
+	objectProvider := newRecursiveObjectProvider(c.logger, typesys, ds)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
@@ -965,7 +1001,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider := newRecursiveUsersetObjectProvider(typesys)
+	objectProvider := newRecursiveUsersetObjectProvider(c.logger, typesys)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,
