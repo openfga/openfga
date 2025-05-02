@@ -19,6 +19,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -36,7 +37,8 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	storeID := ulid.Make().String()
 	internalStorage := NewSharedIteratorDatastoreStorage()
-	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage)
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
 
 	tks := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("license:1", "owner", "company:1"),
