@@ -25,7 +25,6 @@ import (
 func TestPostgresDatastore(t *testing.T) {
 	for _, engine := range testutils.PostgresImages {
 		t.Run(engine, func(t *testing.T) {
-
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 			uri := testDatastore.GetConnectionURI(true)
@@ -348,7 +347,6 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 func TestFindLatestModel(t *testing.T) {
 	for _, engine := range testutils.PostgresImages {
 		t.Run(engine, func(t *testing.T) {
-
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
 			uri := testDatastore.GetConnectionURI(true)

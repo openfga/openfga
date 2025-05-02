@@ -20,7 +20,9 @@ import (
 )
 
 func TestValidationResult(t *testing.T) {
-	engines := append(testutils.PostgresImages, "mysql", "sqlite")
+	var engines []string
+	copy(engines, testutils.PostgresImages)
+	engines = append(engines, "mysql", "sqlite")
 
 	totalStores := 200
 	totalModelsForOneStore := 200

@@ -247,7 +247,9 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 	// skipping sqlite here because the lowest supported schema revision is 4
-	engines := append(testutils.PostgresImages, "mysql")
+	var engines []string
+	copy(engines, testutils.PostgresImages)
+	engines = append(engines, "mysql")
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
@@ -365,7 +367,6 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 	for _, engine := range testutils.PostgresImages {
 		t.Run(engine, func(t *testing.T) {
-
 			t.Cleanup(func() {
 				goleak.VerifyNone(t)
 			})
