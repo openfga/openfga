@@ -493,11 +493,9 @@ func (c *cachedIterator) Stop() {
 
 	newStop := !c.stopped
 	c.stopped = true
-	defer func() {
-		if newStop {
-			currentIteratorCacheCount.WithLabelValues("false").Dec()
-		}
-	}()
+	if newStop {
+		currentIteratorCacheCount.WithLabelValues("false").Dec()
+	}
 
 	swapped := c.closing.CompareAndSwap(false, true)
 	if !swapped {
