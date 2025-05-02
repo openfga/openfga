@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- test suite support for Postgres v17
+
 ## [1.8.11] - 2025-04-29
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11)
 
