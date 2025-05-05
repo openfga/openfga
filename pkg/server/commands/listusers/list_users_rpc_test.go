@@ -26,13 +26,15 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type NewListUsersQueryHandler func(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery
 type ListUsersTests []struct {
-	name             string
-	req              *openfgav1.ListUsersRequest
-	model            string
-	tuples           []*openfgav1.TupleKey
-	expectedUsers    []string
-	expectedErrorMsg string
+	name              string
+	req               *openfgav1.ListUsersRequest
+	model             string
+	tuples            []*openfgav1.TupleKey
+	expectedUsers     []string
+	expectedErrorMsg  string
+	newListUsersQuery NewListUsersQueryHandler
 }
 
 const maximumRecursiveDepth = 25
@@ -2954,7 +2956,12 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
+			contructor := test.newListUsersQuery
+			if contructor == nil {
+				contructor = NewListUsersQuery
+			}
+
+			l := contructor(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
