@@ -54,9 +54,10 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
-	tests := []struct {
-		name  string
-		mixed bool
+	baseTests := []struct {
+		name         string
+		mixed        bool
+		imageVersion string
 	}{
 		{
 			name:  "nextOnly",
@@ -67,9 +68,16 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			mixed: true,
 		},
 	}
+	tests := baseTests[0:0]
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		for _, baseTest := range baseTests {
+			baseTest.imageVersion = imageVersion
+			tests = append(tests, baseTest)
+		}
+	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", "17")
+		t.Run(tt.name+" "+tt.imageVersion, func(t *testing.T) {
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", tt.imageVersion)
 
 			uri := testDatastore.GetConnectionURI(true)
 			ds, err := New(uri, sqlcommon.NewConfig())
@@ -155,9 +163,10 @@ func TestReadEnsureNoOrder(t *testing.T) {
 }
 
 func TestCtxCancel(t *testing.T) {
-	tests := []struct {
-		name  string
-		mixed bool
+	baseTests := []struct {
+		name         string
+		mixed        bool
+		imageVersion string
 	}{
 		{
 			name:  "nextOnly",
@@ -168,9 +177,16 @@ func TestCtxCancel(t *testing.T) {
 			mixed: true,
 		},
 	}
+	tests := baseTests[0:0]
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		for _, baseTest := range baseTests {
+			baseTest.imageVersion = imageVersion
+			tests = append(tests, baseTest)
+		}
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", "17")
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", tt.imageVersion)
 
 			uri := testDatastore.GetConnectionURI(true)
 			ds, err := New(uri, sqlcommon.NewConfig())

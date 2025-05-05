@@ -856,13 +856,17 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		)
 	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres", "17")
+		for _, imageVersion := range testutils.PostgresImageVersions {
+			b.Run(imageVersion, func(b *testing.B) {
+				testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres", imageVersion)
 
-		uri := testDatastore.GetConnectionURI(true)
-		ds, err := postgres.New(uri, sqlcommon.NewConfig())
-		require.NoError(b, err)
-		b.Cleanup(ds.Close)
-		test.RunAllBenchmarks(b, ds)
+				uri := testDatastore.GetConnectionURI(true)
+				ds, err := postgres.New(uri, sqlcommon.NewConfig())
+				require.NoError(b, err)
+				b.Cleanup(ds.Close)
+				test.RunAllBenchmarks(b, ds)
+			})
+		}
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
