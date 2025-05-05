@@ -26,6 +26,107 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type testIteratorInfo struct {
+	iter storage.TupleIterator
+	err  error
+}
+
+// helper function to validate the single client case.
+func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *Storage, iter storage.TupleIterator, expected []*openfgav1.TupleKey) {
+	cmpOpts := []cmp.Option{
+		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
+	}
+
+	internalStorage.mu.Lock()
+	require.NotEmpty(t, internalStorage.iters)
+	internalStorage.mu.Unlock()
+
+	var actual []*openfgav1.Tuple
+
+	headTup, err := iter.Head(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, headTup)
+
+	for {
+		tup, err := iter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			require.Fail(t, "no error was expected")
+			break
+		}
+
+		actual = append(actual, tup)
+	}
+	internalStorage.mu.Lock()
+	require.NotEmpty(t, internalStorage.iters)
+	internalStorage.mu.Unlock()
+
+	iter.Stop() // has to be sync otherwise the assertion fails
+
+	if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-want +got):\n%s", diff)
+	}
+	// make sure the internal map is deallocated
+	internalStorage.mu.Lock()
+	require.Empty(t, internalStorage.iters)
+	internalStorage.mu.Unlock()
+}
+
+func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *Storage, iterInfos []testIteratorInfo, expected []*openfgav1.TupleKey) {
+	cmpOpts := []cmp.Option{
+		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
+	}
+
+	internalStorage.mu.Lock()
+	require.NotEmpty(t, internalStorage.iters)
+	internalStorage.mu.Unlock()
+	for i := 0; i < len(iterInfos); i++ {
+		require.NoError(t, iterInfos[i].err)
+		require.NotNil(t, iterInfos[i].iter)
+	}
+
+	for _, iterInfo := range iterInfos {
+		var actual []*openfgav1.Tuple
+		iter := iterInfo.iter
+
+		for {
+			tup, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+				break
+			}
+
+			actual = append(actual, tup)
+		}
+		if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	}
+
+	// make sure the internal map has not deallocated
+	internalStorage.mu.Lock()
+	require.NotEmpty(t, internalStorage.iters)
+	internalStorage.mu.Unlock()
+
+	for i, iterInfo := range iterInfos {
+		iterInfo.iter.Stop()
+		internalStorage.mu.Lock()
+		if i < len(iterInfos)-1 {
+			require.NotEmpty(t, internalStorage.iters)
+		} else {
+			require.Empty(t, internalStorage.iters)
+		}
+		internalStorage.mu.Unlock()
+	}
+}
+
 func TestSharedIteratorDatastore_Read(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
@@ -53,52 +154,13 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 	}
 	tk := tuple.NewTupleKey("license:1", "owner", "")
 
-	cmpOpts := []cmp.Option{
-		testutils.TupleKeyCmpTransformer,
-		protocmp.Transform(),
-	}
-
 	t.Run("single_client", func(t *testing.T) {
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		var actual []*openfgav1.Tuple
-
-		headTup, err := iter.Head(ctx)
-		require.NoError(t, err)
-		require.NotNil(t, headTup)
-
-		for {
-			tup, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				require.Fail(t, "no error was expected")
-				break
-			}
-
-			actual = append(actual, tup)
-		}
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		iter.Stop() // has to be sync otherwise the assertion fails
-
-		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
-		// make sure the internal map is deallocated
-		internalStorage.mu.Lock()
-		require.Empty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -109,67 +171,19 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil)
 		}
 
-		type iteratorInfo struct {
-			iter storage.TupleIterator
-			err  error
-		}
-		iterInfos := make([]iteratorInfo, numClient)
+		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
 		for i := 0; i < numClient; i++ {
 			wg.Add(1)
 			go func(i int) {
 				curIter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-				iterInfos[i] = iteratorInfo{curIter, err}
+				iterInfos[i] = testIteratorInfo{curIter, err}
 				wg.Done()
 			}(i)
 		}
 		wg.Wait()
-
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-		for i := 0; i < numClient; i++ {
-			require.NoError(t, iterInfos[i].err)
-			require.NotNil(t, iterInfos[i].iter)
-		}
-
-		for _, iterInfo := range iterInfos {
-			var actual []*openfgav1.Tuple
-			iter := iterInfo.iter
-
-			for {
-				tup, err := iter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					require.Fail(t, "no error was expected")
-					break
-				}
-
-				actual = append(actual, tup)
-			}
-			if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-				t.Fatalf("mismatch (-want +got):\n%s", diff)
-			}
-		}
-
-		// make sure the internal map has not deallocated
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		for i, iterInfo := range iterInfos {
-			iterInfo.iter.Stop()
-			internalStorage.mu.Lock()
-			if i < numClient-1 {
-				require.NotEmpty(t, internalStorage.iters)
-			} else {
-				require.Empty(t, internalStorage.iters)
-			}
-			internalStorage.mu.Unlock()
-		}
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().
@@ -260,11 +274,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
 	}
 
-	cmpOpts := []cmp.Option{
-		testutils.TupleKeyCmpTransformer,
-		protocmp.Transform(),
-	}
-
 	options := storage.ReadUsersetTuplesOptions{}
 	filter := storage.ReadUsersetTuplesFilter{
 		Object:   "document:1",
@@ -281,41 +290,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		var actual []*openfgav1.Tuple
-
-		headTup, err := iter.Head(ctx)
-		require.NoError(t, err)
-		require.NotNil(t, headTup)
-
-		for {
-			tup, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				require.Fail(t, "no error was expected")
-				break
-			}
-
-			actual = append(actual, tup)
-		}
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		iter.Stop() // has to be sync otherwise the assertion fails
-
-		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
-		// make sure the internal map is deallocated
-		internalStorage.mu.Lock()
-		require.Empty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -326,67 +301,19 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil)
 		}
 
-		type iteratorInfo struct {
-			iter storage.TupleIterator
-			err  error
-		}
-		iterInfos := make([]iteratorInfo, numClient)
+		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
 		for i := 0; i < numClient; i++ {
 			wg.Add(1)
 			go func(i int) {
 				curIter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
-				iterInfos[i] = iteratorInfo{curIter, err}
+				iterInfos[i] = testIteratorInfo{curIter, err}
 				wg.Done()
 			}(i)
 		}
 		wg.Wait()
-
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-		for i := 0; i < numClient; i++ {
-			require.NoError(t, iterInfos[i].err)
-			require.NotNil(t, iterInfos[i].iter)
-		}
-
-		for _, iterInfo := range iterInfos {
-			var actual []*openfgav1.Tuple
-			iter := iterInfo.iter
-
-			for {
-				tup, err := iter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					require.Fail(t, "no error was expected")
-					break
-				}
-
-				actual = append(actual, tup)
-			}
-			if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-				t.Fatalf("mismatch (-want +got):\n%s", diff)
-			}
-		}
-
-		// make sure the internal map has not deallocated
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		for i, iterInfo := range iterInfos {
-			iterInfo.iter.Stop()
-			internalStorage.mu.Lock()
-			if i < numClient-1 {
-				require.NotEmpty(t, internalStorage.iters)
-			} else {
-				require.Empty(t, internalStorage.iters)
-			}
-			internalStorage.mu.Unlock()
-		}
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().
@@ -449,11 +376,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
 	}
 
-	cmpOpts := []cmp.Option{
-		testutils.TupleKeyCmpTransformer,
-		protocmp.Transform(),
-	}
-
 	options := storage.ReadStartingWithUserOptions{}
 	filter := storage.ReadStartingWithUserFilter{
 		ObjectType: "document",
@@ -471,41 +393,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		var actual []*openfgav1.Tuple
-
-		headTup, err := iter.Head(ctx)
-		require.NoError(t, err)
-		require.NotNil(t, headTup)
-
-		for {
-			tup, err := iter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				require.Fail(t, "no error was expected")
-				break
-			}
-
-			actual = append(actual, tup)
-		}
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		iter.Stop() // has to be sync otherwise the assertion fails
-
-		if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
-		// make sure the internal map is deallocated
-		internalStorage.mu.Lock()
-		require.Empty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -516,67 +404,19 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 				Return(storage.NewStaticTupleIterator(tuples), nil)
 		}
 
-		type iteratorInfo struct {
-			iter storage.TupleIterator
-			err  error
-		}
-		iterInfos := make([]iteratorInfo, numClient)
+		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
 
 		for i := 0; i < numClient; i++ {
 			wg.Add(1)
 			go func(i int) {
 				curIter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
-				iterInfos[i] = iteratorInfo{curIter, err}
+				iterInfos[i] = testIteratorInfo{curIter, err}
 				wg.Done()
 			}(i)
 		}
 		wg.Wait()
-
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-		for i := 0; i < numClient; i++ {
-			require.NoError(t, iterInfos[i].err)
-			require.NotNil(t, iterInfos[i].iter)
-		}
-
-		for _, iterInfo := range iterInfos {
-			var actual []*openfgav1.Tuple
-			iter := iterInfo.iter
-
-			for {
-				tup, err := iter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					require.Fail(t, "no error was expected")
-					break
-				}
-
-				actual = append(actual, tup)
-			}
-			if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
-				t.Fatalf("mismatch (-want +got):\n%s", diff)
-			}
-		}
-
-		// make sure the internal map has not deallocated
-		internalStorage.mu.Lock()
-		require.NotEmpty(t, internalStorage.iters)
-		internalStorage.mu.Unlock()
-
-		for i, iterInfo := range iterInfos {
-			iterInfo.iter.Stop()
-			internalStorage.mu.Lock()
-			if i < numClient-1 {
-				require.NotEmpty(t, internalStorage.iters)
-			} else {
-				require.Empty(t, internalStorage.iters)
-			}
-			internalStorage.mu.Unlock()
-		}
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().

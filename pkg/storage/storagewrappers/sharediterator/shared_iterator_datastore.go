@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -65,7 +66,6 @@ func WithSharedIteratorDatastoreStorageLimit(limit int) DatastoreStorageOpt {
 
 func NewSharedIteratorDatastoreStorage(opts ...DatastoreStorageOpt) *Storage {
 	newStorage := &Storage{
-		mu:    sync.Mutex{},
 		limit: defaultSharedIteratorLimit,
 		iters: map[string]*internalSharedIterator{},
 	}
@@ -305,7 +305,7 @@ type sharedIterator struct {
 	manager *IteratorDatastore
 	key     string
 	inner   storage.TupleIterator
-	stopped bool
+	stopped atomic.Bool
 }
 
 func newSharedIterator(manager *IteratorDatastore, key string, inner storage.TupleIterator) *sharedIterator {
@@ -313,7 +313,6 @@ func newSharedIterator(manager *IteratorDatastore, key string, inner storage.Tup
 		manager: manager,
 		key:     key,
 		inner:   inner,
-		stopped: false,
 	}
 }
 
@@ -329,11 +328,10 @@ func (s *sharedIterator) Stop() {
 	// For now, we don't check whether this is the last item in the shared iterator
 	// as this is just a skeleton.  When the actual shared iterator is implemented,
 	// we will stop the inner iterator only if this is the last reference.
-	if !s.stopped {
+	if !s.stopped.Swap(true) {
 		// It is perfectly possible that iterator calling stop more than once.
 		// However, we only want to decrement the count on the first stop.
 		_, _ = s.manager.deref(s.key)
 	}
-	s.stopped = true
 	s.inner.Stop()
 }
