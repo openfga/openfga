@@ -49,8 +49,8 @@ func Index[E comparable](s []E, v E) int {
 
 // MustBootstrapDatastore returns the datastore's container, the datastore, and the URI to connect to it.
 // It automatically cleans up the container after the test finishes.
-func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, string) {
-	container := storagefixtures.RunDatastoreTestContainer(t, engine)
+func MustBootstrapDatastore(t testing.TB, engine string, imageVersion string) (storagefixtures.DatastoreTestContainer, storage.OpenFGADatastore, string) {
+	container := storagefixtures.RunDatastoreTestContainer(t, engine, imageVersion)
 
 	uri := container.GetConnectionURI(true)
 
@@ -60,9 +60,7 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	switch engine {
 	case "memory":
 		ds = memory.New()
-	case "postgres14":
-		fallthrough
-	case "postgres17":
+	case "postgres":
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())

@@ -18,21 +18,21 @@ const defaultDuration = 1 * time.Minute
 
 func TestMigrateCommandRollbacks(t *testing.T) {
 	type EngineConfig struct {
-		Engine         string
-		ContainerImage string
-		MinVersion     int64
+		Engine       string
+		ImageVersion string
+		MinVersion   int64
 	}
 	engines := []EngineConfig{
-		{Engine: "mysql", ContainerImage: "mysql"},
-		{Engine: "sqlite", ContainerImage: "sqlite", MinVersion: 5},
+		{Engine: "mysql", ImageVersion: ""},
+		{Engine: "sqlite", ImageVersion: "", MinVersion: 5},
 	}
-	for _, engine := range testutils.PostgresImages {
-		engines = append(engines, EngineConfig{Engine: "postgres", ContainerImage: engine})
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		engines = append(engines, EngineConfig{Engine: "postgres", ImageVersion: imageVersion})
 	}
 
 	for _, e := range engines {
-		t.Run(e.ContainerImage, func(t *testing.T) {
-			container, _, uri := util.MustBootstrapDatastore(t, e.ContainerImage)
+		t.Run(e.ImageVersion, func(t *testing.T) {
+			container, _, uri := util.MustBootstrapDatastore(t, e.Engine, e.ImageVersion)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
 			version := container.GetDatabaseSchemaVersion() + 1

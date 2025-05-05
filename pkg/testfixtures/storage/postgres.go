@@ -21,22 +21,20 @@ import (
 	"github.com/openfga/openfga/assets"
 )
 
-const (
-	postgresImage = "postgres"
-)
-
 type postgresTestContainer struct {
-	addr     string
-	version  int64
-	username string
-	password string
-	imageTag string
+	addr string
+	// the goose/FGA schema version
+	version int64
+	// the version of Postgres itself
+	postgresVersion string
+	username        string
+	password        string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
 // for Postgres.
-func NewPostgresTestContainer(imageTag string) *postgresTestContainer {
-	return &postgresTestContainer{imageTag: imageTag}
+func NewPostgresTestContainer(postgresVersion string) *postgresTestContainer {
+	return &postgresTestContainer{postgresVersion: postgresVersion}
 }
 
 func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
@@ -61,8 +59,8 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	})
 	require.NoError(t, err)
 
-	targetImage := postgresImage + ":" + p.imageTag
 	foundPostgresImage := false
+	postgresImage := "postgres:" + p.postgresVersion
 
 AllImages:
 	for _, image := range allImages {
@@ -75,8 +73,8 @@ AllImages:
 	}
 
 	if !foundPostgresImage {
-		t.Logf("Pulling image %s", targetImage)
-		reader, err := dockerClient.ImagePull(context.Background(), targetImage, image.PullOptions{})
+		t.Logf("Pulling image %s", postgresImage)
+		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, image.PullOptions{})
 		require.NoError(t, err)
 
 		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
@@ -91,7 +89,7 @@ AllImages:
 		ExposedPorts: nat.PortSet{
 			nat.Port("5432/tcp"): {},
 		},
-		Image: targetImage,
+		Image: postgresImage,
 	}
 
 	hostCfg := container.HostConfig{

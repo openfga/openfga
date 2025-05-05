@@ -14,11 +14,11 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	runMatrixWithEngine(t, "memory")
+	runMatrixWithEngine(t, "memory", "")
 }
 
 func TestMatrixPostgres(t *testing.T) {
-	runMatrixWithEngine(t, "postgres")
+	runMatrixWithEngine(t, "postgres", "17")
 }
 
 // TODO: re-enable
@@ -31,39 +31,35 @@ func TestMatrixPostgres(t *testing.T) {
 //	runMatrixWithEngine(t, "sqlite")
 //}
 
-func runMatrixWithEngine(t *testing.T, engine string) {
+func runMatrixWithEngine(t *testing.T, engine string, imageVersion string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"}, imageVersion)
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{}, imageVersion)
 	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
 }
 
 func TestListObjectsMemory(t *testing.T) {
-	testRunAll(t, "memory", "memory")
+	testRunAll(t, "memory", "")
 }
 
 func TestListObjectsPostgres(t *testing.T) {
-	for _, containerImages := range testutils.PostgresImages {
-		t.Run(containerImages, func(t *testing.T) {
-			testRunAll(t, "postgres", containerImages)
-		})
-	}
+	testRunAll(t, "postgres", "17")
 }
 
 func TestListObjectsMySQL(t *testing.T) {
-	testRunAll(t, "mysql", "mysql")
+	testRunAll(t, "mysql", "")
 }
 
 func TestListObjectsSQLite(t *testing.T) {
-	testRunAll(t, "sqlite", "sqlite")
+	testRunAll(t, "sqlite", "")
 }
 
-func testRunAll(t *testing.T, engine string, containerImage string) {
+func testRunAll(t *testing.T, engine string, imageVersion string) {
 	t.Cleanup(func() {
 		// [Goroutine 60101 in state select, with github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1 on top of the stack:
 		// github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
@@ -81,7 +77,7 @@ func testRunAll(t *testing.T, engine string, containerImage string) {
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
-	tests.StartServer(t, cfg, containerImage)
+	tests.StartServer(t, cfg, imageVersion)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 

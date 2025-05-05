@@ -113,7 +113,7 @@ test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres14`, `postgres17`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \

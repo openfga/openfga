@@ -40,14 +40,18 @@ func (m memoryTestContainer) GetDatabaseSchemaVersion() int64 {
 // RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
 // datastore engine. If applicable, it also runs all existing database migrations.
 // The resources used by the test engine will be cleaned up after the test has finished.
-func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
+func RunDatastoreTestContainer(t testing.TB, engine string, imageVersion string) DatastoreTestContainer {
 	switch engine {
 	case "mysql":
 		return NewMySQLTestContainer().RunMySQLTestContainer(t)
-	case "postgres14":
-		return NewPostgresTestContainer("14").RunPostgresTestContainer(t)
-	case "postgres17":
-		return NewPostgresTestContainer("17").RunPostgresTestContainer(t)
+	case "postgres":
+		switch imageVersion {
+		case "14", "17":
+			return NewPostgresTestContainer(imageVersion).RunPostgresTestContainer(t)
+		default:
+			t.Fatalf("unsopported postgres imageVersion: %q", imageVersion)
+			return nil
+		}
 	case "memory":
 		return memoryTestContainer{}
 	case "sqlite":
