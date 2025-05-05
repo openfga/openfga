@@ -44,6 +44,12 @@ var (
 		Name:      "check_cache_invalid_hit_count",
 		Help:      "The total number of cache hits for ResolveCheck that were discarded because they were invalidated.",
 	})
+
+	CheckCacheItemCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "check_cache_item_count",
+		Help:      "The total number of items stored in the check query cache",
+	})
 )
 
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
@@ -201,6 +207,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	clonedResp := resp.clone()
 
+	CheckCacheItemCount.Inc()
 	c.cache.Set(cacheKey, &CheckResponseCacheEntry{LastModified: time.Now(), CheckResponse: clonedResp}, c.cacheTTL)
 	return resp, nil
 }
@@ -214,5 +221,5 @@ func BuildCacheKey(req ResolveCheckRequest) string {
 	// Digest.WriteString returns int and a nil error, ignoring
 	_, _ = hasher.WriteString(cacheKeyString)
 
-	return strconv.FormatUint(hasher.Sum64(), 10)
+	return storage.SubproblemCachePrefix + strconv.FormatUint(hasher.Sum64(), 10)
 }
