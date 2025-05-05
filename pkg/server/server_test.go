@@ -247,8 +247,10 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 	// skipping sqlite here because the lowest supported schema revision is 4
 	enginesAndVersions := [][]string{
-		{"postgres", "17"},
 		{"mysql", ""},
+	}
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		enginesAndVersions = append(enginesAndVersions, []string{"postgres", imageVersion})
 	}
 
 	for _, engineAndVersion := range enginesAndVersions {
@@ -353,12 +355,16 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "postgres", "17")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			t.Cleanup(func() {
+				goleak.VerifyNone(t)
+			})
+			_, ds, _ := util.MustBootstrapDatastore(t, "postgres", imageVersion)
 
-	test.RunAllTests(t, ds)
+			test.RunAllTests(t, ds)
+		})
+	}
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {

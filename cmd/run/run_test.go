@@ -795,9 +795,11 @@ func TestServerMetricsReporting(t *testing.T) {
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql", "")
 	})
-	t.Run("postgres", func(t *testing.T) {
-		testServerMetricsReporting(t, "postgres", "17")
-	})
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			testServerMetricsReporting(t, "postgres", imageVersion)
+		})
+	}
 	t.Run("sqlite", func(t *testing.T) {
 		testServerMetricsReporting(t, "sqlite", "")
 	})

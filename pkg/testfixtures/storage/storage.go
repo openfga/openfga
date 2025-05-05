@@ -2,7 +2,10 @@
 package storage
 
 import (
+	"slices"
 	"testing"
+
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.
@@ -45,13 +48,11 @@ func RunDatastoreTestContainer(t testing.TB, engine string, imageVersion string)
 	case "mysql":
 		return NewMySQLTestContainer().RunMySQLTestContainer(t)
 	case "postgres":
-		switch imageVersion {
-		case "14", "17":
-			return NewPostgresTestContainer(imageVersion).RunPostgresTestContainer(t)
-		default:
-			t.Fatalf("unsopported postgres imageVersion: %q", imageVersion)
+		if !slices.Contains(testutils.PostgresImageVersions, imageVersion) {
+			t.Fatalf("unsupported postgres imageVersion: %q", imageVersion)
 			return nil
 		}
+		return NewPostgresTestContainer(imageVersion).RunPostgresTestContainer(t)
 	case "memory":
 		return memoryTestContainer{}
 	case "sqlite":

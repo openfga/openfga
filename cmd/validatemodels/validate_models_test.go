@@ -15,14 +15,17 @@ import (
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestValidationResult(t *testing.T) {
 	enginesAndVersions := [][]string{
-		{"postgres", "17"},
 		{"mysql", ""},
 		{"sqlite", ""},
+	}
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		enginesAndVersions = append(enginesAndVersions, []string{"postgres", imageVersion})
 	}
 
 	totalStores := 200

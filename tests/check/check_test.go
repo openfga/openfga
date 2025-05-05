@@ -34,7 +34,11 @@ func TestMatrixMemory(t *testing.T) {
 }
 
 func TestMatrixPostgres(t *testing.T) {
-	runMatrixWithEngine(t, "postgres", "17")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			runMatrixWithEngine(t, "postgres", imageVersion)
+		})
+	}
 }
 
 // TODO: re-enable
@@ -64,7 +68,11 @@ func TestCheckMemory(t *testing.T) {
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testRunAll(t, "postgres", "17")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			testRunAll(t, "postgres", imageVersion)
+		})
+	}
 }
 
 func TestCheckMySQL(t *testing.T) {

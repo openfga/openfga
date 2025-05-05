@@ -33,7 +33,11 @@ func TestListUsersMemory(t *testing.T) {
 }
 
 func TestListUsersPostgres(t *testing.T) {
-	testRunAll(t, "postgres", "17")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			testRunAll(t, "postgres", imageVersion)
+		})
+	}
 }
 
 func TestListUsersMySQL(t *testing.T) {
