@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/testutils"
 )
 
 const defaultDuration = 1 * time.Minute
