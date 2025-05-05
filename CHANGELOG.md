@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
+- Replace hardcoded Prometheus datasource UID (`PBFA97CFB590B2093`) with `${DS_PROMETHEUS}` in `telemetry/grafana/dashboards/openfga.json`. This allows the Grafana dashboard to correctly reference the dynamic Prometheus datasource, resolving issues with improper binding. [#2287](https://github.com/openfga/openfga/issues/2287)
 - Handle case where iterator is stopped more than once for `current_iterator_cache_count`. [#2409](https://github.com/openfga/openfga/pull/2409)
 
 ## [1.8.11] - 2025-04-29
