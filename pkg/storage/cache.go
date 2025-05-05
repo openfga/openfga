@@ -28,6 +28,12 @@ var (
 		Name:      "cache_item_count",
 		Help:      "The total number of items stored in the cache",
 	}, []string{"entity"})
+
+	cacheItemRemovedCount = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cache_item_removed_count",
+		Help:      "The total number of items removed from the cache",
+	}, []string{"entity", "reason"})
 )
 
 const (
@@ -37,6 +43,11 @@ const (
 	invalidIteratorCachePrefix = "iq."
 	defaultMaxCacheSize        = 10000
 	oneYear                    = time.Hour * 24 * 365
+
+	removedLabel     = "removed"
+	evictedLabel     = "evicted"
+	expiredLabel     = "expired"
+	unspecifiedLabel = "unspecified"
 )
 
 type CacheItem interface {
@@ -85,11 +96,29 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 
 	cacheBuilder := theine.NewBuilder[string, T](t.maxElements)
 	cacheBuilder.RemovalListener(func(key string, value T, reason theine.RemoveReason) {
-		if item, ok := any(value).(CacheItem); ok {
-			cacheItemCount.WithLabelValues(item.CacheEntityType()).Dec()
-		} else {
-			cacheItemCount.WithLabelValues("unspecified").Dec()
+		var (
+			reasonLabel string
+			entityLabel string
+		)
+		switch reason {
+		case theine.EVICTED:
+			reasonLabel = evictedLabel
+		case theine.EXPIRED:
+			reasonLabel = expiredLabel
+		case theine.REMOVED:
+			reasonLabel = removedLabel
+		default:
+			reasonLabel = unspecifiedLabel
 		}
+
+		if item, ok := any(value).(CacheItem); ok {
+			entityLabel = item.CacheEntityType()
+		} else {
+			entityLabel = unspecifiedLabel
+		}
+
+		cacheItemCount.WithLabelValues(entityLabel).Dec()
+		cacheItemRemovedCount.WithLabelValues(entityLabel, reasonLabel).Inc()
 	})
 
 	var err error
@@ -123,7 +152,7 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 	if item, ok := any(value).(CacheItem); ok {
 		cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
 	} else {
-		cacheItemCount.WithLabelValues("unspecified").Inc()
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Inc()
 	}
 }
 
