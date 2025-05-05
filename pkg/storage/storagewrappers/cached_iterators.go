@@ -19,6 +19,7 @@ type cachedTupleIterator struct {
 	relation   string
 	userType   string
 	iter       storage.Iterator[*storage.TupleRecord]
+	stopped    bool
 }
 
 var _ storage.TupleIterator = (*cachedTupleIterator)(nil)
@@ -36,8 +37,12 @@ func (c *cachedTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error
 
 // Stop see [storage.Iterator].Stop.
 func (c *cachedTupleIterator) Stop() {
-	defer currentIteratorCacheCount.Dec()
+	newStop := !c.stopped
+	c.stopped = true
 	c.iter.Stop()
+	if newStop {
+		currentIteratorCacheCount.WithLabelValues("true").Dec()
+	}
 }
 
 // Head will return the first minimal cached tuple of the iterator as
