@@ -32,7 +32,7 @@ type testIteratorInfo struct {
 }
 
 // helper function to validate the single client case.
-func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *Storage, iter storage.TupleIterator, expected []*openfgav1.TupleKey) {
+func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *Storage, iter storage.TupleIterator, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
@@ -75,7 +75,7 @@ func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStora
 	internalStorage.mu.Unlock()
 }
 
-func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *Storage, iterInfos []testIteratorInfo, expected []*openfgav1.TupleKey) {
+func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *Storage, iterInfos []testIteratorInfo, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
@@ -160,7 +160,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -183,7 +183,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().
@@ -290,7 +290,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -313,7 +313,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().
@@ -393,7 +393,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tks)
+		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -416,7 +416,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tks)
+		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockDatastore.EXPECT().
