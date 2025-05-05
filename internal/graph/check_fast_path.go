@@ -3,9 +3,11 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
@@ -371,7 +373,7 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 // fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op setOperatorType, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
+func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
 	iterStreams := make([]*iterator.Stream, 0, len(children))
 	for idx, child := range children {
 		producerChan, err := fastPathRewrite(ctx, req, child)
@@ -380,19 +382,17 @@ func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, op se
 		}
 		iterStreams = append(iterStreams, iterator.NewStream(idx, producerChan))
 	}
-	var resolver fastPathSetHandler
-	switch op {
-	case unionSetOperator:
-		resolver = fastPathUnion
-	case intersectionSetOperator:
-		resolver = fastPathIntersection
-	case exclusionSetOperator:
-		resolver = fastPathDifference
-	default:
-		return nil, ErrUnknownSetOperator
-	}
+
 	outChan := make(chan *iterator.Msg, len(children))
-	go resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+	go func() {
+		recoveredError := panics.Try(func() {
+			resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+		})
+
+		if recoveredError != nil {
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
+		}
+	}()
 	return outChan, nil
 }
 
@@ -409,11 +409,11 @@ func fastPathRewrite(
 	case *openfgav1.Userset_ComputedUserset:
 		return fastPathComputed(ctx, req, rewrite)
 	case *openfgav1.Userset_Union:
-		return fastPathOperationSetup(ctx, req, unionSetOperator, rw.Union.GetChild()...)
+		return fastPathOperationSetup(ctx, req, fastPathUnion, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return fastPathOperationSetup(ctx, req, intersectionSetOperator, rw.Intersection.GetChild()...)
+		return fastPathOperationSetup(ctx, req, fastPathIntersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return fastPathOperationSetup(ctx, req, exclusionSetOperator, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return fastPathOperationSetup(ctx, req, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	case *openfgav1.Userset_TupleToUserset:
 		return fastPathNoop(ctx, req)
 	default:
