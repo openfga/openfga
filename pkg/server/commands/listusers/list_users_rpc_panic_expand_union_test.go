@@ -123,7 +123,7 @@ func NewListUsersQueryPanicExpandUnionCloseChannels(ds storage.RelationshipTuple
 		maxConcurrentReads:       serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:             new(atomic.Bool),
 		expandUnionExpandRewrite: expandUnionExpandRewrite,
-		expandUnionCloseChannels: func(err error, pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
+		expandUnionCloseChannels: func(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
 			panic(ErrPanic)
 		},
 	}

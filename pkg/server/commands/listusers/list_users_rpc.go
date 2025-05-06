@@ -65,7 +65,7 @@ type expandResponse struct {
 type userRelationshipStatus int
 
 type expandUnionExpandRewriteHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, unionFoundUsersChans []chan foundUser, i int) expandResponse
-type expandUnionCloseChannelsHandler func(err error, pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error
+type expandUnionCloseChannelsHandler func(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -667,7 +667,7 @@ func (l *listUsersQuery) expandUnion(
 	go func() {
 		var err error
 		recoveredError := panics.Try(func() {
-			err = l.expandUnionCloseChannels(err, pool, unionFoundUsersChans)
+			err = l.expandUnionCloseChannels(pool, unionFoundUsersChans)
 		})
 		if recoveredError != nil {
 			err = panicError(recoveredError)
@@ -726,8 +726,8 @@ func (l *listUsersQuery) expandUnion(
 	}
 }
 
-func expandUnionCloseChannels(err error, pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
-	err = pool.Wait()
+func expandUnionCloseChannels(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
+	err := pool.Wait()
 	for i := range unionFoundUsersChans {
 		close(unionFoundUsersChans[i])
 	}
