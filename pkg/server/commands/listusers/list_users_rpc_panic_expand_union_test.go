@@ -5,7 +5,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/sourcegraph/conc/pool"
 	"go.uber.org/goleak"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -54,39 +53,39 @@ func TestListUsersUnionPanicExpandUnion(t *testing.T) {
 			expectedErrorMsg:  ErrPanic.Error(),
 			newListUsersQuery: NewListUsersQueryPanicExpandUnionExpandRewrite,
 		},
-		// Test times out
-		// {
-		// 	name: "union_panic_close_channels",
-		// 	req: &openfgav1.ListUsersRequest{
-		// 		Object:   &openfgav1.Object{Type: "document", Id: "1"},
-		// 		Relation: "viewer",
-		// 		UserFilters: []*openfgav1.UserTypeFilter{
-		// 			{
-		// 				Type: "user",
-		// 			},
-		// 		},
-		// 	},
-		// 	model: `
-		// 		model
-		// 			schema 1.1
-		// 		type user
-		// 		type document
-		// 			relations
-		// 				define optional_1: [user]
-		// 				define optional_2: [user]
-		// 				define viewer: optional_1 or optional_2`,
+		{
+			name: "union_panic_close_channels",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define optional_1: [user]
+						define optional_2: [user]
+						define viewer: optional_1 or optional_2`,
 
-		// 	tuples: []*openfgav1.TupleKey{
-		// 		tuple.NewTupleKey("document:1", "optional_1", "user:will"),
-		// 		tuple.NewTupleKey("document:1", "optional_2", "user:will"),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "optional_1", "user:will"),
+				tuple.NewTupleKey("document:1", "optional_2", "user:will"),
 
-		// 		tuple.NewTupleKey("document:1", "optional_1", "user:jon"),
-		// 		tuple.NewTupleKey("document:1", "optional_2", "user:maria"),
-		// 	},
-		// 	expectedUsers:     []string{},
-		// 	expectedErrorMsg:  ErrPanic.Error(),
-		// 	newListUsersQuery: NewListUsersQueryPanicExpandUnionCloseChannels,
-		// },
+				tuple.NewTupleKey("document:1", "optional_1", "user:jon"),
+				tuple.NewTupleKey("document:1", "optional_2", "user:maria"),
+			},
+			expectedUsers: []string{"user:will", "user:jon", "user:maria"},
+			// expectedUsers:     []string{},
+			// expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanicExpandUnionCloseChannels,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -125,9 +124,11 @@ func NewListUsersQueryPanicExpandUnionCloseChannels(ds storage.RelationshipTuple
 		maxConcurrentReads:       serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:             new(atomic.Bool),
 		expandUnionExpandRewrite: expandUnionExpandRewrite,
-		expandUnionCloseChannels: func(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
-			panic(ErrPanic)
-		},
+		expandUnionCloseChannels: expandUnionCloseChannels,
+		// Panic during expandUnionCloseChannels causes the appliction to hang
+		// expandUnionCloseChannels: func(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
+		// 	panic(ErrPanic)
+		// },
 	}
 
 	for _, opt := range opts {
