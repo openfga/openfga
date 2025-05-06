@@ -5,13 +5,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.uber.org/goleak"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
-	"go.uber.org/goleak"
 )
 
 func TestListUsersUsersetsPanicExpandTTU(t *testing.T) {
@@ -67,7 +69,7 @@ func NewListUsersQueryPanicExpandTTU(ds storage.RelationshipTupleReader, context
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
-		expandTTUDispatch: func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, computedRelation string, resp expandResponse, foundUsersChan chan<- foundUser) expandResponse {
+		expandTTUDispatch: func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, computedRelation string, foundUsersChan chan<- foundUser) expandResponse {
 			panic(ErrPanic)
 		},
 	}

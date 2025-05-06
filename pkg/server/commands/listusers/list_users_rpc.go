@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/panics"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -55,7 +55,7 @@ type expandResponse struct {
 	err      error
 }
 
-type expandTTUDispatchHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, resp expandResponse, foundUsersChan chan<- foundUser) expandResponse
+type expandTTUDispatchHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, foundUsersChan chan<- foundUser) expandResponse
 
 // userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
 //
@@ -912,7 +912,7 @@ LoopOnIterator:
 		pool.Go(func(ctx context.Context) error {
 			var resp expandResponse
 			recoveredError := panics.Try(func() {
-				resp = l.expandTTUDispatch(ctx, l, req, userObjectType, userObjectID, computedRelation, resp, foundUsersChan)
+				resp = l.expandTTUDispatch(ctx, l, req, userObjectType, userObjectID, computedRelation, foundUsersChan)
 			})
 			if recoveredError != nil {
 				resp = panicExpanseResponse(recoveredError)
@@ -930,11 +930,11 @@ LoopOnIterator:
 	}
 }
 
-func expandTTUDispatch(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, resp expandResponse, foundUsersChan chan<- foundUser) expandResponse {
+func expandTTUDispatch(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, foundUsersChan chan<- foundUser) expandResponse {
 	rewrittenReq := req.clone()
 	rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
 	rewrittenReq.Relation = computedRelation
-	resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
+	resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
 	return resp
 }
 
