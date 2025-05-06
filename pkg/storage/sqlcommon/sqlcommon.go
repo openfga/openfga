@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -412,6 +413,24 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandl
 	}
 }
 
+// check if is MSSQL Db
+func isMSSQLDriver(db *sql.DB) bool {
+	return reflect.TypeOf(db.Driver()).String() == "*mssql.Driver"
+}
+
+func getNowExpr(db *sql.DB) sq.Sqlizer {
+	if isMSSQLDriver(db) {
+		return sq.Expr("GETUTCDATE()")
+	}
+	return sq.Expr("NOW()")
+}
+
+func getNiltoMSSQL(db *sql.DB) sq.Sqlizer {
+	if isMSSQLDriver(db) {
+		return sq.Expr("CONVERT(VARBINARY(MAX), NULL)")
+	}
+	return nil
+}
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
@@ -441,6 +460,7 @@ func Write(
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
 
 		res, err := deleteBuilder.
 			Where(sq.Eq{
@@ -472,9 +492,9 @@ func Write(
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			"", getNiltoMSSQL(dbInfo.db), // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, sq.Expr("NOW()"),
+			id, getNowExpr(dbInfo.db),
 		)
 	}
 
@@ -505,7 +525,7 @@ func Write(
 				conditionName,
 				conditionContext,
 				id,
-				sq.Expr("NOW()"),
+				getNowExpr(dbInfo.db),
 			).
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
@@ -523,7 +543,7 @@ func Write(
 			conditionContext,
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
-			sq.Expr("NOW()"),
+			getNowExpr(dbInfo.db),
 		)
 	}
 
@@ -563,7 +583,7 @@ func WriteAuthorizationModel(
 	_, err = dbInfo.stbl.
 		Insert("authorization_model").
 		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
-		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
+		Values(store, model.GetId(), schemaVersion, "", getNiltoMSSQL(dbInfo.db), pbdata).
 		ExecContext(ctx)
 	if err != nil {
 		return dbInfo.HandleSQLError(err)

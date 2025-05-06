@@ -113,7 +113,7 @@ test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite, `mssql`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \
@@ -141,6 +141,22 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 			echo "==> Running OpenFGA with SQLite data storage"; \
 			openfga migrate --datastore-engine sqlite --datastore-uri '/tmp/openfga.sqlite'; \
 			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine sqlite --datastore-uri /tmp/openfga.sqlite"; \
+			break; \
+			;; \
+		"mssql") \
+			echo "==> Running OpenFGA with MSSQL data storage"; \
+			docker run -d --name mssql -p 1433:1433 \
+			-e 'ACCEPT_EULA=Y' \
+			-e 'SA_PASSWORD=Password123Str0ng!' \
+			mcr.microsoft.com/mssql/server:2019-latest > /dev/null 2>&1 || docker start mssql; \
+			sleep 10; \
+			openfga migrate \
+			--datastore-engine mssql \
+			--datastore-uri 'server=localhost;user id=sa;password=password;database=openfga;TrustServerCertificate=true'; \
+				CompileDaemon -graceful-kill -build='make install' \
+				-command="openfga run \
+					--datastore-engine mssql \
+					--datastore-uri 'server=localhost;user id=sa;password=password;database=openfga;TrustServerCertificate=true'"; \
 			break; \
 			;; \
 		*) \
