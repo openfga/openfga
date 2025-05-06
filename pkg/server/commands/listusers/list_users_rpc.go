@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,18 +33,24 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+var (
+	tracer   = otel.Tracer("openfga/pkg/server/commands/list_users")
+	ErrPanic = errors.New("panic captured")
+)
 
 type listUsersQuery struct {
-	logger                  logger.Logger
-	datastore               *storagewrappers.RequestStorageWrapper
-	resolveNodeBreadthLimit uint32
-	resolveNodeLimit        uint32
-	maxResults              uint32
-	maxConcurrentReads      uint32
-	deadline                time.Duration
-	dispatchThrottlerConfig threshold.Config
-	wasThrottled            *atomic.Bool
+	logger                          logger.Logger
+	datastore                       *storagewrappers.RequestStorageWrapper
+	resolveNodeBreadthLimit         uint32
+	resolveNodeLimit                uint32
+	maxResults                      uint32
+	maxConcurrentReads              uint32
+	deadline                        time.Duration
+	dispatchThrottlerConfig         threshold.Config
+	wasThrottled                    *atomic.Bool
+	expandIntersectionExpandRewrite expandIntersectionExpandRewriteHandler
+	expandIntersectionCloseChannels expandIntersectionCloseChannelsHandler
+	populateFoundUsersCountMap      populateFoundUsersCountMapHandler
 }
 
 type expandResponse struct {
@@ -55,6 +63,10 @@ type expandResponse struct {
 // A user/subject either does or does not have a relationship, which represents that
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
+
+type expandIntersectionExpandRewriteHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, intersectionFoundUsersChans []chan foundUser, i int) expandResponse
+type expandIntersectionCloseChannelsHandler func(pool *pool.ContextPool, intersectionFoundUsersChans []chan foundUser) error
+type populateFoundUsersCountMapHandler func(mu *sync.Mutex, foundUsersChan chan foundUser, excludedUsersMap map[string]struct{}, foundUsersCountMap map[string]uint32, wildcardKey string, wildcardCount *atomic.Uint32)
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -149,13 +161,16 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 // TODO accept ListUsersRequest instead of contextualTuples.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger:                  logger.NewNoopLogger(),
-		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
-		deadline:                serverconfig.DefaultListUsersDeadline,
-		maxResults:              serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
+		logger:                          logger.NewNoopLogger(),
+		resolveNodeBreadthLimit:         serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:                serverconfig.DefaultResolveNodeLimit,
+		deadline:                        serverconfig.DefaultListUsersDeadline,
+		maxResults:                      serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:              serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:                    new(atomic.Bool),
+		expandIntersectionExpandRewrite: expandIntersectionExpandRewrite,
+		expandIntersectionCloseChannels: expandIntersectionCloseChannels,
+		populateFoundUsersCountMap:      populateFoundUsersCountMap,
 	}
 
 	for _, opt := range opts {
@@ -534,25 +549,35 @@ func (l *listUsersQuery) expandIntersection(
 		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandIntersectionExpandRewrite(ctx, l, req, rewrite, intersectionFoundUsersChans, i)
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
 
+	var wg sync.WaitGroup
 	errChan := make(chan error, 1)
+	wg.Add(1)
 
 	go func() {
-		err := pool.Wait()
-		for i := range intersectionFoundUsersChans {
-			close(intersectionFoundUsersChans[i])
+		var err error
+		defer wg.Done()
+		recoveredError := panics.Try(func() {
+			err = l.expandIntersectionCloseChannels(pool, intersectionFoundUsersChans)
+		})
+		if recoveredError != nil {
+			err = errors.Join(panicError(recoveredError))
 		}
 		errChan <- err
 		close(errChan)
 	}()
 
 	var mu sync.Mutex
-
-	var wg sync.WaitGroup
 	wg.Add(len(childOperands))
 
 	wildcardCount := atomic.Uint32{}
@@ -562,36 +587,11 @@ func (l *listUsersQuery) expandIntersection(
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
-			foundUsersMap := make(map[string]uint32, 0)
-			for foundUser := range foundUsersChan {
-				key := tuple.UserProtoToString(foundUser.user)
-				for _, excludedUser := range foundUser.excludedUsers {
-					key := tuple.UserProtoToString(excludedUser)
-					mu.Lock()
-					excludedUsersMap[key] = struct{}{}
-					mu.Unlock()
-				}
-				if foundUser.relationshipStatus == NoRelationship {
-					continue
-				}
-				foundUsersMap[key]++
-			}
-
-			_, wildcardExists := foundUsersMap[wildcardKey]
-			if wildcardExists {
-				wildcardCount.Add(1)
-			}
-			for userKey := range foundUsersMap {
-				mu.Lock()
-				// Increment the count for a user but decrement if a wildcard
-				// also exists to prevent double counting. This ensures accurate
-				// tracking for intersection criteria, avoiding inflated counts
-				// when both a user and a wildcard are present.
-				foundUsersCountMap[userKey]++
-				if wildcardExists {
-					foundUsersCountMap[userKey]--
-				}
-				mu.Unlock()
+			recoveredError := panics.Try(func() {
+				l.populateFoundUsersCountMap(&mu, foundUsersChan, excludedUsersMap, foundUsersCountMap, wildcardKey, &wildcardCount)
+			})
+			if recoveredError != nil {
+				errChan <- panicError(recoveredError)
 			}
 		}(foundUsersChan)
 	}
@@ -619,6 +619,53 @@ func (l *listUsersQuery) expandIntersection(
 	return expandResponse{
 		err: <-errChan,
 	}
+}
+
+func populateFoundUsersCountMap(mu *sync.Mutex, foundUsersChan chan foundUser, excludedUsersMap map[string]struct{}, foundUsersCountMap map[string]uint32, wildcardKey string, wildcardCount *atomic.Uint32) {
+	foundUsersMap := make(map[string]uint32, 0)
+	for foundUser := range foundUsersChan {
+		key := tuple.UserProtoToString(foundUser.user)
+		for _, excludedUser := range foundUser.excludedUsers {
+			key := tuple.UserProtoToString(excludedUser)
+			mu.Lock()
+			excludedUsersMap[key] = struct{}{}
+			mu.Unlock()
+		}
+		if foundUser.relationshipStatus == NoRelationship {
+			continue
+		}
+		foundUsersMap[key]++
+	}
+
+	_, wildcardExists := foundUsersMap[wildcardKey]
+	if wildcardExists {
+		wildcardCount.Add(1)
+	}
+	for userKey := range foundUsersMap {
+		mu.Lock()
+		// Increment the count for a user but decrement if a wildcard
+		// also exists to prevent double counting. This ensures accurate
+		// tracking for intersection criteria, avoiding inflated counts
+		// when both a user and a wildcard are present.
+		foundUsersCountMap[userKey]++
+		if wildcardExists {
+			foundUsersCountMap[userKey]--
+		}
+		mu.Unlock()
+	}
+}
+
+func expandIntersectionCloseChannels(pool *pool.ContextPool, intersectionFoundUsersChans []chan foundUser) error {
+	err := pool.Wait()
+	for i := range intersectionFoundUsersChans {
+		close(intersectionFoundUsersChans[i])
+	}
+	return err
+}
+
+func expandIntersectionExpandRewrite(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, intersectionFoundUsersChans []chan foundUser, i int) expandResponse {
+	resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+	return resp
 }
 
 func (l *listUsersQuery) expandUnion(
@@ -954,4 +1001,15 @@ func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *ty
 	}
 
 	return condEvalResult.ConditionMet, nil
+}
+
+func panicError(recovered *panics.Recovered) error {
+	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+}
+
+func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
+	return expandResponse{
+		hasCycle: false,
+		err:      panicError(recovered),
+	}
 }
