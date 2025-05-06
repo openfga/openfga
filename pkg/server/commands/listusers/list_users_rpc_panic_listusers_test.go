@@ -5,14 +5,16 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/goleak"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/goleak"
 )
 
 func TestListUsersDirectRelationshipPanicListUsers(t *testing.T) {
@@ -125,7 +127,7 @@ func NewListUsersQueryPanicListUsersExpand(ds storage.RelationshipTupleReader, c
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
 		listUsersMaxResults:     listUsersMaxResults,
-		listUsersExpand: func(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, resp expandResponse, foundUsersCh chan foundUser) expandResponse {
+		listUsersExpand: func(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, foundUsersCh chan foundUser) expandResponse {
 			panic(ErrPanic)
 		},
 	}

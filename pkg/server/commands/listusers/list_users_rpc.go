@@ -8,13 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/sourcegraph/conc/panics"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -57,7 +57,7 @@ type expandResponse struct {
 }
 
 type listUsersMaxResultsHandler func(foundUsersCh chan foundUser, foundUsersUnique map[tuple.UserString]foundUser, maxResults uint32, span trace.Span, doneWithFoundUsersCh chan struct{})
-type listUsersExpandHandler func(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, resp expandResponse, foundUsersCh chan foundUser) expandResponse
+type listUsersExpandHandler func(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, foundUsersCh chan foundUser) expandResponse
 
 // userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
 //
@@ -247,7 +247,7 @@ func (l *listUsersQuery) ListUsers(
 		defer wg.Done()
 		var resp expandResponse
 		recoveredError := panics.Try(func() {
-			resp = l.listUsersExpand(cancellableCtx, l, req, &dispatchCount, resp, foundUsersCh)
+			resp = l.listUsersExpand(cancellableCtx, l, req, &dispatchCount, foundUsersCh)
 		})
 		if recoveredError != nil {
 			resp = panicExpanseResponse(recoveredError)
@@ -307,9 +307,9 @@ func (l *listUsersQuery) ListUsers(
 	}, nil
 }
 
-func listUsersExpand(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, resp expandResponse, foundUsersCh chan foundUser) expandResponse {
+func listUsersExpand(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, foundUsersCh chan foundUser) expandResponse {
 	internalRequest := fromListUsersRequest(req, dispatchCount)
-	resp = l.expand(cancellableCtx, internalRequest, foundUsersCh)
+	resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
 	return resp
 }
 
