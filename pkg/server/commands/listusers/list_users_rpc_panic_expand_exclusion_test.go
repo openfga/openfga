@@ -5,13 +5,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.uber.org/goleak"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
-	"go.uber.org/goleak"
 )
 
 func TestListUsersExclusionPanicExpandRewrite(t *testing.T) {
