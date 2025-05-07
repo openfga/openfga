@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/oklog/ulid/v2"
@@ -3646,5 +3647,61 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())
+	})
+}
+
+type MockTupleMapper struct{}
+
+func (m *MockTupleMapper) Next(ctx context.Context) (string, error) {
+	return "", storage.ErrIteratorDone
+}
+
+func (m *MockTupleMapper) Stop() {}
+
+func (m *MockTupleMapper) Head(ctx context.Context) (string, error) {
+	return "", nil
+}
+
+func TestResolveFastPath(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_call_logger_on_panic", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		mockLogger := mocks.NewMockLogger(ctrl)
+		mockLogger.EXPECT().ErrorWithContext(
+			gomock.Any(),
+			"panic recovered",
+			gomock.Any(),
+			gomock.Any(),
+		).Times(1)
+		mockIter1 := mocks.NewMockIterator[string](ctrl)
+		mockIter1.EXPECT().Stop().Do(func() {
+			panic("test panic")
+		})
+		leftChan := make(chan *iterator.Msg)
+		leftchans := []chan *iterator.Msg{leftChan}
+
+		c := &LocalChecker{
+			logger: mockLogger,
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			_, _ = c.resolveFastPath(ctx, leftchans, &MockTupleMapper{})
+			wg.Done()
+		}()
+
+		leftChan <- &iterator.Msg{Iter: mockIter1}
+		defer close(leftChan)
+		wg.Wait()
+
+		time.Sleep(1 * time.Second)
 	})
 }

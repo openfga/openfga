@@ -452,8 +452,9 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 			// slowing the overall function down.
 			defer func() {
 				if r := recover(); r != nil {
-					c.logger.ErrorWithContext(ctx, "panic in resolveFastPath",
+					c.logger.ErrorWithContext(ctx, "panic recovered",
 						zap.Any("error", r),
+						zap.String("function", "resolveFastPath"),
 					)
 				}
 			}()
@@ -573,8 +574,9 @@ func constructLeftChannels(ctx context.Context,
 					// slowing the overall function down.
 					defer func() {
 						if r := recover(); r != nil {
-							logger.ErrorWithContext(ctx, "panic in constructLeftChannels",
+							logger.ErrorWithContext(ctx, "panic recovered",
 								zap.Any("error", r),
+								zap.String("function", "constructLeftChannels"),
 							)
 						}
 					}()
@@ -661,6 +663,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 			continue
 		}
 		pool.Go(func(ctx context.Context) error {
+			// TODO
 			for v := range c {
 				if v != nil && !concurrency.TrySendThroughChannel(ctx, v, out) {
 					if v.Iter != nil {
@@ -674,6 +677,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg) chan
 	}
 
 	go func() {
+		// TODO
 		// NOTE: the consumer of this channel will block waiting for it to close
 		_ = pool.Wait()
 		close(out)
@@ -750,8 +754,9 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 				// slowing the overall function down.
 				defer func() {
 					if r := recover(); r != nil {
-						c.logger.ErrorWithContext(ctx, "panic in breadthFirstRecursiveMatch",
+						c.logger.ErrorWithContext(ctx, "panic recovered",
 							zap.Any("error", r),
+							zap.String("function", "breadthFirstRecursiveMatch"),
 						)
 					}
 				}()
