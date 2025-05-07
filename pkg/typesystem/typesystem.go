@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -159,6 +160,8 @@ func ConditionedRelationReference(rel *openfgav1.RelationReference, condition st
 	return rel
 }
 
+var _ storage.CacheItem = (*TypeSystem)(nil)
+
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition.
@@ -243,6 +246,10 @@ func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
 		authorizationModelGraph: authorizationModelGraph,
 		authzWeightedGraph:      weightedGraph,
 	}, nil
+}
+
+func (t *TypeSystem) CacheEntityType() string {
+	return "typesystem"
 }
 
 // GetAuthorizationModelID returns the ID for the authorization
