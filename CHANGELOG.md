@@ -29,6 +29,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "request.throttled" boolean for check and batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Added "throttled_requests_count" metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
+- Adds `cache_item_count` gauge metric to track how many items are in the check query cache. [#2396](https://github.com/openfga/openfga/pull/2412)
+- Adds `cache_item_removed_count` counter metric to track removed items from cache. [#2396](https://github.com/openfga/openfga/pull/2412)
 - Added "current_iterator_cache_count" gauge metric to current number of iterator cache. [#2397](https://github.com/openfga/openfga/pull/2397)
 - Adds cached iterators to ListObjects [#2388](https://github.com/openfga/openfga/pull/2388)
 
