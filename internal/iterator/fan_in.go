@@ -54,9 +54,7 @@ func (f *FanIn) run() {
 				return
 			}
 			f.group.Go(func(ctx context.Context) error {
-				// Drain the channel in case of an early exit
 				defer drainOnExit(ch)
-				// Loop and receive values from the input channel
 				for {
 					select {
 					case <-ctx.Done():
