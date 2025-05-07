@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/iterator"
 
 	"github.com/sourcegraph/conc/pool"
 
@@ -10,6 +9,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"

@@ -471,7 +471,6 @@ ConsumerLoop:
 			lastErr = ctx.Err()
 			break ConsumerLoop
 		case msg, ok := <-leftChans.Out():
-			fmt.Println()
 			if !ok {
 				leftOpen = false
 				if leftSet.Size() == 0 {
