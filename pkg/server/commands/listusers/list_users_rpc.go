@@ -664,13 +664,7 @@ func (l *listUsersQuery) expandUnion(
 	errChan := make(chan error, 1)
 
 	go func() {
-		var err error
-		recoveredError := panics.Try(func() {
-			err = l.expandUnionCloseChannels(pool, unionFoundUsersChans)
-		})
-		if recoveredError != nil {
-			err = panicError(recoveredError)
-		}
+		err := l.expandUnionCloseChannels(pool, unionFoundUsersChans)
 		errChan <- err
 		close(errChan)
 	}()
