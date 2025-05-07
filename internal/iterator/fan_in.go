@@ -2,9 +2,10 @@ package iterator
 
 import (
 	"context"
+	"sync"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/sourcegraph/conc/pool"
-	"sync"
 )
 
 type FanIn struct {
@@ -61,7 +62,7 @@ func (f *FanIn) run() {
 						return nil
 					case v, ok := <-ch:
 						if !ok {
-							return nil // Channel closed, exit goroutine
+							return nil
 						}
 						if !concurrency.TrySendThroughChannel(ctx, v, f.out) {
 							if v.Iter != nil {
