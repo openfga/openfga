@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"github.com/openfga/openfga/internal/iterator"
 
 	"github.com/sourcegraph/conc/pool"
 
@@ -9,7 +10,6 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -96,13 +96,12 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 	if err != nil {
 		return nil, err
 	}
-	outChannel := make(chan usersetMessage, len(leftChannels))
-	leftChannel := fanInIteratorChannels(ctx, leftChannels, c.concurrencyLimit)
+	outChannel := make(chan usersetMessage, leftChannels.Count())
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
+	c.pool.Go(iteratorToUserset(leftChannels, outChannel))
 
 	return outChannel, nil
 }
@@ -136,32 +135,26 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 	if err != nil {
 		return nil, err
 	}
-	outChannel := make(chan usersetMessage, len(leftChans))
-	leftChannel := fanInIteratorChannels(ctx, leftChans, c.concurrencyLimit)
+	outChannel := make(chan usersetMessage, leftChans.Count())
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
+	c.pool.Go(iteratorToUserset(leftChans, outChannel))
 
 	return outChannel, nil
 }
 
-func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
+func iteratorToUserset(src *iterator.FanIn, dst chan usersetMessage) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		leftOpen := true
 		defer func() {
+			src.Close()
 			close(dst)
-			if !leftOpen {
-				return
-			}
-			go drainIteratorChannel(src)
 		}()
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case msg, ok := <-src:
+		case msg, ok := <-src.Out():
 			if !ok {
-				leftOpen = false
 				return nil
 			}
 			if msg.Err != nil {

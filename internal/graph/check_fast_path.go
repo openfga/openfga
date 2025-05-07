@@ -15,7 +15,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph/iterator"
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -426,14 +426,12 @@ func fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans *iterator.FanIn, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
-		attribute.Int("sources", len(leftChans)),
 		attribute.Bool("allowed", false),
 	))
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := fanInIteratorChannels(cancellableCtx, leftChans, c.concurrencyLimit)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
@@ -441,10 +439,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	defer func() {
 		cancel()
 		iter.Stop()
-		if !leftOpen {
-			return
-		}
-		go drainIteratorChannel(leftChan)
+		leftChans.Close()
 	}()
 
 	res := &ResolveCheckResponse{
@@ -475,7 +470,8 @@ ConsumerLoop:
 		case <-ctx.Done():
 			lastErr = ctx.Err()
 			break ConsumerLoop
-		case msg, ok := <-leftChan:
+		case msg, ok := <-leftChans.Out():
+			fmt.Println()
 			if !ok {
 				leftOpen = false
 				if leftSet.Size() == 0 {
@@ -534,11 +530,11 @@ func constructLeftChannels(
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
 	concurrencyLimit int,
-) ([]chan *iterator.Msg, error) {
+) (*iterator.FanIn, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
-	for _, parentType := range relationReferences {
+	leftChans := iterator.NewFanIn(ctx, concurrencyLimit)
+	for idx, parentType := range relationReferences {
 		relation := relationFunc(parentType)
 		rel, err := typesys.GetRelation(parentType.GetType(), relation)
 		if err != nil {
@@ -554,13 +550,14 @@ func constructLeftChannels(
 		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {
 			// if the resolver already started it needs to be drained
-			if len(leftChans) > 0 {
-				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans, concurrencyLimit))
+			if idx > 0 {
+				leftChans.Close()
 			}
 			return nil, err
 		}
-		leftChans = append(leftChans, leftChan)
+		leftChans.Add(leftChan)
 	}
+	leftChans.Done()
 	return leftChans, nil
 }
 
@@ -580,7 +577,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 		return nil, err
 	}
 
-	if len(leftChans) == 0 {
+	if leftChans.Count() == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
 		}, nil
@@ -610,58 +607,13 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		return nil, err
 	}
 
-	if len(leftChans) == 0 {
+	if leftChans.Count() == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
 		}, nil
 	}
 
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
-}
-
-// NOTE: Can we make this generic and move it to concurrency pkg?
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit int) chan *iterator.Msg {
-	limit := len(chans)
-
-	out := make(chan *iterator.Msg, limit)
-
-	if limit == 0 {
-		close(out)
-		return out
-	}
-
-	// It is ok if the limit is < concurrencyLimit because that
-	// is the pool's max limit.
-	pool := concurrency.NewPool(ctx, concurrencyLimit)
-
-	for _, c := range chans {
-		pool.Go(func(ctx context.Context) error {
-			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
-					}
-				}
-			}
-			return nil
-		})
-	}
-
-	go func() {
-		// NOTE: the consumer of this channel will block waiting for it to close
-		_ = pool.Wait()
-		close(out)
-	}()
-
-	return out
-}
-
-func drainIteratorChannel(c chan *iterator.Msg) {
-	for msg := range c {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	}
 }
 
 // Note that visited does not necessary means that there are cycles.  For the following model,
@@ -692,7 +644,8 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
-	chans := make([]chan *iterator.Msg, 0, currentUsersetLevel.Size())
+	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	defer leftChans.Close()
 	for _, usersetInterface := range currentUsersetLevel.Values() {
 		userset := usersetInterface.(string)
 		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
@@ -713,15 +666,9 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 			mapper.Stop() // will not be received to be cleaned up
 		}
 		close(c)
-		chans = append(chans, c)
+		leftChans.Add(c)
 	}
-	leftChan := fanInIteratorChannels(ctx, chans, c.concurrencyLimit)
-	leftOpen := true
-	defer func() {
-		if leftOpen {
-			go drainIteratorChannel(leftChan)
-		}
-	}()
+	leftChans.Done()
 	nextUsersetLevel := hashset.New()
 
 ConsumerLoop:
@@ -730,10 +677,9 @@ ConsumerLoop:
 		case <-ctx.Done():
 			close(checkOutcomeChan)
 			return
-		case msg, ok := <-leftChan:
+		case msg, ok := <-leftChans.Out():
 			if !ok {
 				// nothing was found in this level, break to proceed into the next one
-				leftOpen = false
 				break ConsumerLoop
 			}
 			for {

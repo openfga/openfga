@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/iterator"
 	"strconv"
 	"sync"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
