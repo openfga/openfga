@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/sourcegraph/conc/pool"
+
+	"github.com/openfga/openfga/internal/concurrency"
 )
 
 type FanIn struct {
