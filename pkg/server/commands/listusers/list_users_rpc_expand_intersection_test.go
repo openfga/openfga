@@ -53,72 +53,6 @@ func TestListUsersIntersectionPanic(t *testing.T) {
 			expectedErrorMsg:  ErrPanic.Error(),
 			newListUsersQuery: NewListUsersQueryPanicExpandIntersectionExpandRewrite,
 		},
-		{
-			name: "intersection_panic_close_channels",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define required: [user]
-						define required_other: [user]
-						define viewer: required and required_other`,
-
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "required", "user:will"),
-				tuple.NewTupleKey("document:1", "required_other", "user:will"),
-
-				tuple.NewTupleKey("document:1", "required", "user:jon"),
-				tuple.NewTupleKey("document:1", "required_other", "user:maria"),
-			},
-			expectedUsers: []string{"user:will"},
-			//expectedUsers: []string{},
-			//expectedErrorMsg:  ErrPanic.Error(),
-			newListUsersQuery: NewListUsersQueryPanicExpandIntersectionCloseChannels,
-		},
-		{
-			name: "intersection_panic_populate",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{
-						Type: "user",
-					},
-				},
-			},
-			model: `
-				model
-					schema 1.1
-				type user
-				type document
-					relations
-						define required: [user]
-						define required_other: [user]
-						define viewer: required and required_other`,
-
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "required", "user:will"),
-				tuple.NewTupleKey("document:1", "required_other", "user:will"),
-
-				tuple.NewTupleKey("document:1", "required", "user:jon"),
-				tuple.NewTupleKey("document:1", "required_other", "user:maria"),
-			},
-			expectedUsers: []string{"user:will"},
-			//expectedUsers: []string{},
-			//expectedErrorMsg:  ErrPanic.Error(),
-			newListUsersQuery: NewListUsersQueryPanicExpandIntersectionPopulate,
-		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -137,60 +71,6 @@ func NewListUsersQueryPanicExpandIntersectionExpandRewrite(ds storage.Relationsh
 		},
 		expandIntersectionCloseChannels: expandIntersectionCloseChannels,
 		populateFoundUsersCountMap:      populateFoundUsersCountMap,
-	}
-
-	for _, opt := range opts {
-		opt(l)
-	}
-
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
-
-	return l
-}
-
-func NewListUsersQueryPanicExpandIntersectionCloseChannels(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-	l := &listUsersQuery{
-		logger:                          logger.NewNoopLogger(),
-		resolveNodeBreadthLimit:         serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:                serverconfig.DefaultResolveNodeLimit,
-		deadline:                        serverconfig.DefaultListUsersDeadline,
-		maxResults:                      serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:              serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:                    new(atomic.Bool),
-		expandIntersectionExpandRewrite: expandIntersectionExpandRewrite,
-		expandIntersectionCloseChannels: expandIntersectionCloseChannels,
-		// Panic during expandIntersectionCloseChannels causes the application to hang
-		// expandIntersectionCloseChannels: func(pool *pool.ContextPool, intersectionFoundUsersChans []chan foundUser) error {
-		// 	panic(ErrPanic)
-		// },
-		populateFoundUsersCountMap: populateFoundUsersCountMap,
-	}
-
-	for _, opt := range opts {
-		opt(l)
-	}
-
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
-
-	return l
-}
-
-func NewListUsersQueryPanicExpandIntersectionPopulate(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-	l := &listUsersQuery{
-		logger:                          logger.NewNoopLogger(),
-		resolveNodeBreadthLimit:         serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:                serverconfig.DefaultResolveNodeLimit,
-		deadline:                        serverconfig.DefaultListUsersDeadline,
-		maxResults:                      serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:              serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:                    new(atomic.Bool),
-		expandIntersectionExpandRewrite: expandIntersectionExpandRewrite,
-		expandIntersectionCloseChannels: expandIntersectionCloseChannels,
-		populateFoundUsersCountMap:      populateFoundUsersCountMap,
-		// Panic during populateFoundUsersCountMap causes the application to hang
-		// populateFoundUsersCountMap: func(mu *sync.Mutex, foundUsersChan chan foundUser, excludedUsersMap map[string]struct{}, foundUsersCountMap map[string]uint32, wildcardKey string, wildcardCount *atomic.Uint32) {
-		// 	panic(ErrPanic)
-		// },
 	}
 
 	for _, opt := range opts {

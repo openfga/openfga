@@ -560,24 +560,17 @@ func (l *listUsersQuery) expandIntersection(
 		})
 	}
 
-	var wg sync.WaitGroup
 	errChan := make(chan error, 1)
-	wg.Add(1)
 
 	go func() {
-		var err error
-		defer wg.Done()
-		recoveredError := panics.Try(func() {
-			err = l.expandIntersectionCloseChannels(pool, intersectionFoundUsersChans)
-		})
-		if recoveredError != nil {
-			err = errors.Join(panicError(recoveredError))
-		}
+		err := l.expandIntersectionCloseChannels(pool, intersectionFoundUsersChans)
 		errChan <- err
 		close(errChan)
 	}()
 
 	var mu sync.Mutex
+
+	var wg sync.WaitGroup
 	wg.Add(len(childOperands))
 
 	wildcardCount := atomic.Uint32{}
@@ -587,12 +580,7 @@ func (l *listUsersQuery) expandIntersection(
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
-			recoveredError := panics.Try(func() {
-				l.populateFoundUsersCountMap(&mu, foundUsersChan, excludedUsersMap, foundUsersCountMap, wildcardKey, &wildcardCount)
-			})
-			if recoveredError != nil {
-				errChan <- panicError(recoveredError)
-			}
+			l.populateFoundUsersCountMap(&mu, foundUsersChan, excludedUsersMap, foundUsersCountMap, wildcardKey, &wildcardCount)
 		}(foundUsersChan)
 	}
 	wg.Wait()
