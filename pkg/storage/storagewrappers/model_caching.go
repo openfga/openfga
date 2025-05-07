@@ -14,19 +14,30 @@ import (
 
 const ttl = time.Hour * 168
 
-var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
+var (
+	_ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
+	_ storage.CacheItem        = (*cachedAuthorizationModel)(nil)
+)
+
+type cachedAuthorizationModel struct {
+	*openfgav1.AuthorizationModel
+}
+
+func (c *cachedAuthorizationModel) CacheEntityType() string {
+	return "authz_model"
+}
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
 	lookupGroup singleflight.Group
-	cache       storage.InMemoryCache[*openfgav1.AuthorizationModel]
+	cache       storage.InMemoryCache[*cachedAuthorizationModel]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize
 // [*openfgav1.AuthorizationModel] on every call to storage.ReadAuthorizationModel.
 // It caches with unlimited TTL because models are immutable. It uses LRU for eviction.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) (*cachedOpenFGADatastore, error) {
-	cache, err := storage.NewInMemoryLRUCache[*openfgav1.AuthorizationModel](storage.WithMaxCacheSize[*openfgav1.AuthorizationModel](int64(maxSize)))
+	cache, err := storage.NewInMemoryLRUCache[*cachedAuthorizationModel](storage.WithMaxCacheSize[*cachedAuthorizationModel](int64(maxSize)))
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +53,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
-		return cachedEntry, nil
+		return cachedEntry.AuthorizationModel, nil
 	}
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
@@ -50,7 +61,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, model, ttl) // These are immutable, once created, there cannot be edits, therefore they can be cached without ttl.
+	c.cache.Set(cacheKey, &cachedAuthorizationModel{model}, ttl) // These are immutable, once created, there cannot be edits, therefore they can be cached without ttl.
 
 	return model, nil
 }

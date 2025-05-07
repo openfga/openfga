@@ -46,6 +46,17 @@ var (
 	})
 )
 
+var _ storage.CacheItem = (*CheckResponseCacheEntry)(nil)
+
+type CheckResponseCacheEntry struct {
+	LastModified  time.Time
+	CheckResponse *ResolveCheckResponse
+}
+
+func (c *CheckResponseCacheEntry) CacheEntityType() string {
+	return "check_response"
+}
+
 // CachedCheckResolver attempts to resolve check sub-problems via prior computations before
 // delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
@@ -135,11 +146,6 @@ func (c *CachedCheckResolver) Close() {
 	if c.allocatedCache {
 		c.cache.Stop()
 	}
-}
-
-type CheckResponseCacheEntry struct {
-	LastModified  time.Time
-	CheckResponse *ResolveCheckResponse
 }
 
 func (c *CachedCheckResolver) ResolveCheck(

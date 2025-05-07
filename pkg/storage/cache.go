@@ -12,11 +12,28 @@ import (
 	"time"
 
 	"github.com/Yiling-J/theine-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/tuple"
+)
+
+var (
+	cacheItemCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "cache_item_count",
+		Help:      "The total number of items stored in the cache",
+	}, []string{"entity"})
+
+	cacheItemRemovedCount = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "cache_item_removed_count",
+		Help:      "The total number of items removed from the cache",
+	}, []string{"entity", "reason"})
 )
 
 const (
@@ -26,7 +43,16 @@ const (
 	invalidIteratorCachePrefix = "iq."
 	defaultMaxCacheSize        = 10000
 	oneYear                    = time.Hour * 24 * 365
+
+	removedLabel     = "removed"
+	evictedLabel     = "evicted"
+	expiredLabel     = "expired"
+	unspecifiedLabel = "unspecified"
 )
+
+type CacheItem interface {
+	CacheEntityType() string
+}
 
 // InMemoryCache is a general purpose cache to store things in memory.
 type InMemoryCache[T any] interface {
@@ -68,8 +94,35 @@ func NewInMemoryLRUCache[T any](opts ...InMemoryLRUCacheOpt[T]) (*InMemoryLRUCac
 		opt(t)
 	}
 
+	cacheBuilder := theine.NewBuilder[string, T](t.maxElements)
+	cacheBuilder.RemovalListener(func(key string, value T, reason theine.RemoveReason) {
+		var (
+			reasonLabel string
+			entityLabel string
+		)
+		switch reason {
+		case theine.EVICTED:
+			reasonLabel = evictedLabel
+		case theine.EXPIRED:
+			reasonLabel = expiredLabel
+		case theine.REMOVED:
+			reasonLabel = removedLabel
+		default:
+			reasonLabel = unspecifiedLabel
+		}
+
+		if item, ok := any(value).(CacheItem); ok {
+			entityLabel = item.CacheEntityType()
+		} else {
+			entityLabel = unspecifiedLabel
+		}
+
+		cacheItemCount.WithLabelValues(entityLabel).Dec()
+		cacheItemRemovedCount.WithLabelValues(entityLabel, reasonLabel).Inc()
+	})
+
 	var err error
-	t.client, err = theine.NewBuilder[string, T](t.maxElements).Build()
+	t.client, err = cacheBuilder.Build()
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +148,12 @@ func (i InMemoryLRUCache[T]) Set(key string, value T, ttl time.Duration) {
 		ttl = oneYear
 	}
 	i.client.SetWithTTL(key, value, 1, ttl)
+
+	if item, ok := any(value).(CacheItem); ok {
+		cacheItemCount.WithLabelValues(item.CacheEntityType()).Inc()
+	} else {
+		cacheItemCount.WithLabelValues(unspecifiedLabel).Inc()
+	}
 }
 
 func (i InMemoryLRUCache[T]) Delete(key string) {
@@ -107,8 +166,18 @@ func (i InMemoryLRUCache[T]) Stop() {
 	})
 }
 
+var (
+	_ CacheItem = (*ChangelogCacheEntry)(nil)
+	_ CacheItem = (*InvalidEntityCacheEntry)(nil)
+	_ CacheItem = (*TupleIteratorCacheEntry)(nil)
+)
+
 type ChangelogCacheEntry struct {
 	LastModified time.Time
+}
+
+func (c *ChangelogCacheEntry) CacheEntityType() string {
+	return "changelog"
 }
 
 func GetChangelogCacheKey(storeID string) string {
@@ -117,6 +186,10 @@ func GetChangelogCacheKey(storeID string) string {
 
 type InvalidEntityCacheEntry struct {
 	LastModified time.Time
+}
+
+func (i *InvalidEntityCacheEntry) CacheEntityType() string {
+	return "invalid_entity"
 }
 
 func GetInvalidIteratorCacheKey(storeID string) string {
@@ -140,6 +213,10 @@ func GetInvalidIteratorByUserObjectTypeCacheKeys(storeID string, users []string,
 type TupleIteratorCacheEntry struct {
 	Tuples       []*TupleRecord
 	LastModified time.Time
+}
+
+func (t *TupleIteratorCacheEntry) CacheEntityType() string {
+	return "tuple_iterator"
 }
 
 func GetReadUsersetTuplesCacheKeyPrefix(store, object, relation string) string {
