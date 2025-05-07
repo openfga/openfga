@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,7 +58,10 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
+	c.logger.Error("executing the write....")
+	c.logger.Error("the writes: " + strconv.Itoa(len(req.GetWrites().GetTupleKeys())))
 	if err := c.validateWriteRequest(ctx, req); err != nil {
+		c.logger.Error("validating request")
 		return nil, err
 	}
 
@@ -68,6 +72,8 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		req.GetWrites().GetTupleKeys(),
 	)
 	if err != nil {
+		c.logger.Error("some error in write")
+		c.logger.Error(err.Error())
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 			return nil, status.Error(codes.Aborted, err.Error())
 		}
@@ -77,6 +83,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, serverErrors.HandleError("", err)
 	}
 
+	c.logger.Error("no error...")
 	return &openfgav1.WriteResponse{}, nil
 }
 
