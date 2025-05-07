@@ -32,7 +32,7 @@ var (
 		Namespace:                       build.ProjectName,
 		Name:                            "shared_iterator_query_ms",
 		Help:                            "The duration (in ms) of a shared iterator query labeled by operation and shared.",
-		Buckets:                         []float64{1, 2, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000},
+		Buckets:                         []float64{1, 5, 10, 25, 50, 100, 200, 300, 1000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
@@ -157,9 +157,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	}
 	actual, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	if err != nil {
-		go func() {
-			_, _ = sf.deref(cacheKey)
-		}()
+		_, _ = sf.deref(cacheKey)
 		return nil, err
 	}
 	sharedIteratorQueryHistogram.WithLabelValues(
@@ -213,9 +211,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	}
 	actual, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	if err != nil {
-		go func() {
-			_, _ = sf.deref(cacheKey)
-		}()
+		_, _ = sf.deref(cacheKey)
 		return nil, err
 	}
 	sharedIteratorQueryHistogram.WithLabelValues(
@@ -268,9 +264,7 @@ func (sf *IteratorDatastore) Read(
 	}
 	actual, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	if err != nil {
-		go func() {
-			_, _ = sf.deref(cacheKey)
-		}()
+		_, _ = sf.deref(cacheKey)
 		return nil, err
 	}
 	sharedIteratorQueryHistogram.WithLabelValues(

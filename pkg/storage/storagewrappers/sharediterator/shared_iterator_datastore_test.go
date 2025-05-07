@@ -192,8 +192,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.Error(t, err)
 
-		// 2 seconds should be sufficient for the cleanup goroutine to run
-		time.Sleep(2 * time.Second)
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
@@ -322,8 +320,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		_, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.Error(t, err)
 
-		// 2 seconds should be sufficient for the cleanup goroutine to run
-		time.Sleep(2 * time.Second)
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
@@ -425,8 +421,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		_, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.Error(t, err)
 
-		// 2 seconds should be sufficient for the cleanup goroutine to run
-		time.Sleep(2 * time.Second)
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
