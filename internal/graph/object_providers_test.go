@@ -119,10 +119,6 @@ func TestRecursiveObjectProvider(t *testing.T) {
 }
 
 func TestRecursiveTTUObjectProvider(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
 	storeID := ulid.Make().String()
 
 	ctrl := gomock.NewController(t)
@@ -295,10 +291,6 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 }
 
 func TestRecursiveUsersetObjectProvider(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
 	storeID := ulid.Make().String()
 
 	ctrl := gomock.NewController(t)

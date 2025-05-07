@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -188,6 +191,7 @@ func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
 	rows *sql.Rows // GUARDED_BY(mu)
+	sb   sq.SelectBuilder
 
 	// firstRow is used as a temporary storage place if head is called.
 	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
@@ -201,16 +205,26 @@ type SQLTupleIterator struct {
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
+func NewSQLTupleIterator(sb sq.SelectBuilder) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		rows:     rows,
+		sb:       sb,
+		rows:     nil,
 		firstRow: nil,
 		mu:       sync.Mutex{},
 	}
 }
 
-func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
+func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
+
+	if t.rows == nil {
+		rows, err := t.sb.QueryContext(ctx)
+		if err != nil {
+			t.mu.Unlock()
+			return nil, HandleSQLError(err)
+		}
+		t.rows = rows
+	}
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
@@ -269,8 +283,17 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	return &record, nil
 }
 
-func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
+func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
+
+	if t.rows == nil {
+		rows, err := t.sb.QueryContext(ctx)
+		if err != nil {
+			t.mu.Unlock()
+			return nil, HandleSQLError(err)
+		}
+		t.rows = rows
+	}
 	defer t.mu.Unlock()
 
 	if t.firstRow != nil {
@@ -328,12 +351,12 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
 // If the continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(
+func (t *SQLTupleIterator) ToArray(ctx context.Context,
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
-		tupleRecord, err := t.next()
+		tupleRecord, err := t.next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				return res, "", nil
@@ -346,7 +369,7 @@ func (t *SQLTupleIterator) ToArray(
 	// Check if we are at the end of the iterator.
 	// If we are then we do not need to return a continuation token.
 	// This is why we have LIMIT+1 in the query.
-	tupleRecord, err := t.next()
+	tupleRecord, err := t.next(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, "", nil
@@ -363,7 +386,7 @@ func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, ctx.Err()
 	}
 
-	record, err := t.next()
+	record, err := t.next(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +400,7 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, ctx.Err()
 	}
 
-	record, err := t.head()
+	record, err := t.head(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +410,11 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 // Stop terminates iteration.
 func (t *SQLTupleIterator) Stop() {
-	t.rows.Close()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.rows != nil {
+		_ = t.rows.Close()
+	}
 }
 
 // DBInfo encapsulates DB information for use in common method.
@@ -727,4 +754,32 @@ func AddFromUlid(sb sq.SelectBuilder, fromUlid string, sortDescending bool) sq.S
 		return sb.Where(sq.Lt{"ulid": fromUlid})
 	}
 	return sb.Where(sq.Gt{"ulid": fromUlid})
+}
+
+// HandleSQLError processes an SQL error and converts it into a more
+// specific error type based on the nature of the SQL error.
+func HandleSQLError(err error, args ...interface{}) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+
+	if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
+	}
+
+	if strings.Contains(err.Error(), "duplicate key value") {
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
+	}
+
+	return fmt.Errorf("sql error: %w", err)
 }
