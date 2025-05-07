@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Adds `cache_item_count` gauge metric to track how many items are in the check query cache. [#2412](https://github.com/openfga/openfga/pull/2412)
+- Adds `cache_item_removed_count` counter metric to track removed items from cache. [#2412](https://github.com/openfga/openfga/pull/2412)
+
 ### Fixed
 - Replace hardcoded Prometheus datasource UID (`PBFA97CFB590B2093`) with `${DS_PROMETHEUS}` in `telemetry/grafana/dashboards/openfga.json`. This allows the Grafana dashboard to correctly reference the dynamic Prometheus datasource, resolving issues with improper binding. [#2287](https://github.com/openfga/openfga/issues/2287)
 - Handle case where iterator is stopped more than once for `current_iterator_cache_count`. [#2409](https://github.com/openfga/openfga/pull/2409)
@@ -29,8 +33,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added "request.throttled" boolean for check and batch-check request logs. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Added "throttled_requests_count" metric to batch-check requests. [#2369](https://github.com/openfga/openfga/pull/2369)
 - Surface partial metrics on check resolutions [#2371](https://github.com/openfga/openfga/pull/2371)
-- Adds `cache_item_count` gauge metric to track how many items are in the check query cache. [#2396](https://github.com/openfga/openfga/pull/2412)
-- Adds `cache_item_removed_count` counter metric to track removed items from cache. [#2396](https://github.com/openfga/openfga/pull/2412)
 - Added "current_iterator_cache_count" gauge metric to current number of iterator cache. [#2397](https://github.com/openfga/openfga/pull/2397)
 - Adds cached iterators to ListObjects [#2388](https://github.com/openfga/openfga/pull/2388)
 
