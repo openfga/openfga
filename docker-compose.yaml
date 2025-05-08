@@ -1,22 +1,6 @@
 services:
-  postgres17:
-    image: postgres:17
-    container_name: postgres17
-    command: postgres -c 'max_connections=100'
-    networks:
-      - default
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
   postgres:
-    image: postgres:14
+    image: postgres:17
     container_name: postgres
     command: postgres -c 'max_connections=100'
     networks:
@@ -41,19 +25,6 @@ services:
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
       - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
-    command: migrate
-    networks:
-      - default
-
-  migrate17:
-    depends_on:
-      postgres17:
-        condition: service_healthy
-    image: openfga/openfga:latest
-    container_name: migrate
-    environment:
-      - OPENFGA_DATASTORE_ENGINE=postgres
-      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5433/postgres?sslmode=disable
     command: migrate
     networks:
       - default
