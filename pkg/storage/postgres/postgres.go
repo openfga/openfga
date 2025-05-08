@@ -179,7 +179,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 }
 
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
-	ctx, span := startTrace(ctx, "read")
+	_, span := startTrace(ctx, "read")
 	defer span.End()
 
 	sb := s.stbl.
@@ -293,7 +293,7 @@ func (s *Datastore) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := startTrace(ctx, "ReadUsersetTuples")
+	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
 	sb := s.stbl.
@@ -343,7 +343,7 @@ func (s *Datastore) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	_ storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := startTrace(ctx, "ReadStartingWithUser")
+	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg []string

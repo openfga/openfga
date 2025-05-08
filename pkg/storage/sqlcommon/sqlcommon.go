@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,8 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	"github.com/pressly/goose/v3"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -26,6 +29,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
+
+var tracer = otel.Tracer("pkg/storage/sqlcommon")
 
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
@@ -214,16 +219,25 @@ func NewSQLTupleIterator(sb sq.SelectBuilder) *SQLTupleIterator {
 	}
 }
 
+func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
+	defer span.End()
+	rows, err := t.sb.QueryContext(ctx)
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	t.rows = rows
+	return nil
+}
+
 func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
 
 	if t.rows == nil {
-		rows, err := t.sb.QueryContext(ctx)
-		if err != nil {
+		if err := t.fetchBuffer(ctx); err != nil {
 			t.mu.Unlock()
-			return nil, HandleSQLError(err)
+			return nil, err
 		}
-		t.rows = rows
 	}
 
 	if t.firstRow != nil {
@@ -285,16 +299,13 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 
 func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 
 	if t.rows == nil {
-		rows, err := t.sb.QueryContext(ctx)
-		if err != nil {
-			t.mu.Unlock()
-			return nil, HandleSQLError(err)
+		if err := t.fetchBuffer(ctx); err != nil {
+			return nil, err
 		}
-		t.rows = rows
 	}
-	defer t.mu.Unlock()
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
