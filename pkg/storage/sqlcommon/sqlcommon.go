@@ -773,6 +773,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 		return storage.ErrNotFound
 	}
 
+	// handle mysql
 	if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
@@ -782,6 +783,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 		return storage.ErrCollision
 	}
 
+	// handle psql
 	if strings.Contains(err.Error(), "duplicate key value") {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
