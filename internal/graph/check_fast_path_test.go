@@ -3691,17 +3691,13 @@ func TestResolveFastPath(t *testing.T) {
 			logger: mockLogger,
 		}
 
-		var wg sync.WaitGroup
-		wg.Add(1)
 		go func() {
 			_, _ = c.resolveFastPath(ctx, leftchans, &MockTupleMapper{})
-			wg.Done()
 		}()
 
 		leftChan <- &iterator.Msg{Iter: mockIter1}
 		defer close(leftChan)
-		wg.Wait()
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(1500 * time.Millisecond)
 	})
 }
