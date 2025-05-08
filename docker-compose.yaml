@@ -38,8 +38,7 @@ services:
     command: run
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
-      # by default connect to the latest Postgres version, 17
-      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5433/postgres?sslmode=disable
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
       - OPENFGA_DATASTORE_MAX_OPEN_CONNS=100 #see postgres container
       - OPENFGA_PLAYGROUND_ENABLED=true
     networks:
