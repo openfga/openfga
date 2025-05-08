@@ -61,6 +61,7 @@ const (
 			define system: [system]
 			define creator: [application]
 			define can_call_delete_store: [application] or admin
+			define can_call_update_store: [application] or admin
 			define can_call_get_store: [application] or admin
 			define can_call_check: [application] or reader
 			define can_call_expand: [application] or reader
@@ -1627,6 +1628,65 @@ func TestCreateStore(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, name, readChangesResponse.GetName())
+		})
+	})
+}
+
+func TestUpdateStore(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	t.Run("UpdateStore_no_authz_should_succeed", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		_, err := openfga.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
+			StoreId: settings.testData.id,
+      Name:    "updated store",
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("UpdateStore_with_authz", func(t *testing.T) {
+		openfga := MustNewServerWithOpts(
+			WithDatastore(ds),
+		)
+		t.Cleanup(openfga.Close)
+
+		clientID := "validclientid"
+		settings := newSetupAuthzModelAndTuples(t, openfga, clientID)
+
+		openfga.authorizer = authz.NewAuthorizer(&authz.Config{StoreID: settings.rootData.id, ModelID: settings.rootData.modelID}, openfga, openfga.logger)
+
+		t.Run("error_when_CheckAuthz_errors", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			_, err := openfga.UpdateStore(ctx, &openfgav1.UpdateStoreRequest{
+				StoreId: settings.testData.id,
+        Name:    "updated store",
+			})
+
+			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
+		})
+
+		t.Run("successfully_call_UpdateStore", func(t *testing.T) {
+			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
+			settings.addAuthForRelation(ctx, t, authz.CanCallUpdateStore)
+
+			_, err := openfga.UpdateStore(ctx, &openfgav1.UpdateStoreRequest{
+				StoreId: settings.testData.id,
+        Name:    "updated store",
+			})
+
+			require.NoError(t, err)
 		})
 	})
 }

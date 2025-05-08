@@ -41,6 +41,7 @@ const (
 	CanCallWriteAuthorizationModels = "can_call_write_authorization_models"
 	CanCallListStores               = "can_call_list_stores"
 	CanCallCreateStore              = "can_call_create_stores"
+	CanCallUpdateStore              = "can_call_update_store"
 	CanCallGetStore                 = "can_call_get_store"
 	CanCallDeleteStore              = "can_call_delete_store"
 	CanCallExpand                   = "can_call_expand"
@@ -169,6 +170,8 @@ func (a *Authorizer) getRelation(apiMethod apimethod.APIMethod) (string, error) 
 		return CanCallListStores, nil
 	case apimethod.CreateStore:
 		return CanCallCreateStore, nil
+	case apimethod.UpdateStore:
+		return CanCallUpdateStore, nil
 	case apimethod.GetStore:
 		return CanCallGetStore, nil
 	case apimethod.DeleteStore:

@@ -524,6 +524,57 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	}, nil
 }
 
+// UpdateStore updates the store using its storeID.
+func (s *Datastore) UpdateStore(ctx context.Context, store *openfgav1.UpdateStoreRequest) (*openfgav1.Store, error) {
+	ctx, span := startTrace(ctx, "UpdateStore")
+	defer span.End()
+
+	var id, name string
+	var createdAt, updatedAt time.Time
+
+	txn, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
+	_, err = s.stbl.
+		Update("store").
+		Where(sq.Eq{"id": store.GetStoreId()}).
+		Set("name", store.GetName()).
+		Set("updated_at", sq.Expr("NOW()")).
+		RunWith(txn).
+		ExecContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	err = s.stbl.
+		Select("id", "name", "created_at", "updated_at").
+		From("store").
+		Where(sq.Eq{"id": store.GetStoreId()}).
+		RunWith(txn).
+		QueryRowContext(ctx).
+		Scan(&id, &name, &createdAt, &updatedAt)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	return &openfgav1.Store{
+		Id:        id,
+		Name:      name,
+		CreatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(updatedAt),
+	}, nil
+}
+
 // GetStore retrieves the details of a specific store using its storeID.
 func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	ctx, span := startTrace(ctx, "GetStore")

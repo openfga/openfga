@@ -50,6 +50,37 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 	return res, nil
 }
 
+func (s *Server) UpdateStore(ctx context.Context, req *openfgav1.UpdateStoreRequest) (*openfgav1.UpdateStoreResponse, error) {
+	ctx, span := tracer.Start(ctx, apimethod.UpdateStore.String())
+	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: s.serviceName,
+		Method:  apimethod.UpdateStore.String(),
+	})
+
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.UpdateStore)
+	if err != nil {
+		return nil, err
+	}
+
+	c := commands.NewUpdateStoreCommand(s.datastore, commands.WithUpdateStoreCmdLogger(s.logger))
+	res, err := c.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusOK))
+
+	return res, nil
+}
+
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, apimethod.DeleteStore.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),

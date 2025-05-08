@@ -46,6 +46,7 @@ func TestGetRelation(t *testing.T) {
 		{method: apimethod.ReadAssertions, expectedResult: CanCallReadAssertions},
 		{method: apimethod.WriteAuthorizationModel, expectedResult: CanCallWriteAuthorizationModels},
 		{method: apimethod.CreateStore, expectedResult: CanCallCreateStore},
+		{method: apimethod.UpdateStore, expectedResult: CanCallUpdateStore},
 		{method: apimethod.GetStore, expectedResult: CanCallGetStore},
 		{method: apimethod.DeleteStore, expectedResult: CanCallDeleteStore},
 		{method: apimethod.Expand, expectedResult: CanCallExpand},

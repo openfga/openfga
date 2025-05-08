@@ -719,6 +719,27 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgav1.Sto
 	return s.stores[newStore.GetId()], nil
 }
 
+// UpdateStore updates the store using its storeID.
+func (s *MemoryBackend) UpdateStore(ctx context.Context, request *openfgav1.UpdateStoreRequest) (*openfgav1.Store, error) {
+	_, span := tracer.Start(ctx, "memory.UpdateStore")
+	defer span.End()
+
+	s.mutexStores.RLock()
+	defer s.mutexStores.RUnlock()
+
+	storeID := request.GetStoreId()
+
+	store := s.stores[storeID]
+	if store == nil {
+		return nil, storage.ErrNotFound
+	}
+
+	store.Name = request.GetName()
+	store.UpdatedAt = timestamppb.New(time.Now().UTC())
+
+	return store, nil
+}
+
 // DeleteStore removes a store from the [MemoryBackend].
 func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 	_, span := tracer.Start(ctx, "memory.DeleteStore")

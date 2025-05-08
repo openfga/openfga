@@ -329,6 +329,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, client) })
 	t.Run("TestGetStore", func(t *testing.T) { GRPCGetStoreTest(t, client) })
+	t.Run("TestUpdateStore", func(t *testing.T) { GRPCUpdateStoreTest(t, client) })
 	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, client) })
 
 	t.Run("TestWrite", func(t *testing.T) { GRPCWriteTest(t, client) })
@@ -971,6 +972,52 @@ func GRPCGetStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
 	require.Error(t, err)
 	require.Nil(t, resp3)
 }
+
+func GRPCUpdateStoreTest(t *testing.T, client openfgav1.OpenFGAServiceClient) {
+	response1, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+  newName1 := "openfga-demo-updated"
+	response2, err := client.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
+		StoreId: response1.GetId(),
+    Name:   newName1,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, response1.GetId(), response2.GetId())
+	require.Equal(t, newName1, response2.GetName())
+
+  // Updating the name with the same name is a no-op
+	_, err = client.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
+		StoreId: response1.GetId(),
+    Name:   newName1,
+	})
+	require.NoError(t, err)
+
+
+  // Updating the name with the same name is a no-op
+	response3, err := client.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
+		StoreId: response1.GetId(),
+    Name:   newName1,
+	})
+	require.NoError(t, err)
+
+  // Ensure when getting the store we are getting the updated name
+	require.Equal(t, newName1, response3.GetName())
+
+  // Updating the name with an empty name should error
+  response4, err := client.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
+		StoreId: response1.GetId(),
+    Name:   "",
+	})
+	require.Nil(t, response4)
+
+	_, ok := status.FromError(err)
+	require.True(t, ok)
+}
+
 
 func TestGRPCListStores(t *testing.T) {
 	client := newOpenFGAServerAndClient(t)

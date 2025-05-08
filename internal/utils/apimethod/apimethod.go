@@ -24,6 +24,7 @@ const (
 	WriteAuthorizationModel APIMethod = "WriteAuthorizationModel"
 	ListStores              APIMethod = "ListStores"
 	CreateStore             APIMethod = "CreateStore"
+	UpdateStore             APIMethod = "UpdateStore"
 	GetStore                APIMethod = "GetStore"
 	DeleteStore             APIMethod = "DeleteStore"
 	Expand                  APIMethod = "Expand"

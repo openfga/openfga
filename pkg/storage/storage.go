@@ -287,6 +287,9 @@ type StoresBackend interface {
 	// If the store ID already existed it must return ErrCollision.
 	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 
+	// UpdateStore must update the updatable fields in the store (currently only the name) and bumping up the UpdatedAt to the current time.
+	UpdateStore(ctx context.Context, store *openfgav1.UpdateStoreRequest) (*openfgav1.Store, error)
+
 	// DeleteStore must delete the store by either setting its DeletedAt field or removing the entry.
 	DeleteStore(ctx context.Context, id string) error
 
