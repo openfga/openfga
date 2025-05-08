@@ -236,8 +236,8 @@ func (c *ReverseExpandQuery) dispatch(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	newcount := resolutionMetadata.DispatchCounter.Add(1)
-	if c.dispatchThrottlerConfig.Enabled {
+	newcount := resolutionMetadata.DispatchCounter.Add(1) // why we are adding a dispatch count here this is wrong
+	if c.dispatchThrottlerConfig.Enabled {                // no need to throtle at this poing
 		c.throttle(ctx, newcount, resolutionMetadata)
 	}
 	return c.execute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
@@ -316,9 +316,13 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	g := graph.New(c.typesystem)
+	// weighted graph will be built only once per model and will be cached
+	//no need of prunning
 
-	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
+	g := graph.New(c.typesystem) // we don't need to create this everytime. we want the graph created only once, we are going to use the WG
+
+	// if the relation we are looking is weight 1 then we call a new function the will have their own channel producing the results.
+	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef) // direct edges, no need to prune at this point, it will be prune in the new function
 	if err != nil {
 		return err
 	}
@@ -328,7 +332,8 @@ func (c *ReverseExpandQuery) execute(
 	var errs error
 
 LoopOnEdges:
-	for _, edge := range edges {
+	for _, edge := range edges { // we will verify if the edge has a weight to the usertype, otherwise will be skip
+		// when traversing the edges of the node we will verify if the edge has a weight[usertype], otherwise skip the edge
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
 		r := &ReverseExpandRequest{
@@ -342,6 +347,9 @@ LoopOnEdges:
 			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
+		// we need to include the rewriteEdges, and verify if the edge is interception or exclusion then only take the edge with less weight for the usertype
+		// and update intersectionOrExclusionInPreviousEdges to be true
+		// in case of union expand on all edges
 		case graph.DirectEdge:
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
@@ -354,6 +362,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
+			// we should call c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
