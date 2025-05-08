@@ -15,18 +15,27 @@ import (
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 func TestValidationResult(t *testing.T) {
-	engines := []string{"postgres", "mysql", "sqlite"}
+	enginesAndVersions := [][]string{
+		{"mysql", ""},
+		{"sqlite", ""},
+	}
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		enginesAndVersions = append(enginesAndVersions, []string{"postgres", imageVersion})
+	}
 
 	totalStores := 200
 	totalModelsForOneStore := 200
 
-	for _, engine := range engines {
+	for _, engineAndVersion := range enginesAndVersions {
+		engine := engineAndVersion[0]
+		imageVersion := engineAndVersion[1]
 		t.Run(engine, func(t *testing.T) {
-			_, ds, _ := util.MustBootstrapDatastore(t, engine)
+			_, ds, _ := util.MustBootstrapDatastore(t, engine, imageVersion)
 
 			ctx := context.Background()
 

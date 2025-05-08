@@ -246,11 +246,18 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 	// skipping sqlite here because the lowest supported schema revision is 4
-	engines := []string{"postgres", "mysql"}
+	enginesAndVersions := [][]string{
+		{"mysql", ""},
+	}
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		enginesAndVersions = append(enginesAndVersions, []string{"postgres", imageVersion})
+	}
 
-	for _, engine := range engines {
+	for _, engineAndVersion := range enginesAndVersions {
+		engine := engineAndVersion[0]
+		imageVersion := engineAndVersion[1]
 		t.Run(engine, func(t *testing.T) {
-			_, ds, uri := util.MustBootstrapDatastore(t, engine)
+			_, ds, uri := util.MustBootstrapDatastore(t, engine, imageVersion)
 
 			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
 
@@ -348,39 +355,47 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "postgres")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			t.Cleanup(func() {
+				goleak.VerifyNone(t)
+			})
+			_, ds, _ := util.MustBootstrapDatastore(t, "postgres", imageVersion)
 
-	test.RunAllTests(t, ds)
+			test.RunAllTests(t, ds)
+		})
+	}
 }
 
 func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			t.Cleanup(func() {
+				goleak.VerifyNone(t)
+			})
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", imageVersion)
 
-	uri := testDatastore.GetConnectionURI(false)
-	ds, err := postgres.New(
-		uri,
-		sqlcommon.NewConfig(
-			sqlcommon.WithUsername(testDatastore.GetUsername()),
-			sqlcommon.WithPassword(testDatastore.GetPassword()),
-		),
-	)
-	require.NoError(t, err)
-	defer ds.Close()
+			uri := testDatastore.GetConnectionURI(false)
+			ds, err := postgres.New(
+				uri,
+				sqlcommon.NewConfig(
+					sqlcommon.WithUsername(testDatastore.GetUsername()),
+					sqlcommon.WithPassword(testDatastore.GetPassword()),
+				),
+			)
+			require.NoError(t, err)
+			defer ds.Close()
 
-	test.RunAllTests(t, ds)
+			test.RunAllTests(t, ds)
+		})
+	}
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
 
 	test.RunAllTests(t, ds)
 }
@@ -389,7 +404,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "mysql")
+	_, ds, _ := util.MustBootstrapDatastore(t, "mysql", "")
 
 	test.RunAllTests(t, ds)
 }
@@ -398,7 +413,7 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
@@ -418,7 +433,7 @@ func TestServerWithSQLiteDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite")
+	_, ds, _ := util.MustBootstrapDatastore(t, "sqlite", "")
 
 	test.RunAllTests(t, ds)
 }
@@ -428,7 +443,7 @@ func TestAvoidDeadlockAcrossCheckRequests(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -532,7 +547,7 @@ func TestAvoidDeadlockWithinSingleCheckRequest(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -668,7 +683,7 @@ func TestThreeProngThroughVariousLayers(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
 
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
@@ -762,7 +777,7 @@ func TestCheckDispatchThrottledTimeout(t *testing.T) {
 	const dispatchFrequency = 5 * time.Millisecond
 	const dispatchThreshold = 5
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
 	s := MustNewServerWithOpts(
 		WithDatastore(ds),
 		WithDispatchThrottlingCheckResolverFrequency(dispatchFrequency),
@@ -841,13 +856,17 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		)
 	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
+		for _, imageVersion := range testutils.PostgresImageVersions {
+			b.Run(imageVersion, func(b *testing.B) {
+				testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres", imageVersion)
 
-		uri := testDatastore.GetConnectionURI(true)
-		ds, err := postgres.New(uri, sqlcommon.NewConfig())
-		require.NoError(b, err)
-		b.Cleanup(ds.Close)
-		test.RunAllBenchmarks(b, ds)
+				uri := testDatastore.GetConnectionURI(true)
+				ds, err := postgres.New(uri, sqlcommon.NewConfig())
+				require.NoError(b, err)
+				b.Cleanup(ds.Close)
+				test.RunAllBenchmarks(b, ds)
+			})
+		}
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
@@ -857,7 +876,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql", "")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
@@ -867,7 +886,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkSQLiteDatastore", func(b *testing.B) {
-		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite", "")
 
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
@@ -946,30 +965,32 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 }
 
 func TestReleasesConnections(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			t.Cleanup(func() {
+				goleak.VerifyNone(t)
+			})
 
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres", imageVersion)
 
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := postgres.New(uri, sqlcommon.NewConfig(
-		sqlcommon.WithMaxOpenConns(1),
-		sqlcommon.WithMaxTuplesPerWrite(2000),
-	))
-	require.NoError(t, err)
-	defer ds.Close()
+			uri := testDatastore.GetConnectionURI(true)
+			ds, err := postgres.New(uri, sqlcommon.NewConfig(
+				sqlcommon.WithMaxOpenConns(1),
+				sqlcommon.WithMaxTuplesPerWrite(2000),
+			))
+			require.NoError(t, err)
+			defer ds.Close()
 
-	s := MustNewServerWithOpts(
-		WithDatastore(storagewrappers.NewContextWrapper(ds)),
-	)
-	t.Cleanup(s.Close)
+			s := MustNewServerWithOpts(
+				WithDatastore(storagewrappers.NewContextWrapper(ds)),
+			)
+			t.Cleanup(s.Close)
 
-	storeID := ulid.Make().String()
+			storeID := ulid.Make().String()
 
-	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: storeID,
-		TypeDefinitions: parser.MustTransformDSLToProto(`
+			writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustTransformDSLToProto(`
 			model
 				schema 1.1
 
@@ -978,88 +999,90 @@ func TestReleasesConnections(t *testing.T) {
 			type document
 				relations
 					define editor: [user]`).GetTypeDefinitions(),
-		SchemaVersion: typesystem.SchemaVersion1_1,
-	})
-	require.NoError(t, err)
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			})
+			require.NoError(t, err)
 
-	modelID := writeAuthzModelResp.GetAuthorizationModelId()
+			modelID := writeAuthzModelResp.GetAuthorizationModelId()
 
-	numTuples := 2000
+			numTuples := 2000
 
-	t.Run("list_objects", func(t *testing.T) {
-		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-		for i := 0; i < numTuples; i++ {
-			tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
+			t.Run("list_objects", func(t *testing.T) {
+				tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+				for i := 0; i < numTuples; i++ {
+					tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
-			tuples = append(tuples, tk)
-		}
+					tuples = append(tuples, tk)
+				}
 
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: tuples,
-			},
+				_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes: &openfgav1.WriteRequestWrites{
+						TupleKeys: tuples,
+					},
+				})
+				require.NoError(t, err)
+
+				_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Type:                 "document",
+					Relation:             "editor",
+					User:                 "user:jon",
+				})
+				require.NoError(t, err)
+
+				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer timeoutCancel()
+
+				// If ListObjects is still hogging the database connection pool even after responding, then this fails.
+				// If ListObjects is closing up its connections effectively then this will not fail.
+				status, err := ds.IsReady(timeoutCtx)
+				require.NoError(t, err)
+				require.True(t, status.IsReady)
+			})
+
+			t.Run("list_users", func(t *testing.T) {
+				tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+				for i := 0; i < numTuples; i++ {
+					tk := tuple.NewTupleKey("document:1", "editor", fmt.Sprintf("user:%d", i))
+
+					tuples = append(tuples, tk)
+				}
+
+				_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes: &openfgav1.WriteRequestWrites{
+						TupleKeys: tuples,
+					},
+				})
+				require.NoError(t, err)
+
+				_, err = s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Relation:             "editor",
+					Object: &openfgav1.Object{
+						Type: "document",
+						Id:   "1",
+					},
+					UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
+				})
+				require.NoError(t, err)
+
+				timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer timeoutCancel()
+
+				// If ListUsers is still hogging the database connection pool even after responding, then this fails.
+				// If ListUsers is closing up its connections effectively then this will not fail.
+				status, err := ds.IsReady(timeoutCtx)
+				require.NoError(t, err)
+				require.True(t, status.IsReady)
+			})
 		})
-		require.NoError(t, err)
-
-		_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "editor",
-			User:                 "user:jon",
-		})
-		require.NoError(t, err)
-
-		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer timeoutCancel()
-
-		// If ListObjects is still hogging the database connection pool even after responding, then this fails.
-		// If ListObjects is closing up its connections effectively then this will not fail.
-		status, err := ds.IsReady(timeoutCtx)
-		require.NoError(t, err)
-		require.True(t, status.IsReady)
-	})
-
-	t.Run("list_users", func(t *testing.T) {
-		tuples := make([]*openfgav1.TupleKey, 0, numTuples)
-		for i := 0; i < numTuples; i++ {
-			tk := tuple.NewTupleKey("document:1", "editor", fmt.Sprintf("user:%d", i))
-
-			tuples = append(tuples, tk)
-		}
-
-		_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			Writes: &openfgav1.WriteRequestWrites{
-				TupleKeys: tuples,
-			},
-		})
-		require.NoError(t, err)
-
-		_, err = s.ListUsers(context.Background(), &openfgav1.ListUsersRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: modelID,
-			Relation:             "editor",
-			Object: &openfgav1.Object{
-				Type: "document",
-				Id:   "1",
-			},
-			UserFilters: []*openfgav1.UserTypeFilter{{Type: "user"}},
-		})
-		require.NoError(t, err)
-
-		timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer timeoutCancel()
-
-		// If ListUsers is still hogging the database connection pool even after responding, then this fails.
-		// If ListUsers is closing up its connections effectively then this will not fail.
-		status, err := ds.IsReady(timeoutCtx)
-		require.NoError(t, err)
-		require.True(t, status.IsReady)
-	})
+	}
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {

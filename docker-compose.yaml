@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:14
+    image: postgres:17
     container_name: postgres
     command: postgres -c 'max_connections=100'
     networks:
