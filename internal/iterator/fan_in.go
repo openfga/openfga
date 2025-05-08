@@ -15,7 +15,7 @@ type FanIn struct {
 	count     int
 	out       chan *Msg
 	addCh     chan (chan *Msg)
-	mu        *sync.Mutex
+	mu        sync.Mutex
 	accepting bool
 	pool      *pool.ContextPool
 	drained   chan bool
@@ -31,7 +31,7 @@ func NewFanIn(ctx context.Context, limit int) *FanIn {
 		out:       make(chan *Msg, limit),
 		addCh:     make(chan (chan *Msg), limit),
 		accepting: true,
-		mu:        &sync.Mutex{},
+		mu:        sync.Mutex{},
 		pool:      concurrency.NewPool(ctx, limit),
 		drained:   make(chan bool, 1),
 	}
