@@ -509,6 +509,16 @@ func (c *cachedIterator) Stop() {
 
 	c.wg.Add(1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				c.logger.Error(
+					"panic recoverred",
+					zap.Any("error", r),
+					zap.String("function", "cachedIterator.Stop"),
+				)
+			}
+		}()
+
 		defer c.wg.Done()
 		defer c.iter.Stop()
 

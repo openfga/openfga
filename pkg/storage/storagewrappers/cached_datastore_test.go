@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -1450,6 +1451,52 @@ func TestCachedIterator(t *testing.T) {
 			require.GreaterOrEqual(t, mockedIter2.nextCalled, 0)
 			require.GreaterOrEqual(t, mockedIter1.nextCalled+mockedIter2.nextCalled, 3)
 		}
+	})
+
+	t.Run("should_call_logger_on_panic", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](mockController)
+		mockCache.EXPECT().Get(gomock.Any()).DoAndReturn(func(key string) any {
+			panic("test panic")
+		}).AnyTimes()
+		mockLogger := mocks.NewMockLogger(mockController)
+		mockLogger.EXPECT().Error(
+			"panic recoverred",
+			gomock.Any(),
+			zap.String("function", "cachedIterator.Stop"),
+		)
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop().AnyTimes()
+
+		wg := &sync.WaitGroup{}
+		iter := &cachedIterator{
+			ctx:               ctx,
+			iter:              mockIterator,
+			store:             "store",
+			operation:         "operation",
+			method:            "method",
+			cacheKey:          "cacheKey",
+			invalidEntityKeys: []string{"invalidKey"},
+			cache:             mockCache,
+			ttl:               time.Hour,
+			tuples:            []*openfgav1.Tuple{},
+			records:           []*storage.TupleRecord{},
+			maxResultSize:     10,
+			sf:                &singleflight.Group{},
+			wg:                wg,
+			logger:            mockLogger,
+		}
+
+		iter.tuples = []*openfgav1.Tuple{{}}
+		iter.iter = &mockCalledTupleIterator{
+			iter: mockIterator,
+		}
+
+		iter.Stop()
+		wg.Wait()
+		time.Sleep(1500 * time.Millisecond) // wait for the goroutine to finish
 	})
 }
 
