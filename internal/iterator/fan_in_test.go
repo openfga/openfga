@@ -2,13 +2,15 @@ package iterator
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/storage"
+	"strconv"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"strconv"
-	"testing"
+
+	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func makeIterChan(ctrl *gomock.Controller, id string, next bool) chan *Msg {
@@ -53,8 +55,8 @@ func TestFanIn(t *testing.T) {
 		require.NoError(t, err)
 		i, err := strconv.Atoi(id)
 		require.NoError(t, err)
+		require.Positive(t, i)
 		require.LessOrEqual(t, i, 7)
-		require.Greater(t, i, 0)
 		_, err = msg.Iter.Next(ctx)
 		require.Equal(t, storage.ErrIteratorDone, err)
 		msg.Iter.Stop()
@@ -65,5 +67,5 @@ func TestFanIn(t *testing.T) {
 	}
 	fanin.Close()
 	drained := <-fanin.drained
-	require.Equal(t, true, drained)
+	require.True(t, drained)
 }
