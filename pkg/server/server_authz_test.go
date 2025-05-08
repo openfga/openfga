@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -724,7 +725,7 @@ func TestCheckAuthz(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		err := openfga.checkAuthz(context.Background(), storeID, authz.Check)
+		err := openfga.checkAuthz(context.Background(), storeID, apimethod.Check)
 		require.NoError(t, err)
 	})
 
@@ -742,19 +743,19 @@ func TestCheckAuthz(t *testing.T) {
 		t.Run("with_SkipAuthzCheckFromContext_set", func(t *testing.T) {
 			ctx := authclaims.ContextWithSkipAuthzCheck(context.Background(), true)
 
-			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
+			err := openfga.checkAuthz(ctx, settings.testData.id, apimethod.Check)
 			require.NoError(t, err)
 		})
 
 		t.Run("error_with_no_client_id_found", func(t *testing.T) {
-			err := openfga.checkAuthz(context.Background(), settings.testData.id, authz.Check)
+			err := openfga.checkAuthz(context.Background(), settings.testData.id, apimethod.Check)
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
 
 		t.Run("error_with_empty_client_id", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: ""})
-			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
+			err := openfga.checkAuthz(ctx, settings.testData.id, apimethod.Check)
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
@@ -768,7 +769,7 @@ func TestCheckAuthz(t *testing.T) {
 
 		t.Run("error_check_when_not_authorized", func(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
-			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
+			err := openfga.checkAuthz(ctx, settings.testData.id, apimethod.Check)
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
 		})
@@ -777,7 +778,7 @@ func TestCheckAuthz(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			settings.addAuthForRelation(ctx, t, authz.CanCallCheck)
 
-			err := openfga.checkAuthz(ctx, settings.testData.id, authz.Check)
+			err := openfga.checkAuthz(ctx, settings.testData.id, apimethod.Check)
 			require.NoError(t, err)
 		})
 	})

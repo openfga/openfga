@@ -14,11 +14,11 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands/listusers"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -34,7 +34,7 @@ func (s *Server) ListUsers(
 	req *openfgav1.ListUsersRequest,
 ) (*openfgav1.ListUsersResponse, error) {
 	start := time.Now()
-	ctx, span := tracer.Start(ctx, "ListUsers", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ListUsers.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object", tuple.BuildObject(req.GetObject().GetType(), req.GetObject().GetId())),
 		attribute.String("relation", req.GetRelation()),
@@ -49,6 +49,7 @@ func (s *Server) ListUsers(
 		}
 	}
 
+	// TODO: This should be apimethod.ListUsers, but is it considered a breaking change to move?
 	const methodName = "listusers"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
@@ -56,7 +57,7 @@ func (s *Server) ListUsers(
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListUsers)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ListUsers)
 	if err != nil {
 		return nil, err
 	}
