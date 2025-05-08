@@ -48,7 +48,6 @@ func (f *FanIn) run() {
 		for ch := range f.addCh {
 			drainOnExit(ch)
 		}
-		drainOnExit(f.out)
 		f.drained <- true
 		close(f.drained)
 	}()
@@ -126,4 +125,5 @@ func (f *FanIn) Done() {
 func (f *FanIn) Close() {
 	// Done gets called internally
 	f.cancel()
+	drainOnExit(f.out)
 }

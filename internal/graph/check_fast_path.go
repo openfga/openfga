@@ -548,11 +548,11 @@ func produceLeftChannels(
 		}
 		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
 		if err != nil {
-			ch := make(chan *iterator.Msg, 1)
-			ch <- &iterator.Msg{Err: err}
-			close(ch)
-			leftChans.Add(ch)
-			return
+			errCh := make(chan *iterator.Msg, 1)
+			errCh <- &iterator.Msg{Err: err}
+			close(errCh)
+			leftChans.Add(errCh)
+			continue
 		}
 		leftChans.Add(leftChan)
 	}

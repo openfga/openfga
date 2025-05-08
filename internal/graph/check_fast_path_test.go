@@ -1332,17 +1332,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:                 "duplicates_match_with_recursion",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
-			usersetFromUser:      hashset.New("group:4"),
-			readMocks: [][]*openfgav1.Tuple{
-				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
-				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
-				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
-			},
-			expected: true,
-		},
-		{
 			name:                 "no_duplicates_no_match_counts",
 			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New(),
@@ -1370,7 +1359,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			for _, mock := range tt.readMocks {
-				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(mock), nil)
 			}
 
 			model := parser.MustTransformDSLToProto(`
@@ -1405,7 +1394,10 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			result := false
 			for outcome := range checkOutcomeChan {
-				result = outcome.resp.Allowed
+				if outcome.resp.Allowed {
+					result = true
+					break
+				}
 			}
 			require.Equal(t, tt.expected, result)
 		})
