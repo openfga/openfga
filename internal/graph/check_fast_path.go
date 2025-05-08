@@ -623,7 +623,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
 	defer leftChans.Close()
 	// allow both producer and consumers to run concurrently
-	go func() {
+	go func(req *ResolveCheckRequest) {
 		defer leftChans.Done()
 		for _, usersetInterface := range currentUsersetLevel.Values() {
 			userset := usersetInterface.(string)
@@ -639,7 +639,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 			close(c)
 			leftChans.Add(c)
 		}
-	}()
+	}(req.clone())
 
 	nextUsersetLevel := hashset.New()
 	out := leftChans.Out()
