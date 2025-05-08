@@ -17,7 +17,8 @@ type FanIn struct {
 	addCh     chan (chan *Msg)
 	mu        *sync.Mutex
 	accepting bool
-	group     *pool.ContextPool
+	pool      *pool.ContextPool
+	drained   chan bool
 }
 
 func NewFanIn(ctx context.Context, limit int) *FanIn {
@@ -31,7 +32,8 @@ func NewFanIn(ctx context.Context, limit int) *FanIn {
 		addCh:     make(chan (chan *Msg), limit),
 		accepting: true,
 		mu:        &sync.Mutex{},
-		group:     concurrency.NewPool(ctx, limit),
+		pool:      concurrency.NewPool(ctx, limit),
+		drained:   make(chan bool, 1),
 	}
 
 	go f.run()
@@ -40,12 +42,15 @@ func NewFanIn(ctx context.Context, limit int) *FanIn {
 
 func (f *FanIn) run() {
 	defer func() {
-		_ = f.group.Wait()
-		close(f.out)
 		f.Done()
+		_ = f.pool.Wait()
+		close(f.out)
 		for ch := range f.addCh {
 			drainOnExit(ch)
 		}
+		drainOnExit(f.out)
+		f.drained <- true
+		close(f.drained)
 	}()
 	for {
 		select {
@@ -55,7 +60,7 @@ func (f *FanIn) run() {
 			if !ok {
 				return
 			}
-			f.group.Go(func(ctx context.Context) error {
+			f.pool.Go(func(ctx context.Context) error {
 				defer drainOnExit(ch)
 				for {
 					select {
@@ -89,8 +94,13 @@ func (f *FanIn) Add(ch chan *Msg) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.count++
-	if !f.accepting || !concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh) {
+	if !f.accepting {
 		drainOnExit(ch)
+		return
+	}
+	if !concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh) {
+		drainOnExit(ch)
+		return
 	}
 }
 
@@ -114,5 +124,6 @@ func (f *FanIn) Done() {
 }
 
 func (f *FanIn) Close() {
+	// Done gets called internally
 	f.cancel()
 }

@@ -92,16 +92,15 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChannels, err := constructLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), c.concurrencyLimit)
-	if err != nil {
-		return nil, err
-	}
-	outChannel := make(chan usersetMessage, leftChannels.Count())
+	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	go produceLeftChannels(ctx, leftChans, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
+
+	outChannel := make(chan usersetMessage, c.concurrencyLimit)
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannels, outChannel))
+	c.pool.Go(iteratorToUserset(leftChans, outChannel))
 
 	return outChannel, nil
 }
@@ -131,11 +130,11 @@ func (c *recursiveUsersetObjectProvider) End() {
 func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
-	leftChans, err := constructLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc(), c.concurrencyLimit)
-	if err != nil {
-		return nil, err
-	}
-	outChannel := make(chan usersetMessage, leftChans.Count())
+
+	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	go produceLeftChannels(ctx, leftChans, req, reference, checkutil.BuildUsersetV2RelationFunc())
+
+	outChannel := make(chan usersetMessage, c.concurrencyLimit)
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 	c.pool = concurrency.NewPool(poolCtx, 1)

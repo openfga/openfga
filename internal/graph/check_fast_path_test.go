@@ -1419,14 +1419,16 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		ctx := context.Background()
 		ctx, cancel := context.WithCancel(ctx)
-		// Stop is called either sync (when context is already cancelled before sending iterator through channel
-		// or async when calling drainIteratorChannel
+		// Stop is called under race conditions thus is not guaranteed these observers may see a call to it
 		iter1 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		iter2 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter2.EXPECT().Stop().MaxTimes(1)
+		iter2.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		iter3 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter3.EXPECT().Stop().MaxTimes(1)
+		iter3.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		// currentUsersetLevel.Values() doesn't return results in order, thus there is no guarantee that `Times` will be consistent as it can return err due to context being cancelled
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter1, nil)
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(func(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
@@ -1648,7 +1650,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 
 func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
 	})
 
 	model := parser.MustTransformDSLToProto(`
@@ -2121,7 +2123,7 @@ type group
 
 func TestRecursiveUsersetFastPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
 	})
 	tests := []struct {
 		name                            string
