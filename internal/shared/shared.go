@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/sharediterator"
 )
 
 // SharedDatastoreResourcesOpt defines an option that can be used to change the behavior of SharedDatastoreResources
@@ -32,12 +33,13 @@ func WithCacheController(cacheController cachecontroller.CacheController) Shared
 
 // SharedDatastoreResources contains resources that can be shared across Check requests.
 type SharedDatastoreResources struct {
-	SingleflightGroup *singleflight.Group
-	WaitGroup         *sync.WaitGroup
-	ServerCtx         context.Context
-	CheckCache        storage.InMemoryCache[any]
-	CacheController   cachecontroller.CacheController
-	Logger            logger.Logger
+	SingleflightGroup     *singleflight.Group
+	WaitGroup             *sync.WaitGroup
+	ServerCtx             context.Context
+	CheckCache            storage.InMemoryCache[any]
+	CacheController       cachecontroller.CacheController
+	Logger                logger.Logger
+	SharedIteratorStorage *sharediterator.Storage
 }
 
 func NewSharedDatastoreResources(
@@ -53,6 +55,9 @@ func NewSharedDatastoreResources(
 		ServerCtx:         sharedCtx,
 		CacheController:   cachecontroller.NewNoopCacheController(),
 		Logger:            logger.NewNoopLogger(),
+		SharedIteratorStorage: sharediterator.NewSharedIteratorDatastoreStorage(
+			sharediterator.WithSharedIteratorDatastoreStorageLimit(
+				int(settings.SharedIteratorLimit))),
 	}
 
 	if settings.ShouldCreateNewCache() {

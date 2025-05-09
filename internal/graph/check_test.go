@@ -2688,6 +2688,7 @@ func TestConsumeUsersets(t *testing.T) {
 			expectedResolveCheckResponse: nil,
 			errorExpected:                fmt.Errorf("mock_error"),
 		},
+		// TODO: This test is flaky needs further investigation
 		{
 			name: "iterator_error_first_batch_but_success_second",
 			tuples: []dsResults{
