@@ -22,7 +22,7 @@ const (
 	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
-	DefaultResolveNodeBreadthLimit          = 100
+	DefaultResolveNodeBreadthLimit          = 10
 	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000

@@ -71,7 +71,7 @@
         "resolveNodeBreadthLimit": {
             "description": "Defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree.",
             "type": "integer",
-            "default": 100,
+            "default": 10,
             "x-env-variable": "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT"
         },
         "listObjectsDeadline": {
