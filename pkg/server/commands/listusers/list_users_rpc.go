@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,7 +32,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+var (
+	tracer   = otel.Tracer("openfga/pkg/server/commands/list_users")
+	ErrPanic = errors.New("panic captured")
+)
 
 type listUsersQuery struct {
 	logger                  logger.Logger
@@ -43,12 +47,15 @@ type listUsersQuery struct {
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
 	wasThrottled            *atomic.Bool
+	expandTTUDispatch       expandTTUDispatchHandler
 }
 
 type expandResponse struct {
 	hasCycle bool
 	err      error
 }
+
+type expandTTUDispatchHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, foundUsersChan chan<- foundUser) expandResponse
 
 // userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
 //
@@ -156,6 +163,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
+		expandTTUDispatch:       expandTTUDispatch,
 	}
 
 	for _, opt := range opts {
@@ -902,10 +910,13 @@ LoopOnIterator:
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		pool.Go(func(ctx context.Context) error {
-			rewrittenReq := req.clone()
-			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-			rewrittenReq.Relation = computedRelation
-			resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandTTUDispatch(ctx, l, req, userObjectType, userObjectID, computedRelation, foundUsersChan)
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
@@ -917,6 +928,14 @@ LoopOnIterator:
 	return expandResponse{
 		err: errs,
 	}
+}
+
+func expandTTUDispatch(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, computedRelation string, foundUsersChan chan<- foundUser) expandResponse {
+	rewrittenReq := req.clone()
+	rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+	rewrittenReq.Relation = computedRelation
+	resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
+	return resp
 }
 
 func enteredCycle(req *internalListUsersRequest) bool {
@@ -954,4 +973,15 @@ func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *ty
 	}
 
 	return condEvalResult.ConditionMet, nil
+}
+
+func panicError(recovered *panics.Recovered) error {
+	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+}
+
+func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
+	return expandResponse{
+		hasCycle: false,
+		err:      panicError(recovered),
+	}
 }
