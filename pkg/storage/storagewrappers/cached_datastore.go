@@ -511,9 +511,6 @@ func (c *cachedIterator) Stop() {
 	c.wg.Add(1)
 	go func() {
 		defer func() {
-			c.iter.Stop()
-			c.wg.Done()
-
 			if r := recover(); r != nil {
 				c.logger.Error(
 					"panic recoverred",
@@ -522,6 +519,9 @@ func (c *cachedIterator) Stop() {
 				)
 			}
 		}()
+
+		defer c.wg.Done()
+		defer c.iter.Stop()
 
 		// if cache is already set, we don't need to drain the iterator
 		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger)
