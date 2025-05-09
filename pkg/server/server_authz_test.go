@@ -1651,7 +1651,7 @@ func TestUpdateStore(t *testing.T) {
 
 		_, err := openfga.UpdateStore(context.Background(), &openfgav1.UpdateStoreRequest{
 			StoreId: settings.testData.id,
-      Name:    "updated store",
+			Name:    "updated store",
 		})
 		require.NoError(t, err)
 	})
@@ -1671,7 +1671,7 @@ func TestUpdateStore(t *testing.T) {
 			ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 			_, err := openfga.UpdateStore(ctx, &openfgav1.UpdateStoreRequest{
 				StoreId: settings.testData.id,
-        Name:    "updated store",
+				Name:    "updated store",
 			})
 
 			require.ErrorIs(t, err, authz.ErrUnauthorizedResponse)
@@ -1683,7 +1683,7 @@ func TestUpdateStore(t *testing.T) {
 
 			_, err := openfga.UpdateStore(ctx, &openfgav1.UpdateStoreRequest{
 				StoreId: settings.testData.id,
-        Name:    "updated store",
+				Name:    "updated store",
 			})
 
 			require.NoError(t, err)
