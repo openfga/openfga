@@ -725,6 +725,20 @@ func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAService
 	}
 }
 
+// WithSharedIteratorEnabled enables iterator to be shared across different consumer.
+func WithSharedIteratorEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorEnabled = enabled
+	}
+}
+
+// WithSharedIteratorLimit sets the number of items that can be shared.
+func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorLimit = limit
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
