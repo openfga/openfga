@@ -1496,7 +1496,6 @@ func TestCachedIterator(t *testing.T) {
 
 		iter.Stop()
 		wg.Wait()
-		time.Sleep(1500 * time.Millisecond) // wait for the goroutine to finish
 	})
 }
 
