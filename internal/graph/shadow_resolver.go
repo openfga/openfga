@@ -67,20 +67,22 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		reqClone.VisitedPaths = nil // reset completely for evaluation
 		s.wg.Add(1)
 		go func() {
-			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
 			defer func() {
 				if r := recover(); r != nil {
-					s.logger.ErrorWithContext(ctx, "shadow check panic",
+					s.logger.ErrorWithContext(ctx, "panic recovered",
 						zap.String("resolver", s.name),
 						zap.Any("error", err),
 						zap.String("request", reqClone.GetTupleKey().String()),
 						zap.String("store_id", reqClone.GetStoreID()),
 						zap.String("model_id", reqClone.GetAuthorizationModelID()),
+						zap.String("function", "ShadowResolver.ResolveCheck"),
 					)
 				}
-				cancel()
-				s.wg.Done()
 			}()
+
+			defer s.wg.Done()
+			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
+			defer cancel()
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",

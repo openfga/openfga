@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/mocks"
 )
@@ -105,7 +106,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		shadow.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 			panic(errors.New("test error"))
 		})
-		logger.EXPECT().ErrorWithContext(gomock.Any(), "shadow check panic", gomock.Any())
+		logger.EXPECT().ErrorWithContext(gomock.Any(), "panic recovered", gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), zap.String("function", "ShadowResolver.ResolveCheck"))
 		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
