@@ -13,10 +13,10 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -29,7 +29,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	targetObjectType := req.GetType()
 
-	ctx, span := tracer.Start(ctx, authz.ListObjects, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ListObjects.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
@@ -44,6 +44,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		}
 	}
 
+	// TODO: This should be apimethod.ListObjects, but is it considered a breaking change to move?
 	const methodName = "listobjects"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
@@ -51,7 +52,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ListObjects)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ListObjects)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	start := time.Now()
 
 	ctx := srv.Context()
-	ctx, span := tracer.Start(ctx, authz.StreamedListObjects, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.StreamedListObjects.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.String("object_type", req.GetType()),
 		attribute.String("relation", req.GetRelation()),
@@ -160,6 +161,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		}
 	}
 
+	// TODO: This should be apimethod.StreamedListObjects, but is it considered a breaking change to move?
 	const methodName = "streamedlistobjects"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
@@ -167,7 +169,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		Method:  methodName,
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.StreamedListObjects)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.StreamedListObjects)
 	if err != nil {
 		return err
 	}

@@ -12,9 +12,9 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -22,7 +22,7 @@ import (
 )
 
 func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckRequest) (*openfgav1.BatchCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.BatchCheck, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.BatchCheck.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "batch_size", Value: attribute.IntValue(len(req.GetChecks()))},
 		attribute.KeyValue{Key: "consistency", Value: attribute.StringValue(req.GetConsistency().String())},
@@ -35,17 +35,16 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		}
 	}
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.BatchCheck)
-	if err != nil {
-		return nil, err
-	}
-
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.BatchCheck,
+		Method:  apimethod.BatchCheck.String(),
 	})
 
 	storeID := req.GetStoreId()
+	err := s.checkAuthz(ctx, storeID, apimethod.BatchCheck)
+	if err != nil {
+		return nil, err
+	}
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {

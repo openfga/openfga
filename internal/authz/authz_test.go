@@ -13,6 +13,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -28,33 +29,33 @@ func TestGetRelation(t *testing.T) {
 	authorizer := NewAuthorizer(&Config{StoreID: "test-store", ModelID: "test-model"}, mockServer, logger.NewNoopLogger())
 
 	tests := []struct {
-		name           string
+		method         apimethod.APIMethod
 		expectedResult string
 		errorMsg       string
 	}{
-		{name: "ReadAuthorizationModel", expectedResult: CanCallReadAuthorizationModels},
-		{name: "ReadAuthorizationModels", expectedResult: CanCallReadAuthorizationModels},
-		{name: "Read", expectedResult: CanCallRead},
-		{name: "Write", expectedResult: CanCallWrite},
-		{name: "ListObjects", expectedResult: CanCallListObjects},
-		{name: "StreamedListObjects", expectedResult: CanCallListObjects},
-		{name: "Check", expectedResult: CanCallCheck},
-		{name: "BatchCheck", expectedResult: CanCallCheck},
-		{name: "ListUsers", expectedResult: CanCallListUsers},
-		{name: "WriteAssertions", expectedResult: CanCallWriteAssertions},
-		{name: "ReadAssertions", expectedResult: CanCallReadAssertions},
-		{name: "WriteAuthorizationModel", expectedResult: CanCallWriteAuthorizationModels},
-		{name: "CreateStore", expectedResult: CanCallCreateStore},
-		{name: "GetStore", expectedResult: CanCallGetStore},
-		{name: "DeleteStore", expectedResult: CanCallDeleteStore},
-		{name: "Expand", expectedResult: CanCallExpand},
-		{name: "ReadChanges", expectedResult: CanCallReadChanges},
-		{name: "Unknown", errorMsg: "unknown API method"},
+		{method: apimethod.ReadAuthorizationModel, expectedResult: CanCallReadAuthorizationModels},
+		{method: apimethod.ReadAuthorizationModels, expectedResult: CanCallReadAuthorizationModels},
+		{method: apimethod.Read, expectedResult: CanCallRead},
+		{method: apimethod.Write, expectedResult: CanCallWrite},
+		{method: apimethod.ListObjects, expectedResult: CanCallListObjects},
+		{method: apimethod.StreamedListObjects, expectedResult: CanCallListObjects},
+		{method: apimethod.Check, expectedResult: CanCallCheck},
+		{method: apimethod.BatchCheck, expectedResult: CanCallCheck},
+		{method: apimethod.ListUsers, expectedResult: CanCallListUsers},
+		{method: apimethod.WriteAssertions, expectedResult: CanCallWriteAssertions},
+		{method: apimethod.ReadAssertions, expectedResult: CanCallReadAssertions},
+		{method: apimethod.WriteAuthorizationModel, expectedResult: CanCallWriteAuthorizationModels},
+		{method: apimethod.CreateStore, expectedResult: CanCallCreateStore},
+		{method: apimethod.GetStore, expectedResult: CanCallGetStore},
+		{method: apimethod.DeleteStore, expectedResult: CanCallDeleteStore},
+		{method: apimethod.Expand, expectedResult: CanCallExpand},
+		{method: apimethod.ReadChanges, expectedResult: CanCallReadChanges},
+		{method: "Unknown", errorMsg: "unknown API method: Unknown"},
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			result, err := authorizer.getRelation(test.name)
+		t.Run(string(test.method), func(t *testing.T) {
+			result, err := authorizer.getRelation(test.method)
 			if test.errorMsg != "" {
 				require.Error(t, err)
 				require.Equal(t, test.errorMsg, err.Error())
@@ -222,7 +223,7 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(MaxModulesInRequest-1).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
-		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
+		err := authorizer.Authorize(ctx, "store-id", apimethod.Write, modules...)
 
 		require.Error(t, err)
 		var authError *authorizationError
@@ -241,7 +242,7 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, errorMessage)
 
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
-		err := authorizer.Authorize(ctx, "store-id", CreateStore)
+		err := authorizer.Authorize(ctx, "store-id", apimethod.CreateStore)
 
 		require.Error(t, err)
 		var authError *authorizationError
@@ -259,7 +260,7 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).Return(&openfgav1.CheckResponse{Allowed: false}, nil)
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
 
-		err := authorizer.Authorize(ctx, "store-id", CreateStore)
+		err := authorizer.Authorize(ctx, "store-id", apimethod.CreateStore)
 
 		var authError *authorizationError
 		ok := errors.As(err, &authError)
@@ -292,7 +293,7 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), checkReq).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: clientID})
 
-		err := authorizer.Authorize(ctx, storeID, CreateStore)
+		err := authorizer.Authorize(ctx, storeID, apimethod.CreateStore)
 
 		require.NoError(t, err)
 	})
@@ -311,7 +312,7 @@ func TestAuthorize(t *testing.T) {
 		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).MinTimes(MaxModulesInRequest).Return(&openfgav1.CheckResponse{Allowed: true}, nil)
 
 		ctx := authclaims.ContextWithAuthClaims(context.Background(), &authclaims.AuthClaims{ClientID: "test-client"})
-		err := authorizer.Authorize(ctx, "store-id", Write, modules...)
+		err := authorizer.Authorize(ctx, "store-id", apimethod.Write, modules...)
 
 		require.NoError(t, err)
 	})

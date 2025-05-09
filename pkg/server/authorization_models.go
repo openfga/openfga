@@ -12,7 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModel, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ReadAuthorizationModel.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
@@ -34,10 +34,10 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.ReadAuthorizationModel,
+		Method:  apimethod.ReadAuthorizationModel.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModel)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ReadAuthorizationModel)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.WriteAuthorizationModel, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.WriteAuthorizationModel.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -60,10 +60,10 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.WriteAuthorizationModel,
+		Method:  apimethod.WriteAuthorizationModel.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAuthorizationModel)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.WriteAuthorizationModel)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadAuthorizationModels, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ReadAuthorizationModels.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -96,10 +96,10 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.ReadAuthorizationModels,
+		Method:  apimethod.ReadAuthorizationModels.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAuthorizationModels)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ReadAuthorizationModels)
 	if err != nil {
 		return nil, err
 	}
