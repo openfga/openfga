@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,18 +32,23 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+var (
+	tracer   = otel.Tracer("openfga/pkg/server/commands/list_users")
+	ErrPanic = errors.New("panic captured")
+)
 
 type listUsersQuery struct {
-	logger                  logger.Logger
-	datastore               *storagewrappers.RequestStorageWrapper
-	resolveNodeBreadthLimit uint32
-	resolveNodeLimit        uint32
-	maxResults              uint32
-	maxConcurrentReads      uint32
-	deadline                time.Duration
-	dispatchThrottlerConfig threshold.Config
-	wasThrottled            *atomic.Bool
+	logger                               logger.Logger
+	datastore                            *storagewrappers.RequestStorageWrapper
+	resolveNodeBreadthLimit              uint32
+	resolveNodeLimit                     uint32
+	maxResults                           uint32
+	maxConcurrentReads                   uint32
+	deadline                             time.Duration
+	dispatchThrottlerConfig              threshold.Config
+	wasThrottled                         *atomic.Bool
+	expandExclusionExpandRewriteBase     expandExclusionExpandRewriteHandler
+	expandExclusionExpandRewriteSubtract expandExclusionExpandRewriteHandler
 }
 
 type expandResponse struct {
@@ -55,6 +61,8 @@ type expandResponse struct {
 // A user/subject either does or does not have a relationship, which represents that
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
+
+type expandExclusionExpandRewriteHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userset *openfgav1.Userset, baseFoundUsersCh chan foundUser) expandResponse
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -149,13 +157,15 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 // TODO accept ListUsersRequest instead of contextualTuples.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger:                  logger.NewNoopLogger(),
-		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
-		deadline:                serverconfig.DefaultListUsersDeadline,
-		maxResults:              serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
+		logger:                               logger.NewNoopLogger(),
+		resolveNodeBreadthLimit:              serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:                     serverconfig.DefaultResolveNodeLimit,
+		deadline:                             serverconfig.DefaultListUsersDeadline,
+		maxResults:                           serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:                   serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:                         new(atomic.Bool),
+		expandExclusionExpandRewriteBase:     expandExclusionExpandRewrite,
+		expandExclusionExpandRewriteSubtract: expandExclusionExpandRewrite,
 	}
 
 	for _, opt := range opts {
@@ -717,7 +727,13 @@ func (l *listUsersQuery) expandExclusion(
 
 	var baseError error
 	go func() {
-		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			resp = l.expandExclusionExpandRewriteBase(ctx, l, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		baseError = resp.err
 		close(baseFoundUsersCh)
 	}()
@@ -725,7 +741,13 @@ func (l *listUsersQuery) expandExclusion(
 	var subtractError error
 	var subtractHasCycle bool
 	go func() {
-		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			resp = l.expandExclusionExpandRewriteSubtract(ctx, l, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		subtractError = resp.err
 		subtractHasCycle = resp.hasCycle
 		close(subtractFoundUsersCh)
@@ -832,6 +854,10 @@ func (l *listUsersQuery) expandExclusion(
 	return expandResponse{
 		err: errs,
 	}
+}
+
+func expandExclusionExpandRewrite(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userset *openfgav1.Userset, usersChannel chan foundUser) expandResponse {
+	return l.expandRewrite(ctx, req, userset, usersChannel)
 }
 
 func (l *listUsersQuery) expandTTU(
@@ -954,4 +980,15 @@ func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *ty
 	}
 
 	return condEvalResult.ConditionMet, nil
+}
+
+func panicError(recovered *panics.Recovered) error {
+	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+}
+
+func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
+	return expandResponse{
+		hasCycle: false,
+		err:      panicError(recovered),
+	}
 }
