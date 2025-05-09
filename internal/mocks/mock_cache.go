@@ -16,6 +16,44 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockCacheItem is a mock of CacheItem interface.
+type MockCacheItem struct {
+	ctrl     *gomock.Controller
+	recorder *MockCacheItemMockRecorder
+	isgomock struct{}
+}
+
+// MockCacheItemMockRecorder is the mock recorder for MockCacheItem.
+type MockCacheItemMockRecorder struct {
+	mock *MockCacheItem
+}
+
+// NewMockCacheItem creates a new mock instance.
+func NewMockCacheItem(ctrl *gomock.Controller) *MockCacheItem {
+	mock := &MockCacheItem{ctrl: ctrl}
+	mock.recorder = &MockCacheItemMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCacheItem) EXPECT() *MockCacheItemMockRecorder {
+	return m.recorder
+}
+
+// CacheEntityType mocks base method.
+func (m *MockCacheItem) CacheEntityType() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CacheEntityType")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// CacheEntityType indicates an expected call of CacheEntityType.
+func (mr *MockCacheItemMockRecorder) CacheEntityType() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CacheEntityType", reflect.TypeOf((*MockCacheItem)(nil).CacheEntityType))
+}
+
 // MockInMemoryCache is a mock of InMemoryCache interface.
 type MockInMemoryCache[T any] struct {
 	ctrl     *gomock.Controller

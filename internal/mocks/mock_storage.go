@@ -602,6 +602,21 @@ func (mr *MockStoresBackendMockRecorder) ListStores(ctx, options any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockStoresBackend)(nil).ListStores), ctx, options)
 }
 
+// UpdateStore mocks base method.
+func (m *MockStoresBackend) UpdateStore(ctx context.Context, store *openfgav1.UpdateStoreRequest) (*openfgav1.Store, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStore", ctx, store)
+	ret0, _ := ret[0].(*openfgav1.Store)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateStore indicates an expected call of UpdateStore.
+func (mr *MockStoresBackendMockRecorder) UpdateStore(ctx, store any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStore", reflect.TypeOf((*MockStoresBackend)(nil).UpdateStore), ctx, store)
+}
+
 // MockAssertionsBackend is a mock of AssertionsBackend interface.
 type MockAssertionsBackend struct {
 	ctrl     *gomock.Controller
@@ -985,6 +1000,21 @@ func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store stri
 func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter, options)
+}
+
+// UpdateStore mocks base method.
+func (m *MockOpenFGADatastore) UpdateStore(ctx context.Context, store *openfgav1.UpdateStoreRequest) (*openfgav1.Store, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStore", ctx, store)
+	ret0, _ := ret[0].(*openfgav1.Store)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateStore indicates an expected call of UpdateStore.
+func (mr *MockOpenFGADatastoreMockRecorder) UpdateStore(ctx, store any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStore", reflect.TypeOf((*MockOpenFGADatastore)(nil).UpdateStore), ctx, store)
 }
 
 // Write mocks base method.

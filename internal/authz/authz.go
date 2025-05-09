@@ -2,7 +2,6 @@ package authz
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/utils"
 
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -28,26 +28,6 @@ const (
 
 	// MaxModulesInRequest Max number of modules a user is allowed to write in a single request if they do not have write permissions to the store.
 	MaxModulesInRequest = 1
-
-	// API methods.
-	ReadAuthorizationModel  = "ReadAuthorizationModel"
-	ReadAuthorizationModels = "ReadAuthorizationModels"
-	Read                    = "Read"
-	Write                   = "Write"
-	ListObjects             = "ListObjects"
-	StreamedListObjects     = "StreamedListObjects"
-	Check                   = "Check"
-	BatchCheck              = "BatchCheck"
-	ListUsers               = "ListUsers"
-	WriteAssertions         = "WriteAssertions"
-	ReadAssertions          = "ReadAssertions"
-	WriteAuthorizationModel = "WriteAuthorizationModel"
-	ListStores              = "ListStores"
-	CreateStore             = "CreateStore"
-	GetStore                = "GetStore"
-	DeleteStore             = "DeleteStore"
-	Expand                  = "Expand"
-	ReadChanges             = "ReadChanges"
 
 	// Relations.
 	CanCallReadAuthorizationModels  = "can_call_read_authorization_models"
@@ -61,6 +41,7 @@ const (
 	CanCallWriteAuthorizationModels = "can_call_write_authorization_models"
 	CanCallListStores               = "can_call_list_stores"
 	CanCallCreateStore              = "can_call_create_stores"
+	CanCallUpdateStore              = "can_call_update_store"
 	CanCallGetStore                 = "can_call_get_store"
 	CanCallDeleteStore              = "can_call_delete_store"
 	CanCallExpand                   = "can_call_expand"
@@ -104,7 +85,7 @@ type Config struct {
 }
 
 type AuthorizerInterface interface {
-	Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error
+	Authorize(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error
 	AuthorizeCreateStore(ctx context.Context) error
 	AuthorizeListStores(ctx context.Context) error
 	ListAuthorizedStores(ctx context.Context) ([]string, error)
@@ -118,7 +99,7 @@ func NewAuthorizerNoop() *NoopAuthorizer {
 	return &NoopAuthorizer{}
 }
 
-func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
+func (a *NoopAuthorizer) Authorize(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error {
 	return nil
 }
 
@@ -164,40 +145,43 @@ func (e *authorizationError) Error() string {
 	return e.Cause
 }
 
-func (a *Authorizer) getRelation(apiMethod string) (string, error) {
+func (a *Authorizer) getRelation(apiMethod apimethod.APIMethod) (string, error) {
+	// TODO: Add a golangci-linter rule to ensure all the possible cases are handled.
 	switch apiMethod {
-	case ReadAuthorizationModel, ReadAuthorizationModels:
+	case apimethod.ReadAuthorizationModel, apimethod.ReadAuthorizationModels:
 		return CanCallReadAuthorizationModels, nil
-	case Read:
+	case apimethod.Read:
 		return CanCallRead, nil
-	case Write:
+	case apimethod.Write:
 		return CanCallWrite, nil
-	case ListObjects, StreamedListObjects:
+	case apimethod.ListObjects, apimethod.StreamedListObjects:
 		return CanCallListObjects, nil
-	case Check, BatchCheck:
+	case apimethod.Check, apimethod.BatchCheck:
 		return CanCallCheck, nil
-	case ListUsers:
+	case apimethod.ListUsers:
 		return CanCallListUsers, nil
-	case WriteAssertions:
+	case apimethod.WriteAssertions:
 		return CanCallWriteAssertions, nil
-	case ReadAssertions:
+	case apimethod.ReadAssertions:
 		return CanCallReadAssertions, nil
-	case WriteAuthorizationModel:
+	case apimethod.WriteAuthorizationModel:
 		return CanCallWriteAuthorizationModels, nil
-	case ListStores:
+	case apimethod.ListStores:
 		return CanCallListStores, nil
-	case CreateStore:
+	case apimethod.CreateStore:
 		return CanCallCreateStore, nil
-	case GetStore:
+	case apimethod.UpdateStore:
+		return CanCallUpdateStore, nil
+	case apimethod.GetStore:
 		return CanCallGetStore, nil
-	case DeleteStore:
+	case apimethod.DeleteStore:
 		return CanCallDeleteStore, nil
-	case Expand:
+	case apimethod.Expand:
 		return CanCallExpand, nil
-	case ReadChanges:
+	case apimethod.ReadChanges:
 		return CanCallReadChanges, nil
 	default:
-		return "", errors.New("unknown API method")
+		return "", fmt.Errorf("unknown API method: %s", apiMethod)
 	}
 }
 
@@ -209,11 +193,11 @@ func (a *Authorizer) AccessControlStoreID() string {
 }
 
 // Authorize checks if the user has access to the resource.
-func (a *Authorizer) Authorize(ctx context.Context, storeID, apiMethod string, modules ...string) error {
+func (a *Authorizer) Authorize(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error {
 	methodName := "Authorize"
 	ctx, span := tracer.Start(ctx, methodName, trace.WithAttributes(
 		attribute.String("storeID", storeID),
-		attribute.String("apiMethod", apiMethod),
+		attribute.String("apiMethod", apiMethod.String()),
 		attribute.String("modules", strings.Join(modules, ",")),
 	))
 	defer span.End()
@@ -269,7 +253,7 @@ func (a *Authorizer) AuthorizeCreateStore(ctx context.Context) error {
 		return err
 	}
 
-	relation, err := a.getRelation(CreateStore)
+	relation, err := a.getRelation(apimethod.CreateStore)
 	if err != nil {
 		return err
 	}
@@ -290,7 +274,7 @@ func (a *Authorizer) AuthorizeListStores(ctx context.Context) error {
 		return err
 	}
 
-	relation, err := a.getRelation(ListStores)
+	relation, err := a.getRelation(apimethod.ListStores)
 	if err != nil {
 		return err
 	}
