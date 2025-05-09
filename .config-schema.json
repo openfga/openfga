@@ -674,6 +674,22 @@
                 }
             }
         },
+        "sharedIterator": {
+            "properties": {
+                "enabled": {
+                    "description": "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. Note that this is only a framework and is experimental.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_SHARED_ITERATOR_ENABLED"
+                },
+                "limit": {
+                    "description": "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.",
+                    "type": "integer",
+                    "default": "1000000",
+                    "x-env-variable": "OPENFGA_SHARED_ITERATOR_LIMIT"
+                }
+            }
+        },
         "requestTimeout": {
             "description": "The timeout duration for a request.",
             "type": "string",
