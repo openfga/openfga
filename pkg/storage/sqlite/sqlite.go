@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"strings"
 	"time"
@@ -49,7 +50,7 @@ type Datastore struct {
 // Ensures that SQLite implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-// Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
+// PrepareDSN Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
 func PrepareDSN(uri string) (string, error) {
 	// Set journal mode and busy timeout pragmas if not specified.
 	query := url.Values{}
@@ -130,7 +131,7 @@ func (s *Datastore) Close() {
 	if s.dbStatsCollector != nil {
 		prometheus.Unregister(s.dbStatsCollector)
 	}
-	s.db.Close()
+	_ = s.db.Close()
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -964,7 +965,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	defer rows.Close()
 
 	var changes []*openfgav1.TupleChange
-	var ulid string
+	var ULID string
 	for rows.Next() {
 		var objectType, objectID, relation, userObjectType, userObjectID, userRelation string
 		var operation int
@@ -973,7 +974,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		var conditionContext []byte
 
 		err = rows.Scan(
-			&ulid,
+			&ULID,
 			&objectType,
 			&objectID,
 			&relation,
@@ -1017,7 +1018,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		return nil, "", storage.ErrNotFound
 	}
 
-	return changes, ulid, nil
+	return changes, ULID, nil
 }
 
 // IsReady see [sqlcommon.IsReady].
@@ -1051,6 +1052,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 // This function retries the operation up to maxRetries times before returning the error.
 func busyRetry(fn func() error) error {
 	const maxRetries = 10
+	const baseDelay = 1 * time.Millisecond // initial delay
 	for retries := 0; ; retries++ {
 		err := fn()
 		if err == nil {
@@ -1059,6 +1061,9 @@ func busyRetry(fn func() error) error {
 
 		if isBusyError(err) {
 			if retries < maxRetries {
+				maxDelay := baseDelay << retries
+				jitter := time.Duration(rand.Int63n(int64(maxDelay)))
+				time.Sleep(jitter)
 				continue
 			}
 
