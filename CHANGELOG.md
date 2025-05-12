@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Performance optimization by allowing datastore query iterator to have shared. This can be enabled via `OPENFGA_SHARED_ITERATOR_ENABLED`. [#2433](https://github.com/openfga/openfga/pull/2433), [#2410](https://github.com/openfga/openfga/pull/2410) and [#2423](https://github.com/openfga/openfga/pull/2423)
+
 ### Changed
 - `DefaultResolveNodeBreadthLimit` changed from 100 to 10 in order to reduce connection contention. [#2425](https://github.com/openfga/openfga/pull/2425)
 - PostgreSQL and MySQL based iterators will load tuples only when needed (lazy loading). [#2425](https://github.com/openfga/openfga/pull/2425)
