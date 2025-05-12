@@ -87,7 +87,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	if !t.rows.Next() {
 		t.mu.Unlock()
 		if err := t.rows.Err(); err != nil {
-			return nil, err
+			return nil, t.HandleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -111,7 +111,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	t.mu.Unlock()
 
 	if err != nil {
-		return nil, err
+		return nil, t.HandleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -153,7 +153,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
-			return nil, err
+			return nil, t.HandleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -175,7 +175,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		&record.InsertedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, t.HandleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
