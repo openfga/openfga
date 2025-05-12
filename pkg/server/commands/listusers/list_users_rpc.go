@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,7 +32,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/list_users")
+var (
+	tracer   = otel.Tracer("openfga/pkg/server/commands/list_users")
+	ErrPanic = errors.New("panic captured")
+)
 
 type listUsersQuery struct {
 	logger                  logger.Logger
@@ -43,12 +47,17 @@ type listUsersQuery struct {
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
 	wasThrottled            *atomic.Bool
+	listUsersMaxResults     listUsersMaxResultsHandler
+	listUsersExpand         listUsersExpandHandler
 }
 
 type expandResponse struct {
 	hasCycle bool
 	err      error
 }
+
+type listUsersMaxResultsHandler func(foundUsersCh chan foundUser, foundUsersUnique map[tuple.UserString]foundUser, maxResults uint32, span trace.Span, doneWithFoundUsersCh chan struct{})
+type listUsersExpandHandler func(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, foundUsersCh chan foundUser) expandResponse
 
 // userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
 //
@@ -156,6 +165,8 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
+		listUsersMaxResults:     listUsersMaxResults,
+		listUsersExpand:         listUsersExpand,
 	}
 
 	for _, opt := range opts {
@@ -218,23 +229,24 @@ func (l *listUsersQuery) ListUsers(
 
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
-		for foundUser := range foundUsersCh {
-			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
-
-			if l.maxResults > 0 {
-				if uint32(len(foundUsersUnique)) >= l.maxResults {
-					span.SetAttributes(attribute.Bool("max_results_found", true))
-					break
-				}
-			}
+		recoveredError := panics.Try(func() {
+			l.listUsersMaxResults(foundUsersCh, foundUsersUnique, l.maxResults, span, doneWithFoundUsersCh)
+		})
+		if recoveredError != nil {
+			expandErrCh <- panicError(recoveredError)
 		}
-
 		doneWithFoundUsersCh <- struct{}{}
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &dispatchCount)
-		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+		// defer wg.Done()
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			resp = l.listUsersExpand(cancellableCtx, l, req, &dispatchCount, foundUsersCh)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
@@ -286,6 +298,25 @@ func (l *listUsersQuery) ListUsers(
 			WasThrottled:        l.wasThrottled,
 		},
 	}, nil
+}
+
+func listUsersExpand(cancellableCtx context.Context, l *listUsersQuery, req *openfgav1.ListUsersRequest, dispatchCount *atomic.Uint32, foundUsersCh chan foundUser) expandResponse {
+	internalRequest := fromListUsersRequest(req, dispatchCount)
+	resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+	return resp
+}
+
+func listUsersMaxResults(foundUsersCh chan foundUser, foundUsersUnique map[tuple.UserString]foundUser, maxResults uint32, span trace.Span, doneWithFoundUsersCh chan struct{}) {
+	for foundUser := range foundUsersCh {
+		foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
+
+		if maxResults > 0 {
+			if uint32(len(foundUsersUnique)) >= maxResults {
+				span.SetAttributes(attribute.Bool("max_results_found", true))
+				break
+			}
+		}
+	}
 }
 
 func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUsersRequest) (bool, error) {
@@ -954,4 +985,15 @@ func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *ty
 	}
 
 	return condEvalResult.ConditionMet, nil
+}
+
+func panicError(recovered *panics.Recovered) error {
+	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+}
+
+func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
+	return expandResponse{
+		hasCycle: false,
+		err:      panicError(recovered),
+	}
 }
