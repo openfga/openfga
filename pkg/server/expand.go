@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -19,7 +19,7 @@ import (
 
 func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
 	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, authz.Expand, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.Expand.String(), trace.WithAttributes(
 		attribute.KeyValue{Key: "store_id", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
@@ -35,10 +35,10 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.Expand,
+		Method:  apimethod.Expand.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.Expand)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.Expand)
 	if err != nil {
 		return nil, err
 	}
