@@ -130,7 +130,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, sqlcommon.HandleSQLError, "postgres")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres")
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -215,7 +215,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sb), nil
+	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -268,7 +268,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 			&conditionContext,
 		)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	if conditionName.String != "" {
@@ -333,7 +333,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(orConditions)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sb), nil
+	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -373,7 +373,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
 
-	return sqlcommon.NewSQLTupleIterator(builder), nil
+	return sqlcommon.NewSQLTupleIterator(builder, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -410,7 +410,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", sqlcommon.HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -420,14 +420,14 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	for rows.Next() {
 		err = rows.Scan(&modelID)
 		if err != nil {
-			return nil, "", sqlcommon.HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		modelIDs = append(modelIDs, modelID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", sqlcommon.HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 
 	var token string
@@ -489,7 +489,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt, &updatedAt)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -521,7 +521,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	return &openfgav1.Store{
@@ -565,7 +565,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", sqlcommon.HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -576,7 +576,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, "", sqlcommon.HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgav1.Store{
@@ -588,7 +588,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, "", sqlcommon.HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 
 	if len(stores) > options.Pagination.PageSize {
@@ -609,7 +609,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -632,7 +632,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
-		return sqlcommon.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -657,7 +657,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgav1.Assertion{}, nil
 		}
-		return nil, sqlcommon.HandleSQLError(err)
+		return nil, HandleSQLError(err)
 	}
 
 	var assertions openfgav1.Assertions
@@ -706,7 +706,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, "", sqlcommon.HandleSQLError(err)
+		return nil, "", HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -731,7 +731,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 			&insertedAt,
 		)
 		if err != nil {
-			return nil, "", sqlcommon.HandleSQLError(err)
+			return nil, "", HandleSQLError(err)
 		}
 
 		var conditionContextStruct structpb.Struct
@@ -768,4 +768,23 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, s.db)
+}
+
+// HandleSQLError processes an SQL error and converts it into a more
+// specific error type based on the nature of the SQL error.
+func HandleSQLError(err error, args ...interface{}) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+
+	if strings.Contains(err.Error(), "duplicate key value") {
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+			}
+		}
+		return storage.ErrCollision
+	}
+
+	return fmt.Errorf("sql error: %w", err)
 }
