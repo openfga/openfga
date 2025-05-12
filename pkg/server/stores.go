@@ -12,7 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.CreateStore)
+	ctx, span := tracer.Start(ctx, apimethod.CreateStore.String())
 	defer span.End()
 
 	if !validator.RequestIsValidatedFromContext(ctx) {
@@ -31,7 +31,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.CreateStore,
+		Method:  apimethod.CreateStore.String(),
 	})
 
 	err := s.checkCreateStoreAuthz(ctx)
@@ -51,7 +51,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.DeleteStore, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.DeleteStore.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -64,10 +64,10 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.DeleteStore,
+		Method:  apimethod.DeleteStore.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.DeleteStore)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.DeleteStore)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (*openfgav1.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.GetStore, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.GetStore.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -97,10 +97,10 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.GetStore,
+		Method:  apimethod.GetStore.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.GetStore)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.GetStore)
 	if err != nil {
 		return nil, err
 	}

@@ -12,7 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -22,7 +22,7 @@ import (
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	start := time.Now()
 
-	ctx, span := tracer.Start(ctx, authz.Write, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.Write.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -35,7 +35,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.Write,
+		Method:  apimethod.Write.String(),
 	})
 
 	storeID := req.GetStoreId()
@@ -44,11 +44,6 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
-
-	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
-		Service: s.serviceName,
-		Method:  authz.Write,
-	})
 
 	err = s.checkWriteAuthz(ctx, req, typesys)
 	if err != nil {

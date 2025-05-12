@@ -10,14 +10,14 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadChanges, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ReadChanges.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
@@ -31,10 +31,10 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.ReadChanges,
+		Method:  apimethod.ReadChanges.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadChanges)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ReadChanges)
 	if err != nil {
 		return nil, err
 	}

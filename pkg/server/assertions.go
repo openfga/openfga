@@ -12,7 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/authz"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -20,7 +20,7 @@ import (
 )
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.WriteAssertions, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.WriteAssertions.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -33,10 +33,10 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.WriteAssertions,
+		Method:  apimethod.WriteAssertions.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.WriteAssertions)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.WriteAssertions)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertionsRequest) (*openfgav1.ReadAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, authz.ReadAssertions, trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, apimethod.ReadAssertions.String(), trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreId()),
 	))
 	defer span.End()
@@ -77,10 +77,10 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
-		Method:  authz.ReadAssertions,
+		Method:  apimethod.ReadAssertions.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), authz.ReadAssertions)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.ReadAssertions)
 	if err != nil {
 		return nil, err
 	}
