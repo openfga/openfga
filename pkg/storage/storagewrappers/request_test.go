@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/sharediterator"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -57,6 +58,51 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		d, ok := c.RelationshipTupleReader.(*BoundedConcurrencyTupleReader)
 		require.Equal(t, maxConcurrentReads, cap(d.limiter))
+		require.True(t, ok)
+	})
+
+	t.Run("check_api_with_caching_shared_iterator_on", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		requestContextualTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+		}
+
+		sharedIteratorStorage := sharediterator.NewSharedIteratorDatastoreStorage()
+
+		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, maxConcurrentReads,
+			&shared.SharedDatastoreResources{
+				CheckCache:            mockCache,
+				Logger:                logger.NewNoopLogger(),
+				SharedIteratorStorage: sharedIteratorStorage,
+			}, config.CacheSettings{
+				CheckIteratorCacheEnabled: true,
+				CheckCacheLimit:           1,
+				SharedIteratorEnabled:     true,
+			},
+			logger.NewNoopLogger(),
+			Check,
+		)
+		require.NotNil(t, br)
+
+		// assert on the chain
+		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		require.True(t, ok)
+
+		b, ok := a.RelationshipTupleReader.(*InstrumentedOpenFGAStorage)
+		require.True(t, ok)
+
+		c, ok := b.RelationshipTupleReader.(*sharediterator.IteratorDatastore)
+		require.True(t, ok)
+
+		d, ok := c.RelationshipTupleReader.(*CachedDatastore)
+		require.True(t, ok)
+
+		e, ok := d.RelationshipTupleReader.(*BoundedConcurrencyTupleReader)
+		require.Equal(t, maxConcurrentReads, cap(e.limiter))
 		require.True(t, ok)
 	})
 

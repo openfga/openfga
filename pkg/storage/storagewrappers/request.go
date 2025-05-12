@@ -7,6 +7,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/sharediterator"
 )
 
 type Operation int
@@ -25,7 +26,7 @@ type RequestStorageWrapper struct {
 
 var _ InstrumentedStorage = (*RequestStorageWrapper)(nil)
 
-// NewRequestStorageWrapperWithCache wraps the existing datstore to enable caching of iterators.
+// NewRequestStorageWrapperWithCache wraps the existing datastore to enable caching of iterators.
 func NewRequestStorageWrapperWithCache(
 	ds storage.RelationshipTupleReader,
 	requestContextualTuples []*openfgav1.TupleKey,
@@ -62,6 +63,9 @@ func NewRequestStorageWrapperWithCache(
 			WithCachedDatastoreLogger(logger),
 			WithCachedDatastoreMethodName("listObjects"),
 		)
+	}
+	if cacheSettings.SharedIteratorEnabled {
+		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, resources.SharedIteratorStorage, sharediterator.WithSharedIteratorDatastoreLogger(logger))
 	}
 	instrumentedStorage := NewInstrumentedOpenFGAStorage(tupleReader)                           // to capture metrics
 	combinedTupleReader := NewCombinedTupleReader(instrumentedStorage, requestContextualTuples) // to read the contextual tuples

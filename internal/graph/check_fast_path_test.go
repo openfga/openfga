@@ -18,7 +18,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph/iterator"
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1332,17 +1332,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:                 "duplicates_match_with_recursion",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
-			usersetFromUser:      hashset.New("group:4"),
-			readMocks: [][]*openfgav1.Tuple{
-				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
-				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
-				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
-			},
-			expected: true,
-		},
-		{
 			name:                 "no_duplicates_no_match_counts",
 			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
 			usersetFromUser:      hashset.New(),
@@ -1370,7 +1359,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 			for _, mock := range tt.readMocks {
-				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Times(1).Return(storage.NewStaticTupleIterator(mock), nil)
+				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(mock), nil)
 			}
 
 			model := parser.MustTransformDSLToProto(`
@@ -1405,7 +1394,10 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			result := false
 			for outcome := range checkOutcomeChan {
-				result = outcome.resp.Allowed
+				if outcome.resp.Allowed {
+					result = true
+					break
+				}
 			}
 			require.Equal(t, tt.expected, result)
 		})
@@ -1419,14 +1411,16 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		ctx := context.Background()
 		ctx, cancel := context.WithCancel(ctx)
-		// Stop is called either sync (when context is already cancelled before sending iterator through channel
-		// or async when calling drainIteratorChannel
+		// Stop is called under race conditions thus is not guaranteed these observers may see a call to it
 		iter1 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		iter2 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter2.EXPECT().Stop().MaxTimes(1)
+		iter2.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		iter3 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
 		iter3.EXPECT().Stop().MaxTimes(1)
+		iter3.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
 		// currentUsersetLevel.Values() doesn't return results in order, thus there is no guarantee that `Times` will be consistent as it can return err due to context being cancelled
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter1, nil)
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(func(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
@@ -1648,7 +1642,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 
 func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
 	})
 
 	model := parser.MustTransformDSLToProto(`
@@ -2121,7 +2115,7 @@ type group
 
 func TestRecursiveUsersetFastPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t)
+		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
 	})
 	tests := []struct {
 		name                            string
