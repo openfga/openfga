@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sourcegraph/conc/panics"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -38,16 +39,18 @@ var (
 )
 
 type listUsersQuery struct {
-	logger                  logger.Logger
-	datastore               *storagewrappers.RequestStorageWrapper
-	resolveNodeBreadthLimit uint32
-	resolveNodeLimit        uint32
-	maxResults              uint32
-	maxConcurrentReads      uint32
-	deadline                time.Duration
-	dispatchThrottlerConfig threshold.Config
-	wasThrottled            *atomic.Bool
-	expandDirectDispatch    expandDirectDispatchHandler
+	logger                   logger.Logger
+	datastore                *storagewrappers.RequestStorageWrapper
+	resolveNodeBreadthLimit  uint32
+	resolveNodeLimit         uint32
+	maxResults               uint32
+	maxConcurrentReads       uint32
+	deadline                 time.Duration
+	dispatchThrottlerConfig  threshold.Config
+	wasThrottled             *atomic.Bool
+	expandDirectDispatch     expandDirectDispatchHandler
+	expandUnionExpandRewrite expandUnionExpandRewriteHandler
+	expandUnionCloseChannels expandUnionCloseChannelsHandler
 }
 
 type expandResponse struct {
@@ -62,6 +65,8 @@ type expandResponse struct {
 type userRelationshipStatus int
 
 type expandDirectDispatchHandler func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse
+type expandUnionExpandRewriteHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, unionFoundUsersChans []chan foundUser, i int) expandResponse
+type expandUnionCloseChannelsHandler func(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -156,14 +161,16 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 // TODO accept ListUsersRequest instead of contextualTuples.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
-		logger:                  logger.NewNoopLogger(),
-		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
-		deadline:                serverconfig.DefaultListUsersDeadline,
-		maxResults:              serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
-		expandDirectDispatch:    expandDirectDispatch,
+		logger:                   logger.NewNoopLogger(),
+		resolveNodeBreadthLimit:  serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:         serverconfig.DefaultResolveNodeLimit,
+		deadline:                 serverconfig.DefaultListUsersDeadline,
+		maxResults:               serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:       serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:             new(atomic.Bool),
+		expandDirectDispatch:     expandDirectDispatch,
+		expandUnionExpandRewrite: expandUnionExpandRewrite,
+		expandUnionCloseChannels: expandUnionCloseChannels,
 	}
 
 	for _, opt := range opts {
@@ -657,7 +664,13 @@ func (l *listUsersQuery) expandUnion(
 		rewrite := rewrite
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandUnionExpandRewrite(ctx, l, req, rewrite, unionFoundUsersChans, i)
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
@@ -665,10 +678,7 @@ func (l *listUsersQuery) expandUnion(
 	errChan := make(chan error, 1)
 
 	go func() {
-		err := pool.Wait()
-		for i := range unionFoundUsersChans {
-			close(unionFoundUsersChans[i])
-		}
+		err := l.expandUnionCloseChannels(pool, unionFoundUsersChans)
 		errChan <- err
 		close(errChan)
 	}()
@@ -721,6 +731,18 @@ func (l *listUsersQuery) expandUnion(
 	return expandResponse{
 		err: <-errChan,
 	}
+}
+
+func expandUnionCloseChannels(pool *pool.ContextPool, unionFoundUsersChans []chan foundUser) error {
+	err := pool.Wait()
+	for i := range unionFoundUsersChans {
+		close(unionFoundUsersChans[i])
+	}
+	return err
+}
+
+func expandUnionExpandRewrite(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, unionFoundUsersChans []chan foundUser, i int) expandResponse {
+	return l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
 }
 
 func (l *listUsersQuery) expandExclusion(
