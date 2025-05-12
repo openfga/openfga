@@ -1463,7 +1463,7 @@ func TestCachedIterator(t *testing.T) {
 		}).AnyTimes()
 		mockLogger := mocks.NewMockLogger(mockController)
 		mockLogger.EXPECT().Error(
-			"panic recoverred",
+			"panic recovered",
 			gomock.Any(),
 			zap.String("function", "cachedIterator.Stop"),
 		)
