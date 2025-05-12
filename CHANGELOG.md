@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Performance optimization by allowing datastore query iterator to have shared. This can be enabled via `OPENFGA_SHARED_ITERATOR_ENABLED`. [#2433](https://github.com/openfga/openfga/pull/2433), [#2410](https://github.com/openfga/openfga/pull/2410) and [#2423](https://github.com/openfga/openfga/pull/2423)
+- Performance optimization by allowing datastore query iterator to be shared by multiple consumers. This can be enabled via `OPENFGA_SHARED_ITERATOR_ENABLED`. [#2433](https://github.com/openfga/openfga/pull/2433), [#2410](https://github.com/openfga/openfga/pull/2410) and [#2423](https://github.com/openfga/openfga/pull/2423)
 
 ### Changed
 - `DefaultResolveNodeBreadthLimit` changed from 100 to 10 in order to reduce connection contention. [#2425](https://github.com/openfga/openfga/pull/2425)
