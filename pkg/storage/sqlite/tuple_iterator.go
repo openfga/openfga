@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	sq "github.com/Masterminds/squirrel"
-	"go.opentelemetry.io/otel/trace"
 	"sync"
 
+	sq "github.com/Masterminds/squirrel"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
