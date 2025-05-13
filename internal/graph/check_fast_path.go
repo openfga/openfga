@@ -567,7 +567,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	leftChans := iterator.NewFanIn(ctx, c.logger, c.concurrencyLimit)
 	go produceLeftChannels(ctx, leftChans, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
@@ -586,7 +586,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 		return nil, err
 	}
 
-	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	leftChans := iterator.NewFanIn(ctx, c.logger, c.concurrencyLimit)
 	go produceLeftChannels(ctx, leftChans, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
@@ -620,7 +620,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
-	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
+	leftChans := iterator.NewFanIn(ctx, c.logger, c.concurrencyLimit)
 	defer leftChans.Close()
 	// allow both producer and consumers to run concurrently
 	go func(req *ResolveCheckRequest) {
@@ -834,7 +834,7 @@ func (c *LocalChecker) recursiveTTUFastPath(ctx context.Context, req *ResolveChe
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
+	objectProvider := newRecursiveObjectProvider(typesys, c.logger, ds)
 
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -852,7 +852,7 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 
 	ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu, c.concurrencyLimit)
+	objectProvider := newRecursiveTTUObjectProvider(typesys, c.logger, ttu, c.concurrencyLimit)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -867,7 +867,7 @@ func (c *LocalChecker) recursiveUsersetFastPath(ctx context.Context, req *Resolv
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
-	objectProvider := newRecursiveObjectProvider(typesys, ds)
+	objectProvider := newRecursiveObjectProvider(typesys, c.logger, ds)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
 	return c.recursiveFastPath(ctx, req, iter, &recursiveMapping{
@@ -883,7 +883,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider := newRecursiveUsersetObjectProvider(typesys, c.concurrencyLimit)
+	objectProvider := newRecursiveUsersetObjectProvider(typesys, c.logger, c.concurrencyLimit)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,

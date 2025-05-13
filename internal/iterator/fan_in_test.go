@@ -2,12 +2,15 @@ package iterator
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -33,7 +36,9 @@ func TestFanIn(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	fanin := NewFanIn(ctx, 2)
+
+	logger := mocks.NewMockLogger(ctrl)
+	fanin := NewFanIn(ctx, logger, 2)
 
 	fanin.Add(makeIterChan(ctrl, "1", true))
 	fanin.Add(makeIterChan(ctrl, "2", true))
@@ -68,4 +73,55 @@ func TestFanIn(t *testing.T) {
 	fanin.Close()
 	drained := <-fanin.drained
 	require.True(t, drained)
+
+	t.Run("should_log_when_run_panics", func(t *testing.T) {
+		logger.EXPECT().ErrorWithContext(gomock.Any(), "panic recoverred", gomock.Any(), zap.String("function", "FanIn.handleChannel"))
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+		fanin := NewFanIn(ctx, logger, 2)
+		iterChan := make(chan *Msg, 1)
+		iter := mocks.NewMockIterator[string](ctrl)
+		iter.EXPECT().Stop().DoAndReturn(func() {
+			panic("test panic")
+		})
+		iterChan <- &Msg{Iter: iter}
+		close(iterChan)
+		fanin.Add(iterChan)
+		time.Sleep(2 * time.Second)
+		fanin.Done()
+	})
+}
+
+func TestHandleChannel(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	logger := mocks.NewMockLogger(ctrl)
+
+	t.Run("should_log_when_pool_panics", func(t *testing.T) {
+		logger.EXPECT().ErrorWithContext(gomock.Any(), "panic recoverred", gomock.Any(), zap.String("function", "FanIn.handleChannel"))
+		fanin := NewFanIn(ctx, logger, 2)
+		iterChan := make(chan *Msg, 3)
+		iter := mocks.NewMockIterator[string](ctrl)
+		iter.EXPECT().Stop().DoAndReturn(func() {
+			panic("test panic")
+		})
+		// iterChan <- nil
+		iterChan <- &Msg{Iter: nil, Err: fmt.Errorf("test error")}
+		iterChan <- &Msg{Iter: iter}
+		iterChan <- &Msg{Iter: iter}
+		// iterChan <- &Msg{Iter: iter, Err: fmt.Errorf("test error")}
+		// go func() {
+		// 	fanin.handleChannel(iterChan)
+		// }()
+		// iterChan <- &Msg{Iter: iter}
+		close(iterChan)
+		// fanin.Add(iterChan)
+		time.Sleep(2 * time.Second)
+		fanin.Done()
+	})
 }
