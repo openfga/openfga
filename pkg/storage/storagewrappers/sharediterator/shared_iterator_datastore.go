@@ -166,7 +166,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 			keyItem.iter.mu.Unlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
-			return nil, err
+			return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 		}
 		keyItem.iter.mu.Unlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
@@ -248,7 +248,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 			keyItem.iter.mu.Unlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
-			return nil, err
+			return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 		}
 		keyItem.iter.mu.Unlock()
 
@@ -325,7 +325,7 @@ func (sf *IteratorDatastore) Read(
 			keyItem.iter.mu.Unlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
-			return nil, err
+			return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 		}
 		keyItem.iter.mu.Unlock()
 		sharedIteratorQueryHistogram.WithLabelValues(

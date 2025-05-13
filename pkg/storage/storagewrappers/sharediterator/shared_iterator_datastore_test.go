@@ -209,17 +209,22 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		internalStorage.mu.Unlock()
 	})
 	t.Run("cloned_error", func(t *testing.T) {
+		mockErr := fmt.Errorf("mock_error")
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(nil, mockErr)
+
 		cacheKey := storagewrappersutil.ReadKey(storeID, tk)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = fmt.Errorf("mock_error")
+		newIterator.queryErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
 		}
 		ds.internalStorage.mu.Unlock()
 		_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.ErrorIs(t, err, newIterator.queryErr)
+		require.ErrorIs(t, err, mockErr)
 		ds.internalStorage.mu.Lock()
 		foundIterator, ok := internalStorage.iters[cacheKey]
 		require.True(t, ok)
@@ -339,17 +344,22 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		internalStorage.mu.Unlock()
 	})
 	t.Run("cloned_error", func(t *testing.T) {
+		mockErr := fmt.Errorf("mock_error")
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, filter, storage.ReadUsersetTuplesOptions{}).
+			Return(nil, mockErr)
+
 		cacheKey := storagewrappersutil.ReadUsersetTuplesKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = fmt.Errorf("mock_error")
+		newIterator.queryErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
 		}
 		ds.internalStorage.mu.Unlock()
 		_, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{})
-		require.ErrorIs(t, err, newIterator.queryErr)
+		require.ErrorIs(t, err, mockErr)
 		ds.internalStorage.mu.Lock()
 		foundIterator, ok := internalStorage.iters[cacheKey]
 		require.True(t, ok)
@@ -471,17 +481,22 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		internalStorage.mu.Unlock()
 	})
 	t.Run("cloned_error", func(t *testing.T) {
+		mockErr := fmt.Errorf("mock_error")
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, filter, storage.ReadStartingWithUserOptions{}).
+			Return(nil, mockErr)
+
 		cacheKey, _ := storagewrappersutil.ReadStartingWithUserKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
 		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = fmt.Errorf("mock_error")
+		newIterator.queryErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
 		}
 		ds.internalStorage.mu.Unlock()
 		_, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{})
-		require.ErrorIs(t, err, newIterator.queryErr)
+		require.ErrorIs(t, err, mockErr)
 		ds.internalStorage.mu.Lock()
 		foundIterator, ok := internalStorage.iters[cacheKey]
 		require.True(t, ok)
