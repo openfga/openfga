@@ -103,7 +103,7 @@ func (f *FanIn) drainOnExit(ch chan *Msg) {
 	f.mu.Unlock()
 }
 
-// Add will not block if the amount of messages accumulated is (limit * 2) + 1 (out, pool, buffer)
+// Add will not block if the amount of messages accumulated is (limit * 2) + 1 (out, pool, buffer).
 func (f *FanIn) Add(ch chan *Msg) bool {
 	f.mu.Lock()
 	if !f.accepting {
