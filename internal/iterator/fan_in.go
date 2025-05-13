@@ -143,5 +143,4 @@ func (f *FanIn) Done() {
 func (f *FanIn) Stop() {
 	// Done gets called internally
 	f.cancel()
-	f.drainOnExit(f.out)
 }

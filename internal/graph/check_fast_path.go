@@ -441,6 +441,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans *iterator.
 		cancel()
 		iter.Stop()
 		leftChans.Stop()
+		iterator.Drain(leftChan)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -658,6 +659,7 @@ ConsumerLoop:
 		case <-ctx.Done():
 			close(checkOutcomeChan)
 			leftChans.Stop()
+			iterator.Drain(out)
 			return
 		case msg, ok := <-out:
 			if !ok {
@@ -674,6 +676,7 @@ ConsumerLoop:
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
 					close(checkOutcomeChan)
 					leftChans.Stop()
+					iterator.Drain(out)
 					return
 				}
 
@@ -682,6 +685,7 @@ ConsumerLoop:
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{Allowed: true}}, checkOutcomeChan)
 					close(checkOutcomeChan)
 					leftChans.Stop()
+					iterator.Drain(out)
 					return
 				}
 

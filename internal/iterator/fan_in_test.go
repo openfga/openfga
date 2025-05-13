@@ -33,7 +33,7 @@ func TestFanIn(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	fanin := NewFanIn(ctx, 3)
+	fanin := NewFanIn(ctx, 5)
 
 	fanin.Add(makeIterChan(ctrl, "1", true))
 	fanin.Add(makeIterChan(ctrl, "2", true))
@@ -70,4 +70,5 @@ func TestFanIn(t *testing.T) {
 	}
 	fanin.Stop()
 	fanin.wg.Wait()
+	Drain(fanin.Out())
 }
