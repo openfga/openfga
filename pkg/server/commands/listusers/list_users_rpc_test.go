@@ -4033,15 +4033,15 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 	})
 }
 
-func TestListUsersExclusionPanicExpandDirect(t *testing.T) {
+func TestListUsersUnionPanicExpandUnion(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 	tests := ListUsersTests{
 		{
-			name: "exclusion_with_chained_negation_panic_expand_direct",
+			name: "union_panic_expand_rewrite",
 			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "2"},
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
 				Relation: "viewer",
 				UserFilters: []*openfgav1.UserTypeFilter{
 					{
@@ -4052,61 +4052,29 @@ func TestListUsersExclusionPanicExpandDirect(t *testing.T) {
 			model: `
 				model
 					schema 1.1
-
 				type user
-
 				type document
 					relations
-						define unblocked: [user]
-						define blocked: [user, document#viewer] but not unblocked
-						define viewer: [user, document#blocked] but not blocked
-			`,
+						define optional_1: [user]
+						define optional_2: [user]
+						define viewer: optional_1 or optional_2`,
+
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
-				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
-				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:2", "unblocked", "user:jon"),
+				tuple.NewTupleKey("document:1", "optional_1", "user:will"),
+				tuple.NewTupleKey("document:1", "optional_2", "user:will"),
+
+				tuple.NewTupleKey("document:1", "optional_1", "user:jon"),
+				tuple.NewTupleKey("document:1", "optional_2", "user:maria"),
 			},
 			expectedUsers:     []string{},
 			expectedErrorMsg:  ErrPanic.Error(),
-			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
-		},
-		{
-			name: "non_stratifiable_exclusion_containing_cycle_1_panic_expand_direct",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "document", Id: "1"},
-				Relation: "viewer",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{
-						Type:     "document",
-						Relation: "blocked",
-					},
-				},
-			},
-			model: `
-				model
-					schema 1.1
-
-				type user
-
-				type document
-					relations
-						define blocked: [user, document#viewer]
-						define viewer: [user, document#blocked] but not blocked
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
-				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
-			},
-			expectedUsers:     []string{},
-			expectedErrorMsg:  ErrPanic.Error(),
-			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
+			newListUsersQuery: NewListUsersQueryPanicExpandUnionExpandRewrite,
 		},
 	}
 	tests.runListUsersTestCases(t)
 }
 
-func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
+func NewListUsersQueryPanicExpandUnionExpandRewrite(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{
 		logger:                  logger.NewNoopLogger(),
 		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
@@ -4115,9 +4083,10 @@ func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, cont
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
-		expandDirectDispatch: func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
-			panic(ErrPanic)
+		expandUnionExpandRewrite: func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, rewrite *openfgav1.Userset, unionFoundUsersChans []chan foundUser, i int) expandResponse {
+			panic("panic expandUnionExpandRewrite")
 		},
+		expandUnionCloseChannels: expandUnionCloseChannels,
 	}
 
 	for _, opt := range opts {
