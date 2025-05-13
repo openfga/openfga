@@ -44,6 +44,12 @@ var (
 		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit.",
 	}, []string{"operation"})
 
+	sharedIteratorWatchDog = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: build.ProjectName,
+		Name:      "shared_iterator_watchdog_timer_triggered",
+		Help:      "Total number of times watchdog timer is triggered.",
+	})
+
 	errSharedIteratorWatchdog = errors.New("shared iterator watchdog timeout")
 )
 
@@ -402,7 +408,6 @@ func (sf *IteratorDatastore) watchdogTimeout(cacheKey string) {
 }
 
 // sharedIterator will be shared with multiple consumers.
-// For now, this is a skeleton and no one is actually sharing the iterator.
 type sharedIterator struct {
 	manager      *IteratorDatastore // non-changing
 	key          string             // non-changing
@@ -474,6 +479,7 @@ func (s *sharedIterator) watchdogTimeout() {
 	s.mu.Lock()
 	*s.watchdogTimeoutErr = errSharedIteratorWatchdog
 	s.mu.Unlock()
+	sharedIteratorWatchDog.Inc()
 	s.manager.watchdogTimeout(s.key)
 }
 
