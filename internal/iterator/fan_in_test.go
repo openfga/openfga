@@ -33,7 +33,7 @@ func TestFanIn(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
-	fanin := NewFanIn(ctx, 2)
+	fanin := NewFanIn(ctx, 3)
 
 	fanin.Add(makeIterChan(ctrl, "1", true))
 	fanin.Add(makeIterChan(ctrl, "2", true))
@@ -41,12 +41,15 @@ func TestFanIn(t *testing.T) {
 	fanin.Add(makeIterChan(ctrl, "4", true))
 	fanin.Add(makeIterChan(ctrl, "5", true))
 	fanin.Add(makeIterChan(ctrl, "6", true))
-	fanin.Add(makeIterChan(ctrl, "7", true))
 	fanin.Done()
-	fanin.Add(makeIterChan(ctrl, "8", false))
-	fanin.Add(makeIterChan(ctrl, "9", false))
-
-	require.Equal(t, 9, fanin.Count())
+	iterChan1 := makeIterChan(ctrl, "8", false)
+	accepted := fanin.Add(iterChan1)
+	require.False(t, accepted)
+	Drain(iterChan1)
+	iterChan2 := makeIterChan(ctrl, "9", false)
+	accepted = fanin.Add(iterChan2)
+	require.False(t, accepted)
+	Drain(iterChan2)
 
 	out := fanin.Out()
 	iterations := 0
@@ -65,7 +68,6 @@ func TestFanIn(t *testing.T) {
 			break
 		}
 	}
-	fanin.Close()
-	drained := <-fanin.drained
-	require.True(t, drained)
+	fanin.Stop()
+	fanin.wg.Wait()
 }

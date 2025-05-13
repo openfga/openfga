@@ -440,7 +440,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans *iterator.
 	defer func() {
 		cancel()
 		iter.Stop()
-		leftChans.Close()
+		leftChans.Stop()
 	}()
 
 	res := &ResolveCheckResponse{
@@ -551,10 +551,16 @@ func produceLeftChannels(
 			errCh := make(chan *iterator.Msg, 1)
 			errCh <- &iterator.Msg{Err: err}
 			close(errCh)
-			leftChans.Add(errCh)
+			if !leftChans.Add(errCh) {
+				// no need to drain given it's not an iterator that has to be released
+				return
+			}
 			continue
 		}
-		leftChans.Add(leftChan)
+		if !leftChans.Add(leftChan) {
+			iterator.Drain(leftChan)
+			return // early exit since it's been marked as Stopped
+		}
 	}
 }
 
@@ -621,7 +627,6 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	user := req.GetTupleKey().GetUser()
 
 	leftChans := iterator.NewFanIn(ctx, c.concurrencyLimit)
-	defer leftChans.Close()
 	// allow both producer and consumers to run concurrently
 	go func(req *ResolveCheckRequest) {
 		defer leftChans.Done()
@@ -637,7 +642,10 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 			c := make(chan *iterator.Msg, 1)
 			c <- &iterator.Msg{Iter: mapper, Err: err}
 			close(c)
-			leftChans.Add(c)
+			if !leftChans.Add(c) {
+				iterator.Drain(c)
+				return // early exit since it's been marked as Stopped
+			}
 		}
 	}(req.clone())
 
@@ -649,6 +657,7 @@ ConsumerLoop:
 		select {
 		case <-ctx.Done():
 			close(checkOutcomeChan)
+			leftChans.Stop()
 			return
 		case msg, ok := <-out:
 			if !ok {
@@ -664,6 +673,7 @@ ConsumerLoop:
 					}
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
 					close(checkOutcomeChan)
+					leftChans.Stop()
 					return
 				}
 
@@ -671,6 +681,7 @@ ConsumerLoop:
 					msg.Iter.Stop()
 					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{Allowed: true}}, checkOutcomeChan)
 					close(checkOutcomeChan)
+					leftChans.Stop()
 					return
 				}
 
@@ -678,6 +689,7 @@ ConsumerLoop:
 			}
 		}
 	}
+	leftChans.Stop()
 
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
