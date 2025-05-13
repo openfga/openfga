@@ -865,10 +865,6 @@ func (l *listUsersQuery) expandExclusion(
 	}
 }
 
-func expandExclusionExpandRewrite(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userset *openfgav1.Userset, usersChannel chan foundUser) expandResponse {
-	return l.expandRewrite(ctx, req, userset, usersChannel)
-}
-
 func (l *listUsersQuery) expandTTU(
 	ctx context.Context,
 	req *internalListUsersRequest,

@@ -4159,7 +4159,7 @@ func TestExpandExclusionPanic(t *testing.T) {
 
 	actualErrors := joinedErrors.Unwrap()
 
-	require.Equal(t, 2, len(actualErrors))
+	require.Len(t, actualErrors, 2)
 
 	require.ErrorContains(t, actualErrors[0], "panic captured")
 	require.ErrorContains(t, actualErrors[1], "panic captured")
