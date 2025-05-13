@@ -739,6 +739,12 @@ func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+func WithSharedIteratorWatchdogTimeout(timeout time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorWatchdogTimeout = timeout
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {

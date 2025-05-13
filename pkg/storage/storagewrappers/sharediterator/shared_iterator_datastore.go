@@ -3,10 +3,7 @@ package sharediterator
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,8 +16,10 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
+	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 var (
@@ -49,8 +48,7 @@ var (
 )
 
 const (
-	defaultSharedIteratorLimit        = 1000000
-	defaultSharedIteratorMaxAliveTime = 4 * time.Minute
+	defaultSharedIteratorLimit = 1000000
 )
 
 type Storage struct {
@@ -91,19 +89,19 @@ func WithSharedIteratorDatastoreLogger(logger logger.Logger) IteratorDatastoreOp
 // WithMaxAliveTime sets the time for watchdog will kick and clean up.
 func WithMaxAliveTime(maxAliveTime time.Duration) IteratorDatastoreOpt {
 	return func(b *IteratorDatastore) {
-		b.maxAliveTime = maxAliveTime
+		b.watchdogTimeoutConfig = maxAliveTime
 	}
 }
 
 type IteratorDatastore struct {
 	storage.RelationshipTupleReader
-	logger          logger.Logger
-	internalStorage *Storage
-	maxAliveTime    time.Duration
+	logger                logger.Logger
+	internalStorage       *Storage
+	watchdogTimeoutConfig time.Duration
 }
 
 type internalSharedIterator struct {
-	counter uint64
+	counter uint64 // protected by the storage mu
 	iter    *sharedIterator
 }
 
@@ -112,7 +110,7 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		RelationshipTupleReader: inner,
 		logger:                  logger.NewNoopLogger(),
 		internalStorage:         internalStorage,
-		maxAliveTime:            defaultSharedIteratorMaxAliveTime,
+		watchdogTimeoutConfig:   config.DefaultSharedIteratorWatchdogTimeout,
 	}
 
 	for _, opt := range opts {
@@ -138,6 +136,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	cacheKey, err := storagewrappersutil.ReadStartingWithUserKey(store, filter)
 	if err != nil {
 		// should never happen
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
@@ -148,22 +147,25 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 	if found {
 		keyItem.counter++
-		keyItem.iter.mu.Lock()
-		defer keyItem.iter.mu.Unlock()
 		sf.internalStorage.mu.Unlock()
+		keyItem.iter.mu.Lock()
+
 		span.SetAttributes(attribute.Bool("found", true))
 
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, strconv.FormatBool(found),
-		).Observe(float64(time.Since(start).Milliseconds()))
-
+		// by the time we have access to keyItem.iter.mu, we know that
+		// the inner is already set OR the queryErr is set (for which clone
+		// will fail).
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			go func() {
-				_, _ = sf.deref(cacheKey)
-			}()
+			keyItem.iter.mu.Unlock()
+			sf.deref(cacheKey)
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
+		keyItem.iter.mu.Unlock()
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationReadStartingWithUser, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
 		return item, nil
 	}
 	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
@@ -175,9 +177,9 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, nil, sf.maxAliveTime)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig)
 	newIterator.mu.Lock()
-	defer newIterator.mu.Unlock()
+
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
 		iter:    newIterator,
@@ -188,12 +190,18 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	actual, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	if err != nil {
 		newIterator.queryErr = err
-		_, _ = sf.deref(cacheKey)
+		newIterator.mu.Unlock()
+		sf.deref(cacheKey)
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
+
+	// note that this is protected by the newIterator.Lock. Therefore, any clone will not
+	// have access to inner until it is set.
 	newIterator.inner = actual
+	newIterator.mu.Unlock()
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadStartingWithUser, strconv.FormatBool(found),
+		storagewrappersutil.OperationReadStartingWithUser, "false",
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return newIterator, nil
@@ -220,23 +228,28 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	keyItem, found := sf.internalStorage.iters[cacheKey]
 
 	if found {
-		span.SetAttributes(attribute.Bool("found", true))
 		keyItem.counter++
-		keyItem.iter.mu.Lock()
-		defer keyItem.iter.mu.Unlock()
 		sf.internalStorage.mu.Unlock()
 
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, strconv.FormatBool(found),
-		).Observe(float64(time.Since(start).Milliseconds()))
+		keyItem.iter.mu.Lock()
+		span.SetAttributes(attribute.Bool("found", true))
 
+		// by the time we have access to keyItem.iter.mu, we know that
+		// the inner is already set OR the queryErr is set (for which clone
+		// will fail).
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			go func() {
-				_, _ = sf.deref(cacheKey)
-			}()
+			keyItem.iter.mu.Unlock()
+			sf.deref(cacheKey)
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
+		keyItem.iter.mu.Unlock()
+
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationReadUsersetTuples, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
+
 		return item, nil
 	}
 
@@ -248,9 +261,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, nil, sf.maxAliveTime)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig)
 	newIterator.mu.Lock()
-	defer newIterator.mu.Unlock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
@@ -262,13 +274,19 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	actual, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	if err != nil {
 		newIterator.queryErr = err
-		_, _ = sf.deref(cacheKey)
+		newIterator.mu.Unlock()
+
+		sf.deref(cacheKey)
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, strconv.FormatBool(found),
-	).Observe(float64(time.Since(start).Milliseconds()))
+
 	newIterator.inner = actual
+	newIterator.mu.Unlock()
+
+	sharedIteratorQueryHistogram.WithLabelValues(
+		storagewrappersutil.OperationReadUsersetTuples, "false",
+	).Observe(float64(time.Since(start).Milliseconds()))
 	return newIterator, nil
 }
 
@@ -292,21 +310,21 @@ func (sf *IteratorDatastore) Read(
 	keyItem, found := sf.internalStorage.iters[cacheKey]
 	if found {
 		keyItem.counter++
-		keyItem.iter.mu.Lock()
-		defer keyItem.iter.mu.Unlock()
 		sf.internalStorage.mu.Unlock()
+		keyItem.iter.mu.Lock()
 		span.SetAttributes(attribute.Bool("found", true))
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, strconv.FormatBool(found),
-		).Observe(float64(time.Since(start).Milliseconds()))
 
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			go func() {
-				_, _ = sf.deref(cacheKey)
-			}()
+			keyItem.iter.mu.Unlock()
+			sf.deref(cacheKey)
+			telemetry.TraceError(span, err)
 			return nil, err
 		}
+		keyItem.iter.mu.Unlock()
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationRead, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
 		return item, nil
 	}
 	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
@@ -317,9 +335,8 @@ func (sf *IteratorDatastore) Read(
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, nil, sf.maxAliveTime)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig)
 	newIterator.mu.Lock()
-	defer newIterator.mu.Unlock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
@@ -331,33 +348,57 @@ func (sf *IteratorDatastore) Read(
 	actual, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	if err != nil {
 		newIterator.queryErr = err
-		_, _ = sf.deref(cacheKey)
+		newIterator.mu.Unlock()
+
+		sf.deref(cacheKey)
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, strconv.FormatBool(found),
-	).Observe(float64(time.Since(start).Milliseconds()))
 	newIterator.inner = actual
+	newIterator.mu.Unlock()
+
+	sharedIteratorQueryHistogram.WithLabelValues(
+		storagewrappersutil.OperationRead, "false",
+	).Observe(float64(time.Since(start).Milliseconds()))
 	return newIterator, nil
 }
+
+// cleanup the key and associated
 
 // decrement cacheKey from internal reference count
 // If reference count is 0, remove cacheKey.
 // Return whether item is removed.
-func (sf *IteratorDatastore) deref(cacheKey string) (bool, error) {
+func (sf *IteratorDatastore) deref(cacheKey string) {
 	sf.internalStorage.mu.Lock()
-	defer sf.internalStorage.mu.Unlock()
 	item, ok := sf.internalStorage.iters[cacheKey]
 	if !ok {
+		sf.internalStorage.mu.Unlock()
+
 		sf.logger.Error("failed to dereference cache key", zap.String("cacheKey", cacheKey))
-		return false, fmt.Errorf("failed to dereference cache key: %s", cacheKey)
+		return
 	}
 	item.counter--
 	if item.counter == 0 {
 		delete(sf.internalStorage.iters, cacheKey)
-		return true, nil
+		sf.internalStorage.mu.Unlock()
+		item.iter.cleanup()
+	} else {
+		sf.internalStorage.mu.Unlock()
 	}
-	return false, nil
+}
+
+func (sf *IteratorDatastore) watchdogTimeout(cacheKey string) {
+	sf.internalStorage.mu.Lock()
+	item, ok := sf.internalStorage.iters[cacheKey]
+	if !ok {
+		sf.internalStorage.mu.Unlock()
+		sf.logger.Error("failed to watchdog key", zap.String("cacheKey", cacheKey))
+		return
+	}
+	item.counter = 0
+	delete(sf.internalStorage.iters, cacheKey)
+	sf.internalStorage.mu.Unlock()
+	item.iter.cleanup()
 }
 
 // sharedIterator will be shared with multiple consumers.
@@ -365,35 +406,37 @@ func (sf *IteratorDatastore) deref(cacheKey string) (bool, error) {
 type sharedIterator struct {
 	manager      *IteratorDatastore // non-changing
 	key          string             // non-changing
-	stopped      atomic.Bool
 	head         int
 	maxAliveTime time.Duration
 	queryErr     error
 
-	mu                 *sync.Mutex
+	mu                 *sync.Mutex           // We expect the contention should be minimal. TODO: minimize mu holding time.
 	items              *[]*openfgav1.Tuple   // shared - protected by mu
 	inner              storage.TupleIterator // shared - protected by mu
 	sharedErr          *error                // shared - protected by mu
-	watchdogTimeoutErr error                 // shared - protected by mu
-	watchdogTimer      *time.Timer
+	watchdogTimer      *time.Timer           // shared - protected by mu
+	watchdogTimeoutErr *error                // shared - protected by mu
+	stopped            bool                  // not shared across clone - but protected by mu
 }
 
-func newSharedIterator(manager *IteratorDatastore, key string, inner storage.TupleIterator, maxAliveTime time.Duration) *sharedIterator {
+func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time.Duration) *sharedIterator {
 	newIter := &sharedIterator{
 		manager:      manager,
 		key:          key,
 		head:         0,
 		maxAliveTime: maxAliveTime,
 
-		mu:        &sync.Mutex{},
-		items:     new([]*openfgav1.Tuple),
-		inner:     inner,
-		sharedErr: new(error),
+		mu:                 &sync.Mutex{},
+		items:              new([]*openfgav1.Tuple),
+		inner:              nil,
+		sharedErr:          new(error),
+		watchdogTimeoutErr: new(error),
 	}
 	newIter.watchdogTimer = time.AfterFunc(maxAliveTime, newIter.watchdogTimeout)
 	return newIter
 }
 
+// It is assumed that mu is held by the parent while cloning.
 func (s *sharedIterator) clone() (*sharedIterator, error) {
 	if s.queryErr != nil {
 		return nil, s.queryErr
@@ -404,13 +447,24 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 		head:         0,
 		maxAliveTime: s.maxAliveTime,
 
-		mu:        s.mu,
-		items:     s.items,
-		inner:     s.inner,
-		sharedErr: s.sharedErr,
+		mu:                 s.mu,
+		items:              s.items,
+		inner:              s.inner,
+		sharedErr:          s.sharedErr,
+		watchdogTimer:      s.watchdogTimer,
+		watchdogTimeoutErr: s.watchdogTimeoutErr,
 	}
-	newIter.watchdogTimer = time.AfterFunc(s.maxAliveTime, newIter.watchdogTimeout)
+	newIter.watchdogTimer.Reset(s.maxAliveTime)
 	return newIter, nil
+}
+
+func (s *sharedIterator) cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inner != nil {
+		s.inner.Stop()
+	}
+	s.watchdogTimer.Stop()
 }
 
 // when watchdogTimeout is invoked, it will revoke the current iterator from usage.
@@ -418,9 +472,9 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 // All further usage of Head/Next() will return error.
 func (s *sharedIterator) watchdogTimeout() {
 	s.mu.Lock()
-	s.watchdogTimeoutErr = errSharedIteratorWatchdog
+	*s.watchdogTimeoutErr = errSharedIteratorWatchdog
 	s.mu.Unlock()
-	s.Stop()
+	s.manager.watchdogTimeout(s.key)
 }
 
 func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -437,11 +491,11 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		s.watchdogTimer.Reset(s.maxAliveTime)
 	}
 
-	if s.watchdogTimeoutErr != nil {
-		return nil, s.watchdogTimeoutErr
+	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
+		return nil, *s.watchdogTimeoutErr
 	}
 
-	if s.stopped.Load() {
+	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
 		return nil, storage.ErrIteratorDone
 	}
@@ -449,14 +503,15 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	if s.head == len(*s.items) {
 		// If there is an error, no need to get any more items, and we just return the error
 		if s.sharedErr != nil && *s.sharedErr != nil {
-			span.SetAttributes(attribute.String("existingError", (*s.sharedErr).Error()))
+			span.SetAttributes(attribute.Bool("sharedError", true))
+			telemetry.TraceError(span, *s.sharedErr)
 			return nil, *s.sharedErr
 		}
 
 		span.SetAttributes(attribute.Bool("newItem", true))
 		item, err := s.inner.Next(ctx)
 		if err != nil {
-			span.SetAttributes(attribute.String("newError", err.Error()))
+			telemetry.TraceError(span, err)
 			*s.sharedErr = err
 			return nil, err
 		}
@@ -482,11 +537,11 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		s.watchdogTimer.Reset(s.maxAliveTime)
 	}
 
-	if s.watchdogTimeoutErr != nil {
-		return nil, s.watchdogTimeoutErr
+	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
+		return nil, *s.watchdogTimeoutErr
 	}
 
-	if s.stopped.Load() {
+	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
 		return nil, storage.ErrIteratorDone
 	}
@@ -499,15 +554,15 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		// we are going to get more items. However, if we see error
 		// previously, we will not need to get more items
 		// and can simply return the same error.
-		span.SetAttributes(attribute.String("existingError", (*s.sharedErr).Error()))
-
+		span.SetAttributes(attribute.Bool("sharedError", true))
+		telemetry.TraceError(span, *s.sharedErr)
 		return nil, *s.sharedErr
 	}
 	span.SetAttributes(attribute.Bool("newItem", true))
 
 	item, err := s.inner.Next(ctx)
 	if err != nil {
-		span.SetAttributes(attribute.String("newError", err.Error()))
+		telemetry.TraceError(span, err)
 		*s.sharedErr = err
 		return nil, err
 	}
@@ -518,20 +573,14 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 
 func (s *sharedIterator) Stop() {
 	s.mu.Lock()
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Stop()
-	}
-	s.mu.Unlock()
-
-	if s.stopped.Swap(true) {
+	if s.stopped {
 		// It is perfectly possible that iterator calling stop more than once.
 		// However, we only want to decrement the count on the first stop.
+		s.mu.Unlock()
 		return
 	}
-	lastItem, _ := s.manager.deref(s.key)
-	if lastItem {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.inner.Stop()
-	}
+	s.stopped = true
+	s.mu.Unlock()
+
+	s.manager.deref(s.key)
 }

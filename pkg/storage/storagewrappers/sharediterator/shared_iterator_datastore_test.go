@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -207,6 +208,25 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
 	})
+	t.Run("cloned_error", func(t *testing.T) {
+		cacheKey := storagewrappersutil.ReadKey(storeID, tk)
+		ds.internalStorage.mu.Lock()
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
+		newIterator.queryErr = fmt.Errorf("mock_error")
+		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
+			counter: 1,
+			iter:    newIterator,
+		}
+		ds.internalStorage.mu.Unlock()
+		_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.ErrorIs(t, err, newIterator.queryErr)
+		ds.internalStorage.mu.Lock()
+		foundIterator, ok := internalStorage.iters[cacheKey]
+		require.True(t, ok)
+		require.Equal(t, uint64(1), foundIterator.counter)
+		delete(ds.internalStorage.iters, cacheKey)
+		ds.internalStorage.mu.Unlock()
+	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		internalStorageLimit := NewSharedIteratorDatastoreStorage(WithSharedIteratorDatastoreStorageLimit(0))
 		dsLimit := NewSharedIteratorDatastore(mockDatastore, internalStorageLimit)
@@ -226,33 +246,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		iter.Stop()
 	})
-}
-
-func TestSharedIteratorDatastore_deref(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-	internalStorage := NewSharedIteratorDatastoreStorage()
-	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage)
-
-	result, err := ds.deref("key1")
-	require.Error(t, err)
-	require.False(t, result)
-
-	internalStorage.iters["key1"] = &internalSharedIterator{
-		counter: 2,
-	}
-	result, err = ds.deref("key1")
-	require.NoError(t, err)
-	require.False(t, result)
-
-	result, err = ds.deref("key1")
-	require.NoError(t, err)
-	require.True(t, result)
 }
 
 func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
@@ -344,6 +337,25 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
+	})
+	t.Run("cloned_error", func(t *testing.T) {
+		cacheKey := storagewrappersutil.ReadUsersetTuplesKey(storeID, filter)
+		ds.internalStorage.mu.Lock()
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
+		newIterator.queryErr = fmt.Errorf("mock_error")
+		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
+			counter: 1,
+			iter:    newIterator,
+		}
+		ds.internalStorage.mu.Unlock()
+		_, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{})
+		require.ErrorIs(t, err, newIterator.queryErr)
+		ds.internalStorage.mu.Lock()
+		foundIterator, ok := internalStorage.iters[cacheKey]
+		require.True(t, ok)
+		require.Equal(t, uint64(1), foundIterator.counter)
+		delete(ds.internalStorage.iters, cacheKey)
+		ds.internalStorage.mu.Unlock()
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		internalStorageLimit := NewSharedIteratorDatastoreStorage(WithSharedIteratorDatastoreStorageLimit(0))
@@ -457,6 +469,25 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
+	})
+	t.Run("cloned_error", func(t *testing.T) {
+		cacheKey, _ := storagewrappersutil.ReadStartingWithUserKey(storeID, filter)
+		ds.internalStorage.mu.Lock()
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
+		newIterator.queryErr = fmt.Errorf("mock_error")
+		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
+			counter: 1,
+			iter:    newIterator,
+		}
+		ds.internalStorage.mu.Unlock()
+		_, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{})
+		require.ErrorIs(t, err, newIterator.queryErr)
+		ds.internalStorage.mu.Lock()
+		foundIterator, ok := internalStorage.iters[cacheKey]
+		require.True(t, ok)
+		require.Equal(t, uint64(1), foundIterator.counter)
+		delete(ds.internalStorage.iters, cacheKey)
+		ds.internalStorage.mu.Unlock()
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		internalStorageLimit := NewSharedIteratorDatastoreStorage(WithSharedIteratorDatastoreStorageLimit(0))
@@ -1071,6 +1102,41 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		ds.internalStorage.mu.Unlock()
 		_, err = iter2.Head(ctx)
 		require.ErrorIs(t, err, errSharedIteratorWatchdog)
+		iter2.Stop()
+	})
+	t.Run("both_iter_timeout", func(t *testing.T) {
+		ctx := context.Background()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAliveTime(1*time.Second))
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		ts := timestamppb.New(time.Now())
+		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
+		gomock.InOrder(
+			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
+			mockIterator.EXPECT().Stop(),
+		)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		item1a, err := iter1.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1a)
+		// here, we are sleeping for 10 seconds (should be enough for the timer to kick in)
+		time.Sleep(10 * time.Second)
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
+		_, err = iter2.Head(ctx)
+		require.ErrorIs(t, err, errSharedIteratorWatchdog)
+		iter1.Stop()
 		iter2.Stop()
 	})
 }
