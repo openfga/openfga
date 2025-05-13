@@ -3,6 +3,7 @@ package listusers
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,21 +19,26 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
+	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type NewListUsersQueryHandler func(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery
 type ListUsersTests []struct {
-	name             string
-	req              *openfgav1.ListUsersRequest
-	model            string
-	tuples           []*openfgav1.TupleKey
-	expectedUsers    []string
-	expectedErrorMsg string
+	name              string
+	req               *openfgav1.ListUsersRequest
+	model             string
+	tuples            []*openfgav1.TupleKey
+	expectedUsers     []string
+	expectedErrorMsg  string
+	newListUsersQuery NewListUsersQueryHandler
 }
 
 const maximumRecursiveDepth = 25
@@ -2954,7 +2960,12 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			l := NewListUsersQuery(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
+			contructor := test.newListUsersQuery
+			if contructor == nil {
+				contructor = NewListUsersQuery
+			}
+
+			l := contructor(ds, test.req.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
 
 			ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
 
@@ -4020,4 +4031,100 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
+}
+
+func TestListUsersExclusionPanicExpandDirect(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	tests := ListUsersTests{
+		{
+			name: "exclusion_with_chained_negation_panic_expand_direct",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "2"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define unblocked: [user]
+						define blocked: [user, document#viewer] but not unblocked
+						define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "unblocked", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
+		},
+		{
+			name: "non_stratifiable_exclusion_containing_cycle_1_panic_expand_direct",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "document",
+						Relation: "blocked",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define blocked: [user, document#viewer]
+						define viewer: [user, document#blocked] but not blocked
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "document:2#blocked"),
+				tuple.NewTupleKey("document:2", "blocked", "document:1#viewer"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanicExpandDirect,
+		},
+	}
+	tests.runListUsersTestCases(t)
+}
+
+func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
+	l := &listUsersQuery{
+		logger:                  logger.NewNoopLogger(),
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		deadline:                serverconfig.DefaultListUsersDeadline,
+		maxResults:              serverconfig.DefaultListUsersMaxResults,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
+		wasThrottled:            new(atomic.Bool),
+		expandDirectDispatch: func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType, userObjectID, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
+			panic(ErrPanic)
+		},
+	}
+
+	for _, opt := range opts {
+		opt(l)
+	}
+
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
+
+	return l
 }
