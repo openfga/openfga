@@ -55,6 +55,16 @@ func NewMigrateCommand() *cobra.Command {
 	return cmd
 }
 
+type MigrationConfig struct {
+	Engine        string
+	URI           string
+	TargetVersion uint
+	Timeout       time.Duration
+	Verbose       bool
+	Username      string
+	Password      string
+}
+
 func runMigration(_ *cobra.Command, _ []string) error {
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
@@ -64,11 +74,28 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	username := viper.GetString(datastoreUsernameFlag)
 	password := viper.GetString(datastorePasswordFlag)
 
+	cfg := MigrationConfig{
+		Engine:        engine,
+		URI:           uri,
+		TargetVersion: targetVersion,
+		Timeout:       timeout,
+		Verbose:       verbose,
+		Username:      username,
+		Password:      password,
+	}
+	return RunMigration(cfg)
+}
+
+func RunMigration(cfg MigrationConfig) error {
+
 	goose.SetLogger(goose.NopLogger())
-	goose.SetVerbose(verbose)
+	goose.SetVerbose(cfg.Verbose)
 
 	var driver, migrationsPath string
-	switch engine {
+	var uri string
+	// We set uri based on engine
+	uri = cfg.URI
+	switch cfg.Engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
@@ -81,27 +108,29 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("invalid database uri: %v", err)
 		}
-		if username != "" {
-			dsn.User = username
+		if cfg.Username != "" {
+			dsn.User = cfg.Username
 		}
-		if password != "" {
-			dsn.Passwd = password
+		if cfg.Password != "" {
+			dsn.Passwd = cfg.Password
 		}
 		uri = dsn.FormatDSN()
 
 	case "postgres":
 		driver = "pgx"
 		migrationsPath = assets.PostgresMigrationDir
+		var username, password string
 
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
 		dbURI, err := url.Parse(uri)
 		if err != nil {
 			return fmt.Errorf("invalid database uri: %v", err)
 		}
-		if username == "" && dbURI.User != nil {
+		// if username not set
+		if cfg.Username == "" && dbURI.User != nil {
 			username = dbURI.User.Username()
 		}
-		if password == "" && dbURI.User != nil {
+		if cfg.Password == "" && dbURI.User != nil {
 			password, _ = dbURI.User.Password()
 		}
 		dbURI.User = url.UserPassword(username, password)
@@ -120,7 +149,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:
-		return fmt.Errorf("unknown datastore engine type: %s", engine)
+		return fmt.Errorf("unknown datastore engine type: %s", cfg.Engine)
 	}
 
 	db, err := goose.OpenDBWithDriver(driver, uri)
@@ -130,7 +159,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	defer db.Close()
 
 	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = timeout
+	policy.MaxElapsedTime = cfg.Timeout
 	err = backoff.Retry(func() error {
 		return db.PingContext(context.Background())
 	}, policy)
@@ -147,7 +176,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	log.Printf("current version %d", currentVersion)
 
-	if targetVersion == 0 {
+	if cfg.TargetVersion == 0 {
 		log.Println("running all migrations")
 		if err := goose.Up(db, migrationsPath); err != nil {
 			return fmt.Errorf("failed to run migrations: %w", err)
@@ -156,8 +185,8 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	log.Printf("migrating to %d", targetVersion)
-	targetInt64Version := int64(targetVersion)
+	log.Printf("migrating to %d", cfg.TargetVersion)
+	targetInt64Version := int64(cfg.TargetVersion)
 
 	switch {
 	case targetInt64Version < currentVersion:
