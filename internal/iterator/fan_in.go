@@ -60,8 +60,9 @@ func (f *FanIn) run() {
 			f.drainOnExit(ch)
 		}
 		f.mu.Lock()
-		defer f.mu.Unlock()
-		if len(f.drainQueue) > 0 {
+		queueSize := len(f.drainQueue)
+		f.mu.Unlock()
+		if queueSize > 0 {
 			f.wg.Add(1)
 			go f.cleaner()
 		}
@@ -99,32 +100,29 @@ func (f *FanIn) run() {
 
 func (f *FanIn) drainOnExit(ch chan *Msg) {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.drainQueue = append(f.drainQueue, ch)
-	f.mu.Unlock()
 }
 
 // Add will not block if the amount of messages accumulated is (limit * 2) + 1 (out, pool, buffer).
 func (f *FanIn) Add(ch chan *Msg) bool {
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	if !f.accepting {
-		f.mu.Unlock()
 		return false
 	}
-	if !concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh) {
-		f.mu.Unlock()
-		return false
-	}
-	f.mu.Unlock()
-	return true
+	return concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh)
 }
 
 func Drain(ch chan *Msg) {
 	// sync drain
-	for msg := range ch {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
+	go func() {
+		for msg := range ch {
+			if msg.Iter != nil {
+				msg.Iter.Stop()
+			}
 		}
-	}
+	}()
 }
 
 func (f *FanIn) Out() chan *Msg {
@@ -141,6 +139,5 @@ func (f *FanIn) Done() {
 }
 
 func (f *FanIn) Stop() {
-	// Done gets called internally
 	f.cancel()
 }
