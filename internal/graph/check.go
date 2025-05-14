@@ -1372,7 +1372,7 @@ func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelatio
 
 // checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
 	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
 	defer span.End()
 
@@ -1389,17 +1389,24 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 		_ = pool.Wait()
 	}()
 	pool.Go(func(ctx context.Context) error {
-		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		recoveredError := panics.Try(func() {
+			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+		})
+		if recoveredError != nil {
+			resp = nil
+			err = fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+		}
 		return nil
 	})
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
+	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	if err != nil {
 		telemetry.TraceError(span, err)
-		return nil, err
+		resp = nil
+		return
 	}
 
-	return resp, nil
+	return
 }
 
 // checkTTUFastPath is the fast path for checkTTU where we can short-circuit TTU evaluation.
