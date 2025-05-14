@@ -9,9 +9,10 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
+	"github.com/pressly/goose/v3"
+
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
-	"github.com/pressly/goose/v3"
 )
 
 type MigrationConfig struct {
