@@ -87,7 +87,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 }
 
 func RunMigration(cfg MigrationConfig) error {
-
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
