@@ -46,7 +46,7 @@ func (f *FanIn) cleaner() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, ch := range f.drainQueue {
-		Drain(ch)
+		Drain(ch).Wait()
 	}
 	f.wg.Done()
 }
