@@ -228,7 +228,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("check-cache-limit", defaultConfig.CheckCache.Limit, "if check-query-cache-enabled or check-iterator-cache-enabled, this is the size limit of the cache")
 
-	flags.Bool("shared-iterator-enabled", defaultConfig.SharedIterator.Enabled, "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator. This is only a framework and is experimental,")
+	flags.Bool("shared-iterator-enabled", defaultConfig.SharedIterator.Enabled, "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator.")
 
 	flags.Uint32("shared-iterator-limit", defaultConfig.SharedIterator.Limit, "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.")
 
