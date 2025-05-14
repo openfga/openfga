@@ -17,8 +17,10 @@ type FanIn struct {
 	drainQueue []chan *Msg
 	accepting  bool
 	mu         sync.Mutex
-	wg         sync.WaitGroup
 	pool       *pool.ContextPool
+
+	// for unit tests state
+	wg sync.WaitGroup
 }
 
 func NewFanIn(ctx context.Context, limit int) *FanIn {
@@ -104,7 +106,7 @@ func (f *FanIn) drainOnExit(ch chan *Msg) {
 	f.drainQueue = append(f.drainQueue, ch)
 }
 
-// Add will not block if the amount of messages accumulated is (limit * 2) + 1 (out, pool, buffer).
+// Add will return false if the amount of messages accumulated is (limit * 2) + 1 (out, pool, buffer).
 func (f *FanIn) Add(ch chan *Msg) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -115,7 +117,6 @@ func (f *FanIn) Add(ch chan *Msg) bool {
 }
 
 func Drain(ch chan *Msg) *sync.WaitGroup {
-	// sync drain
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
