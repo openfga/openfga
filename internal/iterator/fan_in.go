@@ -114,15 +114,19 @@ func (f *FanIn) Add(ch chan *Msg) bool {
 	return concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh)
 }
 
-func Drain(ch chan *Msg) {
+func Drain(ch chan *Msg) *sync.WaitGroup {
 	// sync drain
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
 		for msg := range ch {
 			if msg.Iter != nil {
 				msg.Iter.Stop()
 			}
 		}
+		wg.Done()
 	}()
+	return wg
 }
 
 func (f *FanIn) Out() chan *Msg {

@@ -70,5 +70,5 @@ func TestFanIn(t *testing.T) {
 	}
 	fanin.Stop()
 	fanin.wg.Wait()
-	Drain(fanin.Out())
+	Drain(fanin.Out()).Wait()
 }
