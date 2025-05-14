@@ -5,9 +5,10 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver.
-	"github.com/openfga/openfga/pkg/storage/migrate"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/openfga/openfga/pkg/storage/migrate"
 )
 
 const (

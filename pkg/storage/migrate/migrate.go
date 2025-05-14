@@ -1,12 +1,11 @@
 package migrate
 
 import (
-	"time"
-
 	"context"
 	"fmt"
 	"log"
 	"net/url"
+	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
