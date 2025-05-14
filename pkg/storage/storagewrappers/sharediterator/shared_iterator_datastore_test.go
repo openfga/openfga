@@ -216,8 +216,8 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		cacheKey := storagewrappersutil.ReadKey(storeID, tk)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = mockErr
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, 1000)
+		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -250,6 +250,56 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		require.False(t, ok)
 
 		iter.Stop()
+	})
+	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+
+		const numClient = 10
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).DoAndReturn(
+			func(ctx context.Context,
+				store string,
+				tupleKey *openfgav1.TupleKey,
+				options storage.ReadOptions) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator(tuples), nil
+			}).MaxTimes(numClient)
+		p := pool.New().WithErrors()
+
+		for i := 0; i < numClient; i++ {
+			p.Go(func() error {
+				iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+				if err != nil {
+					return err
+				}
+				defer iter.Stop()
+
+				var actual []*openfgav1.Tuple
+
+				for {
+					tup, err := iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+						return fmt.Errorf("no error was expected %v", err)
+					}
+
+					actual = append(actual, tup)
+				}
+				if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
+					return fmt.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+				return nil
+			})
+		}
+
+		err := p.Wait()
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, internalStorage.iters)
+		internalStorage.mu.Unlock()
 	})
 }
 
@@ -351,8 +401,8 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 
 		cacheKey := storagewrappersutil.ReadUsersetTuplesKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = mockErr
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, 1000)
+		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -385,6 +435,56 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		require.False(t, ok)
 
 		iter.Stop()
+	})
+	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+
+		const numClient = 10
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, filter, options).DoAndReturn(
+			func(ctx context.Context,
+				store string,
+				filter storage.ReadUsersetTuplesFilter,
+				options storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator(tuples), nil
+			}).MaxTimes(numClient)
+		p := pool.New().WithErrors()
+
+		for i := 0; i < numClient; i++ {
+			p.Go(func() error {
+				iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
+				if err != nil {
+					return err
+				}
+				defer iter.Stop()
+
+				var actual []*openfgav1.Tuple
+
+				for {
+					tup, err := iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+						return fmt.Errorf("no error was expected %v", err)
+					}
+
+					actual = append(actual, tup)
+				}
+				if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
+					return fmt.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+				return nil
+			})
+		}
+
+		err := p.Wait()
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, internalStorage.iters)
+		internalStorage.mu.Unlock()
 	})
 }
 
@@ -488,8 +588,8 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		cacheKey, _ := storagewrappersutil.ReadStartingWithUserKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig)
-		newIterator.queryErr = mockErr
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, 1000)
+		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
 			iter:    newIterator,
@@ -552,6 +652,56 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		iter2.Stop()
 		internalStorage.mu.Lock()
+		require.Empty(t, internalStorage.iters)
+		internalStorage.mu.Unlock()
+	})
+	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+
+		const numClient = 10
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, filter, options).DoAndReturn(
+			func(ctx context.Context,
+				store string,
+				filter storage.ReadStartingWithUserFilter,
+				options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+				return storage.NewStaticTupleIterator(tuples), nil
+			}).MaxTimes(numClient)
+		p := pool.New().WithErrors()
+
+		for i := 0; i < numClient; i++ {
+			p.Go(func() error {
+				iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
+				if err != nil {
+					return err
+				}
+				defer iter.Stop()
+
+				var actual []*openfgav1.Tuple
+
+				for {
+					tup, err := iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+						return fmt.Errorf("no error was expected %v", err)
+					}
+
+					actual = append(actual, tup)
+				}
+				if diff := cmp.Diff(tuples, actual, cmpOpts...); diff != "" {
+					return fmt.Errorf("mismatch (-want +got):\n%s", diff)
+				}
+				return nil
+			})
+		}
+
+		err := p.Wait()
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
 		require.Empty(t, internalStorage.iters)
 		internalStorage.mu.Unlock()
 	})
@@ -1075,8 +1225,8 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			Return(mockIterator, nil)
 		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		// here, we are sleeping for 10 seconds (should be enough for the timer to kick in)
-		time.Sleep(10 * time.Second)
+		// here, we are sleeping for 3 seconds (should be enough for the timer to kick in)
+		time.Sleep(3 * time.Second)
 		ds.internalStorage.mu.Lock()
 		require.Empty(t, ds.internalStorage.iters)
 		ds.internalStorage.mu.Unlock()
@@ -1110,8 +1260,8 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tupleOne, item1a)
 		iter1.Stop()
-		// here, we are sleeping for 10 seconds (should be enough for the timer to kick in)
-		time.Sleep(10 * time.Second)
+		// here, we are sleeping for 3 seconds (should be enough for the timer to kick in)
+		time.Sleep(3 * time.Second)
 		ds.internalStorage.mu.Lock()
 		require.Empty(t, ds.internalStorage.iters)
 		ds.internalStorage.mu.Unlock()
@@ -1144,8 +1294,8 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		item1a, err := iter1.Next(ctx)
 		require.NoError(t, err)
 		require.Equal(t, tupleOne, item1a)
-		// here, we are sleeping for 10 seconds (should be enough for the timer to kick in)
-		time.Sleep(10 * time.Second)
+		// here, we are sleeping for 3 seconds (should be enough for the timer to kick in)
+		time.Sleep(3 * time.Second)
 		ds.internalStorage.mu.Lock()
 		require.Empty(t, ds.internalStorage.iters)
 		ds.internalStorage.mu.Unlock()
@@ -1153,5 +1303,88 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		require.ErrorIs(t, err, errSharedIteratorWatchdog)
 		iter1.Stop()
 		iter2.Stop()
+	})
+	t.Run("delayed_watchdog_triggered", func(t *testing.T) {
+		ctx := context.Background()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		gomock.InOrder(
+			mockIterator.EXPECT().Stop(),
+		)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
+
+		// here, we pretend to be the watchdog timer kicked in
+		actualSharedIter, ok := iter1.(*sharedIterator)
+		require.True(t, ok)
+		actualSharedIter.watchdogTimeout()
+		// we expect that the Stop() still only being called once
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
+	})
+	t.Run("delayed_watchdog_triggered_after_iter_created", func(t *testing.T) {
+		ctx := context.Background()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop().MaxTimes(2)
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator2, nil)
+
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+
+		ds.internalStorage.mu.Lock()
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
+
+		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter2.Stop()
+
+		// here, we pretend to be the watchdog timer kicked in
+		actualSharedIter, ok := iter1.(*sharedIterator)
+		require.True(t, ok)
+		actualSharedIter.watchdogTimeout()
+
+		// we expect that the Stop() still only being called once
+
+		iter3, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter3.Stop()
+		// we also expect the iter2 and iter3 to have no error
+
+		_, err = iter2.Head(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+		_, err = iter3.Head(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
