@@ -65,5 +65,5 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		Username:      username,
 		Password:      password,
 	}
-	return migrate.RunMigration(cfg)
+	return migrate.RunMigrations(cfg)
 }

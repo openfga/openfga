@@ -25,7 +25,7 @@ type MigrationConfig struct {
 	Password      string
 }
 
-// RunMigration runs the migrations for the given config. This function is exposed to allow embedding openFGA
+// RunMigrations runs the migrations for the given config. This function is exposed to allow embedding openFGA
 // into applications and manage OpenFGA's database schema migrations directly. When OpenFGA is used as a library,
 // the embedding application may have its own migration system that differs from OpenFGA's use of goose.
 // By exposing this function, applications can:
@@ -34,7 +34,7 @@ type MigrationConfig struct {
 // 3. Perform versioned upgrades of the schema as needed
 // The function handles migrations for multiple database engines (postgres, mysql, sqlite) and supports
 // both upgrading and downgrading to specific versions.
-func RunMigration(cfg MigrationConfig) error {
+func RunMigrations(cfg MigrationConfig) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
