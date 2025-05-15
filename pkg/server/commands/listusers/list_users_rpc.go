@@ -47,7 +47,7 @@ type listUsersQuery struct {
 	deadline                time.Duration
 	dispatchThrottlerConfig threshold.Config
 	wasThrottled            *atomic.Bool
-	expandDirectDispatch    expandDirectDispatchHandler
+	dispatchHandler         dispatchHandler
 }
 
 type expandResponse struct {
@@ -55,13 +55,13 @@ type expandResponse struct {
 	err      error
 }
 
+type dispatchHandler func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse
+
 // userRelationshipStatus represents the status of a relationship that a given user/subject has with respect to a specific relation.
 //
 // A user/subject either does or does not have a relationship, which represents that
 // they either explicitly do have a relationship or explicitly do not.
 type userRelationshipStatus int
-
-type expandDirectDispatchHandler func(ctx context.Context, listUsersQuery *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse
 
 const (
 	HasRelationship userRelationshipStatus = iota
@@ -163,7 +163,7 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		maxResults:              serverconfig.DefaultListUsersMaxResults,
 		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		wasThrottled:            new(atomic.Bool),
-		expandDirectDispatch:    expandDirectDispatch,
+		dispatchHandler:         handleDispatch,
 	}
 
 	for _, opt := range opts {
@@ -226,23 +226,36 @@ func (l *listUsersQuery) ListUsers(
 
 	doneWithFoundUsersCh := make(chan struct{}, 1)
 	go func() {
-		for foundUser := range foundUsersCh {
-			foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
+		recoveredError := panics.Try(func() {
+			for foundUser := range foundUsersCh {
+				foundUsersUnique[tuple.UserProtoToString(foundUser.user)] = foundUser
 
-			if l.maxResults > 0 {
-				if uint32(len(foundUsersUnique)) >= l.maxResults {
-					span.SetAttributes(attribute.Bool("max_results_found", true))
-					break
+				if l.maxResults > 0 {
+					if uint32(len(foundUsersUnique)) >= l.maxResults {
+						span.SetAttributes(attribute.Bool("max_results_found", true))
+						break
+					}
 				}
 			}
+		})
+		if recoveredError != nil {
+			expandErrCh <- panicError(recoveredError)
 		}
-
 		doneWithFoundUsersCh <- struct{}{}
 	}()
 
 	go func() {
-		internalRequest := fromListUsersRequest(req, &dispatchCount)
-		resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			internalRequest := fromListUsersRequest(req, &dispatchCount)
+			resp := l.expand(cancellableCtx, internalRequest, foundUsersCh)
+			if resp.err != nil {
+				expandErrCh <- resp.err
+			}
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		if resp.err != nil {
 			expandErrCh <- resp.err
 		}
@@ -314,6 +327,15 @@ func doesHavePossibleEdges(typesys *typesystem.TypeSystem, req *openfgav1.ListUs
 
 func (l *listUsersQuery) dispatch(
 	ctx context.Context,
+	req *internalListUsersRequest,
+	foundUsersChan chan<- foundUser,
+) expandResponse {
+	return l.dispatchHandler(ctx, l, req, foundUsersChan)
+}
+
+func handleDispatch(
+	ctx context.Context,
+	l *listUsersQuery,
 	req *internalListUsersRequest,
 	foundUsersChan chan<- foundUser,
 ) expandResponse {
@@ -506,7 +528,13 @@ LoopOnIterator:
 		pool.Go(func(ctx context.Context) error {
 			var resp expandResponse
 			recoveredError := panics.Try(func() {
-				resp = l.expandDirectDispatch(ctx, l, req, userObjectType, userObjectID, userRelation, resp, foundUsersChan, &hasCycle)
+				rewrittenReq := req.clone()
+				rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+				rewrittenReq.Relation = userRelation
+				resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
+				if resp.hasCycle {
+					hasCycle.Store(true)
+				}
 			})
 			if recoveredError != nil {
 				resp = panicExpanseResponse(recoveredError)
@@ -523,17 +551,6 @@ LoopOnIterator:
 		err:      errs,
 		hasCycle: hasCycle.Load(),
 	}
-}
-
-func expandDirectDispatch(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, userObjectType string, userObjectID string, userRelation string, resp expandResponse, foundUsersChan chan<- foundUser, hasCycle *atomic.Bool) expandResponse {
-	rewrittenReq := req.clone()
-	rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-	rewrittenReq.Relation = userRelation
-	resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
-	if resp.hasCycle {
-		hasCycle.Store(true)
-	}
-	return resp
 }
 
 func (l *listUsersQuery) expandIntersection(
@@ -553,7 +570,13 @@ func (l *listUsersQuery) expandIntersection(
 		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
@@ -561,12 +584,19 @@ func (l *listUsersQuery) expandIntersection(
 	errChan := make(chan error, 1)
 
 	go func() {
-		err := pool.Wait()
-		for i := range intersectionFoundUsersChans {
-			close(intersectionFoundUsersChans[i])
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			err := pool.Wait()
+			for i := range intersectionFoundUsersChans {
+				close(intersectionFoundUsersChans[i])
+			}
+			errChan <- err
+			close(errChan)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+			errChan <- resp.err
 		}
-		errChan <- err
-		close(errChan)
 	}()
 
 	var mu sync.Mutex
@@ -581,37 +611,45 @@ func (l *listUsersQuery) expandIntersection(
 	for _, foundUsersChan := range intersectionFoundUsersChans {
 		go func(foundUsersChan chan foundUser) {
 			defer wg.Done()
-			foundUsersMap := make(map[string]uint32, 0)
-			for foundUser := range foundUsersChan {
-				key := tuple.UserProtoToString(foundUser.user)
-				for _, excludedUser := range foundUser.excludedUsers {
-					key := tuple.UserProtoToString(excludedUser)
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				foundUsersMap := make(map[string]uint32, 0)
+				for foundUser := range foundUsersChan {
+					key := tuple.UserProtoToString(foundUser.user)
+					for _, excludedUser := range foundUser.excludedUsers {
+						key := tuple.UserProtoToString(excludedUser)
+						mu.Lock()
+						excludedUsersMap[key] = struct{}{}
+						mu.Unlock()
+					}
+					if foundUser.relationshipStatus == NoRelationship {
+						continue
+					}
+					foundUsersMap[key]++
+				}
+
+				_, wildcardExists := foundUsersMap[wildcardKey]
+				if wildcardExists {
+					wildcardCount.Add(1)
+				}
+				for userKey := range foundUsersMap {
 					mu.Lock()
-					excludedUsersMap[key] = struct{}{}
+					// Increment the count for a user but decrement if a wildcard
+					// also exists to prevent double counting. This ensures accurate
+					// tracking for intersection criteria, avoiding inflated counts
+					// when both a user and a wildcard are present.
+					foundUsersCountMap[userKey]++
+					if wildcardExists {
+						foundUsersCountMap[userKey]--
+					}
 					mu.Unlock()
 				}
-				if foundUser.relationshipStatus == NoRelationship {
-					continue
-				}
-				foundUsersMap[key]++
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+				errChan <- resp.err
 			}
 
-			_, wildcardExists := foundUsersMap[wildcardKey]
-			if wildcardExists {
-				wildcardCount.Add(1)
-			}
-			for userKey := range foundUsersMap {
-				mu.Lock()
-				// Increment the count for a user but decrement if a wildcard
-				// also exists to prevent double counting. This ensures accurate
-				// tracking for intersection criteria, avoiding inflated counts
-				// when both a user and a wildcard are present.
-				foundUsersCountMap[userKey]++
-				if wildcardExists {
-					foundUsersCountMap[userKey]--
-				}
-				mu.Unlock()
-			}
 		}(foundUsersChan)
 	}
 	wg.Wait()
@@ -640,6 +678,40 @@ func (l *listUsersQuery) expandIntersection(
 	}
 }
 
+func populateFoundUsersCountMap(mu *sync.Mutex, foundUsersChan chan foundUser, excludedUsersMap map[string]struct{}, foundUsersCountMap map[string]uint32, wildcardKey string, wildcardCount *atomic.Uint32) {
+	foundUsersMap := make(map[string]uint32, 0)
+	for foundUser := range foundUsersChan {
+		key := tuple.UserProtoToString(foundUser.user)
+		for _, excludedUser := range foundUser.excludedUsers {
+			key := tuple.UserProtoToString(excludedUser)
+			mu.Lock()
+			excludedUsersMap[key] = struct{}{}
+			mu.Unlock()
+		}
+		if foundUser.relationshipStatus == NoRelationship {
+			continue
+		}
+		foundUsersMap[key]++
+	}
+
+	_, wildcardExists := foundUsersMap[wildcardKey]
+	if wildcardExists {
+		wildcardCount.Add(1)
+	}
+	for userKey := range foundUsersMap {
+		mu.Lock()
+		// Increment the count for a user but decrement if a wildcard
+		// also exists to prevent double counting. This ensures accurate
+		// tracking for intersection criteria, avoiding inflated counts
+		// when both a user and a wildcard are present.
+		foundUsersCountMap[userKey]++
+		if wildcardExists {
+			foundUsersCountMap[userKey]--
+		}
+		mu.Unlock()
+	}
+}
+
 func (l *listUsersQuery) expandUnion(
 	ctx context.Context,
 	req *internalListUsersRequest,
@@ -657,7 +729,13 @@ func (l *listUsersQuery) expandUnion(
 		rewrite := rewrite
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
-			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				resp = l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
@@ -665,12 +743,19 @@ func (l *listUsersQuery) expandUnion(
 	errChan := make(chan error, 1)
 
 	go func() {
-		err := pool.Wait()
-		for i := range unionFoundUsersChans {
-			close(unionFoundUsersChans[i])
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			err := pool.Wait()
+			for i := range unionFoundUsersChans {
+				close(unionFoundUsersChans[i])
+			}
+			errChan <- err
+			close(errChan)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+			errChan <- resp.err
 		}
-		errChan <- err
-		close(errChan)
 	}()
 
 	var mu sync.Mutex
@@ -736,7 +821,13 @@ func (l *listUsersQuery) expandExclusion(
 
 	var baseError error
 	go func() {
-		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			resp = l.expandRewrite(ctx, req, rewrite.Difference.GetBase(), baseFoundUsersCh)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		baseError = resp.err
 		close(baseFoundUsersCh)
 	}()
@@ -744,7 +835,13 @@ func (l *listUsersQuery) expandExclusion(
 	var subtractError error
 	var subtractHasCycle bool
 	go func() {
-		resp := l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		var resp expandResponse
+		recoveredError := panics.Try(func() {
+			resp = l.expandRewrite(ctx, req, rewrite.Difference.GetSubtract(), subtractFoundUsersCh)
+		})
+		if recoveredError != nil {
+			resp = panicExpanseResponse(recoveredError)
+		}
 		subtractError = resp.err
 		subtractHasCycle = resp.hasCycle
 		close(subtractFoundUsersCh)
@@ -921,10 +1018,16 @@ LoopOnIterator:
 		userObjectType, userObjectID := tuple.SplitObject(userObject)
 
 		pool.Go(func(ctx context.Context) error {
-			rewrittenReq := req.clone()
-			rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
-			rewrittenReq.Relation = computedRelation
-			resp := l.dispatch(ctx, rewrittenReq, foundUsersChan)
+			var resp expandResponse
+			recoveredError := panics.Try(func() {
+				rewrittenReq := req.clone()
+				rewrittenReq.Object = &openfgav1.Object{Type: userObjectType, Id: userObjectID}
+				rewrittenReq.Relation = computedRelation
+				resp = l.dispatch(ctx, rewrittenReq, foundUsersChan)
+			})
+			if recoveredError != nil {
+				resp = panicExpanseResponse(recoveredError)
+			}
 			return resp.err
 		})
 	}
