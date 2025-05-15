@@ -649,7 +649,6 @@ func (l *listUsersQuery) expandIntersection(
 				resp = panicExpanseResponse(recoveredError)
 				errChan <- resp.err
 			}
-
 		}(foundUsersChan)
 	}
 	wg.Wait()
