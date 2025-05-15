@@ -430,6 +430,11 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 	for _, module := range modules {
 		wg.Add(1)
 		go func(module string) {
+			defer func() {
+				if r := recover(); r != nil {
+					errorChannel <- &authorizationError{Cause: fmt.Sprintf("panic recovered: %v", r)}
+				}
+			}()
 			defer wg.Done()
 			contextualTuples := openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
@@ -443,7 +448,6 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 			}
 
 			err := a.individualAuthorize(ctx, clientID, relation, ModuleIDType(storeID).String(module), &contextualTuples)
-
 			if err != nil {
 				errorChannel <- err
 			}

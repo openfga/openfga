@@ -603,6 +603,19 @@ func TestModuleAuthorize(t *testing.T) {
 		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, storeID, []string{"module1", "module2", "module3"})
 		require.NoError(t, err)
 	})
+
+	t.Run("should_error_when_panic_occurs", func(t *testing.T) {
+		mockServer.EXPECT().Check(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+			panic("test panic")
+		}).AnyTimes()
+
+		err := authorizer.moduleAuthorize(context.Background(), "client-id", CanCallWrite, storeID, []string{"module1", "module2", "module3"})
+		require.Error(t, err)
+		var authError *authorizationError
+		ok := errors.As(err, &authError)
+		require.True(t, ok)
+		require.ErrorContains(t, authError, "panic recovered")
+	})
 }
 
 func TestGetModulesForWriteRequest(t *testing.T) {
