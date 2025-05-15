@@ -4432,7 +4432,6 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 }
 
 func NewListUsersQueryPanic(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-
 	opts = append(opts, WithDispatchHandler(func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse {
 		panic(ErrPanic)
 	}))
