@@ -153,7 +153,7 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 	}
 }
 
-// WithDispatchHandler allows setting a custom dispatch handler
+// WithDispatchHandler allows setting a custom dispatch handler.
 func WithDispatchHandler(handler dispatchHandler) ListUsersQueryOption {
 	return func(l *listUsersQuery) {
 		l.dispatchHandler = handler
