@@ -4076,7 +4076,9 @@ func TestListUsersPanic(t *testing.T) {
 }
 
 func NewListUsersQueryPanic(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-	return NewListUsersQuery(ds, contextualTuples, WithDispatchHandler(func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse {
+
+	opts = append(opts, WithDispatchHandler(func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse {
 		panic(ErrPanic)
 	}))
+	return NewListUsersQuery(ds, contextualTuples, opts...)
 }
