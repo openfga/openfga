@@ -153,6 +153,13 @@ func WithDispatchThrottlerConfig(config threshold.Config) ListUsersQueryOption {
 	}
 }
 
+// WithDispatchHandler allows setting a custom dispatch handler
+func WithDispatchHandler(handler dispatchHandler) ListUsersQueryOption {
+	return func(l *listUsersQuery) {
+		l.dispatchHandler = handler
+	}
+}
+
 // TODO accept ListUsersRequest instead of contextualTuples.
 func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
 	l := &listUsersQuery{

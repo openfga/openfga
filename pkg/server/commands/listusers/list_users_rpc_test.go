@@ -3,7 +3,6 @@ package listusers
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,11 +18,8 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
-	"github.com/openfga/openfga/pkg/logger"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -4040,7 +4036,7 @@ func TestListUsersPanic(t *testing.T) {
 
 	tests := ListUsersTests{
 		{
-			name: "evaluate_userset_in_computed_relation_of_ttu_panic_expand_ttu",
+			name: "evaluate_userset_in_computed_relation_of_ttu_panic",
 			req: &openfgav1.ListUsersRequest{
 				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
 				Relation: "reader",
@@ -4080,24 +4076,7 @@ func TestListUsersPanic(t *testing.T) {
 }
 
 func NewListUsersQueryPanic(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
-	l := &listUsersQuery{
-		logger:                  logger.NewNoopLogger(),
-		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
-		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
-		deadline:                serverconfig.DefaultListUsersDeadline,
-		maxResults:              serverconfig.DefaultListUsersMaxResults,
-		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListUsers,
-		wasThrottled:            new(atomic.Bool),
-		dispatchHandler: func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse {
-			panic(ErrPanic)
-		},
-	}
-
-	for _, opt := range opts {
-		opt(l)
-	}
-
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
-
-	return l
+	return NewListUsersQuery(ds, contextualTuples, WithDispatchHandler(func(ctx context.Context, l *listUsersQuery, req *internalListUsersRequest, foundUsersChan chan<- foundUser) expandResponse {
+		panic(ErrPanic)
+	}))
 }
