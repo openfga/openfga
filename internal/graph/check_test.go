@@ -3853,12 +3853,13 @@ func TestCheckTTUSlowPath(t *testing.T) {
 		iter := &mockPanicIterator[*openfgav1.TupleKey]{}
 		checker := NewLocalChecker()
 		defer checker.Close()
-
 		req := &ResolveCheckRequest{
 			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata: NewCheckRequestMetadata(),
 		}
-		resp, err := checker.checkTTUSlowPath(ctx, req, nil, iter)
+
+		resp, err := checker.checkTTUSlowPath(context.Background(), req, typesystem.TupleToUserset("owner", "member"), iter)
+
 		require.ErrorContains(t, err, panicErr)
 		require.ErrorIs(t, err, ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)

@@ -1386,15 +1386,18 @@ func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRe
 	defer func() {
 		cancelFunc()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		poolErr := pool.Wait()
+		if poolErr != nil {
+			resp = nil
+			err = fmt.Errorf("%w: %s", ErrPanic, poolErr)
+		}
 	}()
 	pool.Go(func(ctx context.Context) error {
 		recoveredError := panics.Try(func() {
 			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
 		})
 		if recoveredError != nil {
-			resp = nil
-			err = fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return recoveredError.AsError()
 		}
 		return nil
 	})
