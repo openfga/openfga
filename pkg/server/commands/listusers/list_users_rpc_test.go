@@ -152,6 +152,33 @@ func TestListUsersDirectRelationship(t *testing.T) {
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{"user:will", "user:maria"},
 		},
+		{
+			name: "direct_relationship_with_userset_subjects_and_userset_filter_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "group", Id: "eng"},
+				Relation: "member",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type:     "group",
+						Relation: "member",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, group#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
+				tuple.NewTupleKey("group:fga", "member", "group:fga-backend#member"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -240,6 +267,35 @@ func TestListUsersComputedRelationship(t *testing.T) {
 						define viewer: owner`,
 			tuples:        []*openfgav1.TupleKey{},
 			expectedUsers: []string{"user:will", "user:maria"},
+		},
+		{
+			name: "computed_relationship_with_possible_direct_relationship_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: owner or editor`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "owner", "user:will"),
+				tuple.NewTupleKey("document:1", "editor", "user:maria"),
+				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -571,6 +627,28 @@ func TestListUsersUsersets(t *testing.T) {
 			},
 			expectedUsers: []string{},
 		},
+		{
+			name: "userset_user_granularity_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:eng", "member", "user:will"),
+				tuple.NewTupleKey("group:eng", "member", "user:maria"),
+				tuple.NewTupleKey("group:marketing", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -700,6 +778,48 @@ func TestListUsersTTU(t *testing.T) {
 				tuple.NewTupleKey("folder:other", "viewer", "user:jon"),
 			},
 			expectedUsers: []string{"user:will", "user:jon"},
+		},
+		{
+			name: "ttu_with_computed_relation_user_granularity_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+
+				type folder
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: [user] or owner or editor
+						define unrelated_not_computed: [user]
+
+				type document
+					relations
+						define parent: [folder]
+						define viewer: viewer from parent`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("folder:x", "viewer", "user:maria"),
+				tuple.NewTupleKey("folder:x", "editor", "user:will"),
+				tuple.NewTupleKey("folder:x", "owner", "user:jon"),
+				tuple.NewTupleKey("folder:x", "unrelated_not_computed", "user:poovam"),
+
+				tuple.NewTupleKey("folder:no-doc", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "parent", "folder:no-user"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 
@@ -1158,6 +1278,46 @@ func TestListUsersConditions(t *testing.T) {
 			},
 			expectedErrorMsg: "failed to evaluate relationship condition: parameter type error on condition 'condFloat' - failed to convert context parameter 'x': number cannot be represented as a float64: 1.797693135e+309",
 		},
+		{
+			name: "conditions_with_computed_relationships_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param": true}),
+			},
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type group
+					relations
+						define member: [user]
+
+				type document
+					relations
+						define owner: [user]
+						define editor: [user] or owner
+						define viewer: [user with isTrue] or editor or owner
+
+				condition isTrue(param: bool) {
+					param
+				}`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "isTrue", nil),
+				tuple.NewTupleKey("document:1", "owner", "user:will"),
+				tuple.NewTupleKey("document:1", "editor", "user:poovam"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -1405,6 +1565,47 @@ func TestListUsersIntersection(t *testing.T) {
 			},
 			expectedUsers: []string{"user:*"},
 		},
+		{
+			name: "intersection_multiple_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define required_1: [user]
+						define required_2: [user]
+						define required_3: [user]
+						define viewer: [user] and required_1 and required_2 and required_3`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "required_1", "user:will"),
+				tuple.NewTupleKey("document:1", "required_2", "user:will"),
+				tuple.NewTupleKey("document:1", "required_3", "user:will"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:1", "required_1", "user:jon"),
+				tuple.NewTupleKey("document:1", "required_2", "user:jon"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+				tuple.NewTupleKey("document:1", "required_1", "user:maria"),
+
+				tuple.NewTupleKey("document:1", "viewer", "user:poovam"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -1575,6 +1776,42 @@ func TestListUsersUnion(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked2", "user:maria"),
 			},
 			expectedUsers: []string{"user:*"},
+		},
+		{
+			name: "union_and_ttu_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type folder
+					relations
+						define viewer: [user]
+				type document
+					relations
+						define optional: [user]
+						define parent: [folder]
+						define viewer: (viewer from parent) or optional`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "optional", "user:will"),
+				tuple.NewTupleKey("folder:x", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+
+				tuple.NewTupleKey("document:1", "optional", "user:maria"),
+				tuple.NewTupleKey("folder:x", "viewer", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -1819,6 +2056,36 @@ func TestListUsersExclusion(t *testing.T) {
 			},
 			expectedUsers: []string{"document:2#blocked"},
 		},
+		{
+			name: "exclusion_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define blocked: [user]
+						define viewer: [user] but not blocked`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:blocked_user"),
+				tuple.NewTupleKey("document:1", "blocked", "user:blocked_user"),
+				tuple.NewTupleKey("document:1", "viewer", "user:will"),
+				tuple.NewTupleKey("document:1", "blocked", "user:another_blocked_user"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -1963,6 +2230,26 @@ func TestListUsersExclusionWildcards(t *testing.T) {
 				tuple.NewTupleKey("document:1", "blocked", "user:will"),
 			},
 			expectedUsers: []string{"user:*", "user:maria"},
+		},
+		{
+			name: "exclusion_and_wildcards_4_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: model,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "blocked", "user:maria"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 	tests.runListUsersTestCases(t)
@@ -2111,6 +2398,35 @@ func TestListUsersWildcards(t *testing.T) {
 			},
 			expectedUsers: []string{"user:*"},
 		},
+		{
+			name: "wildcard_with_indirection_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user:*]
+				type document
+					relations
+						define viewer: [group#member]`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "user:*"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -2170,7 +2486,6 @@ func TestListUsersEdgePruning(t *testing.T) {
 			},
 			expectedUsers: []string{"user:maria"},
 		},
-
 		{
 			name: "user_filter_has_invalid_edge",
 			req: &openfgav1.ListUsersRequest{
@@ -2250,6 +2565,34 @@ func TestListUsersEdgePruning(t *testing.T) {
 						define parent: [folder]
 						define viewer: viewer from parent`,
 			expectedErrorMsg: "'document#INVALID_RELATION' relation is undefined",
+		},
+		{
+			name: "valid_edge_several_computed_relations_away_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define parent: [user]
+						define owner: parent
+						define editor: owner
+						define viewer: editor`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "user:maria"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 
@@ -2531,6 +2874,36 @@ func TestListUsersWildcardsAndIntersection(t *testing.T) {
 			},
 			expectedUsers: []string{"user:jon"},
 		},
+		{
+			name: "wildcard_and_intersection_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object:   &openfgav1.Object{Type: "document", Id: "1"},
+				Relation: "can_view",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model: `
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define allowed: [user]
+						define viewer: [user:*,user] and allowed
+						define can_view: viewer`,
+
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 	tests.runListUsersTestCases(t)
 }
@@ -2770,6 +3143,15 @@ func TestListUsersChainedNegation(t *testing.T) {
 			},
 			expectedUsers: []string{"user:*", "user:maria"},
 		},
+		{
+			name: "chained_negation_1_panic",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			expectedUsers:     []string{},
+			expectedErrorMsg:  ErrPanic.Error(),
+			newListUsersQuery: NewListUsersQueryPanic,
+		},
 	}
 
 	for i := range tests {
@@ -2863,6 +3245,26 @@ func TestListUsersDepthExceeded(t *testing.T) {
 			model:         model,
 			tuples:        tuples,
 			expectedUsers: []string{"user:maria"},
+		},
+		{
+			name: "depth_should_exceed_limit_panic",
+			req: &openfgav1.ListUsersRequest{
+				Object: &openfgav1.Object{
+					Type: "folder",
+					Id:   "1", // Exceeded because we expand up until folder:1, beyond 25 allowable levels
+				},
+				Relation: "viewer",
+				UserFilters: []*openfgav1.UserTypeFilter{
+					{
+						Type: "user",
+					},
+				},
+			},
+			model:             model,
+			tuples:            tuples,
+			expectedErrorMsg:  ErrPanic.Error(),
+			expectedUsers:     []string{},
+			newListUsersQuery: NewListUsersQueryPanic,
 		},
 	}
 
@@ -4027,52 +4429,6 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
-}
-
-func TestListUsersPanic(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	tests := ListUsersTests{
-		{
-			name: "evaluate_userset_in_computed_relation_of_ttu_panic",
-			req: &openfgav1.ListUsersRequest{
-				Object:   &openfgav1.Object{Type: "repo", Id: "fga"},
-				Relation: "reader",
-				UserFilters: []*openfgav1.UserTypeFilter{
-					{
-						Type:     "org",
-						Relation: "member",
-					},
-				},
-			},
-
-			model: `
-				model
-					schema 1.1
-				type user
-
-				type org
-					relations
-						define member: [user]
-						define admin: [org#member]
-
-				type repo
-					relations
-						define owner: [org]
-						define reader: admin from owner`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:fga", "owner", "org:x"),
-				tuple.NewTupleKey("org:x", "admin", "org:x#member"),
-				tuple.NewTupleKey("org:x", "member", "user:will"),
-			},
-			expectedUsers:     []string{},
-			expectedErrorMsg:  ErrPanic.Error(),
-			newListUsersQuery: NewListUsersQueryPanic,
-		},
-	}
-	tests.runListUsersTestCases(t)
 }
 
 func NewListUsersQueryPanic(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
