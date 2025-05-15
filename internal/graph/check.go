@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -644,6 +645,11 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				c.logger.ErrorWithContext(ctx, "panic recoverred", zap.Any("error", r), zap.String("function", "LocalChecker.processDispatches"))
+			}
+		}()
+		defer func() {
 			// We need to wait always to avoid a goroutine leak.
 			_ = dispatchPool.Wait()
 			close(outcomes)
@@ -877,6 +883,11 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				c.logger.ErrorWithContext(ctx, "panic recoverred", zap.Any("error", r), zap.String("function", "LocalChecker.processUsersets"))
+			}
+		}()
+		defer func() {
 			// We need to wait always to avoid a goroutine leak.
 			_ = pool.Wait()
 			close(outcomes)
@@ -1060,7 +1071,8 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 // This is used to find the intersection between userset from user and userset from object.
 func processUsersetMessage(userset string,
 	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
+	secondarySet *hashset.Set,
+) bool {
 	primarySet.Add(userset)
 	return secondarySet.Contains(userset)
 }
