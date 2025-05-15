@@ -678,40 +678,6 @@ func (l *listUsersQuery) expandIntersection(
 	}
 }
 
-func populateFoundUsersCountMap(mu *sync.Mutex, foundUsersChan chan foundUser, excludedUsersMap map[string]struct{}, foundUsersCountMap map[string]uint32, wildcardKey string, wildcardCount *atomic.Uint32) {
-	foundUsersMap := make(map[string]uint32, 0)
-	for foundUser := range foundUsersChan {
-		key := tuple.UserProtoToString(foundUser.user)
-		for _, excludedUser := range foundUser.excludedUsers {
-			key := tuple.UserProtoToString(excludedUser)
-			mu.Lock()
-			excludedUsersMap[key] = struct{}{}
-			mu.Unlock()
-		}
-		if foundUser.relationshipStatus == NoRelationship {
-			continue
-		}
-		foundUsersMap[key]++
-	}
-
-	_, wildcardExists := foundUsersMap[wildcardKey]
-	if wildcardExists {
-		wildcardCount.Add(1)
-	}
-	for userKey := range foundUsersMap {
-		mu.Lock()
-		// Increment the count for a user but decrement if a wildcard
-		// also exists to prevent double counting. This ensures accurate
-		// tracking for intersection criteria, avoiding inflated counts
-		// when both a user and a wildcard are present.
-		foundUsersCountMap[userKey]++
-		if wildcardExists {
-			foundUsersCountMap[userKey]--
-		}
-		mu.Unlock()
-	}
-}
-
 func (l *listUsersQuery) expandUnion(
 	ctx context.Context,
 	req *internalListUsersRequest,
