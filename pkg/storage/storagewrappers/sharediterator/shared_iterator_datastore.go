@@ -395,8 +395,6 @@ func (sf *IteratorDatastore) Read(
 	return newIterator, nil
 }
 
-// cleanup the key and associated
-
 // decrement cacheKey from internal reference count
 // If reference count is 0, remove cacheKey.
 // Return whether item is removed.
