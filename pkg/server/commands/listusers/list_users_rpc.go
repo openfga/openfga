@@ -584,19 +584,19 @@ func (l *listUsersQuery) expandIntersection(
 	errChan := make(chan error, 1)
 
 	go func() {
-		var resp expandResponse
+		var err error
 		recoveredError := panics.Try(func() {
-			err := pool.Wait()
+			err = pool.Wait()
 			for i := range intersectionFoundUsersChans {
 				close(intersectionFoundUsersChans[i])
 			}
-			errChan <- err
-			close(errChan)
 		})
 		if recoveredError != nil {
-			resp = panicExpanseResponse(recoveredError)
-			errChan <- resp.err
+			resp := panicExpanseResponse(recoveredError)
+			err = resp.err
 		}
+		errChan <- err
+		close(errChan)
 	}()
 
 	var mu sync.Mutex
