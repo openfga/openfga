@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Performance optimization by allowing datastore query iterator to be shared by multiple consumers. This can be enabled via `OPENFGA_SHARED_ITERATOR_ENABLED`. [#2433](https://github.com/openfga/openfga/pull/2433), [#2410](https://github.com/openfga/openfga/pull/2410) and [#2423](https://github.com/openfga/openfga/pull/2423)
 
+### Fixed
+- Ensure `fanin.Stop` and `fanin.Drain` are called for all clients which may create blocking goroutines. [#2441](https://github.com/openfga/openfga/pull/2441)
+
 ## [1.8.12] - 2025-05-12
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12)
 
