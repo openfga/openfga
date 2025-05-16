@@ -41,7 +41,7 @@ var (
 	sharedIteratorBypassed = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "shared_iterator_bypassed",
-		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit.",
+		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit OR max admission time has passed.",
 	}, []string{"operation"})
 
 	sharedIteratorWatchDog = promauto.NewCounter(prometheus.CounterOpts{
@@ -56,7 +56,8 @@ var (
 		Help:      "The current number of items of shared iterator.",
 	})
 
-	errSharedIteratorWatchdog = errors.New("shared iterator watchdog timeout")
+	errSharedIteratorWatchdog               = errors.New("shared iterator watchdog timeout")
+	errSharedIteratorAfterLastAdmissionTime = errors.New("shared iterator cloned after last admission time")
 )
 
 const (
@@ -117,11 +118,21 @@ func WithIteratorTargetSize(targetSize uint32) IteratorDatastoreOpt {
 	}
 }
 
+// WithMaxAdmissionTime sets the maximum duration for which shared iterator allows clone.
+// After this period, clone will fail and fall back to non-shared iterator. This is done
+// to prevent stale data if there are very long-running requests.
+func WithMaxAdmissionTime(maxAdmissionTime time.Duration) IteratorDatastoreOpt {
+	return func(b *IteratorDatastore) {
+		b.maxAdmissionTime = maxAdmissionTime
+	}
+}
+
 type IteratorDatastore struct {
 	storage.RelationshipTupleReader
 	logger                logger.Logger
 	internalStorage       *Storage
 	watchdogTimeoutConfig time.Duration
+	maxAdmissionTime      time.Duration
 	iteratorTargetSize    uint32
 }
 
@@ -137,6 +148,7 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		internalStorage:         internalStorage,
 		watchdogTimeoutConfig:   config.DefaultSharedIteratorWatchdogTimeout,
 		iteratorTargetSize:      defaultIteratorTargetSize,
+		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
 	}
 
 	for _, opt := range opts {
@@ -212,7 +224,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
@@ -301,7 +313,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
@@ -379,7 +391,7 @@ func (sf *IteratorDatastore) Read(
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
@@ -461,12 +473,14 @@ func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, sharedIteratorPtr 
 
 // sharedIterator will be shared with multiple consumers.
 type sharedIterator struct {
-	manager      *IteratorDatastore // non-changing
-	key          string             // non-changing
-	head         int
-	maxAliveTime time.Duration
+	manager          *IteratorDatastore // non-changing
+	key              string             // non-changing
+	maxAliveTime     time.Duration      // non-changing
+	startTime        time.Time          // non-changing
+	maxAdmissionTime time.Duration      // non-changing
+	head             int
 
-	mu                 *sync.Mutex           // We expect the contention should be minimal. TODO: minimize mu holding time.
+	mu                 *sync.RWMutex         // We expect the contention should be minimal. TODO: minimize mu holding time.
 	initializationErr  error                 // shared - protected by mu. Although it is shared, it is only inspected by clone().
 	items              *[]*openfgav1.Tuple   // shared - protected by mu
 	inner              storage.TupleIterator // shared - protected by mu
@@ -480,14 +494,16 @@ type sharedIterator struct {
 	*/
 }
 
-func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time.Duration, targetSize uint32) *sharedIterator {
+func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time.Duration, maxAdmissionTime time.Duration, targetSize uint32) *sharedIterator {
 	newIter := &sharedIterator{
-		manager:      manager,
-		key:          key,
-		head:         0,
-		maxAliveTime: maxAliveTime,
+		manager:          manager,
+		key:              key,
+		head:             0,
+		maxAliveTime:     maxAliveTime,
+		startTime:        time.Now(),
+		maxAdmissionTime: maxAdmissionTime,
 
-		mu:                 &sync.Mutex{},
+		mu:                 &sync.RWMutex{},
 		items:              new([]*openfgav1.Tuple),
 		inner:              nil,
 		sharedErr:          new(error),
@@ -503,11 +519,19 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 	if s.initializationErr != nil {
 		return nil, s.initializationErr
 	}
+	if time.Now().After(s.startTime.Add(s.maxAdmissionTime)) {
+		// To avoid stale data, we want to prevent shared iterator from using the clone if it is created after
+		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
+		return nil, errSharedIteratorAfterLastAdmissionTime
+	}
+
 	newIter := &sharedIterator{
 		manager:      s.manager,
 		key:          s.key,
 		head:         0,
 		maxAliveTime: s.maxAliveTime,
+		// the start time and the maxAdmissionTime is only used for checking
+		// whether we need to clone. As such, it is not copied into the cloned copy.
 
 		mu:                 s.mu,
 		items:              s.items,
@@ -567,27 +591,27 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	if s.head == len(*s.items) {
-		// If there is an error, no need to get any more items, and we just return the error
-		if s.sharedErr != nil && *s.sharedErr != nil {
-			span.SetAttributes(attribute.Bool("sharedError", true))
-			telemetry.TraceError(span, *s.sharedErr)
-			return nil, *s.sharedErr
-		}
-
-		span.SetAttributes(attribute.Bool("newItem", true))
-		item, err := s.inner.Next(ctx)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			*s.sharedErr = err
-			return nil, err
-		}
-		*s.items = append(*s.items, item)
-		return item, nil
+	if s.head < len(*s.items) {
+		span.SetAttributes(attribute.Bool("newItem", false))
+		return (*s.items)[s.head], nil
 	}
 
-	span.SetAttributes(attribute.Bool("newItem", false))
-	return (*s.items)[s.head], nil
+	// If there is an error, no need to get any more items, and we just return the error
+	if s.sharedErr != nil && *s.sharedErr != nil {
+		span.SetAttributes(attribute.Bool("sharedError", true))
+		telemetry.TraceError(span, *s.sharedErr)
+		return nil, *s.sharedErr
+	}
+
+	span.SetAttributes(attribute.Bool("newItem", true))
+	item, err := s.inner.Next(ctx)
+	if err != nil {
+		telemetry.TraceError(span, err)
+		*s.sharedErr = err
+		return nil, err
+	}
+	*s.items = append(*s.items, item)
+	return item, nil
 }
 
 func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
