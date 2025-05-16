@@ -549,8 +549,6 @@ func (l *listUsersQuery) expandIntersection(
 	childOperands := rewrite.Intersection.GetChild()
 	intersectionFoundUsersChans := make([]chan foundUser, len(childOperands))
 	for i, rewrite := range childOperands {
-		i := i
-		rewrite := rewrite
 		intersectionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
 			resp := l.expandRewrite(ctx, req, rewrite, intersectionFoundUsersChans[i])
@@ -653,8 +651,6 @@ func (l *listUsersQuery) expandUnion(
 	childOperands := rewrite.Union.GetChild()
 	unionFoundUsersChans := make([]chan foundUser, len(childOperands))
 	for i, rewrite := range childOperands {
-		i := i
-		rewrite := rewrite
 		unionFoundUsersChans[i] = make(chan foundUser, 1)
 		pool.Go(func(ctx context.Context) error {
 			resp := l.expandRewrite(ctx, req, rewrite, unionFoundUsersChans[i])

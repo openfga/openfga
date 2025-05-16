@@ -104,7 +104,6 @@ func runTests(t *testing.T, params testParams) {
 	}
 
 	for _, test := range allTestCases {
-		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
 	}
