@@ -157,6 +157,13 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		"sharedIterator.ReadStartingWithUser",
 	)
 	defer span.End()
+
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		// for now, we will skip shared iterator since there is a possibility that the request
+		// may be slightly stale. In the future, consider whether we should have shared iterator
+		// for higher consistency request. This may mean having separate cache.
+		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	}
 	start := time.Now()
 
 	cacheKey, err := storagewrappersutil.ReadStartingWithUserKey(store, filter)
@@ -248,6 +255,9 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+	}
 	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
@@ -331,6 +341,9 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
+	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	}
 	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)

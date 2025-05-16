@@ -251,6 +251,26 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		iter.Stop()
 	})
+	t.Run("bypass_due_to_strong_consistency", func(t *testing.T) {
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk,
+				storage.ReadOptions{
+					Consistency: storage.ConsistencyOptions{
+						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{Consistency: storage.ConsistencyOptions{
+			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
+		// this should not come from the map
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
+
+		_, ok := iter.(*sharedIterator)
+		require.False(t, ok)
+
+		iter.Stop()
+	})
 	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
 		cmpOpts := []cmp.Option{
 			testutils.TupleKeyCmpTransformer,
@@ -430,6 +450,26 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		// this should not come from the map
 		require.Empty(t, internalStorageLimit.iters)
 		internalStorageLimit.mu.Unlock()
+
+		_, ok := iter.(*sharedIterator)
+		require.False(t, ok)
+
+		iter.Stop()
+	})
+	t.Run("bypass_due_to_strong_consistency", func(t *testing.T) {
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, filter,
+				storage.ReadUsersetTuplesOptions{
+					Consistency: storage.ConsistencyOptions{
+						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
+			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
+		// this should not come from the map
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -617,6 +657,26 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		// this should not come from the map
 		require.Empty(t, internalStorageLimit.iters)
 		internalStorageLimit.mu.Unlock()
+
+		_, ok := iter.(*sharedIterator)
+		require.False(t, ok)
+
+		iter.Stop()
+	})
+	t.Run("bypass_due_to_strong_consistency", func(t *testing.T) {
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, filter,
+				storage.ReadStartingWithUserOptions{
+					Consistency: storage.ConsistencyOptions{
+						Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{Consistency: storage.ConsistencyOptions{
+			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
+		require.NoError(t, err)
+		ds.internalStorage.mu.Lock()
+		// this should not come from the map
+		require.Empty(t, ds.internalStorage.iters)
+		ds.internalStorage.mu.Unlock()
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
