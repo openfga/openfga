@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -156,7 +157,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		return iter(ctx)
 	}
 
-	cacheKey, err := readStartingWithUserKey(store, filter)
+	cacheKey, err := storagewrappersutil.ReadStartingWithUserKey(store, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +173,7 @@ func (c *CachedDatastore) ReadStartingWithUser(
 		subjects = append(subjects, subject)
 	}
 
-	return c.newCachedIteratorByUserObjectType(ctx, "ReadStartingWithUser", store, iter, cacheKey, subjects, filter.ObjectType)
+	return c.newCachedIteratorByUserObjectType(ctx, storagewrappersutil.OperationReadStartingWithUser, store, iter, cacheKey, subjects, filter.ObjectType)
 }
 
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
@@ -198,10 +199,10 @@ func (c *CachedDatastore) ReadUsersetTuples(
 	}
 
 	return c.newCachedIteratorByObjectRelation(ctx,
-		"ReadUsersetTuples",
+		storagewrappersutil.OperationReadUsersetTuples,
 		store,
 		iter,
-		readUsersetTuplesKey(store, filter),
+		storagewrappersutil.ReadUsersetTuplesKey(store, filter),
 		filter.Object,
 		filter.Relation)
 }
@@ -234,10 +235,10 @@ func (c *CachedDatastore) Read(
 	}
 
 	return c.newCachedIteratorByObjectRelation(ctx,
-		"Read",
+		storagewrappersutil.OperationRead,
 		store,
 		iter,
-		readKey(store, tupleKey),
+		storagewrappersutil.ReadKey(store, tupleKey),
 		tupleKey.GetObject(),
 		tupleKey.GetRelation())
 }
@@ -509,8 +510,17 @@ func (c *cachedIterator) Stop() {
 
 	c.wg.Add(1)
 	go func() {
-		defer c.wg.Done()
-		defer c.iter.Stop()
+		defer func() {
+			if r := recover(); r != nil {
+				c.logger.Error(
+					"panic recovered",
+					zap.Any("error", r),
+					zap.String("function", "cachedIterator.Stop"),
+				)
+			}
+			c.wg.Done()
+			c.iter.Stop()
+		}()
 
 		// if cache is already set, we don't need to drain the iterator
 		_, ok := findInCache(c.cache, c.store, c.cacheKey, c.invalidEntityKeys, c.logger)

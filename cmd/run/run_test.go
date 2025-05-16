@@ -1214,6 +1214,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CacheController.TTL.String())
 
+	val = res.Get("properties.sharedIterator.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.SharedIterator.Enabled)
+
+	val = res.Get("properties.sharedIterator.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.SharedIterator.Limit)
+
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
 	require.Len(t, cfg.RequestDurationDatastoreQueryCountBuckets, len(val.Array()))
@@ -1374,6 +1382,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_ACCESS_CONTROL_STORE_ID", "12345")
 	t.Setenv("OPENFGA_ACCESS_CONTROL_MODEL_ID", "67891")
 	t.Setenv("OPENFGA_CONTEXT_PROPAGATION_TO_DATASTORE", "true")
+	t.Setenv("OPENFGA_SHARED_ITERATOR_ENABLED", "true")
+	t.Setenv("OPENFGA_SHARED_ITERATOR_LIMIT", "950")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1397,6 +1407,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "12345", viper.GetString("access-control-store-id"))
 		require.Equal(t, "67891", viper.GetString("access-control-model-id"))
 		require.True(t, viper.GetBool("context-propagation-to-datastore"))
+		require.True(t, viper.GetBool("shared-iterator-enabled"))
+		require.Equal(t, uint32(950), viper.GetUint32("shared-iterator-limit"))
 
 		return nil
 	}

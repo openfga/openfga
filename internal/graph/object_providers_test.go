@@ -234,8 +234,10 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				_, err = c.Begin(ctx, req)
-				require.ErrorIs(t, err, mockError)
+				out, err := c.Begin(ctx, req)
+				require.NoError(t, err)
+				msg := <-out
+				require.ErrorIs(t, msg.err, mockError)
 			})
 
 			t.Run("when_iterator_errors", func(t *testing.T) {
@@ -379,17 +381,20 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 			})
 
 			t.Run("when_fastPathRewrite_errors", func(t *testing.T) {
+				mockError := fmt.Errorf("error")
 				mockDatastore.EXPECT().
 					ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).
-					Return(nil, fmt.Errorf("error"))
+					Return(nil, mockError)
 
 				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				_, err = c.Begin(ctx, req)
-				require.Error(t, err)
+				out, err := c.Begin(ctx, req)
+				require.NoError(t, err)
+				msg := <-out
+				require.ErrorIs(t, mockError, msg.err)
 			})
 
 			t.Run("when_iterator_errors", func(t *testing.T) {

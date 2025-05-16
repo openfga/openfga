@@ -27,6 +27,7 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
@@ -725,6 +726,20 @@ func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAService
 	}
 }
 
+// WithSharedIteratorEnabled enables iterator to be shared across different consumer.
+func WithSharedIteratorEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorEnabled = enabled
+	}
+}
+
+// WithSharedIteratorLimit sets the number of items that can be shared.
+func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorLimit = limit
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
@@ -1022,7 +1037,7 @@ func (s *Server) validateAccessControlEnabled() error {
 }
 
 // checkAuthz checks the authorization for calling an API method.
-func (s *Server) checkAuthz(ctx context.Context, storeID, apiMethod string, modules ...string) error {
+func (s *Server) checkAuthz(ctx context.Context, storeID string, apiMethod apimethod.APIMethod, modules ...string) error {
 	if authclaims.SkipAuthzCheckFromContext(ctx) {
 		return nil
 	}
@@ -1085,7 +1100,7 @@ func (s *Server) checkWriteAuthz(ctx context.Context, req *openfgav1.WriteReques
 		return authz.ErrUnauthorizedResponse
 	}
 
-	return s.checkAuthz(ctx, req.GetStoreId(), authz.Write, modules...)
+	return s.checkAuthz(ctx, req.GetStoreId(), apimethod.Write, modules...)
 }
 
 func (s *Server) emitCheckDurationMetric(checkMetadata graph.ResolveCheckResponseMetadata, caller string) {

@@ -22,7 +22,7 @@ const (
 	DefaultMaxAuthorizationModelCacheSize   = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
-	DefaultResolveNodeBreadthLimit          = 100
+	DefaultResolveNodeBreadthLimit          = 10
 	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
@@ -86,6 +86,9 @@ const (
 
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
+
+	DefaultSharedIteratorEnabled = false
+	DefaultSharedIteratorLimit   = 1000000
 )
 
 type DatastoreMetricsConfig struct {
@@ -239,6 +242,12 @@ type IteratorCacheConfig struct {
 	TTL        time.Duration
 }
 
+// SharedIteratorConfig defines configuration to share storage iterator.
+type SharedIteratorConfig struct {
+	Enabled bool
+	Limit   uint32
+}
+
 // CacheControllerConfig defines configuration to manage cache invalidation dynamically by observing whether
 // there are recent tuple changes to specified store.
 type CacheControllerConfig struct {
@@ -361,6 +370,7 @@ type Config struct {
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListObjectsIteratorCache      IteratorCacheConfig
+	SharedIterator                SharedIteratorConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
@@ -707,6 +717,10 @@ func DefaultConfig() *Config {
 		},
 		CheckCache: CheckCacheConfig{
 			Limit: DefaultCheckCacheLimit,
+		},
+		SharedIterator: SharedIteratorConfig{
+			Enabled: DefaultSharedIteratorEnabled,
+			Limit:   DefaultSharedIteratorLimit,
 		},
 		CacheController: CacheControllerConfig{
 			Enabled: DefaultCacheControllerConfigEnabled,
