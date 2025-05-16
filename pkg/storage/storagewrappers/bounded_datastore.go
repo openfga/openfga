@@ -184,9 +184,8 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 // waitForLimiter respects context errors and returns an error only if it couldn't send an item to the channel.
 func (b *BoundedTupleReader) waitForLimiter(ctx context.Context) error {
 	select {
-	// Note: if both cases can proceed, one will be selected at random
 	case <-ctx.Done():
-		return ctx.Err() // no metric produced if request is cancelled (would skew numbers)
+		return ctx.Err()
 	case b.limiter <- struct{}{}:
 		break
 	}
