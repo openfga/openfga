@@ -3356,7 +3356,6 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 100; i++ {
 		for _, test := range tests {
-			test := test
 			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
 				l := NewListUsersQuery(ds, emptyContextualTuples)
 				resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
