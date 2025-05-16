@@ -8,11 +8,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Added pkg `migrate` to expose `.RunMigrations()` for programmatic use. [#2422](https://github.com/openfga/openfga/pull/2422)
+
 ## [1.8.12] - 2025-05-12
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12)
-
-### Added
-- Added pkg `migrate` to expose `.RunMigrations()` to be used for keeping consistent migrations running openFGA as a library
 
 ### Changed
 - `DefaultResolveNodeBreadthLimit` changed from 100 to 10 in order to reduce connection contention. [#2425](https://github.com/openfga/openfga/pull/2425)
