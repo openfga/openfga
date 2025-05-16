@@ -9,6 +9,7 @@ linters:
     - bodyclose
     - copyloopvar
     - errname
+    - fatcontext
     - gocritic
     - gocyclo
     - godot

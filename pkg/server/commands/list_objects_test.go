@@ -238,7 +238,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 				model,
 			)
 			require.NoError(t, err)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := typesystem.ContextWithTypesystem(ctx, ts)
 
 			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers(
 				graph.WithDispatchThrottlingCheckResolverOpts(true, []graph.DispatchThrottlingCheckResolverOpt{
