@@ -2,6 +2,7 @@ package listusers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -4429,6 +4430,63 @@ func TestListUsersRespectsConsistency(t *testing.T) {
 		})
 		require.NoError(t, err)
 	})
+}
+
+func TestExpandExclusionPanic(t *testing.T) {
+	storeID := ulid.Make().String()
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	testModel := `
+	model
+		schema 1.1
+	type user
+	type document
+		relations
+			define blocked: [user]
+			define viewer: [user] but not blocked`
+
+	model := testutils.MustTransformDSLToProtoWithID(testModel)
+
+	testRequest := &openfgav1.ListUsersRequest{
+		Object:   &openfgav1.Object{Type: "document", Id: "1"},
+		Relation: "viewer",
+		UserFilters: []*openfgav1.UserTypeFilter{
+			{
+				Type: "user",
+			},
+		},
+	}
+
+	l := NewListUsersQuery(ds, testRequest.GetContextualTuples(), WithResolveNodeLimit(maximumRecursiveDepth))
+
+	foundUsersCh := l.buildResultsChannel()
+	resp := l.expandExclusion(context.Background(), &internalListUsersRequest{
+		ListUsersRequest: &openfgav1.ListUsersRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.GetId(),
+			Object: &openfgav1.Object{
+				Type: "document",
+				Id:   "1",
+			},
+			Relation: "viewer",
+			UserFilters: []*openfgav1.UserTypeFilter{{
+				Type: "user",
+			}},
+		},
+		visitedUsersetsMap: map[string]struct{}{},
+	}, nil, foundUsersCh)
+
+	var joinedErrors interface{ Unwrap() []error }
+	errors.As(resp.err, &joinedErrors)
+
+	actualErrors := joinedErrors.Unwrap()
+
+	require.Len(t, actualErrors, 2)
+
+	require.ErrorContains(t, actualErrors[0], "panic captured")
+	require.ErrorContains(t, actualErrors[1], "panic captured")
 }
 
 func NewListUsersQueryPanic(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey, opts ...ListUsersQueryOption) *listUsersQuery {
