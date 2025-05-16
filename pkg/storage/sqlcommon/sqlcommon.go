@@ -255,8 +255,9 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	}
 
 	if !t.rows.Next() {
+		err := t.rows.Err()
 		t.mu.Unlock()
-		if err := t.rows.Err(); err != nil {
+		if err != nil {
 			return nil, t.HandleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone

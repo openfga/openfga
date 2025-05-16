@@ -707,18 +707,37 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	}
 
+	var txn *sql.Tx
+	err = busyRetry(func() error {
+		var err error
+		txn, err = s.db.BeginTx(ctx, nil)
+		return err
+	})
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
 	err = busyRetry(func() error {
 		_, err := s.stbl.
 			Insert("authorization_model").
 			Columns("store", "authorization_model_id", "schema_version", "serialized_protobuf").
 			Values(store, model.GetId(), schemaVersion, pbdata).
+			RunWith(txn).
 			ExecContext(ctx)
 		return err
 	})
 	if err != nil {
 		return HandleSQLError(err)
 	}
-
+	err = busyRetry(func() error {
+		return txn.Commit()
+	})
+	if err != nil {
+		return HandleSQLError(err)
+	}
 	return nil
 }
 
