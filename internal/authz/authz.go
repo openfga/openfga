@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/sourcegraph/conc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -424,13 +424,12 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 	))
 	defer span.End()
 
-	var wg sync.WaitGroup
-	errorChannel := make(chan error, len(modules))
+	var wg conc.WaitGroup
+	errorChannel := make(chan error, len(modules)+1)
+	defer close(errorChannel)
 
 	for _, module := range modules {
-		wg.Add(1)
-		go func(module string) {
-			defer wg.Done()
+		wg.Go(func() {
 			contextualTuples := openfgav1.ContextualTupleKeys{
 				TupleKeys: []*openfgav1.TupleKey{
 					{
@@ -443,20 +442,24 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 			}
 
 			err := a.individualAuthorize(ctx, clientID, relation, ModuleIDType(storeID).String(module), &contextualTuples)
-
 			if err != nil {
 				errorChannel <- err
 			}
-		}(module)
+		})
 	}
 
-	wg.Wait()
-	close(errorChannel)
+	recoveredError := wg.WaitAndRecover()
+	if recoveredError != nil {
+		errorChannel <- &authorizationError{Cause: fmt.Sprintf("panic recovered: %v", recoveredError.AsError())}
+	}
 
-	for err := range errorChannel {
+	select {
+	case err := <-errorChannel:
 		if err != nil {
 			return err
 		}
+	default:
+		return nil
 	}
 
 	return nil
