@@ -146,7 +146,7 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 func iteratorToUserset(src *iterator.FanIn, dst chan usersetMessage) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		defer func() {
-			src.Close()
+			src.Stop()
 			close(dst)
 		}()
 		select {
