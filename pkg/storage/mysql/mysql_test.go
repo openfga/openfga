@@ -25,7 +25,7 @@ import (
 )
 
 func TestMySQLDatastore(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -36,7 +36,7 @@ func TestMySQLDatastore(t *testing.T) {
 }
 
 func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -64,7 +64,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 			uri := testDatastore.GetConnectionURI(true)
 			ds, err := New(uri, sqlcommon.NewConfig())
@@ -165,7 +165,7 @@ func TestCtxCancel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 			uri := testDatastore.GetConnectionURI(true)
 			ds, err := New(uri, sqlcommon.NewConfig())
@@ -227,7 +227,7 @@ func TestCtxCancel(t *testing.T) {
 
 // TestReadPageEnsureOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -273,7 +273,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -298,7 +298,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 }
 
 func TestReadAuthorizationModelReturnValue(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -325,7 +325,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 }
 
 func TestFindLatestModel(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -406,7 +406,7 @@ func TestFindLatestModel(t *testing.T) {
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
 	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -508,7 +508,7 @@ func TestAllowNullCondition(t *testing.T) {
 // needs to change, we'll likely need to introduce a series of data migrations.
 func TestMarshalledAssertions(t *testing.T) {
 	ctx := context.Background()
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql", "")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())

@@ -30,11 +30,15 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	runMatrixWithEngine(t, "memory")
+	runMatrixWithEngine(t, "memory", "")
 }
 
 func TestMatrixPostgres(t *testing.T) {
-	runMatrixWithEngine(t, "postgres")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			runMatrixWithEngine(t, "postgres", imageVersion)
+		})
+	}
 }
 
 // TODO: re-enable
@@ -47,32 +51,36 @@ func TestMatrixPostgres(t *testing.T) {
 //	runMatrixWithEngine(t, "sqlite")
 //}
 
-func runMatrixWithEngine(t *testing.T, engine string) {
+func runMatrixWithEngine(t *testing.T, engine string, imageVersion string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"})
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"}, imageVersion)
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{}, imageVersion)
 	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
 }
 
 func TestCheckMemory(t *testing.T) {
-	testRunAll(t, "memory")
+	testRunAll(t, "memory", "")
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testRunAll(t, "postgres")
+	for _, imageVersion := range testutils.PostgresImageVersions {
+		t.Run("postgres "+imageVersion, func(t *testing.T) {
+			testRunAll(t, "postgres", imageVersion)
+		})
+	}
 }
 
 func TestCheckMySQL(t *testing.T) {
-	testRunAll(t, "mysql")
+	testRunAll(t, "mysql", "")
 }
 
 func TestCheckSQLite(t *testing.T) {
-	testRunAll(t, "sqlite")
+	testRunAll(t, "sqlite", "")
 }
 
 // TODO move elsewhere as this isn't asserting on just Check API logs.
@@ -102,7 +110,7 @@ func TestServerLogs(t *testing.T) {
 
 	// We're starting a full fledged server because the logs we
 	// want to observe are emitted on the interceptors/middleware layer.
-	tests.StartServerWithContext(t, cfg, serverCtx)
+	tests.StartServerWithContext(t, cfg, serverCtx, "")
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr,
 		grpc.WithUserAgent("test-user-agent"),
@@ -326,7 +334,7 @@ func TestServerLogs(t *testing.T) {
 	}
 }
 
-func testRunAll(t *testing.T, engine string) {
+func testRunAll(t *testing.T, engine string, imageVersion string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -348,7 +356,7 @@ func testRunAll(t *testing.T, engine string) {
 	// the Check iterator cache.
 	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
 
-	tests.StartServer(t, cfg)
+	tests.StartServer(t, cfg, imageVersion)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 

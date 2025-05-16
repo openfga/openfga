@@ -21,21 +21,20 @@ import (
 	"github.com/openfga/openfga/assets"
 )
 
-const (
-	postgresImage = "postgres:14"
-)
-
 type postgresTestContainer struct {
-	addr     string
-	version  int64
-	username string
-	password string
+	addr string
+	// the goose/FGA schema version
+	version int64
+	// the version of Postgres itself
+	postgresVersion string
+	username        string
+	password        string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
 // for Postgres.
-func NewPostgresTestContainer() *postgresTestContainer {
-	return &postgresTestContainer{}
+func NewPostgresTestContainer(postgresVersion string) *postgresTestContainer {
+	return &postgresTestContainer{postgresVersion: postgresVersion}
 }
 
 func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
@@ -61,6 +60,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	require.NoError(t, err)
 
 	foundPostgresImage := false
+	postgresImage := "postgres:" + p.postgresVersion
 
 AllImages:
 	for _, image := range allImages {
