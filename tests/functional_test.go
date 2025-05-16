@@ -257,8 +257,6 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test
-
 		t.Run(test.name, func(t *testing.T) {
 			createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 				Name: test.name,

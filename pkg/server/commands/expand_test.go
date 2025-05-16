@@ -1097,7 +1097,7 @@ func TestExpand(t *testing.T) {
 			storeID := ulid.Make().String()
 			// arrange
 			ts, err := typesystem.NewAndValidate(ctx, test.model)
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+			ctx := typesystem.ContextWithTypesystem(ctx, ts)
 			require.NoError(t, err)
 
 			err = datastore.Write(

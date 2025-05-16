@@ -129,7 +129,6 @@ func TestBuildTupleKeyConditionFilter(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ts, err := typesystem.NewAndValidate(context.Background(), tt.model)
@@ -253,7 +252,6 @@ func TestUserFilter(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			result := userFilter(tt.hasPubliclyAssignedType, tt.user, tt.userType)
@@ -345,7 +343,6 @@ func TestIteratorReadStartingFromUser(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -468,7 +465,6 @@ func TestBuildUsersetDetailsUserset(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
@@ -582,7 +578,6 @@ func TestBuildUsersetDetailsTTU(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ts, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(tt.model))
