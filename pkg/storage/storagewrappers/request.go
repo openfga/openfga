@@ -65,7 +65,10 @@ func NewRequestStorageWrapperWithCache(
 		)
 	}
 	if cacheSettings.SharedIteratorEnabled {
-		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, resources.SharedIteratorStorage, sharediterator.WithSharedIteratorDatastoreLogger(logger))
+		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, resources.SharedIteratorStorage,
+			sharediterator.WithSharedIteratorDatastoreLogger(logger),
+			sharediterator.WithMaxAliveTime(cacheSettings.SharedIteratorWatchdogTimeout),
+			sharediterator.WithIteratorTargetSize(cacheSettings.CheckIteratorCacheMaxResults/2))
 	}
 	instrumentedStorage := NewInstrumentedOpenFGAStorage(tupleReader)                           // to capture metrics
 	combinedTupleReader := NewCombinedTupleReader(instrumentedStorage, requestContextualTuples) // to read the contextual tuples
