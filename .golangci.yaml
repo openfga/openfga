@@ -8,6 +8,7 @@ linters:
   enable:
     - bodyclose
     - errname
+    - fatcontext
     - gocritic
     - gocyclo
     - godot
