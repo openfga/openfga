@@ -22,6 +22,7 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -170,7 +171,10 @@ func NewListUsersQuery(ds storage.RelationshipTupleReader, contextualTuples []*o
 		opt(l)
 	}
 
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
+		Method:      apimethod.ListUsers,
+		Concurrency: l.maxConcurrentReads,
+	})
 
 	return l
 }
@@ -286,10 +290,12 @@ func (l *listUsersQuery) ListUsers(
 
 	span.SetAttributes(attribute.Int("result_count", len(foundUsers)))
 
+	dsMeta := l.datastore.GetMetadata()
+	l.wasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 	return &listUsersResponse{
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
-			DatastoreQueryCount: l.datastore.GetMetrics().DatastoreQueryCount,
+			DatastoreQueryCount: dsMeta.DatastoreQueryCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},

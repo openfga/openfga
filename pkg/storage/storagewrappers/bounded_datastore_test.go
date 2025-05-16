@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -32,7 +34,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a limited tuple reader that allows 1 concurrent read a time.
-	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
+	limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1})
 
 	// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
 	const numRoutine = 4
@@ -90,7 +92,7 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	defer mockController.Finish()
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	// concurrency set to zero to allow zero calls to go through
-	dut := NewBoundedConcurrencyTupleReader(mockDatastore, 0)
+	dut := NewBoundedTupleReader(mockDatastore, &Operation{Concurrency: 0, Method: apimethod.Check})
 
 	var testCases = map[string]struct {
 		requestFunc func(ctx context.Context) (any, error)
