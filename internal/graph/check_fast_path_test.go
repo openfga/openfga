@@ -1642,7 +1642,7 @@ func TestRecursiveTTUFastPath(t *testing.T) {
 
 func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
+		goleak.VerifyNone(t)
 	})
 
 	model := parser.MustTransformDSLToProto(`
@@ -2115,7 +2115,7 @@ type group
 
 func TestRecursiveUsersetFastPath(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
+		goleak.VerifyNone(t)
 	})
 	tests := []struct {
 		name                            string

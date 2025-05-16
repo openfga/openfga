@@ -120,7 +120,7 @@ func TestRecursiveObjectProvider(t *testing.T) {
 
 func TestRecursiveTTUObjectProvider(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
+		goleak.VerifyNone(t)
 	})
 
 	storeID := ulid.Make().String()
@@ -298,7 +298,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 
 func TestRecursiveUsersetObjectProvider(t *testing.T) {
 	t.Cleanup(func() {
-		goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.drainOnExit(...)"))
+		goleak.VerifyNone(t)
 	})
 
 	storeID := ulid.Make().String()
