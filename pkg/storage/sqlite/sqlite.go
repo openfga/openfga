@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/url"
 	"strings"
 	"time"
@@ -50,7 +49,7 @@ type Datastore struct {
 // Ensures that SQLite implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-// PrepareDSN Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
+// Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
 func PrepareDSN(uri string) (string, error) {
 	// Set journal mode and busy timeout pragmas if not specified.
 	query := url.Values{}
@@ -131,7 +130,7 @@ func (s *Datastore) Close() {
 	if s.dbStatsCollector != nil {
 		prometheus.Unregister(s.dbStatsCollector)
 	}
-	_ = s.db.Close()
+	s.db.Close()
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -158,11 +157,11 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(ctx, options.Pagination)
+	return iter.ToArray(options.Pagination)
 }
 
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
-	_, span := startTrace(ctx, "read")
+	ctx, span := startTrace(ctx, "read")
 	defer span.End()
 
 	sb := s.stbl.
@@ -203,7 +202,12 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	rows, err := sb.QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	return NewSQLTupleIterator(rows), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -468,7 +472,7 @@ func (s *Datastore) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	_ storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	_, span := startTrace(ctx, "ReadUsersetTuples")
+	ctx, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
 	sb := s.stbl.
@@ -509,8 +513,12 @@ func (s *Datastore) ReadUsersetTuples(
 		}
 		sb = sb.Where(orConditions)
 	}
+	rows, err := sb.QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
 
-	return NewSQLTupleIterator(sb, HandleSQLError), nil
+	return NewSQLTupleIterator(rows), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -520,7 +528,7 @@ func (s *Datastore) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	_ storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	_, span := startTrace(ctx, "ReadStartingWithUser")
+	ctx, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg sq.Or
@@ -554,7 +562,12 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
 
-	return NewSQLTupleIterator(builder, HandleSQLError), nil
+	rows, err := builder.QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	return NewSQLTupleIterator(rows), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -707,37 +720,18 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	}
 
-	var txn *sql.Tx
-	err = busyRetry(func() error {
-		var err error
-		txn, err = s.db.BeginTx(ctx, nil)
-		return err
-	})
-	if err != nil {
-		return HandleSQLError(err)
-	}
-	defer func() {
-		_ = txn.Rollback()
-	}()
-
 	err = busyRetry(func() error {
 		_, err := s.stbl.
 			Insert("authorization_model").
 			Columns("store", "authorization_model_id", "schema_version", "serialized_protobuf").
 			Values(store, model.GetId(), schemaVersion, pbdata).
-			RunWith(txn).
 			ExecContext(ctx)
 		return err
 	})
 	if err != nil {
 		return HandleSQLError(err)
 	}
-	err = busyRetry(func() error {
-		return txn.Commit()
-	})
-	if err != nil {
-		return HandleSQLError(err)
-	}
+
 	return nil
 }
 
@@ -984,7 +978,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	defer rows.Close()
 
 	var changes []*openfgav1.TupleChange
-	var ULID string
+	var ulid string
 	for rows.Next() {
 		var objectType, objectID, relation, userObjectType, userObjectID, userRelation string
 		var operation int
@@ -993,7 +987,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		var conditionContext []byte
 
 		err = rows.Scan(
-			&ULID,
+			&ulid,
 			&objectType,
 			&objectID,
 			&relation,
@@ -1037,7 +1031,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		return nil, "", storage.ErrNotFound
 	}
 
-	return changes, ULID, nil
+	return changes, ulid, nil
 }
 
 // IsReady see [sqlcommon.IsReady].
@@ -1071,7 +1065,6 @@ func HandleSQLError(err error, args ...interface{}) error {
 // This function retries the operation up to maxRetries times before returning the error.
 func busyRetry(fn func() error) error {
 	const maxRetries = 10
-	const baseDelay = 1 * time.Millisecond // initial delay
 	for retries := 0; ; retries++ {
 		err := fn()
 		if err == nil {
@@ -1080,9 +1073,6 @@ func busyRetry(fn func() error) error {
 
 		if isBusyError(err) {
 			if retries < maxRetries {
-				maxDelay := baseDelay << retries
-				jitter := time.Duration(rand.Int63n(int64(maxDelay)))
-				time.Sleep(jitter)
 				continue
 			}
 
