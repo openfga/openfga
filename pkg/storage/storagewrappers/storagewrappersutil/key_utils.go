@@ -16,6 +16,7 @@ const (
 	OperationRead                 = "Read"
 	OperationReadStartingWithUser = "ReadStartingWithUser"
 	OperationReadUsersetTuples    = "ReadUsersetTuples"
+	OperationReadUserTuple        = "ReadUserTuple"
 )
 
 func ReadStartingWithUserKey(

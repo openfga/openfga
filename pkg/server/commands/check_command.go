@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
@@ -118,11 +119,14 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
 		c.datastore,
 		params.ContextualTuples.GetTupleKeys(),
-		c.maxConcurrentReads,
+		&storagewrappers.Operation{
+			Method:            apimethod.Check,
+			Concurrency:       c.maxConcurrentReads,
+			ThrottleThreshold: 0,
+			ThrottleDuration:  0,
+		},
 		c.sharedCheckResources,
 		c.cacheSettings,
-		c.logger,
-		storagewrappers.Check,
 	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
@@ -144,7 +148,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	}
 
 	resp.ResolutionMetadata.Duration = endTime
-	resp.ResolutionMetadata.DatastoreQueryCount = datastoreWithTupleCache.GetMetrics().DatastoreQueryCount
+	dsMeta := datastoreWithTupleCache.GetMetadata()
+	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
+	// Until dispatch throttling is deprecated, merge the results of both
+	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {

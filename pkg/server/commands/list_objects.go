@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -286,11 +287,12 @@ func (q *ListObjectsQuery) evaluate(
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
-			q.maxConcurrentReads,
+			&storagewrappers.Operation{
+				Method:      apimethod.ListObjects,
+				Concurrency: q.maxConcurrentReads,
+			},
 			q.sharedDatastoreResources,
 			q.cacheSettings,
-			q.logger,
-			storagewrappers.ListObjects,
 		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
@@ -397,7 +399,9 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
-		resolutionMetadata.DatastoreQueryCount.Add(ds.GetMetrics().DatastoreQueryCount)
+		dsMeta := ds.GetMetadata()
+		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 	}
 
 	go handler()

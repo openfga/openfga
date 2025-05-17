@@ -12,6 +12,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -1314,7 +1315,10 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			ts, err := typesystem.New(model)
 			require.NoError(t, err)
 
-			ds := storagewrappers.NewRequestStorageWrapper(ds, test.request.ContextualTuples, 30)
+			ds := storagewrappers.NewRequestStorageWrapper(ds, test.request.ContextualTuples, &storagewrappers.Operation{
+				Method:      apimethod.ListObjects,
+				Concurrency: 30,
+			})
 			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, ts, opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)

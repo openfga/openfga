@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -4123,7 +4124,10 @@ func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, cont
 		opt(l)
 	}
 
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
+		Method:      apimethod.ListUsers,
+		Concurrency: l.maxConcurrentReads,
+	})
 
 	return l
 }
