@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 - Added pkg `migrate` to expose `.RunMigrations()` for programmatic use. [#2422](https://github.com/openfga/openfga/pull/2422)
 - Ensure `fanin.Stop` and `fanin.Drain` are called for all clients which may create blocking goroutines. [#2441](https://github.com/openfga/openfga/pull/2441)
+- Prevent throttled Go routines from "leaking" when a request context has been canceled or deadline exceeded. [#2450](https://github.com/openfga/openfga/pull/2450)
 
 ## [1.8.12] - 2025-05-12
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12)

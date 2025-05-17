@@ -992,7 +992,6 @@ func TestDefaultContextTimeout(t *testing.T) {
 		},
 	}
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			timeout := DefaultContextTimeout(&test.config)
@@ -1017,7 +1016,6 @@ func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
 		},
 	}
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Cleanup(func() {
 				viper.Reset()

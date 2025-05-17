@@ -190,7 +190,6 @@ func TestSplitObjectId(t *testing.T) {
 			expectedOID:             "https://bar/baz",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			td, oid := SplitObject(tc.objectID)
 
@@ -564,7 +563,6 @@ func TestFromUserProto(t *testing.T) {
 			expected: "user:*",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			actual := UserProtoToString(tc.input)
 			require.Equal(t, tc.expected, actual)
@@ -615,7 +613,6 @@ func TestToUserProto(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			actual := StringToUserProto(tc.input)
 			require.Equal(t, tc.expected, actual)

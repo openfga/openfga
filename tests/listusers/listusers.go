@@ -65,7 +65,6 @@ func RunAllTests(t *testing.T, client tests.ClientInterface) {
 			}
 
 			for _, test := range allTestCases {
-				test := test
 				runTest(t, test, client, false)
 				runTest(t, test, client, true)
 			}
