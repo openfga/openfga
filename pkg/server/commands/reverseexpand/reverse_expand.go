@@ -15,6 +15,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -220,12 +221,108 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	// fork here for weighted graph
+	// track dispatch count for it as well
+	println("~~~~~~~~~~~~~~~~~~~~~~~~Execute~~~~~~~~~~~~~~~~")
+	wg := c.typesystem.GetWeightedGraph()
+	if wg != nil {
+		currentNodeLabel := req.ObjectType + "#" + req.Relation
+		currentNode, ok := wg.GetNodeByID(currentNodeLabel)
+		if !ok {
+			return errors.New("could not find current node for " + currentNodeLabel)
+		}
+		terminalType := req.User.GetObjectType()
+		err := c.Traverse(
+			ctx,
+			terminalType,
+			currentNode,
+			//resultChan,
+			//resolutionMetadata,
+		)
+
+		if err != nil {
+			return err
+		}
+	}
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
 	}
 
 	close(resultChan)
+	return nil
+}
+
+// Do i need to go from nodes or edges?
+// maybe develop this in the language repo and not here, for ease
+func (c *ReverseExpandQuery) Traverse(
+	ctx context.Context,
+	terminalType string,
+	currentNode *weightedGraph.WeightedAuthorizationModelNode,
+// resultChan chan<- *ReverseExpandResult,
+// resolutionMetadata *ResolutionMetadata,
+) error {
+	println("JUSTIN ENTERED TRAVERSE METHOD")
+	wg := c.typesystem.GetWeightedGraph()
+	if wg == nil {
+		// this should never happen
+		// TODO: some specific error type
+		return errors.New("weighted graph is nil")
+	}
+
+	if currentNode == nil {
+		// This should never happen
+		return errors.New("currentNode is nil")
+	}
+
+	// TODO: this does not hold true for wildcards
+	// "employee" != "employee:*"
+	if currentNode.GetUniqueLabel() == terminalType {
+		println("LEAF")
+		return nil
+	}
+
+	// This means we cannot reach the user type requested
+	if _, ok := currentNode.GetWeight(terminalType); !ok {
+		return nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+
+	//if currentNode.GetNodeType() is intersection or exclusion, mark metadata
+
+	// is it true that intersection and exclusions will always have a SINGLE outgoing edge?
+	// now we have to loop on edges and recurse
+	for _, edge := range edges {
+		fmt.Printf(
+			"JUSTIN EDGE from: %s, to %s\n",
+			edge.GetFrom().GetUniqueLabel(),
+			edge.GetTo().GetUniqueLabel(),
+		)
+		// We can't reach our destination with this edge, skip it
+		if _, ok = edge.GetWeight(terminalType); !ok {
+			continue
+		}
+		switch edge.GetEdgeType() {
+		case weightedGraph.DirectEdge:
+			println("Direct edge")
+			nextNode := edge.GetTo()
+			return c.Traverse(ctx, terminalType, nextNode)
+		case weightedGraph.ComputedEdge:
+			println("Computed edge")
+			fallthrough
+		case weightedGraph.TTUEdge:
+			println("TTU edge")
+			fallthrough
+		case weightedGraph.RewriteEdge:
+			println("Rewrite edge")
+			nextNode := edge.GetTo()
+			return c.Traverse(ctx, terminalType, nextNode)
+		default:
+			return errors.New("unknown edge type")
+		}
+	}
+
 	return nil
 }
 
@@ -250,6 +347,7 @@ func (c *ReverseExpandQuery) execute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	// println("----------------execute-------------------")
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -298,9 +396,11 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
+		// TODO: here is an edge reference
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+				//println("JUSTIN Already visited, ending recursion")
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
 			}
@@ -308,6 +408,8 @@ func (c *ReverseExpandQuery) execute(
 
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
 		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
+			// Is this the base case?
+			//println(fmt.Sprintf("JUSTIN sending candidate %s, requires check: %t", sourceUserObj, intersectionOrExclusionInPreviousEdges))
 			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
 				return err
 			}
@@ -315,13 +417,36 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+	// println("JUSTIN targetobjectref ", targetObjRef.String())
 
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
+	// println(fmt.Sprintf("JUSTIN Found %d edges", len(edges)))
 	if err != nil {
 		return err
 	}
+	//
+	//wg := c.typesystem.GetWeightedGraph()
+	//if wg != nil {
+	//	currentNodeLabel := req.ObjectType + "#" + req.Relation
+	//	currentNode, ok := wg.GetNodeByID(currentNodeLabel)
+	//	if !ok {
+	//		return errors.New("could not find current node for " + currentNodeLabel)
+	//	}
+	//	terminalType := req.User.GetObjectType()
+	//	err = c.Traverse(
+	//		ctx,
+	//		terminalType,
+	//		currentNode,
+	//		resultChan,
+	//		resolutionMetadata,
+	//	)
+	//
+	//	if err != nil {
+	//		return err
+	//	}
+	//}
 
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
@@ -330,6 +455,8 @@ func (c *ReverseExpandQuery) execute(
 LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
+		//fmt.Printf("JUSTIN EDGE: %+v \n", edge)
+		//fmt.Printf("JUSTIN EDGE: %s \n", edge.String())
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
 		r := &ReverseExpandRequest{
 			StoreID:          req.StoreID,
@@ -338,16 +465,18 @@ LoopOnEdges:
 			User:             req.User,
 			ContextualTuples: req.ContextualTuples,
 			Context:          req.Context,
-			edge:             innerLoopEdge,
+			edge:             innerLoopEdge, // TODO: what do we do with this edge
 			Consistency:      req.Consistency,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
 			pool.Go(func(ctx context.Context) error {
+				// We can get the intersection bit off of the edges
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		case graph.ComputedUsersetEdge:
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
+			// TODO: computed userset just triggers another round of recursion
 			r.User = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   sourceUserObj,
@@ -377,6 +506,7 @@ LoopOnEdges:
 	return nil
 }
 
+// This method is exactly identical to reverseExpandDirect but with a different tracer label
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -400,6 +530,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	return err
 }
 
+// This method is exactly identical to reverseExpandTupleToUserset but with a different tracer label
 func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -419,6 +550,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		span.End()
 	}()
 
+	// It reads tuples and executes here, using the edge
 	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 	return err
 }
@@ -455,9 +587,15 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	switch req.edge.Type {
 	case graph.DirectEdge:
+		// This filter is built based on existing edge
+		// But this looks pretty easy to replicate
+		// TargetReference is just "To"
 		relationFilter = req.edge.TargetReference.GetRelation()
 		targetUserObjectType := req.User.GetObjectType()
 
+		// println(fmt.Sprintf("JUSTIN DirectEdge relation: %s", relationFilter))
+		// TODO: will need to have TargetReference type available?
+		// or change how shouldCheckPublicAssignable works
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
 			return err
@@ -482,6 +620,9 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			userFilter = append(userFilter, val.ObjectRelation)
 		}
 	case graph.TupleToUsersetEdge:
+		// TODO: TupleSetRelation matters as well
+		// weighted graph has a "GetTupleSetRelation", hopefully is same
+		// println(fmt.Sprintf("JUSTIN TTUEdge relation: %s", req.edge.TuplesetRelation))
 		relationFilter = req.edge.TuplesetRelation
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
@@ -496,9 +637,14 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		panic("unsupported edge type")
 	}
 
+	// println("JUSTIN ReadStartingWithUserFilter type ", req.edge.TargetReference.GetType()) // "directs-employee"
+	// println("JUSTIN ReadStartingWithUserFilter userFilter ", userFilter[0].String())       // "directs-employee"
+	// println("JUSTIN ReadStartingWithUserFilter relationFilter ", relationFilter)           // "directs-employee"
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
+		// TODO: this type might be a problem
 		ObjectType: req.edge.TargetReference.GetType(),
+
 		Relation:   relationFilter,
 		UserFilter: userFilter,
 	}, storage.ReadStartingWithUserOptions{
@@ -521,6 +667,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	var errs error
 
+	// Why are all of these in the same method
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
@@ -532,6 +679,9 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
+		// println("JUSTIN TK: ", tk.String())
+
+		// Easy enough
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
 			errs = errors.Join(errs, err)
@@ -554,6 +704,7 @@ LoopOnIterator:
 		foundObject := tk.GetObject()
 		var newRelation string
 
+		// TODO: another edge switch
 		switch req.edge.Type {
 		case graph.DirectEdge:
 			newRelation = tk.GetRelation()
@@ -563,7 +714,10 @@ LoopOnIterator:
 			panic("unsupported edge type")
 		}
 
+		// Now we trigger a new reverse expand operation for every tuple in the iterator
+		// but with the original edge?
 		pool.Go(func(ctx context.Context) error {
+			//println("JUSTIN Dispatching on 625////////////////////")
 			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
