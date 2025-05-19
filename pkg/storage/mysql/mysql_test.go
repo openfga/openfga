@@ -78,7 +78,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -87,7 +87,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -96,7 +96,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -180,7 +180,7 @@ func TestCtxCancel(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -189,7 +189,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -198,7 +198,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -241,7 +241,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
@@ -250,7 +250,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.db, ds.stbl, sqlcommon.HandleSQLError, "mysql"),
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
@@ -546,7 +546,7 @@ func TestHandleSQLError(t *testing.T) {
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
 		}
-		err := sqlcommon.HandleSQLError(duplicateKeyError, &openfgav1.TupleKey{
+		err := HandleSQLError(duplicateKeyError, &openfgav1.TupleKey{
 			Object:   "object",
 			Relation: "relation",
 			User:     "user",
@@ -559,13 +559,13 @@ func TestHandleSQLError(t *testing.T) {
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
 		}
-		err := sqlcommon.HandleSQLError(duplicateKeyError)
+		err := HandleSQLError(duplicateKeyError)
 
 		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
 	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
-		err := sqlcommon.HandleSQLError(sql.ErrNoRows)
+		err := HandleSQLError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }
