@@ -131,8 +131,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		&storagewrappers.Operation{
 			Method:            apimethod.Check,
 			Concurrency:       c.maxConcurrentReads,
-			ThrottleThreshold: 0,
-			ThrottleDuration:  0,
+			ThrottleThreshold: c.datastoreThrottleThreshold,
+			ThrottleDuration:  c.datastoreThrottleDuration,
 		},
 		c.sharedCheckResources,
 		c.cacheSettings,

@@ -305,7 +305,7 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindEnv("checkDatastoreThrottle.threshold", "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD")
 
 		util.MustBindPFlag("checkDatastoreThrottle.duration", flags.Lookup("check-datastore-throttle-duration"))
-		util.MustBindEnv("checkDatastoreThrottle.duration", "OPENFGA_CHECK_DATASTORE_THROTTLE_MAX_THRESHOLD")
+		util.MustBindEnv("checkDatastoreThrottle.duration", "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION")
 
 		util.MustBindPFlag("listObjectsDatastoreThrottle.enabled", flags.Lookup("listObjects-datastore-throttle-enabled"))
 		util.MustBindEnv("listObjectsDatastoreThrottle.enabled", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED")
@@ -314,7 +314,7 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindEnv("listObjectsDatastoreThrottle.threshold", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD")
 
 		util.MustBindPFlag("listObjectsDatastoreThrottle.duration", flags.Lookup("listObjects-datastore-throttle-duration"))
-		util.MustBindEnv("listObjectsDatastoreThrottle.duration", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_MAX_THRESHOLD")
+		util.MustBindEnv("listObjectsDatastoreThrottle.duration", "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION")
 
 		util.MustBindPFlag("listUsersDatastoreThrottle.enabled", flags.Lookup("listUsers-datastore-throttle-enabled"))
 		util.MustBindEnv("listUsersDatastoreThrottle.enabled", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED")
@@ -323,7 +323,7 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindEnv("listUsersDatastoreThrottle.threshold", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD")
 
 		util.MustBindPFlag("listUsersDatastoreThrottle.duration", flags.Lookup("listUsers-datastore-throttle-duration"))
-		util.MustBindEnv("listUsersDatastoreThrottle.duration", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_MAX_THRESHOLD")
+		util.MustBindEnv("listUsersDatastoreThrottle.duration", "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION")
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")

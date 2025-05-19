@@ -698,15 +698,15 @@ func WithCheckDatabaseThrottle(threshold int, duration time.Duration) OpenFGASer
 
 func WithListObjectsDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkDatastoreThrottleThreshold = threshold
-		s.checkDatastoreThrottleDuration = duration
+		s.listObjectsDatastoreThrottleThreshold = threshold
+		s.listObjectsDatastoreThrottleDuration = duration
 	}
 }
 
 func WithListUsersDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.checkDatastoreThrottleThreshold = threshold
-		s.checkDatastoreThrottleDuration = duration
+		s.listUsersDatastoreThrottleThreshold = threshold
+		s.listUsersDatastoreThrottleDuration = duration
 	}
 }
 
