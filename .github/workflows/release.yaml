@@ -52,7 +52,7 @@ jobs:
 
       - uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
 
-      - uses: anchore/sbom-action/download-syft@9f7302141466aa6482940f15371237e9d9f4c34a # v0.19.0
+      - uses: anchore/sbom-action/download-syft@e11c554f704a0b820cbf8c51673f6945e0731532 # v0.20.0
 
       - name: Run GoReleaser
         id: goreleaser
@@ -124,7 +124,7 @@ jobs:
           sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@60168efe1c415ce0f5521ea06d5c2062adbeed1b # pin@v2
+        uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f # pin@v2
         with:
           sarif_file: snyk.sarif
 
