@@ -14,11 +14,13 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+type errorHandlerFn func(error, ...interface{}) error
+
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
-	rows *sql.Rows // GUARDED_BY(mu)
-
+	rows           *sql.Rows // GUARDED_BY(mu) // TODO: move this to lazy loading if possible
+	handleSQLError errorHandlerFn
 	// firstRow is used as a temporary storage place if head is called.
 	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
 	// the iterator. Thus, we will need to store this first item so that future Head() and Next()
@@ -31,11 +33,12 @@ type SQLTupleIterator struct {
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
+func NewSQLTupleIterator(rows *sql.Rows, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		rows:     rows,
-		firstRow: nil,
-		mu:       sync.Mutex{},
+		rows:           rows,
+		handleSQLError: errHandler,
+		firstRow:       nil,
+		mu:             sync.Mutex{},
 	}
 }
 
@@ -59,9 +62,10 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	}
 
 	if !t.rows.Next() {
+		err := t.rows.Err()
 		t.mu.Unlock()
-		if err := t.rows.Err(); err != nil {
-			return nil, err
+		if err != nil {
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -85,7 +89,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	t.mu.Unlock()
 
 	if err != nil {
-		return nil, err
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -121,7 +125,7 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
-			return nil, err
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -143,7 +147,7 @@ func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 		&record.InsertedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -169,7 +173,7 @@ func (t *SQLTupleIterator) ToArray(
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				return res, "", nil
 			}
 			return nil, "", err
@@ -221,5 +225,5 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 // Stop terminates iteration.
 func (t *SQLTupleIterator) Stop() {
-	t.rows.Close()
+	_ = t.rows.Close()
 }

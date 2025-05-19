@@ -207,7 +207,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		return nil, HandleSQLError(err)
 	}
 
-	return NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -518,7 +518,7 @@ func (s *Datastore) ReadUsersetTuples(
 		return nil, HandleSQLError(err)
 	}
 
-	return NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -567,7 +567,7 @@ func (s *Datastore) ReadStartingWithUser(
 		return nil, HandleSQLError(err)
 	}
 
-	return NewSQLTupleIterator(rows), nil
+	return NewSQLTupleIterator(rows, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
