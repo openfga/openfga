@@ -379,7 +379,7 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration)
+						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
