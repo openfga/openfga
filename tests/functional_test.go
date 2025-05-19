@@ -35,7 +35,7 @@ func newOpenFGAServerAndClient(t *testing.T) openfgav1.OpenFGAServiceClient {
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = "memory"
 
-	StartServer(t, cfg, "")
+	StartServer(t, cfg)
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
 	testutils.EnsureServiceHealthy(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil)
@@ -104,7 +104,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	cfg := config.MustDefaultConfig()
 	cfg.CheckQueryCache.Enabled = true
 
-	StartServer(t, cfg, "")
+	StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -350,7 +350,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &config.AuthnPresharedKeyConfig{Keys: []string{"key1", "key2"}}
 
-	StartServer(t, cfg, "")
+	StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 

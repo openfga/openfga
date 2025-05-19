@@ -36,16 +36,16 @@ type ClientInterface interface {
 }
 
 // StartServer calls StartServerWithContext. See the docs for that.
-func StartServer(t testing.TB, cfg *serverconfig.Config, imageVersion string) {
+func StartServer(t testing.TB, cfg *serverconfig.Config) {
 	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level, cfg.Log.TimestampFormat)
 	serverCtx := &run.ServerContext{Logger: logger}
-	StartServerWithContext(t, cfg, serverCtx, imageVersion)
+	StartServerWithContext(t, cfg, serverCtx)
 }
 
 // StartServerWithContext starts a server in random ports and with a specific ServerContext and waits until it is healthy.
 // When the test ends, all resources are cleaned.
-func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext, imageVersion string) {
-	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine, imageVersion)
+func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) {
+	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,7 +74,7 @@ func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *r
 }
 
 // BuildClientInterface sets up test client interface to be used for matrix test.
-func BuildClientInterface(t *testing.T, engine string, experimentals []string, imageVersion string) ClientInterface {
+func BuildClientInterface(t *testing.T, engine string, experimentals []string) ClientInterface {
 	cfg := serverconfig.MustDefaultConfig()
 	if len(experimentals) > 0 {
 		cfg.Experimentals = append(cfg.Experimentals, experimentals...)
@@ -90,7 +90,7 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string, i
 	cfg.ListObjectsIteratorCache.Enabled = true
 	cfg.ContextPropagationToDatastore = true
 
-	StartServer(t, cfg, imageVersion)
+	StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 	return openfgav1.NewOpenFGAServiceClient(conn)

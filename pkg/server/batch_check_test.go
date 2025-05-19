@@ -26,7 +26,7 @@ func TestBatchCheckUsesTypesystemModel(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 
 	s := MustNewServerWithOpts(WithDatastore(ds))
 	t.Cleanup(s.Close)
@@ -149,7 +149,7 @@ func TestBatchCheckValidatesInboundRequest(t *testing.T) {
 		},
 	}
 
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 	s := MustNewServerWithOpts(WithDatastore(ds))
 	t.Cleanup(s.Close)
 
@@ -169,7 +169,7 @@ func TestBatchCheckFailsIfTooManyChecks(t *testing.T) {
 	})
 
 	numChecks := config.DefaultMaxChecksPerBatchCheck + 1
-	_, ds, _ := util.MustBootstrapDatastore(t, "memory", "")
+	_, ds, _ := util.MustBootstrapDatastore(t, "memory")
 	s := MustNewServerWithOpts(WithDatastore(ds))
 	t.Cleanup(s.Close)
 

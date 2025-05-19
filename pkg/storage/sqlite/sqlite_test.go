@@ -17,7 +17,7 @@ import (
 )
 
 func TestSQLiteDatastore(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite", "")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -27,7 +27,7 @@ func TestSQLiteDatastore(t *testing.T) {
 }
 
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite", "")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
@@ -55,7 +55,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite", "")
+			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 			uri := testDatastore.GetConnectionURI(true)
 			ds, err := New(uri, sqlcommon.NewConfig())
@@ -143,7 +143,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid.
 func TestReadPageEnsureOrder(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite", "")
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())

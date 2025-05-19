@@ -113,7 +113,7 @@ test-bench: generate-mocks ## Run benchmark tests. See https://pkg.go.dev/cmd/go
 #-----------------------------------------------------------------------------------------------------------------------
 .PHONY: dev-run
 
-dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `postgres14`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
+dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server with hot reloading. Data storage type can be overridden using DATASTORE="mysql", available options are `in-memory`, `mysql`, ´postgres`, `sqlite`, default is "in-memory". Usage `DATASTORE="mysql" make dev-run`
 	${call print, "Starting OpenFGA server"}
 	@case "${DATASTORE}" in \
 		"in-memory") \
@@ -129,16 +129,8 @@ dev-run: $(GO_BIN)/CompileDaemon $(GO_BIN)/openfga ## Run the OpenFGA server wit
 			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine mysql --datastore-uri root:secret@tcp(localhost:3306)/openfga?parseTime=true"; \
 			break; \
 			;; \
-		"postgres14") \
-			echo "==> Running OpenFGA with Postgres 14 data storage"; \
-			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14  > /dev/null 2>&1 || docker start postgres; \
-			sleep 2; \
-			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \
-			CompileDaemon -graceful-kill -build='make install' -command="openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres"; \
-			break; \
-			;; \
 		"postgres") \
-			echo "==> Running OpenFGA with Postgres 17 data storage"; \
+			echo "==> Running OpenFGA with Postgres data storage"; \
 			docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:17  > /dev/null 2>&1 || docker start postgres; \
 			sleep 2; \
 			openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'; \

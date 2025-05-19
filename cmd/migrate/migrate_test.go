@@ -11,28 +11,24 @@ import (
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/pkg/testutils"
 )
 
 const defaultDuration = 1 * time.Minute
 
 func TestMigrateCommandRollbacks(t *testing.T) {
 	type EngineConfig struct {
-		Engine       string
-		ImageVersion string
-		MinVersion   int64
+		Engine     string
+		MinVersion int64
 	}
 	engines := []EngineConfig{
-		{Engine: "mysql", ImageVersion: ""},
-		{Engine: "sqlite", ImageVersion: "", MinVersion: 5},
-	}
-	for _, imageVersion := range testutils.PostgresImageVersions {
-		engines = append(engines, EngineConfig{Engine: "postgres", ImageVersion: imageVersion})
+		{Engine: "postgres"},
+		{Engine: "mysql"},
+		{Engine: "sqlite", MinVersion: 5},
 	}
 
 	for _, e := range engines {
-		t.Run(e.ImageVersion, func(t *testing.T) {
-			container, _, uri := util.MustBootstrapDatastore(t, e.Engine, e.ImageVersion)
+		t.Run(e.Engine, func(t *testing.T) {
+			container, _, uri := util.MustBootstrapDatastore(t, e.Engine)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
 			version := container.GetDatabaseSchemaVersion() + 1

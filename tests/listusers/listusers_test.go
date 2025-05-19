@@ -29,26 +29,22 @@ import (
 )
 
 func TestListUsersMemory(t *testing.T) {
-	testRunAll(t, "memory", "")
+	testRunAll(t, "memory")
 }
 
 func TestListUsersPostgres(t *testing.T) {
-	for _, imageVersion := range testutils.PostgresImageVersions {
-		t.Run("postgres "+imageVersion, func(t *testing.T) {
-			testRunAll(t, "postgres", imageVersion)
-		})
-	}
+	testRunAll(t, "postgres")
 }
 
 func TestListUsersMySQL(t *testing.T) {
-	testRunAll(t, "mysql", "")
+	testRunAll(t, "mysql")
 }
 
 func TestListUsersSQLite(t *testing.T) {
-	testRunAll(t, "sqlite", "")
+	testRunAll(t, "sqlite")
 }
 
-func testRunAll(t *testing.T, engine string, imageVersion string) {
+func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		// [Goroutine 60101 in state select, with github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1 on top of the stack:
 		// github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
@@ -66,7 +62,7 @@ func testRunAll(t *testing.T, engine string, imageVersion string) {
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
-	tests.StartServer(t, cfg, imageVersion)
+	tests.StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
@@ -96,7 +92,7 @@ func TestListUsersLogs(t *testing.T) {
 
 	// We're starting a full fledged server because the logs we
 	// want to observe are emitted on the interceptors/middleware layer.
-	tests.StartServerWithContext(t, cfg, serverCtx, "")
+	tests.StartServerWithContext(t, cfg, serverCtx)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr,
 		grpc.WithUserAgent("test-user-agent"),

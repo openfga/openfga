@@ -14,15 +14,11 @@ import (
 )
 
 func TestMatrixMemory(t *testing.T) {
-	runMatrixWithEngine(t, "memory", "")
+	runMatrixWithEngine(t, "memory")
 }
 
 func TestMatrixPostgres(t *testing.T) {
-	for _, imageVersion := range testutils.PostgresImageVersions {
-		t.Run("postgres "+imageVersion, func(t *testing.T) {
-			runMatrixWithEngine(t, "postgres", imageVersion)
-		})
-	}
+	runMatrixWithEngine(t, "postgres")
 }
 
 // TODO: re-enable
@@ -35,39 +31,35 @@ func TestMatrixPostgres(t *testing.T) {
 //	runMatrixWithEngine(t, "sqlite")
 //}
 
-func runMatrixWithEngine(t *testing.T, engine string, imageVersion string) {
+func runMatrixWithEngine(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"}, imageVersion)
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations", "enable-list-objects-optimizations"})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{}, imageVersion)
+	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
 	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
 }
 
 func TestListObjectsMemory(t *testing.T) {
-	testRunAll(t, "memory", "")
+	testRunAll(t, "memory")
 }
 
 func TestListObjectsPostgres(t *testing.T) {
-	for _, imageVersion := range testutils.PostgresImageVersions {
-		t.Run("postgres "+imageVersion, func(t *testing.T) {
-			testRunAll(t, "postgres", imageVersion)
-		})
-	}
+	testRunAll(t, "postgres")
 }
 
 func TestListObjectsMySQL(t *testing.T) {
-	testRunAll(t, "mysql", "")
+	testRunAll(t, "mysql")
 }
 
 func TestListObjectsSQLite(t *testing.T) {
-	testRunAll(t, "sqlite", "")
+	testRunAll(t, "sqlite")
 }
 
-func testRunAll(t *testing.T, engine string, imageVersion string) {
+func testRunAll(t *testing.T, engine string) {
 	t.Cleanup(func() {
 		// [Goroutine 60101 in state select, with github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1 on top of the stack:
 		// github.com/go-sql-driver/mysql.(*mysqlConn).startWatcher.func1()
@@ -85,7 +77,7 @@ func testRunAll(t *testing.T, engine string, imageVersion string) {
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
 
-	tests.StartServer(t, cfg, imageVersion)
+	tests.StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
 
