@@ -39,16 +39,18 @@ var (
 )
 
 type listUsersQuery struct {
-	logger                  logger.Logger
-	datastore               *storagewrappers.RequestStorageWrapper
-	resolveNodeBreadthLimit uint32
-	resolveNodeLimit        uint32
-	maxResults              uint32
-	maxConcurrentReads      uint32
-	deadline                time.Duration
-	dispatchThrottlerConfig threshold.Config
-	wasThrottled            *atomic.Bool
-	expandDirectDispatch    expandDirectDispatchHandler
+	logger                     logger.Logger
+	datastore                  *storagewrappers.RequestStorageWrapper
+	resolveNodeBreadthLimit    uint32
+	resolveNodeLimit           uint32
+	maxResults                 uint32
+	maxConcurrentReads         uint32
+	deadline                   time.Duration
+	dispatchThrottlerConfig    threshold.Config
+	wasThrottled               *atomic.Bool
+	expandDirectDispatch       expandDirectDispatchHandler
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 }
 
 type expandResponse struct {
@@ -125,6 +127,13 @@ func WithResolveNodeBreadthLimit(limit uint32) ListUsersQueryOption {
 func WithListUsersMaxConcurrentReads(limit uint32) ListUsersQueryOption {
 	return func(d *listUsersQuery) {
 		d.maxConcurrentReads = limit
+	}
+}
+
+func WithListUsersDatastoreThrottler(threshold int, duration time.Duration) ListUsersQueryOption {
+	return func(d *listUsersQuery) {
+		d.datastoreThrottleThreshold = threshold
+		d.datastoreThrottleDuration = duration
 	}
 }
 

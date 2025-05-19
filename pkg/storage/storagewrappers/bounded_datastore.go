@@ -170,6 +170,7 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 	reads := b.increaseReads()
 
 	if b.threshold > 0 && reads > b.threshold {
+		b.throttled.Store(true)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

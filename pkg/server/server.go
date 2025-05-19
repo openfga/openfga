@@ -213,6 +213,13 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
+	checkDatastoreThrottleThreshold       int
+	checkDatastoreThrottleDuration        time.Duration
+	listObjectsDatastoreThrottleThreshold int
+	listObjectsDatastoreThrottleDuration  time.Duration
+	listUsersDatastoreThrottleThreshold   int
+	listUsersDatastoreThrottleDuration    time.Duration
+
 	authorizer authz.AuthorizerInterface
 
 	ctx                           context.Context
@@ -679,6 +686,27 @@ func WithMaxConcurrentChecksPerBatchCheck(maxConcurrentChecks uint32) OpenFGASer
 func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxChecksPerBatchCheck = maxChecks
+	}
+}
+
+func WithCheckDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkDatastoreThrottleThreshold = threshold
+		s.checkDatastoreThrottleDuration = duration
+	}
+}
+
+func WithListObjectsDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkDatastoreThrottleThreshold = threshold
+		s.checkDatastoreThrottleDuration = duration
+	}
+}
+
+func WithListUsersDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkDatastoreThrottleThreshold = threshold
+		s.checkDatastoreThrottleDuration = duration
 	}
 }
 

@@ -20,7 +20,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestBoundedConcurrencyWrapper(t *testing.T) {
+func TestBoundedWrapper(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -32,54 +32,115 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Create a limited tuple reader that allows 1 concurrent read a time.
-	limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1})
+	t.Run("normal case", func(t *testing.T) {
+		// Create a limited tuple reader that allows 1 concurrent read a time.
+		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond})
 
-	// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
-	const numRoutine = 4
+		// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
+		const numRoutine = 4
 
-	var wg errgroup.Group
+		var wg errgroup.Group
 
-	start := time.Now()
+		start := time.Now()
 
-	wg.Go(func() error {
-		_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
-		return err
+		wg.Go(func() error {
+			_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
+				Object:   "obj:1",
+				Relation: "viewer",
+			}, storage.ReadUsersetTuplesOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.ReadStartingWithUser(
+				context.Background(),
+				store,
+				storage.ReadStartingWithUserFilter{
+					UserFilter: []*openfgav1.ObjectRelation{
+						{
+							Object:   "obj",
+							Relation: "viewer",
+						},
+					}}, storage.ReadStartingWithUserOptions{})
+			return err
+		})
+
+		err = wg.Wait()
+		require.NoError(t, err)
+
+		end := time.Now()
+
+		require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second+1) // 2 throttles should add a full second
+		require.Equal(t, uint32(4), limitedTupleReader.GetMetadata().DatastoreQueryCount)
+		require.True(t, limitedTupleReader.GetMetadata().WasThrottled)
 	})
 
-	wg.Go(func() error {
-		_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
-			Object:   "obj:1",
-			Relation: "viewer",
-		}, storage.ReadUsersetTuplesOptions{})
-		return err
+	t.Run("ctx cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		// Create a limited tuple reader that allows 1 concurrent read a time.
+		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond})
+
+		var wg errgroup.Group
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		err = wg.Wait()
+		require.NoError(t, err)
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		wg.Go(func() error {
+			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			return err
+		})
+
+		// trigger cancellation
+		cancel()
+		err = wg.Wait()
+		require.ErrorIs(t, err, context.Canceled)
+		require.True(t, limitedTupleReader.GetMetadata().WasThrottled)
 	})
-
-	wg.Go(func() error {
-		_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.ReadOptions{})
-		return err
-	})
-
-	wg.Go(func() error {
-		_, err := limitedTupleReader.ReadStartingWithUser(
-			context.Background(),
-			store,
-			storage.ReadStartingWithUserFilter{
-				UserFilter: []*openfgav1.ObjectRelation{
-					{
-						Object:   "obj",
-						Relation: "viewer",
-					},
-				}}, storage.ReadStartingWithUserOptions{})
-		return err
-	})
-
-	err = wg.Wait()
-	require.NoError(t, err)
-
-	end := time.Now()
-
-	require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second)
 }
 
 func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {

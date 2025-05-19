@@ -63,6 +63,9 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
+
 	checkResolver            graph.CheckResolver
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
@@ -143,6 +146,13 @@ func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResour
 	return func(d *ListObjectsQuery) {
 		d.cacheSettings = cacheSettings
 		d.sharedDatastoreResources = sharedDatastoreResources
+	}
+}
+
+func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.datastoreThrottleThreshold = threshold
+		d.datastoreThrottleDuration = duration
 	}
 }
 
@@ -288,8 +298,10 @@ func (q *ListObjectsQuery) evaluate(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
 			&storagewrappers.Operation{
-				Method:      apimethod.ListObjects,
-				Concurrency: q.maxConcurrentReads,
+				Method:            apimethod.ListObjects,
+				Concurrency:       q.maxConcurrentReads,
+				ThrottleThreshold: q.datastoreThrottleThreshold,
+				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
 			q.sharedDatastoreResources,
 			q.cacheSettings,

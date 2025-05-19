@@ -28,14 +28,16 @@ const (
 )
 
 type CheckQuery struct {
-	logger               logger.Logger
-	checkResolver        graph.CheckResolver
-	typesys              *typesystem.TypeSystem
-	datastore            storage.RelationshipTupleReader
-	sharedCheckResources *shared.SharedDatastoreResources
-	cacheSettings        config.CacheSettings
-	maxConcurrentReads   uint32
-	shouldCacheIterators bool
+	logger                     logger.Logger
+	checkResolver              graph.CheckResolver
+	typesys                    *typesystem.TypeSystem
+	datastore                  storage.RelationshipTupleReader
+	sharedCheckResources       *shared.SharedDatastoreResources
+	cacheSettings              config.CacheSettings
+	maxConcurrentReads         uint32
+	shouldCacheIterators       bool
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 }
 
 type CheckCommandParams struct {
@@ -64,6 +66,13 @@ func WithCheckCommandCache(sharedCheckResources *shared.SharedDatastoreResources
 	return func(c *CheckQuery) {
 		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
+	}
+}
+
+func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.datastoreThrottleThreshold = threshold
+		c.datastoreThrottleDuration = duration
 	}
 }
 
