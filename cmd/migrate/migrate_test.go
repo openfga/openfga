@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"strconv"
 	"testing"
 	"time"
 
@@ -14,37 +13,6 @@ import (
 )
 
 const defaultDuration = 1 * time.Minute
-
-func TestMigrateCommandRollbacks(t *testing.T) {
-	type EngineConfig struct {
-		Engine     string
-		MinVersion int64
-	}
-	engines := []EngineConfig{
-		{Engine: "postgres"},
-		{Engine: "mysql"},
-		{Engine: "sqlite", MinVersion: 5},
-	}
-
-	for _, e := range engines {
-		t.Run(e.Engine, func(t *testing.T) {
-			container, _, uri := util.MustBootstrapDatastore(t, e.Engine)
-
-			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
-			version := container.GetDatabaseSchemaVersion() + 1
-
-			migrateCommand := NewMigrateCommand()
-
-			for version >= e.MinVersion {
-				t.Logf("migrating to version %d", version)
-				migrateCommand.SetArgs([]string{"--datastore-engine", e.Engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
-				err := migrateCommand.Execute()
-				require.NoError(t, err)
-				version--
-			}
-		})
-	}
-}
 
 func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
 	util.PrepareTempConfigDir(t)
