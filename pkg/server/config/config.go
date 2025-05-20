@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-
-	"github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -87,8 +85,10 @@ const (
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
-	DefaultSharedIteratorEnabled = false
-	DefaultSharedIteratorLimit   = 1000000
+	DefaultSharedIteratorEnabled          = false
+	DefaultSharedIteratorLimit            = 1000000
+	DefaultSharedIteratorTTL              = 4 * time.Minute
+	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 )
 
 type DatastoreMetricsConfig struct {
@@ -176,7 +176,7 @@ type AuthnPresharedKeyConfig struct {
 	Keys []string `json:"-"` // private field, won't be logged
 }
 
-// LogConfig defines OpenFGA server configurations for log specific settings. For production we
+// LogConfig defines OpenFGA server configurations for log specific settings. For production, we
 // recommend using the 'json' log format.
 type LogConfig struct {
 	// Format is the log format to use in the log output (e.g. 'text' or 'json')
@@ -261,6 +261,13 @@ type DispatchThrottlingConfig struct {
 	Frequency    time.Duration
 	Threshold    uint32
 	MaxThreshold uint32
+}
+
+// DatabaseThrottleConfig defines configurations for database throttling.
+type DatabaseThrottleConfig struct {
+	Enabled   bool
+	Threshold int
+	Duration  time.Duration
 }
 
 // AccessControlConfig is the configuration for the access control feature.
@@ -369,9 +376,12 @@ type Config struct {
 	CacheController               CacheControllerConfig
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
+	ListUsersDispatchThrottling   DispatchThrottlingConfig
+	CheckDatabaseThrottle         DatabaseThrottleConfig
+	ListObjectsDatabaseThrottle   DatabaseThrottleConfig
+	ListUsersDatabaseThrottle     DatabaseThrottleConfig
 	ListObjectsIteratorCache      IteratorCacheConfig
 	SharedIterator                SharedIteratorConfig
-	ListUsersDispatchThrottling   DispatchThrottlingConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -413,33 +423,14 @@ func (cfg *Config) VerifyServerSettings() error {
 		}
 	}
 
-	err := cfg.VerifyCheckDispatchThrottlingConfig()
+	err := cfg.VerifyDispatchThrottlingConfig()
 	if err != nil {
 		return err
 	}
 
-	if cfg.ListObjectsDispatchThrottling.Enabled {
-		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
-			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
-		}
-	}
-
-	if cfg.ListUsersDispatchThrottling.Enabled {
-		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
-			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
-		}
-		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
-		}
-		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
-			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
-		}
+	err = cfg.VerifyDatabaseThrottlesConfig()
+	if err != nil {
+		return err
 	}
 
 	if cfg.ListObjectsDeadline < 0 {
@@ -533,33 +524,70 @@ func DefaultContextTimeout(config *Config) time.Duration {
 	return 0
 }
 
-// GetCheckDispatchThrottlingConfig is used to get the DispatchThrottlingConfig value for Check.
-func GetCheckDispatchThrottlingConfig(logger logger.Logger, config *Config) DispatchThrottlingConfig {
-	checkDispatchThrottlingEnabled := config.CheckDispatchThrottling.Enabled
-	checkDispatchThrottlingFrequency := config.CheckDispatchThrottling.Frequency
-	checkDispatchThrottlingDefaultThreshold := config.CheckDispatchThrottling.Threshold
-	checkDispatchThrottlingMaxThreshold := config.CheckDispatchThrottling.MaxThreshold
-
-	return DispatchThrottlingConfig{
-		Enabled:      checkDispatchThrottlingEnabled,
-		Frequency:    checkDispatchThrottlingFrequency,
-		Threshold:    checkDispatchThrottlingDefaultThreshold,
-		MaxThreshold: checkDispatchThrottlingMaxThreshold,
-	}
-}
-
-// VerifyCheckDispatchThrottlingConfig ensures GetCheckDispatchThrottlingConfig is called so that the right values are verified.
-func (cfg *Config) VerifyCheckDispatchThrottlingConfig() error {
-	checkDispatchThrottlingConfig := GetCheckDispatchThrottlingConfig(nil, cfg)
-	if checkDispatchThrottlingConfig.Enabled {
-		if checkDispatchThrottlingConfig.Frequency <= 0 {
+// VerifyDispatchThrottlingConfig ensures DispatchThrottlingConfigs are valid.
+func (cfg *Config) VerifyDispatchThrottlingConfig() error {
+	if cfg.CheckDispatchThrottling.Enabled {
+		if cfg.CheckDispatchThrottling.Frequency <= 0 {
 			return errors.New("'checkDispatchThrottling.frequency' must be non-negative time duration")
 		}
-		if checkDispatchThrottlingConfig.Threshold <= 0 {
+		if cfg.CheckDispatchThrottling.Threshold <= 0 {
 			return errors.New("'checkDispatchThrottling.threshold' must be non-negative integer")
 		}
-		if checkDispatchThrottlingConfig.MaxThreshold != 0 && checkDispatchThrottlingConfig.Threshold > checkDispatchThrottlingConfig.MaxThreshold {
+		if cfg.CheckDispatchThrottling.MaxThreshold != 0 && cfg.CheckDispatchThrottling.Threshold > cfg.CheckDispatchThrottling.MaxThreshold {
 			return errors.New("'checkDispatchThrottling.threshold' must be less than or equal to 'checkDispatchThrottling.maxThreshold' respectively")
+		}
+	}
+
+	if cfg.ListObjectsDispatchThrottling.Enabled {
+		if cfg.ListObjectsDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListObjectsDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListObjectsDispatchThrottling.MaxThreshold != 0 && cfg.ListObjectsDispatchThrottling.Threshold > cfg.ListObjectsDispatchThrottling.MaxThreshold {
+			return errors.New("'listObjectsDispatchThrottling.threshold' must be less than or equal to 'listObjectsDispatchThrottling.maxThreshold'")
+		}
+	}
+
+	if cfg.ListUsersDispatchThrottling.Enabled {
+		if cfg.ListUsersDispatchThrottling.Frequency <= 0 {
+			return errors.New("'listUsersDispatchThrottling.frequency' must be non-negative time duration")
+		}
+		if cfg.ListUsersDispatchThrottling.Threshold <= 0 {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be non-negative integer")
+		}
+		if cfg.ListUsersDispatchThrottling.MaxThreshold != 0 && cfg.ListUsersDispatchThrottling.Threshold > cfg.ListUsersDispatchThrottling.MaxThreshold {
+			return errors.New("'listUsersDispatchThrottling.threshold' must be less than or equal to 'listUsersDispatchThrottling.maxThreshold'")
+		}
+	}
+	return nil
+}
+
+// VerifyDatabaseThrottlesConfig ensures VerifyDatabaseThrottlesConfig is called so that the right values are verified.
+func (cfg *Config) VerifyDatabaseThrottlesConfig() error {
+	if cfg.CheckDatabaseThrottle.Enabled {
+		if cfg.CheckDatabaseThrottle.Threshold <= 0 {
+			return errors.New("'checkDatabaseThrottler.threshold' must be greater than zero")
+		}
+		if cfg.CheckDatabaseThrottle.Duration <= 0 {
+			return errors.New("'checkDatabaseThrottler.duration' must be greater than zero")
+		}
+	}
+	if cfg.ListObjectsDatabaseThrottle.Enabled {
+		if cfg.ListObjectsDatabaseThrottle.Threshold <= 0 {
+			return errors.New("'listObjectsDatabaseThrottler.threshold' must be greater than zero")
+		}
+		if cfg.ListObjectsDatabaseThrottle.Duration <= 0 {
+			return errors.New("'listObjectsDatabaseThrottler.duration' must be greater than zero")
+		}
+	}
+	if cfg.ListUsersDatabaseThrottle.Enabled {
+		if cfg.ListUsersDatabaseThrottle.Threshold <= 0 {
+			return errors.New("'listUsersDatabaseThrottler.threshold' must be greater than zero")
+		}
+		if cfg.ListUsersDatabaseThrottle.Duration <= 0 {
+			return errors.New("'listUsersDatabaseThrottler.duration' must be greater than zero")
 		}
 	}
 	return nil
@@ -748,6 +776,21 @@ func DefaultConfig() *Config {
 			Enabled:    DefaultListObjectsIteratorCacheEnabled,
 			MaxResults: DefaultListObjectsIteratorCacheMaxResults,
 			TTL:        DefaultListObjectsIteratorCacheTTL,
+		},
+		CheckDatabaseThrottle: DatabaseThrottleConfig{
+			Enabled:   false,
+			Threshold: 0,
+			Duration:  0,
+		},
+		ListObjectsDatabaseThrottle: DatabaseThrottleConfig{
+			Enabled:   false,
+			Threshold: 0,
+			Duration:  0,
+		},
+		ListUsersDatabaseThrottle: DatabaseThrottleConfig{
+			Enabled:   false,
+			Threshold: 0,
+			Duration:  0,
 		},
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,

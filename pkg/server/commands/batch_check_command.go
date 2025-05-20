@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"go.uber.org/zap"
@@ -22,14 +23,16 @@ import (
 )
 
 type BatchCheckQuery struct {
-	sharedCheckResources *shared.SharedDatastoreResources
-	cacheSettings        config.CacheSettings
-	checkResolver        graph.CheckResolver
-	datastore            storage.RelationshipTupleReader
-	logger               logger.Logger
-	maxChecksAllowed     uint32
-	maxConcurrentChecks  uint32
-	typesys              *typesystem.TypeSystem
+	sharedCheckResources       *shared.SharedDatastoreResources
+	cacheSettings              config.CacheSettings
+	checkResolver              graph.CheckResolver
+	datastore                  storage.RelationshipTupleReader
+	logger                     logger.Logger
+	maxChecksAllowed           uint32
+	maxConcurrentChecks        uint32
+	typesys                    *typesystem.TypeSystem
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 }
 
 type BatchCheckCommandParams struct {
@@ -91,6 +94,13 @@ func WithBatchCheckMaxConcurrentChecks(maxConcurrentChecks uint32) BatchCheckQue
 func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
 		bq.maxChecksAllowed = maxChecks
+	}
+}
+
+func WithBatchCheckDatastoreThrottler(threshold int, duration time.Duration) BatchCheckQueryOption {
+	return func(bq *BatchCheckQuery) {
+		bq.datastoreThrottleThreshold = threshold
+		bq.datastoreThrottleDuration = duration
 	}
 }
 
@@ -175,6 +185,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
 				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
+				WithCheckDatastoreThrottler(bq.datastoreThrottleThreshold, bq.datastoreThrottleDuration),
 			)
 
 			checkParams := &CheckCommandParams{

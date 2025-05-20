@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -33,11 +34,12 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 	rsw := storagewrappers.NewRequestStorageWrapperWithCache(
 		ds,
 		ctxTuples,
-		config.DefaultMaxConcurrentReadsForCheck,
+		&storagewrappers.Operation{
+			Method:      apimethod.Check,
+			Concurrency: config.DefaultMaxConcurrentReadsForCheck,
+		},
 		nil,
 		config.CacheSettings{},
-		nil,
-		storagewrappers.Check,
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
