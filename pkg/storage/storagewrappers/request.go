@@ -65,10 +65,14 @@ func NewRequestStorageWrapperWithCache(
 		)
 	}
 	if cacheSettings.SharedIteratorEnabled {
+		// Halve the maximum results to set a reasonable target size for the shared iterator to
+		// reduce need for additional memory allocation.
+		iteratorTargetSize := cacheSettings.CheckIteratorCacheMaxResults / 2
+
 		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, resources.SharedIteratorStorage,
 			sharediterator.WithSharedIteratorDatastoreLogger(logger),
-			sharediterator.WithMaxAliveTime(cacheSettings.SharedIteratorWatchdogTimeout),
-			sharediterator.WithIteratorTargetSize(cacheSettings.CheckIteratorCacheMaxResults/2))
+			sharediterator.WithMaxTTL(cacheSettings.SharedIteratorTTL),
+			sharediterator.WithIteratorTargetSize(iteratorTargetSize))
 	}
 	instrumentedStorage := NewInstrumentedOpenFGAStorage(tupleReader)                           // to capture metrics
 	combinedTupleReader := NewCombinedTupleReader(instrumentedStorage, requestContextualTuples) // to read the contextual tuples

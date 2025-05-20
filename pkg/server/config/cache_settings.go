@@ -18,7 +18,7 @@ type CacheSettings struct {
 	ListObjectsIteratorCacheTTL        time.Duration
 	SharedIteratorEnabled              bool
 	SharedIteratorLimit                uint32
-	SharedIteratorWatchdogTimeout      time.Duration
+	SharedIteratorTTL                  time.Duration
 }
 
 func NewDefaultCacheSettings() CacheSettings {
@@ -36,7 +36,7 @@ func NewDefaultCacheSettings() CacheSettings {
 		ListObjectsIteratorCacheTTL:        DefaultListObjectsIteratorCacheTTL,
 		SharedIteratorEnabled:              DefaultSharedIteratorEnabled,
 		SharedIteratorLimit:                DefaultSharedIteratorLimit,
-		SharedIteratorWatchdogTimeout:      DefaultSharedIteratorWatchdogTimeout,
+		SharedIteratorTTL:                  DefaultSharedIteratorTTL,
 	}
 }
 

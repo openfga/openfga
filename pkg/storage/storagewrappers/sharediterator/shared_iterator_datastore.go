@@ -50,9 +50,9 @@ var (
 		Help:      "Total number of times watchdog timer is triggered.",
 	})
 
-	currentSharedIteratorCount = promauto.NewGauge(prometheus.GaugeOpts{
+	sharedIteratorCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
-		Name:      "current_shared_iterator_count",
+		Name:      "shared_iterator_count",
 		Help:      "The current number of items of shared iterator.",
 	})
 
@@ -103,10 +103,10 @@ func WithSharedIteratorDatastoreLogger(logger logger.Logger) IteratorDatastoreOp
 	}
 }
 
-// WithMaxAliveTime sets the time for watchdog will kick and clean up.
-func WithMaxAliveTime(maxAliveTime time.Duration) IteratorDatastoreOpt {
+// WithMaxTTL sets the time for watchdog will kick and clean up.
+func WithMaxTTL(ttl time.Duration) IteratorDatastoreOpt {
 	return func(b *IteratorDatastore) {
-		b.watchdogTimeoutConfig = maxAliveTime
+		b.watchdogTTL = ttl
 	}
 }
 
@@ -129,11 +129,11 @@ func WithMaxAdmissionTime(maxAdmissionTime time.Duration) IteratorDatastoreOpt {
 
 type IteratorDatastore struct {
 	storage.RelationshipTupleReader
-	logger                logger.Logger
-	internalStorage       *Storage
-	watchdogTimeoutConfig time.Duration
-	maxAdmissionTime      time.Duration
-	iteratorTargetSize    uint32
+	logger             logger.Logger
+	internalStorage    *Storage
+	watchdogTTL        time.Duration
+	maxAdmissionTime   time.Duration
+	iteratorTargetSize uint32
 }
 
 type internalSharedIterator struct {
@@ -146,7 +146,7 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		RelationshipTupleReader: inner,
 		logger:                  logger.NewNoopLogger(),
 		internalStorage:         internalStorage,
-		watchdogTimeoutConfig:   config.DefaultSharedIteratorWatchdogTimeout,
+		watchdogTTL:             config.DefaultSharedIteratorTTL,
 		iteratorTargetSize:      defaultIteratorTargetSize,
 		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
 	}
@@ -169,6 +169,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		"sharedIterator.ReadStartingWithUser",
 	)
 	defer span.End()
+	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// for now, we will skip shared iterator since there is a possibility that the request
@@ -224,14 +225,14 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
 		iter:    newIterator,
 	}
-	currentSharedIteratorCount.Inc()
+	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
 	span.SetAttributes(attribute.Bool("found", false))
 
@@ -267,6 +268,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
+	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
@@ -313,14 +316,14 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
 		iter:    newIterator,
 	}
-	currentSharedIteratorCount.Inc()
+	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
 	span.SetAttributes(attribute.Bool("found", false))
 
@@ -353,6 +356,8 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
+	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
@@ -391,14 +396,14 @@ func (sf *IteratorDatastore) Read(
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTimeoutConfig, sf.maxAdmissionTime, sf.iteratorTargetSize)
+	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
 	newIterator.mu.Lock()
 
 	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
 		counter: 1,
 		iter:    newIterator,
 	}
-	currentSharedIteratorCount.Inc()
+	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
 	span.SetAttributes(attribute.Bool("found", false))
 
@@ -422,7 +427,6 @@ func (sf *IteratorDatastore) Read(
 
 // decrement cacheKey from internal reference count
 // If reference count is 0, remove cacheKey.
-// Return whether item is removed.
 func (sf *IteratorDatastore) deref(cacheKey string) {
 	sf.internalStorage.mu.Lock()
 	item, ok := sf.internalStorage.iters[cacheKey]
@@ -433,10 +437,10 @@ func (sf *IteratorDatastore) deref(cacheKey string) {
 	}
 	item.counter--
 	if item.counter == 0 {
-		currentSharedIteratorCount.Dec()
+		sharedIteratorCount.Dec()
 		delete(sf.internalStorage.iters, cacheKey)
 		sf.internalStorage.mu.Unlock()
-		item.iter.cleanup()
+		item.iter.cleanup() // will grab `mu` internally, thus must be yielded before called.
 		return
 	}
 	sf.internalStorage.mu.Unlock()
@@ -444,7 +448,7 @@ func (sf *IteratorDatastore) deref(cacheKey string) {
 
 // watchdogTimeout will be called by the sharedIterator to clean itself up upon watchdog timeout.
 // This is needed to avoid leaks when the shared iterator did not stop.
-func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, sharedIteratorPtr *sharedIterator) {
+func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, iter *sharedIterator) {
 	sf.internalStorage.mu.Lock()
 	item, ok := sf.internalStorage.iters[cacheKey]
 	if !ok {
@@ -455,18 +459,18 @@ func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, sharedIteratorPtr 
 		sf.logger.Debug("shared iterator watchdog timeout failed to deref key", zap.String("cacheKey", cacheKey))
 		return
 	}
-	if item.iter != sharedIteratorPtr {
+	if item.iter != iter {
 		// This is the case where the watchdogTimeout runs after the item has been dereferenced and then re-created.
 		// In this case, we only want to clean the timed-out shared iterator up - not the newly re-created iterator.
 		sf.logger.Debug("shared iterator watchdog timeout deref key but new shared iter is created in the meantime", zap.String("cacheKey", cacheKey))
 		sf.internalStorage.mu.Unlock()
 
-		sharedIteratorPtr.cleanup()
+		iter.cleanup()
 		return
 	}
 	// no one has deleted / recreate the map's entry. Time to clean myself up.
 	delete(sf.internalStorage.iters, cacheKey)
-	currentSharedIteratorCount.Dec()
+	sharedIteratorCount.Dec()
 	sf.internalStorage.mu.Unlock()
 	item.iter.cleanup()
 }
@@ -476,8 +480,7 @@ type sharedIterator struct {
 	manager          *IteratorDatastore // non-changing
 	key              string             // non-changing
 	maxAliveTime     time.Duration      // non-changing
-	startTime        time.Time          // non-changing
-	maxAdmissionTime time.Duration      // non-changing
+	maxAdmissionTime time.Time          // non-changing
 	head             int
 
 	mu                 *sync.RWMutex         // We expect the contention should be minimal. TODO: minimize mu holding time.
@@ -500,8 +503,7 @@ func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time
 		key:              key,
 		head:             0,
 		maxAliveTime:     maxAliveTime,
-		startTime:        time.Now(),
-		maxAdmissionTime: maxAdmissionTime,
+		maxAdmissionTime: time.Now().Add(maxAdmissionTime),
 
 		mu:                 &sync.RWMutex{},
 		items:              new([]*openfgav1.Tuple),
@@ -519,7 +521,7 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 	if s.initializationErr != nil {
 		return nil, s.initializationErr
 	}
-	if time.Now().After(s.startTime.Add(s.maxAdmissionTime)) {
+	if time.Now().After(s.maxAdmissionTime) {
 		// To avoid stale data, we want to prevent shared iterator from using the clone if it is created after
 		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
 		return nil, errSharedIteratorAfterLastAdmissionTime

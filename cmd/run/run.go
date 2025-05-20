@@ -676,7 +676,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
-		server.WithSharedIteratorWatchdogTimeout(config.RequestTimeout+2*time.Second),
+		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
+		// to provide a small buffer for operations that might slightly exceed the request timeout.
+		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),
 		server.WithExperimentals(experimentals...),
 		server.WithAccessControlParams(config.AccessControl.Enabled, config.AccessControl.StoreID, config.AccessControl.ModelID, config.Authn.Method),
 		server.WithContext(ctx),

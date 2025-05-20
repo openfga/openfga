@@ -89,7 +89,7 @@ const (
 
 	DefaultSharedIteratorEnabled          = false
 	DefaultSharedIteratorLimit            = 1000000
-	DefaultSharedIteratorWatchdogTimeout  = 4 * time.Minute
+	DefaultSharedIteratorTTL              = 4 * time.Minute
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 )
 

@@ -740,9 +740,9 @@ func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
-func WithSharedIteratorWatchdogTimeout(timeout time.Duration) OpenFGAServiceV1Option {
+func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.cacheSettings.SharedIteratorWatchdogTimeout = timeout
+		s.cacheSettings.SharedIteratorTTL = ttl
 	}
 }
 

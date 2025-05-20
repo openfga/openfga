@@ -216,7 +216,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		cacheKey := storagewrappersutil.ReadKey(storeID, tk)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, ds.maxAdmissionTime, 1000)
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
 		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
@@ -421,7 +421,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 
 		cacheKey := storagewrappersutil.ReadUsersetTuplesKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, ds.maxAdmissionTime, 1000)
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
 		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
@@ -628,7 +628,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		cacheKey, _ := storagewrappersutil.ReadStartingWithUserKey(storeID, filter)
 		ds.internalStorage.mu.Lock()
-		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTimeoutConfig, ds.maxAdmissionTime, 1000)
+		newIterator := newSharedIterator(ds, cacheKey, ds.watchdogTTL, ds.maxAdmissionTime, 1000)
 		newIterator.initializationErr = mockErr
 		ds.internalStorage.iters[cacheKey] = &internalSharedIterator{
 			counter: 1,
@@ -1275,7 +1275,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		internalStorage := NewSharedIteratorDatastoreStorage()
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
 			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
-			WithMaxAliveTime(1*time.Second))
+			WithMaxTTL(1*time.Second))
 		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
 		gomock.InOrder(
 			mockIterator.EXPECT().Stop(),
@@ -1301,7 +1301,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		internalStorage := NewSharedIteratorDatastoreStorage()
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
 			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
-			WithMaxAliveTime(1*time.Second))
+			WithMaxTTL(1*time.Second))
 		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
 		ts := timestamppb.New(time.Now())
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
@@ -1336,7 +1336,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		internalStorage := NewSharedIteratorDatastoreStorage()
 		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
 			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
-			WithMaxAliveTime(1*time.Second))
+			WithMaxTTL(1*time.Second))
 		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
 		ts := timestamppb.New(time.Now())
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
