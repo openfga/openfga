@@ -85,6 +85,7 @@ func BuildClientInterface(t *testing.T, engine string, experimentals []string) C
 	cfg.ListObjectsDeadline = 0 // no deadline
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
+	cfg.SharedIterator.Enabled = true
 
 	cfg.CheckIteratorCache.Enabled = true
 	cfg.ListObjectsIteratorCache.Enabled = true
