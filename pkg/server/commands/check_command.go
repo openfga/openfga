@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/shared"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/config"
@@ -27,14 +28,16 @@ const (
 )
 
 type CheckQuery struct {
-	logger               logger.Logger
-	checkResolver        graph.CheckResolver
-	typesys              *typesystem.TypeSystem
-	datastore            storage.RelationshipTupleReader
-	sharedCheckResources *shared.SharedDatastoreResources
-	cacheSettings        config.CacheSettings
-	maxConcurrentReads   uint32
-	shouldCacheIterators bool
+	logger                     logger.Logger
+	checkResolver              graph.CheckResolver
+	typesys                    *typesystem.TypeSystem
+	datastore                  storage.RelationshipTupleReader
+	sharedCheckResources       *shared.SharedDatastoreResources
+	cacheSettings              config.CacheSettings
+	maxConcurrentReads         uint32
+	shouldCacheIterators       bool
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 }
 
 type CheckCommandParams struct {
@@ -63,6 +66,13 @@ func WithCheckCommandCache(sharedCheckResources *shared.SharedDatastoreResources
 	return func(c *CheckQuery) {
 		c.sharedCheckResources = sharedCheckResources
 		c.cacheSettings = cacheSettings
+	}
+}
+
+func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.datastoreThrottleThreshold = threshold
+		c.datastoreThrottleDuration = duration
 	}
 }
 
@@ -118,11 +128,14 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
 		c.datastore,
 		params.ContextualTuples.GetTupleKeys(),
-		c.maxConcurrentReads,
+		&storagewrappers.Operation{
+			Method:            apimethod.Check,
+			Concurrency:       c.maxConcurrentReads,
+			ThrottleThreshold: c.datastoreThrottleThreshold,
+			ThrottleDuration:  c.datastoreThrottleDuration,
+		},
 		c.sharedCheckResources,
 		c.cacheSettings,
-		c.logger,
-		storagewrappers.Check,
 	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
@@ -144,7 +157,10 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	}
 
 	resp.ResolutionMetadata.Duration = endTime
-	resp.ResolutionMetadata.DatastoreQueryCount = datastoreWithTupleCache.GetMetrics().DatastoreQueryCount
+	dsMeta := datastoreWithTupleCache.GetMetadata()
+	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
+	// Until dispatch throttling is deprecated, merge the results of both
+	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && resolveCheckRequest.GetRequestMetadata().WasThrottled.Load() {

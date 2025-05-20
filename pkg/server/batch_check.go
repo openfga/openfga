@@ -59,6 +59,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
+		commands.WithBatchCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
