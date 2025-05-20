@@ -9,9 +9,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - New `DatastoreThrottle` configuration for Check, ListObjects, ListUsers. [#2452](https://github.com/openfga/openfga/pull/2452)
+- Added pkg `migrate` to expose `.RunMigrations()` for programmatic use. [#2422](https://github.com/openfga/openfga/pull/2422)
+- Performance optimization by allowing datastore query iterator to be shared by multiple consumers. This can be enabled via `OPENFGA_SHARED_ITERATOR_ENABLED`. [#2433](https://github.com/openfga/openfga/pull/2433), [#2410](https://github.com/openfga/openfga/pull/2410) and [#2423](https://github.com/openfga/openfga/pull/2423)
 
 ### Fixed
-- Added pkg `migrate` to expose `.RunMigrations()` for programmatic use. [#2422](https://github.com/openfga/openfga/pull/2422)
 - Ensure `fanin.Stop` and `fanin.Drain` are called for all clients which may create blocking goroutines. [#2441](https://github.com/openfga/openfga/pull/2441)
 - Prevent throttled Go routines from "leaking" when a request context has been canceled or deadline exceeded. [#2450](https://github.com/openfga/openfga/pull/2450)
 

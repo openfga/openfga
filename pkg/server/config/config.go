@@ -85,8 +85,10 @@ const (
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
-	DefaultSharedIteratorEnabled = false
-	DefaultSharedIteratorLimit   = 1000000
+	DefaultSharedIteratorEnabled          = false
+	DefaultSharedIteratorLimit            = 1000000
+	DefaultSharedIteratorTTL              = 4 * time.Minute
+	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 )
 
 type DatastoreMetricsConfig struct {

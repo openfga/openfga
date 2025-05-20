@@ -768,6 +768,12 @@ func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorTTL = ttl
+	}
+}
+
 // NewServerWithOpts returns a new server.
 // You must call Close on it after you are done using it.
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
