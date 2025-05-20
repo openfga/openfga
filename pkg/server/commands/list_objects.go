@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -61,6 +62,9 @@ type ListObjectsQuery struct {
 	maxConcurrentReads      uint32
 
 	dispatchThrottlerConfig threshold.Config
+
+	datastoreThrottleThreshold int
+	datastoreThrottleDuration  time.Duration
 
 	checkResolver            graph.CheckResolver
 	cacheSettings            serverconfig.CacheSettings
@@ -142,6 +146,13 @@ func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResour
 	return func(d *ListObjectsQuery) {
 		d.cacheSettings = cacheSettings
 		d.sharedDatastoreResources = sharedDatastoreResources
+	}
+}
+
+func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.datastoreThrottleThreshold = threshold
+		d.datastoreThrottleDuration = duration
 	}
 }
 
@@ -286,11 +297,14 @@ func (q *ListObjectsQuery) evaluate(
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
-			q.maxConcurrentReads,
+			&storagewrappers.Operation{
+				Method:            apimethod.ListObjects,
+				Concurrency:       q.maxConcurrentReads,
+				ThrottleThreshold: q.datastoreThrottleThreshold,
+				ThrottleDuration:  q.datastoreThrottleDuration,
+			},
 			q.sharedDatastoreResources,
 			q.cacheSettings,
-			q.logger,
-			storagewrappers.ListObjects,
 		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
@@ -365,6 +379,7 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
+						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
@@ -397,7 +412,9 @@ func (q *ListObjectsQuery) evaluate(
 			// TODO set header to indicate "deadline exceeded"
 		}
 		close(resultsChan)
-		resolutionMetadata.DatastoreQueryCount.Add(ds.GetMetrics().DatastoreQueryCount)
+		dsMeta := ds.GetMetadata()
+		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 	}
 
 	go handler()

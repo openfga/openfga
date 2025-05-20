@@ -88,6 +88,7 @@ func (s *Server) ListUsers(
 			Threshold:    s.listUsersDispatchDefaultThreshold,
 			MaxThreshold: s.listUsersDispatchThrottlingMaxThreshold,
 		}),
+		listusers.WithListUsersDatastoreThrottler(s.listUsersDatastoreThrottleThreshold, s.listUsersDatastoreThrottleDuration),
 	)
 
 	resp, err := listUsersQuery.ListUsers(ctx, req)
