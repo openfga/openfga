@@ -336,6 +336,7 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
 	cfg.RequestTimeout = 10 * time.Second
+	cfg.SharedIterator.Enabled = true
 
 	cfg.CheckIteratorCache.Enabled = true
 
