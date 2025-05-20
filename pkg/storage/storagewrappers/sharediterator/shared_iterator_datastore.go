@@ -609,6 +609,9 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	item, err := s.inner.Next(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil, err
+		}
 		*s.sharedErr = err
 		return nil, err
 	}
@@ -656,6 +659,9 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	item, err := s.inner.Next(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return nil, err
+		}
 		*s.sharedErr = err
 		return nil, err
 	}
