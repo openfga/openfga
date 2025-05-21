@@ -252,7 +252,6 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 ) ([]*weightedGraph.WeightedAuthorizationModelEdge, error) {
 	if wg == nil {
 		// this should never happen
-		// TODO: some specific error type
 		return nil, errors.New("weighted graph is nil")
 	}
 
@@ -272,10 +271,10 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
 
-	// TODO: this _shouldn't_ be reachable but test it / clarify with Yissel
-	// This would mean that we dispatched again but from a direct edge, which doesn't make sense
+	// TODO: this _shouldn't_ be reachable
+	// This would mean that we dispatched from a direct edge, which doesn't make sense
 	if len(edges) == 0 {
-		println("LEAF BASED ON EDGE COUNT: " + currentNode.GetUniqueLabel())
+		return nil, errors.New("no outgoing edges")
 	}
 
 	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
@@ -290,7 +289,7 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 				// needs check
 			}
 
-			// prune off the "BUT NOT B" portion of these edges and keep going
+			// prune off the "BUT NOT b" portion of these edges and keep going
 			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
 			edges = edges[:len(edges)-1]
 		case weightedGraph.IntersectionOperator:
@@ -308,10 +307,9 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 				}
 			}
 
-			// Now only loop over the lowest weight edge
+			// return only the lowest weight edge
 			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
 		}
-		// fmt.Printf(" Operator Node ending with %d edges\n", len(edges))
 	}
 
 	return edges, nil

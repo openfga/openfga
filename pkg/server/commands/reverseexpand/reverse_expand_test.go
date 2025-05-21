@@ -915,23 +915,6 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 
 func TestGetEdgesFromWeightedGraph(t *testing.T) {
 	t.Run("exclusion_prunes_out_but_not_edge", func(t *testing.T) {
-		//model := `
-		//model
-		//schema 1.1
-		//type user
-		//type other
-		//type employee
-		//type group
-		//	relations
-		//		define parent: [group]
-		//		define admin: [user, employee] or admin from parent
-		//		define banned: [other]
-		//		define allowed: ([user, employee, other] or admin) but not banned
-		//type role
-		//	relations
-		//		define owner: [group]
-		//		define allowed: allowed from owner
-		//`
 		model := `
 		model
 		schema 1.1
@@ -967,5 +950,46 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		for _, edge := range edges {
 			require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
 		}
+	})
+
+	t.Run("intersection_returns_lowest_weight_edge", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type group
+			relations
+				define parent: [group]
+				define admin: [user] or admin from parent
+				define allowed: [user] and admin
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		query := NewReverseExpandQuery(mockDatastore, typeSystem)
+
+		wg := typeSystem.GetWeightedGraph()
+		edges, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "user")
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the exclusion node
+		require.Len(t, edges, 1)
+
+		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
+		edges, err = query.GetEdgesFromWeightedGraph(wg, intersectionLabel, "user")
+
+		// There are 2, but one has weight INF and one should have weight 1
+		require.Len(t, edges, 1)
+
+		edge := edges[0]
+		require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
+
+		weight, _ := edge.GetWeight("user")
+		require.Equal(t, weight, 1)
 	})
 }
