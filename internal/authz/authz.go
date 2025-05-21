@@ -450,7 +450,7 @@ func (a *Authorizer) moduleAuthorize(ctx context.Context, clientID, relation, st
 
 	recoveredError := wg.WaitAndRecover()
 	if recoveredError != nil {
-		errorChannel <- &authorizationError{Cause: fmt.Sprintf("panic recovered: %v", recoveredError.AsError())}
+		return &authorizationError{Cause: fmt.Sprintf("panic recovered: %v", recoveredError.AsError())}
 	}
 
 	select {
