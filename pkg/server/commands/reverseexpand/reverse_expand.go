@@ -323,11 +323,36 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	errs := c.LoopOnEdges(
+		ctx,
+		req,
+		resultChan,
+		intersectionOrExclusionInPreviousEdges,
+		resolutionMetadata,
+		edges,
+		sourceUserObj,
+	)
 
+	if errs != nil {
+		telemetry.TraceError(span, errs)
+		return errs
+	}
+
+	return nil
+}
+
+func (c *ReverseExpandQuery) LoopOnEdges(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+	edges []*graph.RelationshipEdge,
+	sourceUserObj string,
+) error {
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 	var errs error
 
-LoopOnEdges:
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
@@ -354,10 +379,10 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			err := c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
-				break LoopOnEdges
+				return errs
 			}
 		case graph.TupleToUsersetEdge:
 			pool.Go(func(ctx context.Context) error {
@@ -369,12 +394,7 @@ LoopOnEdges:
 	}
 
 	errs = errors.Join(errs, pool.Wait())
-	if errs != nil {
-		telemetry.TraceError(span, errs)
-		return errs
-	}
-
-	return nil
+	return errs
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
