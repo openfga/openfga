@@ -14,8 +14,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -230,8 +230,22 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
-func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
-	ctx context.Context,
+// GetEdgesFromWeightedGraph is responsible primarily for handling Operator nodes, which are nodes
+// representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes are also Operators, but we must
+// traverse all of their edges and can't prune in advance, so this function will return all edges from an OR.
+// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
+//
+// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "requires check".
+// e.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
+// it will return the first edge encountered.
+//
+// For BUT NOT relations, GetEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it
+// does it will mark this result as "requires check".
+// e.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
+// we do not mark as "requires check".
+// After determining whether this result will require check, GetEdgesFromWeightedGraph will prune off the last edge of the
+// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
+func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 	wg *weightedGraph.WeightedAuthorizationModelGraph,
 	targetTypeRelation string,
 	sourceType string,
@@ -259,11 +273,11 @@ func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 	edges, ok := wg.GetEdgesFromNode(currentNode)
 
 	// TODO: this _shouldn't_ be reachable but test it / clarify with Yissel
+	// This would mean that we dispatched again but from a direct edge, which doesn't make sense
 	if len(edges) == 0 {
-		println(fmt.Sprintf("LEAF BASED ON EDGE COUNT: %s", currentNode.GetUniqueLabel()))
+		println("LEAF BASED ON EDGE COUNT: " + currentNode.GetUniqueLabel())
 	}
 
-	// TODO: might want to pull this into its own method
 	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
 		switch currentNode.GetLabel() {
 		case weightedGraph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
@@ -297,7 +311,7 @@ func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 			// Now only loop over the lowest weight edge
 			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
 		}
-		//fmt.Printf(" Operator Node ending with %d edges\n", len(edges))
+		// fmt.Printf(" Operator Node ending with %d edges\n", len(edges))
 	}
 
 	return edges, nil
@@ -393,21 +407,22 @@ func (c *ReverseExpandQuery) execute(
 	wg := c.typesystem.GetWeightedGraph()
 	if wg != nil {
 		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
-		edges, err := c.getEdgesFromWeightedGraph(ctx, wg, targetTypeRel, sourceUserType)
+		edges, err := c.GetEdgesFromWeightedGraph(wg, targetTypeRel, sourceUserType)
 		if err != nil {
 			return err
 		}
-		println(edges)
-
-		// TODO
-		//errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
 	}
+	// TODO
+	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
+	// } else {
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
 	}
+
+	println("JUSTIN NUM EDGES FROM OLD GRAPH: ", len(edges))
 
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 

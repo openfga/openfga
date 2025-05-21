@@ -3,6 +3,7 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
+	"github.com/openfga/language/pkg/go/graph"
 	"strconv"
 	"testing"
 	"time"
@@ -910,4 +911,61 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetEdgesFromWeightedGraph(t *testing.T) {
+	t.Run("exclusion_prunes_out_but_not_edge", func(t *testing.T) {
+		//model := `
+		//model
+		//schema 1.1
+		//type user
+		//type other
+		//type employee
+		//type group
+		//	relations
+		//		define parent: [group]
+		//		define admin: [user, employee] or admin from parent
+		//		define banned: [other]
+		//		define allowed: ([user, employee, other] or admin) but not banned
+		//type role
+		//	relations
+		//		define owner: [group]
+		//		define allowed: allowed from owner
+		//`
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type group
+			relations
+				define banned: [other]
+				define allowed: [user, other] but not banned
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		query := NewReverseExpandQuery(mockDatastore, typeSystem)
+
+		wg := typeSystem.GetWeightedGraph()
+		edges, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "other")
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the exclusion node
+		require.Len(t, edges, 1)
+
+		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
+		edges, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "other")
+
+		// There are 3 edges, but one of them is 'but not banned' which should be pruned off
+		require.Len(t, edges, 2)
+		for _, edge := range edges {
+			require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
+		}
+	})
 }
