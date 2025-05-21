@@ -15,6 +15,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -229,6 +230,79 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
+func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
+	ctx context.Context,
+	wg *weightedGraph.WeightedAuthorizationModelGraph,
+	targetTypeRelation string,
+	sourceType string,
+) ([]*weightedGraph.WeightedAuthorizationModelEdge, error) {
+	if wg == nil {
+		// this should never happen
+		// TODO: some specific error type
+		return nil, errors.New("weighted graph is nil")
+	}
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		// This should never happen
+		return nil, errors.New("currentNode is nil")
+	}
+
+	// TODO: wildcards
+
+	// This means we cannot reach the source type requested.
+	// e.g. there is no path from 'document' to 'user'
+	if _, ok = currentNode.GetWeight(sourceType); !ok {
+		return nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+
+	// TODO: this _shouldn't_ be reachable but test it / clarify with Yissel
+	if len(edges) == 0 {
+		println(fmt.Sprintf("LEAF BASED ON EDGE COUNT: %s", currentNode.GetUniqueLabel()))
+	}
+
+	// TODO: might want to pull this into its own method
+	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
+		switch currentNode.GetLabel() {
+		case weightedGraph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
+			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
+			_, hasPathThatMatters := butNotEdge.GetWeight(sourceType)
+
+			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
+			// we need to mark this as "needs check" at the end
+			if hasPathThatMatters {
+				// needs check
+			}
+
+			// prune off the "BUT NOT B" portion of these edges and keep going
+			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
+			edges = edges[:len(edges)-1]
+		case weightedGraph.IntersectionOperator:
+			// For AND relations, mark as "needs check" and just pick the lowest weight edge
+			lowest := weightedGraph.Infinite
+			var lowestWeightEdge *weightedGraph.WeightedAuthorizationModelEdge
+			for _, edge := range edges {
+				edgeWeight, ok := edge.GetWeight(sourceType)
+				if !ok {
+					continue
+				}
+				if edgeWeight < lowest {
+					lowest = edgeWeight
+					lowestWeightEdge = edge
+				}
+			}
+
+			// Now only loop over the lowest weight edge
+			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+		}
+		//fmt.Printf(" Operator Node ending with %d edges\n", len(edges))
+	}
+
+	return edges, nil
+}
+
 func (c *ReverseExpandQuery) dispatch(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -316,6 +390,18 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
+	wg := c.typesystem.GetWeightedGraph()
+	if wg != nil {
+		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+		edges, err := c.getEdgesFromWeightedGraph(ctx, wg, targetTypeRel, sourceUserType)
+		if err != nil {
+			return err
+		}
+		println(edges)
+
+		// TODO
+		//errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
+	}
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)

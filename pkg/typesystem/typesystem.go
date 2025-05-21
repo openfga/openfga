@@ -282,6 +282,10 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 	return nil, false
 }
 
+func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
+	return t.authzWeightedGraph
+}
+
 // ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
 // Subsequent calls to this method are resolved from a cache.
 func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
