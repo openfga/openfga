@@ -235,7 +235,7 @@ func (c *ReverseExpandQuery) Execute(
 // traverse all of their edges and can't prune in advance, so this function will return all edges from an OR.
 // In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
 //
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "requires check".
+// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
 // e.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
 // it will return the first edge encountered.
 //
@@ -245,28 +245,29 @@ func (c *ReverseExpandQuery) Execute(
 // we do not mark as "requires check".
 // After determining whether this result will require check, GetEdgesFromWeightedGraph will prune off the last edge of the
 // Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
+//
+// GetEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error
 func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 	wg *weightedGraph.WeightedAuthorizationModelGraph,
 	targetTypeRelation string,
 	sourceType string,
-) ([]*weightedGraph.WeightedAuthorizationModelEdge, error) {
+	needsCheck bool,
+) ([]*weightedGraph.WeightedAuthorizationModelEdge, bool, error) {
 	if wg == nil {
 		// this should never happen
-		return nil, errors.New("weighted graph is nil")
+		return nil, false, errors.New("weighted graph is nil")
 	}
 
 	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
 	if !ok {
 		// This should never happen
-		return nil, errors.New("currentNode is nil")
+		return nil, false, errors.New("currentNode is nil")
 	}
-
-	// TODO: wildcards
 
 	// This means we cannot reach the source type requested.
 	// e.g. there is no path from 'document' to 'user'
 	if _, ok = currentNode.GetWeight(sourceType); !ok {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
@@ -274,7 +275,7 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 	// TODO: this _shouldn't_ be reachable
 	// This would mean that we dispatched from a direct edge, which doesn't make sense
 	if len(edges) == 0 {
-		return nil, errors.New("no outgoing edges")
+		return nil, false, errors.New("no outgoing edges")
 	}
 
 	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
@@ -286,7 +287,7 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
 			// we need to mark this as "needs check" at the end
 			if hasPathThatMatters {
-				// needs check
+				needsCheck = true
 			}
 
 			// prune off the "BUT NOT b" portion of these edges and keep going
@@ -294,6 +295,8 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 			edges = edges[:len(edges)-1]
 		case weightedGraph.IntersectionOperator:
 			// For AND relations, mark as "needs check" and just pick the lowest weight edge
+			needsCheck = true
+
 			lowest := weightedGraph.Infinite
 			var lowestWeightEdge *weightedGraph.WeightedAuthorizationModelEdge
 			for _, edge := range edges {
@@ -312,7 +315,7 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 		}
 	}
 
-	return edges, nil
+	return edges, needsCheck, nil
 }
 
 func (c *ReverseExpandQuery) dispatch(
@@ -374,6 +377,7 @@ func (c *ReverseExpandQuery) execute(
 
 	// e.g. 'user:*'
 	if val, ok := req.User.(*UserRefTypedWildcard); ok {
+		println("hit wildcard block")
 		sourceUserType = val.Type
 		sourceUserRef = typesystem.WildcardRelationReference(sourceUserType)
 	}
@@ -405,12 +409,21 @@ func (c *ReverseExpandQuery) execute(
 	wg := c.typesystem.GetWeightedGraph()
 	if wg != nil {
 		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
-		edges, err := c.GetEdgesFromWeightedGraph(wg, targetTypeRel, sourceUserType)
+		fmt.Printf("UserType: %s, userObj: %s", sourceUserType, sourceUserObj)
+		//println(sourceUserType, sourceUserObj)
+		_, _, err := c.GetEdgesFromWeightedGraph(
+			wg,
+			targetTypeRel,
+			sourceUserType,
+			intersectionOrExclusionInPreviousEdges,
+		)
+		//println(edges) // just to silence compile errors for now
 		if err != nil {
 			return err
 		}
 	}
-	// TODO
+
+	// TODO: another branch will implement this
 	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
 	// } else {
 	g := graph.New(c.typesystem)

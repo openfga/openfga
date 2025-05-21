@@ -914,7 +914,7 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 }
 
 func TestGetEdgesFromWeightedGraph(t *testing.T) {
-	t.Run("exclusion_prunes_out_but_not_edge", func(t *testing.T) {
+	t.Run("exclusion_prunes_exclusion_and_marks_check_correctly", func(t *testing.T) {
 		model := `
 		model
 		schema 1.1
@@ -936,20 +936,30 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		query := NewReverseExpandQuery(mockDatastore, typeSystem)
 
 		wg := typeSystem.GetWeightedGraph()
-		edges, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "other")
+		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "other", false)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
 		require.Len(t, edges, 1)
 
+		// Haven't hit the exclusion yet
+		require.False(t, needsCheck)
+
 		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "other")
+		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "other", false)
+
+		// We've hit the exclusion and it applies to 'type other', so this should be true
+		require.True(t, needsCheck)
 
 		// There are 3 edges, but one of them is 'but not banned' which should be pruned off
 		require.Len(t, edges, 2)
 		for _, edge := range edges {
 			require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
 		}
+
+		// Now get edges for type user, the exclusion does not apply to user so this should not need check
+		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "user", false)
+		require.False(t, needsCheck)
 	})
 
 	t.Run("intersection_returns_lowest_weight_edge", func(t *testing.T) {
@@ -974,17 +984,19 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		query := NewReverseExpandQuery(mockDatastore, typeSystem)
 
 		wg := typeSystem.GetWeightedGraph()
-		edges, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "user")
+		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "user", false)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
 		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
 
 		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, err = query.GetEdgesFromWeightedGraph(wg, intersectionLabel, "user")
+		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, intersectionLabel, "user", false)
 
 		// There are 2, but one has weight INF and one should have weight 1
 		require.Len(t, edges, 1)
+		require.True(t, needsCheck)
 
 		edge := edges[0]
 		require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
