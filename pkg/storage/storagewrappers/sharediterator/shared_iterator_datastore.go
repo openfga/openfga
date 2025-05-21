@@ -36,7 +36,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"operation", "shared"})
+	}, []string{"operation", "method", "shared"})
 
 	sharedIteratorBypassed = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
@@ -127,9 +127,17 @@ func WithMaxAdmissionTime(maxAdmissionTime time.Duration) IteratorDatastoreOpt {
 	}
 }
 
+// WithMethod specifies whether the shared iterator is for check or list objects for metrics.
+func WithMethod(method string) IteratorDatastoreOpt {
+	return func(b *IteratorDatastore) {
+		b.method = method
+	}
+}
+
 type IteratorDatastore struct {
 	storage.RelationshipTupleReader
 	logger             logger.Logger
+	method             string
 	internalStorage    *Storage
 	watchdogTTL        time.Duration
 	maxAdmissionTime   time.Duration
@@ -146,6 +154,7 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		RelationshipTupleReader: inner,
 		logger:                  logger.NewNoopLogger(),
 		internalStorage:         internalStorage,
+		method:                  "",
 		watchdogTTL:             config.DefaultSharedIteratorTTL,
 		iteratorTargetSize:      defaultIteratorTargetSize,
 		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
@@ -212,7 +221,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		}
 		keyItem.iter.mu.Unlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, "true",
+			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
 		return item, nil
 	}
@@ -251,7 +260,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	newIterator.mu.Unlock()
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadStartingWithUser, "false",
+		storagewrappersutil.OperationReadStartingWithUser, sf.method, "false",
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return newIterator, nil
@@ -302,7 +311,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		keyItem.iter.mu.Unlock()
 
 		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, "true",
+			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
 
 		return item, nil
@@ -341,7 +350,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	newIterator.mu.Unlock()
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, "false",
+		storagewrappersutil.OperationReadUsersetTuples, sf.method, "false",
 	).Observe(float64(time.Since(start).Milliseconds()))
 	return newIterator, nil
 }
@@ -384,7 +393,7 @@ func (sf *IteratorDatastore) Read(
 		}
 		keyItem.iter.mu.Unlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, "true",
+			storagewrappersutil.OperationRead, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
 		return item, nil
 	}
@@ -420,7 +429,7 @@ func (sf *IteratorDatastore) Read(
 	newIterator.mu.Unlock()
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, "false",
+		storagewrappersutil.OperationRead, sf.method, "false",
 	).Observe(float64(time.Since(start).Milliseconds()))
 	return newIterator, nil
 }
