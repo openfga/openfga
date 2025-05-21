@@ -992,43 +992,10 @@ func TestDefaultContextTimeout(t *testing.T) {
 		},
 	}
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			timeout := DefaultContextTimeout(&test.config)
 			require.Equal(t, test.expectedContextTimeout, timeout)
-		})
-	}
-}
-
-func TestGetCheckDispatchThrottlingConfig(t *testing.T) {
-	var testCases = map[string]struct {
-		configGeneratingFunction    func() *Config
-		expectedCheckDispatchConfig DispatchThrottlingConfig
-	}{
-		"get_default_values_if_none_are_set": {
-			configGeneratingFunction: DefaultConfig,
-			expectedCheckDispatchConfig: DispatchThrottlingConfig{
-				Enabled:      DefaultCheckDispatchThrottlingEnabled,
-				Frequency:    DefaultCheckDispatchThrottlingFrequency,
-				Threshold:    DefaultCheckDispatchThrottlingDefaultThreshold,
-				MaxThreshold: DefaultCheckDispatchThrottlingMaxThreshold,
-			},
-		},
-	}
-	for name, test := range testCases {
-		test := test
-		t.Run(name, func(t *testing.T) {
-			t.Cleanup(func() {
-				viper.Reset()
-			})
-
-			config := test.configGeneratingFunction()
-			result := GetCheckDispatchThrottlingConfig(nil, config)
-			require.Equal(t, test.expectedCheckDispatchConfig.Enabled, result.Enabled)
-			require.Equal(t, test.expectedCheckDispatchConfig.Frequency, result.Frequency)
-			require.Equal(t, test.expectedCheckDispatchConfig.Threshold, result.Threshold)
-			require.Equal(t, test.expectedCheckDispatchConfig.MaxThreshold, result.MaxThreshold)
 		})
 	}
 }

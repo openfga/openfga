@@ -100,7 +100,10 @@ func (r *constantRateThrottler) Close() {
 // which is produced by periodically sending a value on the channel based on the configured ticker frequency.
 func (r *constantRateThrottler) Throttle(ctx context.Context) {
 	start := time.Now()
-	<-r.throttlingQueue
+	select {
+	case <-ctx.Done():
+	case <-r.throttlingQueue:
+	}
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
 

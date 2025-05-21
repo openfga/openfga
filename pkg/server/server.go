@@ -213,6 +213,13 @@ type Server struct {
 	listObjectsDispatchThrottler throttler.Throttler
 	listUsersDispatchThrottler   throttler.Throttler
 
+	checkDatastoreThrottleThreshold       int
+	checkDatastoreThrottleDuration        time.Duration
+	listObjectsDatastoreThrottleThreshold int
+	listObjectsDatastoreThrottleDuration  time.Duration
+	listUsersDatastoreThrottleThreshold   int
+	listUsersDatastoreThrottleDuration    time.Duration
+
 	authorizer authz.AuthorizerInterface
 
 	ctx                           context.Context
@@ -682,6 +689,27 @@ func WithMaxChecksPerBatchCheck(maxChecks uint32) OpenFGAServiceV1Option {
 	}
 }
 
+func WithCheckDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkDatastoreThrottleThreshold = threshold
+		s.checkDatastoreThrottleDuration = duration
+	}
+}
+
+func WithListObjectsDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDatastoreThrottleThreshold = threshold
+		s.listObjectsDatastoreThrottleDuration = duration
+	}
+}
+
+func WithListUsersDatabaseThrottle(threshold int, duration time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listUsersDatastoreThrottleThreshold = threshold
+		s.listUsersDatastoreThrottleDuration = duration
+	}
+}
+
 // WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
 // Note that ShadowCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -737,6 +765,12 @@ func WithSharedIteratorEnabled(enabled bool) OpenFGAServiceV1Option {
 func WithSharedIteratorLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.cacheSettings.SharedIteratorLimit = limit
+	}
+}
+
+func WithSharedIteratorTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.SharedIteratorTTL = ttl
 	}
 }
 

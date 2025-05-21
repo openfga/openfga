@@ -787,7 +787,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 		return storage.ErrNotFound
 	}
 
-	if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
+	var me *mysql.MySQLError
+	if errors.As(err, &me) && me.Number == 1062 {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
 				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)

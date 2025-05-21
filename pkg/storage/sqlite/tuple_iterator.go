@@ -6,8 +6,6 @@ import (
 	"errors"
 	"sync"
 
-	sq "github.com/Masterminds/squirrel"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 
@@ -21,10 +19,8 @@ type errorHandlerFn func(error, ...interface{}) error
 // SQLTupleIterator is a struct that implements the storage.TupleIterator
 // interface for iterating over tuples fetched from a SQL database.
 type SQLTupleIterator struct {
-	rows           *sql.Rows // GUARDED_BY(mu)
-	sb             sq.SelectBuilder
-	HandleSQLError errorHandlerFn
-
+	rows           *sql.Rows // GUARDED_BY(mu) // TODO: move this to lazy loading if possible
+	handleSQLError errorHandlerFn
 	// firstRow is used as a temporary storage place if head is called.
 	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
 	// the iterator. Thus, we will need to store this first item so that future Head() and Next()
@@ -37,36 +33,17 @@ type SQLTupleIterator struct {
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(sb sq.SelectBuilder, errorHandler errorHandlerFn) *SQLTupleIterator {
+func NewSQLTupleIterator(rows *sql.Rows, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
-		sb:             sb,
-		HandleSQLError: errorHandler,
-		rows:           nil,
+		rows:           rows,
+		handleSQLError: errHandler,
 		firstRow:       nil,
 		mu:             sync.Mutex{},
 	}
 }
 
-func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "sqlite.fetchBuffer", trace.WithAttributes())
-	defer span.End()
-	rows, err := t.sb.QueryContext(ctx)
-	if err != nil {
-		return t.HandleSQLError(err)
-	}
-	t.rows = rows
-	return nil
-}
-
-func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, error) {
+func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	t.mu.Lock()
-
-	if t.rows == nil {
-		if err := t.fetchBuffer(ctx); err != nil {
-			t.mu.Unlock()
-			return nil, err
-		}
-	}
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
@@ -88,7 +65,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 		err := t.rows.Err()
 		t.mu.Unlock()
 		if err != nil {
-			return nil, t.HandleSQLError(err)
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -112,7 +89,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	t.mu.Unlock()
 
 	if err != nil {
-		return nil, t.HandleSQLError(err)
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -128,15 +105,9 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	return &record, nil
 }
 
-func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, error) {
+func (t *SQLTupleIterator) head() (*storage.TupleRecord, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-
-	if t.rows == nil {
-		if err := t.fetchBuffer(ctx); err != nil {
-			return nil, err
-		}
-	}
 
 	if t.firstRow != nil {
 		// If head was called previously, we don't need to scan / next
@@ -154,7 +125,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
-			return nil, t.HandleSQLError(err)
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -176,7 +147,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		&record.InsertedAt,
 	)
 	if err != nil {
-		return nil, t.HandleSQLError(err)
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -195,12 +166,12 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token.
 // If the continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(ctx context.Context,
+func (t *SQLTupleIterator) ToArray(
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, string, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
-		tupleRecord, err := t.next(ctx)
+		tupleRecord, err := t.next()
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				return res, "", nil
@@ -213,7 +184,7 @@ func (t *SQLTupleIterator) ToArray(ctx context.Context,
 	// Check if we are at the end of the iterator.
 	// If we are then we do not need to return a continuation token.
 	// This is why we have LIMIT+1 in the query.
-	tupleRecord, err := t.next(ctx)
+	tupleRecord, err := t.next()
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, "", nil
@@ -230,7 +201,7 @@ func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, ctx.Err()
 	}
 
-	record, err := t.next(ctx)
+	record, err := t.next()
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +215,7 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, ctx.Err()
 	}
 
-	record, err := t.head(ctx)
+	record, err := t.head()
 	if err != nil {
 		return nil, err
 	}
@@ -254,9 +225,5 @@ func (t *SQLTupleIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 // Stop terminates iteration.
 func (t *SQLTupleIterator) Stop() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.rows != nil {
-		_ = t.rows.Close()
-	}
+	_ = t.rows.Close()
 }

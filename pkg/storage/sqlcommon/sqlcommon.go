@@ -193,7 +193,7 @@ func (s *SQLContinuationTokenSerializer) Deserialize(continuationToken string) (
 type SQLTupleIterator struct {
 	rows           *sql.Rows // GUARDED_BY(mu)
 	sb             sq.SelectBuilder
-	HandleSQLError errorHandlerFn
+	handleSQLError errorHandlerFn
 
 	// firstRow is used as a temporary storage place if head is called.
 	// If firstRow is nil and Head is called, rows.Next() will return the first item and advance
@@ -207,11 +207,11 @@ type SQLTupleIterator struct {
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(sb sq.SelectBuilder, errorHandler errorHandlerFn) *SQLTupleIterator {
+func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		sb:             sb,
-		HandleSQLError: errorHandler,
 		rows:           nil,
+		handleSQLError: errHandler,
 		firstRow:       nil,
 		mu:             sync.Mutex{},
 	}
@@ -222,7 +222,7 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	defer span.End()
 	rows, err := t.sb.QueryContext(ctx)
 	if err != nil {
-		return t.HandleSQLError(err)
+		return t.handleSQLError(err)
 	}
 	t.rows = rows
 	return nil
@@ -258,7 +258,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 		err := t.rows.Err()
 		t.mu.Unlock()
 		if err != nil {
-			return nil, t.HandleSQLError(err)
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -280,7 +280,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*storage.TupleRecord, erro
 	t.mu.Unlock()
 
 	if err != nil {
-		return nil, t.HandleSQLError(err)
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String
@@ -322,7 +322,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
-			return nil, t.HandleSQLError(err)
+			return nil, t.handleSQLError(err)
 		}
 		return nil, storage.ErrIteratorDone
 	}
@@ -342,7 +342,7 @@ func (t *SQLTupleIterator) head(ctx context.Context) (*storage.TupleRecord, erro
 		&record.InsertedAt,
 	)
 	if err != nil {
-		return nil, t.HandleSQLError(err)
+		return nil, t.handleSQLError(err)
 	}
 
 	record.ConditionName = conditionName.String

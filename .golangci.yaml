@@ -7,7 +7,9 @@ run:
 linters:
   enable:
     - bodyclose
+    - copyloopvar
     - errname
+    - fatcontext
     - gocritic
     - gocyclo
     - godot

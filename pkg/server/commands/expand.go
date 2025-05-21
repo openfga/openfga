@@ -425,7 +425,6 @@ func (q *ExpandQuery) resolveUsersets(
 	grp, ctx := errgroup.WithContext(ctx)
 	for i, us := range usersets {
 		// https://golang.org/doc/faq#closures_and_goroutines
-		i, us := i, us
 		grp.Go(func() error {
 			node, err := q.resolveUserset(ctx, store, us, tk, typesys, consistency)
 			if err != nil {

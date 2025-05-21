@@ -943,7 +943,6 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		"openfga_datastore_query_count",
 		"openfga_request_duration_ms",
 		"grpc_server_handling_seconds",
-		"openfga_datastore_bounded_read_delay_ms",
 		"openfga_list_objects_further_eval_required_count",
 		"openfga_list_objects_no_further_eval_required_count",
 		"go_sql_idle_connections",
@@ -1502,7 +1501,6 @@ func TestHTTPHeaders(t *testing.T) {
 	}
 
 	for name, test := range testCases {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJSONBody))

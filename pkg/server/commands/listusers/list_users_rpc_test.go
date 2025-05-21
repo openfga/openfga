@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/dispatch"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -3356,7 +3357,6 @@ func TestListUsersDatastoreQueryCountAndDispatchCount(t *testing.T) {
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 100; i++ {
 		for _, test := range tests {
-			test := test
 			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
 				l := NewListUsersQuery(ds, emptyContextualTuples)
 				resp, err := l.ListUsers(ctx, &openfgav1.ListUsersRequest{
@@ -4124,7 +4124,10 @@ func NewListUsersQueryPanicExpandDirect(ds storage.RelationshipTupleReader, cont
 		opt(l)
 	}
 
-	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, l.maxConcurrentReads)
+	l.datastore = storagewrappers.NewRequestStorageWrapper(ds, contextualTuples, &storagewrappers.Operation{
+		Method:      apimethod.ListUsers,
+		Concurrency: l.maxConcurrentReads,
+	})
 
 	return l
 }
