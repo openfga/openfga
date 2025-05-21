@@ -291,7 +291,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 
 	var matches []*storage.TupleRecord
 	if tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "" {
-		matches = make([]*storage.TupleRecord, len(s.tuples[store]))
+		matches = make([]*storage.TupleRecord, 0, len(s.tuples[store]))
 		copy(matches, s.tuples[store])
 	} else {
 		for _, t := range s.tuples[store] {
