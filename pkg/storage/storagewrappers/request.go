@@ -74,6 +74,7 @@ func NewRequestStorageWrapperWithCache(
 
 		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, resources.SharedIteratorStorage,
 			sharediterator.WithSharedIteratorDatastoreLogger(resources.Logger),
+			sharediterator.WithMethod(string(op.Method)),
 			sharediterator.WithMaxTTL(cacheSettings.SharedIteratorTTL),
 			sharediterator.WithIteratorTargetSize(iteratorTargetSize))
 	}
