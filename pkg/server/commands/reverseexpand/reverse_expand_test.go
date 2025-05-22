@@ -3,7 +3,6 @@ package reverseexpand
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/language/pkg/go/graph"
 	"strconv"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
@@ -937,6 +937,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		wg := typeSystem.GetWeightedGraph()
 		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#allowed", "other", false)
+		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
@@ -947,6 +948,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
 		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, exclusionLabel, "other", false)
+		require.NoError(t, err)
 
 		// We've hit the exclusion and it applies to 'type other', so this should be true
 		require.True(t, needsCheck)
@@ -954,10 +956,11 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		// There are 3 edges, but one of them is the 'but not' and one is to 'user' which isn't relevant
 		// since we're searching for 'other'
 		require.Len(t, edges, 1)
-		require.Equal(t, edges[0].GetEdgeType(), graph.DirectEdge)
+		require.Equal(t, graph.DirectEdge, edges[0].GetEdgeType())
 
 		// Now get edges for type user, the exclusion does not apply to user so this should not need check
 		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, exclusionLabel, "user", false)
+		require.NoError(t, err)
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
 	})
@@ -999,10 +1002,10 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.True(t, needsCheck)
 
 		edge := edges[0]
-		require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
+		require.Equal(t, graph.DirectEdge, edge.GetEdgeType())
 
 		weight, _ := edge.GetWeight("user")
-		require.Equal(t, weight, 1)
+		require.Equal(t, 1, weight)
 	})
 
 	t.Run("union_returns_all_edges_with_path_to_source_type", func(t *testing.T) {

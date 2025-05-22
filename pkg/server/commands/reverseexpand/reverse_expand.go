@@ -271,7 +271,7 @@ func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 		return nil, false, nil
 	}
 
-	edges, ok := wg.GetEdgesFromNode(currentNode)
+	edges, _ := wg.GetEdgesFromNode(currentNode)
 
 	// TODO: this _shouldn't_ be reachable but will be dealt with in a follow up PR
 	// This would mean that we dispatched from a direct edge, which doesn't make sense
