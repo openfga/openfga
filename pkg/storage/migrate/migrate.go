@@ -53,7 +53,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		// Parse the database uri with the mysql drivers function for it and update username/password, if set via flags
 		dsn, err := mysql.ParseDSN(uri)
 		if err != nil {
-			return fmt.Errorf("invalid database uri: %v", err)
+			return fmt.Errorf("invalid database uri: %w", err)
 		}
 		if cfg.Username != "" {
 			dsn.User = cfg.Username
@@ -71,7 +71,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		// Parse the database uri with url.Parse() and update username/password, if set via flags
 		dbURI, err := url.Parse(uri)
 		if err != nil {
-			return fmt.Errorf("invalid database uri: %v", err)
+			return fmt.Errorf("invalid database uri: %w", err)
 		}
 		// if username not set
 		if cfg.Username == "" && dbURI.User != nil {

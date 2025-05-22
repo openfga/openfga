@@ -98,7 +98,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 
 		typesys, err := NewAndValidate(ctx, model)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidModel, err)
+			return nil, fmt.Errorf("%w: %w", ErrInvalidModel, err)
 		}
 
 		cache.Set(key, typesys, typesystemCacheTTL)
