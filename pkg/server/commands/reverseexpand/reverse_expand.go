@@ -323,7 +323,7 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	errs := c.LoopOnEdges(
+	errs := c.loopOnEdges(
 		ctx,
 		req,
 		resultChan,
@@ -341,7 +341,7 @@ func (c *ReverseExpandQuery) execute(
 	return nil
 }
 
-func (c *ReverseExpandQuery) LoopOnEdges(
+func (c *ReverseExpandQuery) loopOnEdges(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
