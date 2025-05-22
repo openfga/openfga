@@ -988,6 +988,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		wg := typeSystem.GetWeightedGraph()
 		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#allowed", "user", false)
+		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
@@ -996,6 +997,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
 		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, intersectionLabel, "user", false)
+		require.NoError(t, err)
 
 		// 2 edges exist, but we should only receive the lower-weight edge
 		require.Len(t, edges, 1)
@@ -1035,6 +1037,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		wg := typeSystem.GetWeightedGraph()
 		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#or_relation", "user", false)
+		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the union node
@@ -1045,11 +1048,13 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		// Two of these edges lead to user
 		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, unionLabel, "user", false)
+		require.NoError(t, err)
 		require.Len(t, edges, 2)
 		require.False(t, needsCheck)
 
 		// One of these edges leads to employee
 		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, unionLabel, "employee", false)
+		require.NoError(t, err)
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
 	})
