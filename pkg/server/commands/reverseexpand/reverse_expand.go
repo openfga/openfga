@@ -230,9 +230,10 @@ func (c *ReverseExpandQuery) Execute(
 	return nil
 }
 
-// GetEdgesFromWeightedGraph is responsible primarily for handling Operator nodes, which are nodes
-// representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes are also Operators, but we must
-// traverse all of their edges and can't prune in advance, so this function will return all edges from an OR.
+// GetEdgesFromWeightedGraph returns all edges which have a path to the source type. It's responsible for handling
+// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
+// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
+// return all relevant edges from an OR.
 // In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
 //
 // For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
@@ -272,7 +273,7 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
 
-	// TODO: this _shouldn't_ be reachable
+	// TODO: this _shouldn't_ be reachable but will be dealt with in a follow up PR
 	// This would mean that we dispatched from a direct edge, which doesn't make sense
 	if len(edges) == 0 {
 		return nil, false, errors.New("no outgoing edges")
@@ -282,11 +283,11 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 		switch currentNode.GetLabel() {
 		case weightedGraph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
 			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-			_, hasPathThatMatters := butNotEdge.GetWeight(sourceType)
+			_, canReachSource := butNotEdge.GetWeight(sourceType)
 
 			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
 			// we need to mark this as "needs check" at the end
-			if hasPathThatMatters {
+			if canReachSource {
 				needsCheck = true
 			}
 
@@ -315,7 +316,17 @@ func (c *ReverseExpandQuery) GetEdgesFromWeightedGraph(
 		}
 	}
 
-	return edges, needsCheck, nil
+	// Filter to only return edges which have a path to the sourceType
+	var relevantEdges []*weightedGraph.WeightedAuthorizationModelEdge
+	for _, edge := range edges {
+		_, ok = edge.GetWeight(sourceType)
+		if !ok {
+			continue
+		}
+		relevantEdges = append(relevantEdges, edge)
+	}
+
+	return relevantEdges, needsCheck, nil
 }
 
 func (c *ReverseExpandQuery) dispatch(

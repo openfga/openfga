@@ -951,11 +951,10 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		// We've hit the exclusion and it applies to 'type other', so this should be true
 		require.True(t, needsCheck)
 
-		// There are 3 edges, but one of them is 'but not banned' which should be pruned off
-		require.Len(t, edges, 2)
-		for _, edge := range edges {
-			require.Equal(t, edge.GetEdgeType(), graph.DirectEdge)
-		}
+		// There are 3 edges, but one of them is the 'but not' and one is to 'user' which isn't relevant
+		// since we're searching for 'other'
+		require.Len(t, edges, 1)
+		require.Equal(t, edges[0].GetEdgeType(), graph.DirectEdge)
 
 		// Now get edges for type user, the exclusion does not apply to user so this should not need check
 		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "user", false)
@@ -1003,5 +1002,51 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		weight, _ := edge.GetWeight("user")
 		require.Equal(t, weight, 1)
+	})
+
+	t.Run("union_returns_all_edges_with_path_to_source_type", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type employee
+		type group
+			relations
+				define a: [user]
+				define b: [user]
+				define c: [other]
+				define d: [employee]
+				define or_relation: a or b or c or d
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := typesystem.New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		query := NewReverseExpandQuery(mockDatastore, typeSystem)
+
+		wg := typeSystem.GetWeightedGraph()
+		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#or_relation", "user", false)
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the union node
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+
+		unionLabel := edges[0].GetTo().GetUniqueLabel()
+
+		// Two of these edges lead to user
+		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, unionLabel, "user", false)
+		require.Len(t, edges, 2)
+		require.False(t, needsCheck)
+
+		// One of these edges leads to employee
+		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, unionLabel, "employee", false)
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
 	})
 }
