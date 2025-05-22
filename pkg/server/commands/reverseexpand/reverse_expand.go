@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -298,6 +300,7 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
+		// TODO: this will have to be tweaked since new edges don't behave the same
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
@@ -316,17 +319,31 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	/* TODO: the logic in this commented block is for implementation by follow up branch
-	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
-	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
+	wg := c.typesystem.GetWeightedGraph()
+	if wg != nil {
+		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+		edges, needsCheck, err := c.getEdgesFromWeightedGraph(
+			wg,
+			targetTypeRel,
+			sourceUserType,
+			intersectionOrExclusionInPreviousEdges,
+		)
+		println(edges, needsCheck, err) // to shut up compiler
 
-	if err == nil {
-	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
-	} else {
-	// log a message for why GetEdgesFromWeightedGraph failed and then
-	// let this continue to the old implementation
+		if err != nil {
+			return err
+		}
+
+		err = c.LoopOverWeightedEdges(
+			ctx,
+			edges,
+			needsCheck,
+			req,
+			resolutionMetadata,
+			resultChan,
+			sourceUserObj,
+		)
 	}
-	*/
 
 	g := graph.New(c.typesystem)
 
@@ -650,4 +667,189 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 		metadata.WasThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
+}
+
+// GetEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error.
+func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
+	wg *weightedGraph.WeightedAuthorizationModelGraph,
+	targetTypeRelation string,
+	sourceType string,
+	needsCheck bool,
+) ([]*weightedGraph.WeightedAuthorizationModelEdge, bool, error) {
+	if wg == nil {
+		// this should never happen
+		return nil, false, errors.New("weighted graph is nil")
+	}
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		// This should never happen
+		return nil, false, errors.New("currentNode is nil")
+	}
+
+	// This means we cannot reach the source type requested.
+	// e.g. there is no path from 'document' to 'user'
+	if _, ok = currentNode.GetWeight(sourceType); !ok {
+		return nil, false, nil
+	}
+
+	edges, _ := wg.GetEdgesFromNode(currentNode)
+
+	// TODO: this _shouldn't_ be reachable but will be dealt with in a follow up PR
+	// This would mean that we dispatched from a direct edge, which doesn't make sense
+	if len(edges) == 0 {
+		return nil, false, errors.New("no outgoing edges")
+	}
+
+	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
+		switch currentNode.GetLabel() {
+		case weightedGraph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
+			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
+			_, canReachSource := butNotEdge.GetWeight(sourceType)
+
+			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
+			// we need to run check at the end
+			if canReachSource {
+				needsCheck = true
+			}
+
+			// prune off the "BUT NOT b" portion of these edges and keep going
+			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
+			edges = edges[:len(edges)-1]
+		case weightedGraph.IntersectionOperator:
+			// For AND relations, mark as "needs check" and just pick the lowest weight edge
+			needsCheck = true
+
+			lowestWeightEdge := reduce(edges, nil, cheapestEdgeTo(sourceType))
+
+			// return only the lowest weight edge
+			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+		}
+	}
+
+	// Filter to only return edges which have a path to the sourceType
+	relevantEdges := filter(edges, hasPathTo(sourceType))
+
+	return relevantEdges, needsCheck, nil
+}
+
+func (c *ReverseExpandQuery) LoopOverWeightedEdges(
+	ctx context.Context,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	needsCheck bool,
+	req *ReverseExpandRequest,
+	resolutionMetadata *ResolutionMetadata,
+	resultChan chan<- *ReverseExpandResult,
+	sourceUserObj string,
+) error {
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+
+	var errs error
+
+	for _, edge := range edges {
+		// TODO: i think the getEdgesFromWeightedGraph func handles this for us, shouldn't need this
+		// intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
+		r := &ReverseExpandRequest{
+			Consistency:      req.Consistency,
+			Context:          req.Context,
+			ContextualTuples: req.ContextualTuples,
+			ObjectType:       req.ObjectType,
+			Relation:         req.Relation,
+			StoreID:          req.StoreID,
+			User:             req.User,
+
+			// TODO: this is just for cycle prevention, refactor so we can use weighted edge here as well
+			//edge:             innerLoopEdge,
+			//edge:             edge.GetTo(), // this doesn't match the API
+		}
+		switch edge.GetEdgeType() {
+		case weightedGraph.DirectEdge:
+			pool.Go(func(ctx context.Context) error {
+				return c.reverseExpandDirect(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			})
+		case weightedGraph.ComputedEdge:
+			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
+			to := edge.GetTo().GetUniqueLabel()
+
+			// turn "document#viewer" into "viewer"
+			rel := to[strings.Index(to, "#")+1:]
+			r.User = &UserRefObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
+					Object:   sourceUserObj,
+					Relation: rel,
+				},
+			}
+			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			if err != nil {
+				errs = errors.Join(errs, err)
+				return errs
+			}
+		case weightedGraph.TTUEdge:
+			pool.Go(func(ctx context.Context) error {
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			})
+		case weightedGraph.RewriteEdge:
+			fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
+			// this'll need a dispatch with a new key, instead of "type#rel" it'll be "exclusion:01JVWQXTZYP578BTN93PR9JTQK"
+			// or intersection
+		default:
+			fmt.Printf("Unknown edge type %d\n", edge.GetEdgeType())
+			panic("unsupported edge type")
+		}
+	}
+
+	return errors.Join(errs, pool.Wait())
+	// Can we lift this to the caller? I don't want to have to pass in a span also this method signature is big
+	// if errs != nil {
+	//	telemetry.TraceError(span, errs)
+	//	return errs
+	//}
+}
+
+func hasPathTo(dest string) func(*weightedGraph.WeightedAuthorizationModelEdge) bool {
+	return func(edge *weightedGraph.WeightedAuthorizationModelEdge) bool {
+		_, ok := edge.GetWeight(dest)
+		return ok
+	}
+}
+
+func cheapestEdgeTo(dst string) func(*weightedGraph.WeightedAuthorizationModelEdge, *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
+	return func(lowest, current *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
+		if lowest == nil {
+			return current
+		}
+
+		a, ok := lowest.GetWeight(dst)
+		if !ok {
+			return current
+		}
+
+		b, ok := current.GetWeight(dst)
+		if !ok {
+			return lowest
+		}
+
+		if b < a {
+			return current
+		}
+		return lowest
+	}
+}
+
+func reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
+	i := initializer
+	for _, item := range s {
+		i = f(i, item)
+	}
+	return i
+}
+
+func filter[S ~[]E, E any](s S, f func(E) bool) []E {
+	var filteredItems []E
+	for _, item := range s {
+		if f(item) {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+	return filteredItems
 }
