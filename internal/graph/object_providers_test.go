@@ -234,10 +234,8 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				out, err := c.Begin(ctx, req)
-				require.NoError(t, err)
-				msg := <-out
-				require.ErrorIs(t, msg.err, mockError)
+				_, err = c.Begin(ctx, req)
+				require.ErrorIs(t, err, mockError)
 			})
 
 			t.Run("when_iterator_errors", func(t *testing.T) {
@@ -391,10 +389,8 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-				out, err := c.Begin(ctx, req)
-				require.NoError(t, err)
-				msg := <-out
-				require.ErrorIs(t, mockError, msg.err)
+				_, err = c.Begin(ctx, req)
+				require.ErrorIs(t, err, mockError)
 			})
 
 			t.Run("when_iterator_errors", func(t *testing.T) {
