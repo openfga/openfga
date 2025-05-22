@@ -914,7 +914,7 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 }
 
 func TestGetEdgesFromWeightedGraph(t *testing.T) {
-	t.Run("exclusion_prunes_exclusion_and_marks_check_correctly", func(t *testing.T) {
+	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
 		model := `
 		model
 		schema 1.1
@@ -936,7 +936,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		query := NewReverseExpandQuery(mockDatastore, typeSystem)
 
 		wg := typeSystem.GetWeightedGraph()
-		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "other", false)
+		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#allowed", "other", false)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
@@ -946,7 +946,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.False(t, needsCheck)
 
 		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "other", false)
+		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, exclusionLabel, "other", false)
 
 		// We've hit the exclusion and it applies to 'type other', so this should be true
 		require.True(t, needsCheck)
@@ -957,7 +957,8 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.Equal(t, edges[0].GetEdgeType(), graph.DirectEdge)
 
 		// Now get edges for type user, the exclusion does not apply to user so this should not need check
-		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, exclusionLabel, "user", false)
+		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, exclusionLabel, "user", false)
+		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
 	})
 
@@ -983,7 +984,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		query := NewReverseExpandQuery(mockDatastore, typeSystem)
 
 		wg := typeSystem.GetWeightedGraph()
-		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#allowed", "user", false)
+		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#allowed", "user", false)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the exclusion node
@@ -991,9 +992,9 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.False(t, needsCheck)
 
 		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, intersectionLabel, "user", false)
+		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, intersectionLabel, "user", false)
 
-		// There are 2, but one has weight INF and one should have weight 1
+		// 2 edges exist, but we should only receive the lower-weight edge
 		require.Len(t, edges, 1)
 		require.True(t, needsCheck)
 
@@ -1030,7 +1031,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		query := NewReverseExpandQuery(mockDatastore, typeSystem)
 
 		wg := typeSystem.GetWeightedGraph()
-		edges, needsCheck, err := query.GetEdgesFromWeightedGraph(wg, "group#or_relation", "user", false)
+		edges, needsCheck, err := query.getEdgesFromWeightedGraph(wg, "group#or_relation", "user", false)
 
 		// If this assertion fails then we broke something in the weighted graph itself
 		// This is just the best way to get to the union node
@@ -1040,12 +1041,12 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		unionLabel := edges[0].GetTo().GetUniqueLabel()
 
 		// Two of these edges lead to user
-		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, unionLabel, "user", false)
+		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, unionLabel, "user", false)
 		require.Len(t, edges, 2)
 		require.False(t, needsCheck)
 
 		// One of these edges leads to employee
-		edges, needsCheck, err = query.GetEdgesFromWeightedGraph(wg, unionLabel, "employee", false)
+		edges, needsCheck, err = query.getEdgesFromWeightedGraph(wg, unionLabel, "employee", false)
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
 	})

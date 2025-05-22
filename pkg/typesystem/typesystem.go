@@ -282,6 +282,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 	return nil, false
 }
 
+// GetWeightedGraph returns a pointer to the underlying authzWeightedGraph. Can be nil.
 func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
 	return t.authzWeightedGraph
 }
