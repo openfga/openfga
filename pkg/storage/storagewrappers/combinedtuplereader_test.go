@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 			"group:3#member@user:11",
 			// userset tuples
 			"folder:backlog#viewer@group:1#member",
+			"folder:backlog#viewer@group:*",
 		} {
 			result[key] = &openfgav1.Tuple{Key: tuple.MustParseTupleString(key)}
 		}
@@ -685,9 +687,15 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				},
 			},
 			args: args{
-				ctx:     context.Background(),
-				store:   "1",
-				filter:  storage.ReadUsersetTuplesFilter{},
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "group",
+					Relation: "member",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.WildcardRelationReference("group"),
+					},
+				},
 				options: storage.ReadUsersetTuplesOptions{},
 			},
 			setup: func() {
@@ -715,6 +723,9 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				filter: storage.ReadUsersetTuplesFilter{
 					Object:   "folder:backlog",
 					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("group", "member"),
+					},
 				},
 				options: storage.ReadUsersetTuplesOptions{},
 			},
@@ -744,6 +755,9 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 				filter: storage.ReadUsersetTuplesFilter{
 					Object:   "folder:backlog",
 					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("group", "member"),
+					},
 				},
 				options: storage.ReadUsersetTuplesOptions{},
 			},
@@ -755,6 +769,243 @@ func Test_combinedTupleReader_ReadUsersetTuples(t *testing.T) {
 			},
 			want:    nil,
 			wantErr: errors.New("test read error"),
+		},
+		{
+			name: "filter_wildcard_tuple_not_wildcard",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:1#member"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.WildcardRelationReference("group"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "filter_wildcard_tuple_wrong_type",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:*"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.WildcardRelationReference("foo"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "filter_wildcard_tuple_matches_filter",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:*"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.WildcardRelationReference("group"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["folder:backlog#viewer@group:*"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "filter_userset_tuple_not_userset",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:*"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("group", "member"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "filter_userset_tuple_not_match_type",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:1#member"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("other", "member"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "filter_userset_tuple_not_match_relation",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:1#member"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("group", "owner"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
+		},
+		{
+			name: "filter_userset_tuple_matches",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:1#member"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+						typesystem.DirectRelationReference("group", "member"),
+						typesystem.DirectRelationReference("group", "other"),
+					},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want: []*openfgav1.Tuple{
+				testTuples["folder:backlog#viewer@group:1#member"],
+			},
+			wantErr: nil,
+		},
+		{
+			name: "empty_restrictions",
+			fields: fields{
+				RelationshipTupleReader: mockRelationshipTupleReader,
+				contextualTuples: []*openfgav1.TupleKey{
+					testTuples["folder:backlog#viewer@group:1#member"].GetKey(),
+				},
+			},
+			args: args{
+				ctx:   context.Background(),
+				store: "1",
+				filter: storage.ReadUsersetTuplesFilter{
+					Object:   "folder:backlog",
+					Relation: "viewer",
+					// this should never happen. In real life, the safe thing to do is to
+					// ignore the tuple
+					AllowedUserTypeRestrictions: []*openfgav1.RelationReference{},
+				},
+				options: storage.ReadUsersetTuplesOptions{},
+			},
+			setup: func() {
+				mockRelationshipTupleReader.
+					EXPECT().
+					ReadUsersetTuples(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil)
+			},
+			want:    []*openfgav1.Tuple{},
+			wantErr: nil,
 		},
 	}
 	for _, tt := range tests {
