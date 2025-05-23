@@ -118,25 +118,27 @@ func TestResolver(t *testing.T) {
 		}
 		resultChan := make(chan checkOutcome, 1)
 
-		drain := resolver(ctx, 1, resultChan, panicHandler)
-		err := drain()
+		go resolver(ctx, 1, resultChan, panicHandler)
 
-		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		output := <-resultChan
+
+		require.ErrorContains(t, output.err, panicErr)
+		require.ErrorIs(t, output.err, ErrPanic)
 	})
 
-	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
+	t.Run("should_not_panic_on_closed_channel", func(t *testing.T) {
 		handler := func(context.Context) (*ResolveCheckResponse, error) {
 			return nil, nil
 		}
 		resultChan := make(chan checkOutcome, 1)
 		close(resultChan)
 
-		drain := resolver(ctx, 1, resultChan, handler)
-		err := drain()
+		go resolver(ctx, 1, resultChan, handler)
 
-		require.ErrorContains(t, err, "send on closed channel")
-		require.ErrorIs(t, err, ErrPanic)
+		output := <-resultChan
+
+		require.NoError(t, output.err)
+		require.Nil(t, output.resp)
 	})
 }
 
