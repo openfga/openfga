@@ -663,7 +663,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 //
 // For BUT NOT relations, getEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it
 // does it will mark this result as "requires check".
-// e.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
+// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
 // we do not mark as "requires check".
 // After determining whether this result will require check, getEdgesFromWeightedGraph will prune off the last edge of the
 // Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
