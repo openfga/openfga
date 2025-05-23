@@ -33,6 +33,7 @@ import (
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
+var globalWg weightedGraph.WeightedAuthorizationModelGraph
 
 type ReverseExpandRequest struct {
 	StoreID          string
@@ -322,6 +323,7 @@ func (c *ReverseExpandQuery) execute(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	wg := c.typesystem.GetWeightedGraph()
+	globalWg = *wg
 	if wg != nil {
 		targetTypeRel := req.weightedEdgeTypeRel
 		// This is true on the first call of reverse expand
@@ -490,9 +492,11 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	switch req.edge.Type {
 	case graph.DirectEdge:
+		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
 		relationFilter = req.edge.TargetReference.GetRelation() // "other_rel"
 		targetUserObjectType := req.User.GetObjectType()        // "employee"
 
+		// weighted edges have GetWildcards() which works for this
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
 			return err
