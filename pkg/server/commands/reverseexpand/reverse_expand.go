@@ -658,14 +658,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 	}
 }
 
-// getEdgesFromWeightedGraph returns all edges which have a path to the source type. It's responsible for handling
-// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
-// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
-// return all relevant edges from an OR.
-// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
-//
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// e.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
+// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
 // it will return the first edge encountered.
 //
 // For BUT NOT relations, getEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it
@@ -675,7 +668,7 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 // After determining whether this result will require check, getEdgesFromWeightedGraph will prune off the last edge of the
 // Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
 //
-// getEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error
+// getEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error.
 func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 	wg *weightedGraph.WeightedAuthorizationModelGraph,
 	targetTypeRelation string,
