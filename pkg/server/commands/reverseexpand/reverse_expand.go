@@ -44,6 +44,8 @@ type ReverseExpandRequest struct {
 	Consistency      openfgav1.ConsistencyPreference
 
 	edge *graph.RelationshipEdge
+	// TODO: might need another piece here
+	weightedEdgeTypeRel string
 }
 
 type IsUserRef interface {
@@ -321,14 +323,18 @@ func (c *ReverseExpandQuery) execute(
 
 	wg := c.typesystem.GetWeightedGraph()
 	if wg != nil {
-		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+		targetTypeRel := req.weightedEdgeTypeRel
+		// This is true on the first call of reverse expand
+		if targetTypeRel == "" {
+			targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+		}
+
 		edges, needsCheck, err := c.getEdgesFromWeightedGraph(
 			wg,
 			targetTypeRel,
 			sourceUserType,
 			intersectionOrExclusionInPreviousEdges,
 		)
-		println(edges, needsCheck, err) // to shut up compiler
 
 		if err != nil {
 			return err
@@ -484,8 +490,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	switch req.edge.Type {
 	case graph.DirectEdge:
-		relationFilter = req.edge.TargetReference.GetRelation()
-		targetUserObjectType := req.User.GetObjectType()
+		relationFilter = req.edge.TargetReference.GetRelation() // "other_rel"
+		targetUserObjectType := req.User.GetObjectType()        // "employee"
 
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
@@ -518,6 +524,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
 				Object: val.ObjectRelation.GetObject(),
 			})
+			fmt.Printf("TTU EDGE GetObject(): %s", val.ObjectRelation.GetObject())
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
@@ -527,9 +534,9 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   relationFilter,
-		UserFilter: userFilter,
+		ObjectType: req.edge.TargetReference.GetType(), //directs-employee
+		Relation:   relationFilter,                     // other-rel
+		UserFilter: userFilter,                         // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,
@@ -764,10 +771,12 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
+			fmt.Printf("JUSTIN DIRECT EDGE")
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
+			fmt.Printf("JUSTIN COMPUTED EDGE")
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			to := edge.GetTo().GetUniqueLabel()
 
@@ -785,11 +794,19 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 				return errs
 			}
 		case weightedGraph.TTUEdge:
+			fmt.Printf("JUSTIN TTU EDGE")
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.RewriteEdge:
 			fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
+			r.weightedEdgeTypeRel = edge.GetTo().GetUniqueLabel()
+			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			if err != nil {
+				errs = errors.Join(errs, err)
+				return errs
+			}
+			// Rewrite edge from directs-employee#alg_combined to exclusion:01JVZ4NBP9WMQ67GSMPNBXNGZR
 			// this'll need a dispatch with a new key, instead of "type#rel" it'll be "exclusion:01JVWQXTZYP578BTN93PR9JTQK"
 			// or intersection
 		default:
