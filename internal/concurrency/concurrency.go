@@ -26,3 +26,17 @@ func TrySendThroughChannel[T any](ctx context.Context, msg T, channel chan<- T) 
 		return true
 	}
 }
+
+func SafeSendThroughChannel[T any](ctx context.Context, msg T, channel chan<- T) (sent bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			sent = false
+		}
+	}()
+	select {
+	case <-ctx.Done():
+		return false
+	case channel <- msg:
+		return true
+	}
+}
