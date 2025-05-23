@@ -726,7 +726,7 @@ func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 			// For AND relations, mark as "needs check" and just pick the lowest weight edge
 			needsCheck = true
 
-			lowestWeightEdge := Reduce(edges, nil, cheapestEdgeTo(sourceType))
+			lowestWeightEdge := reduce(edges, nil, cheapestEdgeTo(sourceType))
 
 			// return only the lowest weight edge
 			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
@@ -734,7 +734,7 @@ func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
 	}
 
 	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := Filter(edges, hasPathTo(sourceType))
+	relevantEdges := filter(edges, hasPathTo(sourceType))
 
 	return relevantEdges, needsCheck, nil
 }
@@ -769,7 +769,7 @@ func cheapestEdgeTo(dst string) func(*weightedGraph.WeightedAuthorizationModelEd
 	}
 }
 
-func Reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
+func reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
 	i := initializer
 	for _, item := range s {
 		i = f(i, item)
@@ -777,7 +777,7 @@ func Reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
 	return i
 }
 
-func Filter[S ~[]E, E any](s S, f func(E) bool) []E {
+func filter[S ~[]E, E any](s S, f func(E) bool) []E {
 	var filteredItems []E
 	for _, item := range s {
 		if f(item) {
