@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/sourcegraph/conc/pool"
 	"go.uber.org/zap"
+
+	"github.com/openfga/openfga/pkg/logger"
 )
 
 // NewPool returns a new pool where each task respects context cancellation.

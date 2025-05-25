@@ -208,3 +208,26 @@ func MustNewLogger(logFormat, logLevel, logTimestampFormat string) *ZapLogger {
 
 	return logger
 }
+
+type contextKey int
+
+const (
+	contextKeyLogger contextKey = iota
+)
+
+func NewContext(ctx context.Context, l Logger) context.Context {
+	return context.WithValue(ctx, contextKeyLogger, l)
+}
+
+func FromContext(ctx context.Context) Logger {
+	if ctx == nil {
+		return nil
+	}
+
+	if v := ctx.Value(contextKeyLogger); v != nil {
+		if l, ok := v.(Logger); ok {
+			return l
+		}
+	}
+	return nil
+}

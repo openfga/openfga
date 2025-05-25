@@ -152,6 +152,10 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		zapLogger := l.(*logger.ZapLogger)
 
+		fieldLogger := zapLogger.With(fields...)
+
+		ctx = logger.NewContext(ctx, fieldLogger)
+
 		return &reporter{
 			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
 			logger:         l,
