@@ -87,7 +87,7 @@ func WithSharedIteratorDatastoreStorageLimit(limit int) DatastoreStorageOpt {
 func NewSharedIteratorDatastoreStorage(opts ...DatastoreStorageOpt) *Storage {
 	newStorage := &Storage{
 		limit: defaultSharedIteratorLimit,
-		iters: map[string]*internalSharedIterator{},
+		iters: make(map[string]*internalSharedIterator, 1000),
 	}
 	for _, opt := range opts {
 		opt(newStorage)
@@ -508,6 +508,7 @@ type sharedIterator struct {
 }
 
 func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time.Duration, maxAdmissionTime time.Duration, targetSize uint32) *sharedIterator {
+	items := make([]*openfgav1.Tuple, 0, targetSize)
 	newIter := &sharedIterator{
 		manager:          manager,
 		key:              key,
@@ -515,12 +516,11 @@ func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time
 		maxAdmissionTime: time.Now().Add(maxAdmissionTime),
 
 		mu:                 &sync.RWMutex{},
-		items:              new([]*openfgav1.Tuple),
+		items:              &items,
 		inner:              nil,
 		sharedErr:          new(error),
 		watchdogTimeoutErr: new(error),
 	}
-	*newIter.items = make([]*openfgav1.Tuple, 0, targetSize)
 	newIter.watchdogTimer = time.AfterFunc(maxAliveTime, newIter.watchdogTimeout)
 	return newIter
 }
@@ -592,9 +592,12 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, *s.watchdogTimeoutErr
 	}
 
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
+	/*
+		if s.watchdogTimer != nil {
+			s.watchdogTimer.Reset(s.maxAliveTime)
+		}
+
+	*/
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
@@ -650,9 +653,12 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, *s.watchdogTimeoutErr
 	}
 
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
+	/*
+		if s.watchdogTimer != nil {
+			s.watchdogTimer.Reset(s.maxAliveTime)
+		}
+
+	*/
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
@@ -720,8 +726,11 @@ func (s *sharedIterator) Stop() {
 	s.stopped = true
 	s.mu.Unlock()
 
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
+	/*
+		if s.watchdogTimer != nil {
+			s.watchdogTimer.Reset(s.maxAliveTime)
+		}
+
+	*/
 	s.manager.deref(s.key)
 }
