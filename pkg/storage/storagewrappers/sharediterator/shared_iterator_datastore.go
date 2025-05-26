@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -203,7 +204,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	if found {
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.Lock()
+		keyItem.iter.mu.RLock()
 
 		span.SetAttributes(attribute.Bool("found", true))
 
@@ -214,12 +215,12 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		if err != nil {
 			// This needs to be unlocked before sf.RelationshipTupleReader.ReadStartingWithUser
 			// to reduce the time holding lock across expensive operation
-			keyItem.iter.mu.Unlock()
+			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 		}
-		keyItem.iter.mu.Unlock()
+		keyItem.iter.mu.RUnlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
@@ -295,7 +296,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
 
-		keyItem.iter.mu.Lock()
+		keyItem.iter.mu.RLock()
 		span.SetAttributes(attribute.Bool("found", true))
 
 		// by the time we have access to keyItem.iter.mu, we know that
@@ -303,12 +304,12 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		// will fail).
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			keyItem.iter.mu.Unlock()
+			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 		}
-		keyItem.iter.mu.Unlock()
+		keyItem.iter.mu.RUnlock()
 
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
@@ -381,17 +382,17 @@ func (sf *IteratorDatastore) Read(
 	if found {
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.Lock()
+		keyItem.iter.mu.RLock()
 		span.SetAttributes(attribute.Bool("found", true))
 
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			keyItem.iter.mu.Unlock()
+			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 		}
-		keyItem.iter.mu.Unlock()
+		keyItem.iter.mu.RUnlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationRead, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
@@ -490,7 +491,7 @@ type sharedIterator struct {
 	key              string             // non-changing
 	maxAliveTime     time.Duration      // non-changing
 	maxAdmissionTime time.Time          // non-changing
-	head             int
+	head             atomic.Int32
 
 	mu                 *sync.RWMutex         // We expect the contention should be minimal. TODO: minimize mu holding time.
 	initializationErr  error                 // shared - protected by mu. Although it is shared, it is only inspected by clone().
@@ -510,7 +511,6 @@ func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time
 	newIter := &sharedIterator{
 		manager:          manager,
 		key:              key,
-		head:             0,
 		maxAliveTime:     maxAliveTime,
 		maxAdmissionTime: time.Now().Add(maxAdmissionTime),
 
@@ -539,7 +539,6 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 	newIter := &sharedIterator{
 		manager:      s.manager,
 		key:          s.key,
-		head:         0,
 		maxAliveTime: s.maxAliveTime,
 		// the start time and the maxAdmissionTime is only used for checking
 		// whether we need to clone. As such, it is not copied into the cloned copy.
@@ -586,10 +585,10 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	)
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
 
 	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
+		defer s.mu.RUnlock()
 		return nil, *s.watchdogTimeoutErr
 	}
 
@@ -599,13 +598,22 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
+		s.mu.RUnlock()
 		return nil, storage.ErrIteratorDone
 	}
 
-	if s.head < len(*s.items) {
+	currentHead := int(s.head.Load())
+
+	if currentHead < len(*s.items) {
 		span.SetAttributes(attribute.Bool("newItem", false))
-		return (*s.items)[s.head], nil
+		defer s.mu.RUnlock()
+		return (*s.items)[currentHead], nil
 	}
+
+	// When we get to here, it means that we need new item
+	s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// If there is an error, no need to get any more items, and we just return the error
 	if s.sharedErr != nil && *s.sharedErr != nil {
@@ -625,7 +633,7 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, err
 	}
 	*s.items = append(*s.items, item)
-	return item, nil
+	return (*s.items)[currentHead], nil
 }
 
 func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -635,10 +643,10 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	)
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
 
 	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
+		s.mu.RUnlock()
 		return nil, *s.watchdogTimeoutErr
 	}
 
@@ -648,22 +656,45 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
+		s.mu.RUnlock()
 		return nil, storage.ErrIteratorDone
 	}
-	if s.head < len(*s.items) {
-		currentHead := s.head
-		s.head++
+	currentHead := int(s.head.Add(1)) - 1
+
+	if currentHead < len(*s.items) {
+		defer s.mu.RUnlock()
 		return (*s.items)[currentHead], nil
 	}
+
+	// at this point, we want to get more data. So, we
+	// need to get the write lock.
+	s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// while holding the write lock, check one more time to see
+	// if we have enough room
+	if currentHead < len(*s.items) {
+		return (*s.items)[currentHead], nil
+	}
+
+	// at this point, we know that for sure we will need to get more data.
+
 	if s.sharedErr != nil && *s.sharedErr != nil {
 		// we are going to get more items. However, if we see error
 		// previously, we will not need to get more items
 		// and can simply return the same error.
 		span.SetAttributes(attribute.Bool("sharedError", true))
 		telemetry.TraceError(span, *s.sharedErr)
+		// we don't need to decrement the head counter because it is only
+		// fot this particular shared iterator.
 		return nil, *s.sharedErr
 	}
+
 	span.SetAttributes(attribute.Bool("newItem", true))
+
+	// it is entirely possible that some shared client has called Next()
+	// and fetch more data. There are no harm in getting more data
 
 	item, err := s.inner.Next(ctx)
 	if err != nil {
@@ -675,8 +706,7 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, err
 	}
 	*s.items = append(*s.items, item)
-	s.head++
-	return item, nil
+	return (*s.items)[currentHead], nil
 }
 
 func (s *sharedIterator) Stop() {
