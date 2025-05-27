@@ -1732,9 +1732,8 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
-	// This means we cannot reach the source type requested.
-	// e.g. there is no path from 'document' to 'user'
-	if _, ok = currentNode.GetWeight(sourceType); !ok {
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
 		return nil, false, nil
 	}
 
@@ -1743,17 +1742,18 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
+	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
+	// to remove Check from that workflow entirely, but until that's complete we need this information.
 	var needsCheck bool
 
 	if currentNode.GetNodeType() == graph.OperatorNode {
 		switch currentNode.GetLabel() {
 		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
 			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-			_, canReachSource := butNotEdge.GetWeight(sourceType)
 
-			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
+			// if the 'b' in BUT NOT b can reach the source type we're seeking
 			// we need to run check at the end
-			if canReachSource {
+			if hasPathTo(butNotEdge, sourceType) {
 				needsCheck = true
 			}
 
