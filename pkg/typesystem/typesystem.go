@@ -1711,7 +1711,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 // In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
 //
 // For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// e.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
+// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
 // it will return the first edge encountered.
 //
 // For BUT NOT relations, GetEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it

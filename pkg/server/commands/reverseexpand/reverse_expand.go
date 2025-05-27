@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -320,13 +321,13 @@ func (c *ReverseExpandQuery) execute(
 	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
 	_, _, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
 
-	if err == nil {
-		// TODO: another branch will implement this
-		// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
-	} else {
-		// log a message for why GetEdgesFromWeightedGraph failed and then
-		// let this continue to the old implementation
-	}
+	// TODO: the logic in this commented block is for implementation by follow up branch
+	//if err == nil {
+	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
+	//} else {
+	// log a message for why GetEdgesFromWeightedGraph failed and then
+	// let this continue to the old implementation
+	//}
 
 	g := graph.New(c.typesystem)
 
