@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -1772,11 +1773,24 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	}
 
 	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+	relevantEdges := slices.Collect(filterEdges(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
 		return hasPathTo(edge, sourceType)
-	})
+	}))
 
 	return relevantEdges, needsCheck, nil
+}
+
+func filterEdges(s []*graph.WeightedAuthorizationModelEdge, predicate func(edge *graph.WeightedAuthorizationModelEdge) bool) func(func(edge *graph.WeightedAuthorizationModelEdge) bool) {
+	return func(yield func(edge *graph.WeightedAuthorizationModelEdge) bool) {
+		for _, item := range s {
+			if predicate(item) {
+				if !yield(item) {
+					// Stop if yield returns false (no more items)
+					return
+				}
+			}
+		}
+	}
 }
 
 type weightedGraphItem interface {
