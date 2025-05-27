@@ -1,7 +1,7 @@
 package utils
 
 // Reduce accepts a generic slice, an initializer value, and a function.
-// It iterates over the slice applying the function f to the current accumulated value and each element in the slice,
+// It iterates over the slice applying the supplied function to the current accumulated value and each element in the slice,
 // reducing the slice to a single value.
 //
 // Example reducing to a sum:
