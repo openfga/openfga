@@ -316,18 +316,17 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	// can remove this check and just execute based on whether getEdgesFromWeightedGraph
-	// errors or not
+	/* TODO: the logic in this commented block is for implementation by follow up branch
 	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
-	_, _, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
+	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
 
-	// TODO: the logic in this commented block is for implementation by follow up branch
-	//if err == nil {
+	if err == nil {
 	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
-	//} else {
+	} else {
 	// log a message for why GetEdgesFromWeightedGraph failed and then
 	// let this continue to the old implementation
-	//}
+	}
+	*/
 
 	g := graph.New(c.typesystem)
 

@@ -283,11 +283,6 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefini
 	return nil, false
 }
 
-// GetWeightedGraph returns a pointer to the underlying authzWeightedGraph. Can be nil.
-func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
-	return t.authzWeightedGraph
-}
-
 // ResolveComputedRelation traverses the typesystem until finding the final resolution of a computed relationship.
 // Subsequent calls to this method are resolved from a cache.
 func (t *TypeSystem) ResolveComputedRelation(objectType, relation string) (string, error) {
@@ -1777,16 +1772,22 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	}
 
 	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := utils.Filter(edges, hasPathTo(sourceType))
+	relevantEdges := utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+		return hasPathTo(edge, sourceType)
+	})
 
 	return relevantEdges, needsCheck, nil
 }
 
-func hasPathTo(dest string) func(*graph.WeightedAuthorizationModelEdge) bool {
-	return func(edge *graph.WeightedAuthorizationModelEdge) bool {
-		_, ok := edge.GetWeight(dest)
-		return ok
-	}
+type weightedGraphItem interface {
+	GetWeight(destinationType string) (int, bool)
+}
+
+// hasPathTo returns a boolean indicating if a path exists from a node or edge to a terminal type.
+// E.g. can we reach 'user' starting from 'document'.
+func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
+	_, ok := nodeOrEdge.GetWeight(destinationType)
+	return ok
 }
 
 func cheapestEdgeTo(dst string) func(*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
