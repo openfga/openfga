@@ -3,6 +3,7 @@ package typesystem
 import (
 	"context"
 	"fmt"
+	"go.uber.org/mock/gomock"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -7063,6 +7064,140 @@ func TestPathExists(t *testing.T) {
 	}
 }
 
+func TestGetEdgesFromWeightedGraph(t *testing.T) {
+	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type group
+			relations
+				define banned: [other]
+				define allowed: [user, other] but not banned
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#allowed", "other")
+		require.NoError(t, err)
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the exclusion node
+		require.Len(t, edges, 1)
+
+		// Haven't hit the exclusion yet
+		require.False(t, needsCheck)
+
+		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
+		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(exclusionLabel, "other")
+		require.NoError(t, err)
+
+		// We've hit the exclusion and it applies to 'type other', so this should be true
+		require.True(t, needsCheck)
+
+		// There are 3 edges, but one of them is the 'but not' and one is to 'user' which isn't relevant
+		// since we're searching for 'other'
+		require.Len(t, edges, 1)
+		require.Equal(t, graph.DirectEdge, edges[0].GetEdgeType())
+
+		// Now get edges for type user, the exclusion does not apply to user so this should not need check
+		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(exclusionLabel, "user")
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+	})
+
+	t.Run("intersection_returns_lowest_weight_edge", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type group
+			relations
+				define parent: [group]
+				define admin: [user] or admin from parent
+				define allowed: [user] and admin
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#allowed", "user")
+		require.NoError(t, err)
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the exclusion node
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+
+		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
+		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(intersectionLabel, "user")
+		require.NoError(t, err)
+
+		// 2 edges exist, but we should only receive the lower-weight edge
+		require.Len(t, edges, 1)
+		require.True(t, needsCheck)
+
+		edge := edges[0]
+		require.Equal(t, graph.DirectEdge, edge.GetEdgeType())
+
+		weight, _ := edge.GetWeight("user")
+		require.Equal(t, 1, weight)
+	})
+
+	t.Run("union_returns_all_edges_with_path_to_source_type", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type employee
+		type group
+			relations
+				define a: [user]
+				define b: [user]
+				define c: [other]
+				define d: [employee]
+				define or_relation: a or b or c or d
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#or_relation", "user")
+		require.NoError(t, err)
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the union node
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+
+		unionLabel := edges[0].GetTo().GetUniqueLabel()
+
+		// Two of these edges lead to user
+		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(unionLabel, "user")
+		require.NoError(t, err)
+		require.Len(t, edges, 2)
+		require.False(t, needsCheck)
+
+		// One of these edges leads to employee
+		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(unionLabel, "employee")
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+	})
+}
 func BenchmarkNewAndValidate(b *testing.B) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
