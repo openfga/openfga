@@ -602,6 +602,14 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return (*s.items)[s.head], nil
 	}
 
+	// If there is an error, no need to get any more items, and we just return the error
+	if s.sharedErr != nil && *s.sharedErr != nil {
+		span.SetAttributes(attribute.Bool("sharedError", true))
+		telemetry.TraceError(span, *s.sharedErr)
+		defer s.mu.RUnlock()
+		return nil, *s.sharedErr
+	}
+
 	// When we get to here, it means that we need new item
 	s.mu.RUnlock()
 	s.mu.Lock()
