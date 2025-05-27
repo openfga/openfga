@@ -1723,7 +1723,7 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
 	if t.authzWeightedGraph == nil {
-		return nil, false, errors.New("weighted graph is nil")
+		return nil, false, fmt.Errorf("weighted graph is nil")
 	}
 
 	wg := t.authzWeightedGraph
