@@ -614,6 +614,22 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	s.mu.RUnlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	span.SetAttributes(attribute.Bool("newItem", true))
+	// there is a rare chance that timeout / stopped / has more item in between
+
+	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
+		return nil, *s.sharedErr
+	}
+
+	if s.stopped {
+		span.SetAttributes(attribute.Bool("stopped", true))
+		return nil, storage.ErrIteratorDone
+	}
+
+	if s.head < len(*s.items) {
+		span.SetAttributes(attribute.Bool("newItem", false))
+		return (*s.items)[s.head], nil
+	}
 
 	// If there is an error, no need to get any more items, and we just return the error
 	if s.sharedErr != nil && *s.sharedErr != nil {
@@ -622,7 +638,6 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, *s.sharedErr
 	}
 
-	span.SetAttributes(attribute.Bool("newItem", true))
 	item, err := s.inner.Next(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
@@ -636,7 +651,7 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 		return nil, err
 	}
 	*s.items = append(*s.items, item)
-	return (*s.items)[s.head], nil
+	return item, nil
 }
 
 func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
