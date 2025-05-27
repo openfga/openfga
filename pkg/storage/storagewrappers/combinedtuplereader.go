@@ -104,6 +104,32 @@ func (c *CombinedTupleReader) ReadUserTuple(
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk, options)
 }
 
+func tupleMatchesAllowedUserTypeRestrictions(t *openfgav1.Tuple,
+	allowedUserTypeRestrictions []*openfgav1.RelationReference) bool {
+	tupleUser := t.GetKey().GetUser()
+	if tuple.GetUserTypeFromUser(tupleUser) != tuple.UserSet {
+		return false
+	}
+	// We expect there is always allowedUserTypeRestrictions. If none is specified,
+	// the request itself is unexpected and the safe thing is not return the
+	// contextual tuples.
+	for _, allowedUserType := range allowedUserTypeRestrictions {
+		if _, ok := allowedUserType.GetRelationOrWildcard().(*openfgav1.RelationReference_Wildcard); ok {
+			if tuple.IsTypedWildcard(tupleUser) && tuple.GetType(tupleUser) == allowedUserType.GetType() {
+				return true
+			}
+		}
+		if _, ok := allowedUserType.GetRelationOrWildcard().(*openfgav1.RelationReference_Relation); ok {
+			if tuple.IsObjectRelation(tupleUser) &&
+				tuple.GetType(tupleUser) == allowedUserType.GetType() &&
+				tuple.GetRelation(tupleUser) == allowedUserType.GetRelation() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ReadUsersetTuples see [storage.RelationshipTupleReader.ReadUsersetTuples].
 func (c *CombinedTupleReader) ReadUsersetTuples(
 	ctx context.Context,
@@ -114,7 +140,7 @@ func (c *CombinedTupleReader) ReadUsersetTuples(
 	var usersetTuples []*openfgav1.Tuple
 
 	for _, t := range filterTuples(c.contextualTuplesOrderedByObjectID, filter.Object, filter.Relation, []string{}) {
-		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
+		if tupleMatchesAllowedUserTypeRestrictions(t, filter.AllowedUserTypeRestrictions) {
 			usersetTuples = append(usersetTuples, t)
 		}
 	}
