@@ -1783,8 +1783,8 @@ type weightedGraphItem interface {
 	GetWeight(destinationType string) (int, bool)
 }
 
-// hasPathTo returns a boolean indicating if a path exists from a node or edge to a terminal type.
-// E.g. can we reach 'user' starting from 'document'.
+// hasPathTo returns a boolean indicating if a path exists from a node or edge to a terminal type. E.g
+// can we reach "user" from "document".
 func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 	_, ok := nodeOrEdge.GetWeight(destinationType)
 	return ok
