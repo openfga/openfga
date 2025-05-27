@@ -514,6 +514,9 @@ func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time
 
 // It is assumed that mu is held by the parent while cloning.
 func (s *sharedIterator) clone() (*sharedIterator, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.initializationErr != nil {
 		return nil, s.initializationErr
 	}
@@ -522,8 +525,6 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
 		return nil, errSharedIteratorAfterLastAdmissionTime
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	newIter := &sharedIterator{
 		manager:      s.manager,
