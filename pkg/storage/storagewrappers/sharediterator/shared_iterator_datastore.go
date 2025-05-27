@@ -514,16 +514,17 @@ func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time
 
 // It is assumed that mu is held by the parent while cloning.
 func (s *sharedIterator) clone() (*sharedIterator, error) {
+	if time.Now().After(s.maxAdmissionTime) {
+		// To avoid stale data, we want to prevent shared iterator from using the clone if it is created after
+		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
+		return nil, errSharedIteratorAfterLastAdmissionTime
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	if s.initializationErr != nil {
 		return nil, s.initializationErr
-	}
-	if time.Now().After(s.maxAdmissionTime) {
-		// To avoid stale data, we want to prevent shared iterator from using the clone if it is created after
-		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
-		return nil, errSharedIteratorAfterLastAdmissionTime
 	}
 
 	newIter := &sharedIterator{
@@ -661,11 +662,11 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	)
 	defer span.End()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
 
 	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
 		// watchdog timer has higher priority
+		defer s.mu.RUnlock()
 		return nil, *s.sharedErr
 	}
 
@@ -678,6 +679,39 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
+		s.mu.RUnlock()
+		return nil, storage.ErrIteratorDone
+	}
+
+	if s.head < len(*s.items) {
+		currentHead := s.head
+		s.head++
+		defer s.mu.RUnlock()
+		return (*s.items)[currentHead], nil
+	}
+
+	if s.sharedErr != nil && *s.sharedErr != nil {
+		// we are going to get more items. However, if we see error
+		// previously, we will not need to get more items
+		// and can simply return the same error.
+		span.SetAttributes(attribute.Bool("sharedError", true))
+		telemetry.TraceError(span, *s.sharedErr)
+		defer s.mu.RUnlock()
+		return nil, *s.sharedErr
+	}
+
+	// at this point, we know that for sure we will need to get more data.
+	s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
+		// watchdog timer has higher priority
+		return nil, *s.sharedErr
+	}
+
+	if s.stopped {
+		span.SetAttributes(attribute.Bool("stopped", true))
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -686,8 +720,6 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		s.head++
 		return (*s.items)[currentHead], nil
 	}
-
-	// at this point, we know that for sure we will need to get more data.
 
 	if s.sharedErr != nil && *s.sharedErr != nil {
 		// we are going to get more items. However, if we see error
