@@ -577,10 +577,10 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	)
 	defer span.End()
 
-	s.mu.RLock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// if we have seen timeout, anything else is error
 	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
-		defer s.mu.RUnlock()
 		return nil, *s.sharedErr
 	}
 
@@ -592,14 +592,12 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	*/
 
 	if s.stopped {
-		s.mu.RUnlock()
 		span.SetAttributes(attribute.Bool("stopped", true))
 		return nil, storage.ErrIteratorDone
 	}
 
 	if s.head < len(*s.items) {
 		span.SetAttributes(attribute.Bool("newItem", false))
-		defer s.mu.RUnlock()
 		return (*s.items)[s.head], nil
 	}
 
@@ -607,37 +605,12 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	if s.sharedErr != nil && *s.sharedErr != nil {
 		span.SetAttributes(attribute.Bool("sharedError", true))
 		telemetry.TraceError(span, *s.sharedErr)
-		defer s.mu.RUnlock()
 		return nil, *s.sharedErr
 	}
 
 	// When we get to here, it means that we need new item
-	s.mu.RUnlock()
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	span.SetAttributes(attribute.Bool("newItem", true))
 	// there is a rare chance that timeout / stopped / has more item in between
-
-	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
-		return nil, *s.sharedErr
-	}
-
-	if s.stopped {
-		span.SetAttributes(attribute.Bool("stopped", true))
-		return nil, storage.ErrIteratorDone
-	}
-
-	if s.head < len(*s.items) {
-		span.SetAttributes(attribute.Bool("newItem", false))
-		return (*s.items)[s.head], nil
-	}
-
-	// If there is an error, no need to get any more items, and we just return the error
-	if s.sharedErr != nil && *s.sharedErr != nil {
-		span.SetAttributes(attribute.Bool("sharedError", true))
-		telemetry.TraceError(span, *s.sharedErr)
-		return nil, *s.sharedErr
-	}
 
 	item, err := s.inner.Next(ctx)
 	if err != nil {
@@ -662,11 +635,11 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	)
 	defer span.End()
 
-	s.mu.RLock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
 		// watchdog timer has higher priority
-		defer s.mu.RUnlock()
 		return nil, *s.sharedErr
 	}
 
@@ -679,14 +652,12 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 
 	if s.stopped {
 		span.SetAttributes(attribute.Bool("stopped", true))
-		s.mu.RUnlock()
 		return nil, storage.ErrIteratorDone
 	}
 
 	if s.head < len(*s.items) {
 		currentHead := s.head
 		s.head++
-		defer s.mu.RUnlock()
 		return (*s.items)[currentHead], nil
 	}
 
@@ -696,42 +667,10 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 		// and can simply return the same error.
 		span.SetAttributes(attribute.Bool("sharedError", true))
 		telemetry.TraceError(span, *s.sharedErr)
-		defer s.mu.RUnlock()
 		return nil, *s.sharedErr
 	}
 
 	// at this point, we know that for sure we will need to get more data.
-	s.mu.RUnlock()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.sharedErr != nil && errors.Is(*s.sharedErr, errSharedIteratorWatchdog) {
-		// watchdog timer has higher priority
-		return nil, *s.sharedErr
-	}
-
-	if s.stopped {
-		span.SetAttributes(attribute.Bool("stopped", true))
-		return nil, storage.ErrIteratorDone
-	}
-
-	if s.head < len(*s.items) {
-		currentHead := s.head
-		s.head++
-		return (*s.items)[currentHead], nil
-	}
-
-	if s.sharedErr != nil && *s.sharedErr != nil {
-		// we are going to get more items. However, if we see error
-		// previously, we will not need to get more items
-		// and can simply return the same error.
-		span.SetAttributes(attribute.Bool("sharedError", true))
-		telemetry.TraceError(span, *s.sharedErr)
-		// we don't need to decrement the head counter because it is only
-		// fot this particular shared iterator.
-		return nil, *s.sharedErr
-	}
-
 	span.SetAttributes(attribute.Bool("newItem", true))
 
 	// it is entirely possible that some shared client has called Next()
