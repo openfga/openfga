@@ -14,8 +14,6 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	weightedGraph "github.com/openfga/language/pkg/go/graph"
-
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
@@ -317,23 +315,19 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	wg := c.typesystem.GetWeightedGraph()
-	if wg != nil {
-		targetTypeRel := targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
-		_, _, err := c.getEdgesFromWeightedGraph(
-			wg,
-			targetTypeRel,
-			sourceUserType,
-			intersectionOrExclusionInPreviousEdges,
-		)
+	// can remove this check and just execute based on whether getEdgesFromWeightedGraph
+	// errors or not
+	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
+	_, _, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
 
-		if err != nil {
-			return err
-		}
+	if err == nil {
+		// TODO: another branch will implement this
+		// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
+	} else {
+		// log a message for why GetEdgesFromWeightedGraph failed and then
+		// let this continue to the old implementation
 	}
 
-	// TODO: another branch will implement this
-	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
@@ -656,133 +650,4 @@ func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch ui
 		metadata.WasThrottled.Store(true)
 		c.dispatchThrottlerConfig.Throttler.Throttle(ctx)
 	}
-}
-
-// getEdgesFromWeightedGraph returns all edges which have a path to the source type. It's responsible for handling
-// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
-// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
-// return all relevant edges from an OR.
-// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
-//
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// e.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
-// it will return the first edge encountered.
-//
-// For BUT NOT relations, getEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it
-// does it will mark this result as "requires check".
-// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
-// we do not mark as "requires check".
-// After determining whether this result will require check, getEdgesFromWeightedGraph will prune off the last edge of the
-// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
-//
-// getEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error
-func (c *ReverseExpandQuery) getEdgesFromWeightedGraph(
-	wg *weightedGraph.WeightedAuthorizationModelGraph,
-	targetTypeRelation string,
-	sourceType string,
-	needsCheck bool,
-) ([]*weightedGraph.WeightedAuthorizationModelEdge, bool, error) {
-	if wg == nil {
-		// this should never happen
-		return nil, false, errors.New("weighted graph is nil")
-	}
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
-		// This should never happen
-		return nil, false, errors.New("currentNode is nil")
-	}
-
-	// This means we cannot reach the source type requested.
-	// e.g. there is no path from 'document' to 'user'
-	if _, ok = currentNode.GetWeight(sourceType); !ok {
-		return nil, false, nil
-	}
-
-	edges, _ := wg.GetEdgesFromNode(currentNode)
-
-	// TODO: this _shouldn't_ be reachable but will be dealt with in a follow up PR
-	// This would mean that we dispatched from a direct edge, which doesn't make sense
-	if len(edges) == 0 {
-		return nil, false, errors.New("no outgoing edges")
-	}
-
-	if currentNode.GetNodeType() == weightedGraph.OperatorNode {
-		switch currentNode.GetLabel() {
-		case weightedGraph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
-			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-			_, canReachSource := butNotEdge.GetWeight(sourceType)
-
-			// if the 'b' in BUT NOT b has a weight for the terminal type we're seeking
-			// we need to run check at the end
-			if canReachSource {
-				needsCheck = true
-			}
-
-			// prune off the "BUT NOT b" portion of these edges and keep going
-			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
-			edges = edges[:len(edges)-1]
-		case weightedGraph.IntersectionOperator:
-			// For AND relations, mark as "needs check" and just pick the lowest weight edge
-			needsCheck = true
-
-			lowestWeightEdge := reduce(edges, nil, cheapestEdgeTo(sourceType))
-
-			// return only the lowest weight edge
-			edges = []*weightedGraph.WeightedAuthorizationModelEdge{lowestWeightEdge}
-		}
-	}
-
-	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := filter(edges, hasPathTo(sourceType))
-
-	return relevantEdges, needsCheck, nil
-}
-
-func hasPathTo(dest string) func(*weightedGraph.WeightedAuthorizationModelEdge) bool {
-	return func(edge *weightedGraph.WeightedAuthorizationModelEdge) bool {
-		_, ok := edge.GetWeight(dest)
-		return ok
-	}
-}
-
-func cheapestEdgeTo(dst string) func(*weightedGraph.WeightedAuthorizationModelEdge, *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
-	return func(lowest, current *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
-		if lowest == nil {
-			return current
-		}
-
-		a, ok := lowest.GetWeight(dst)
-		if !ok {
-			return current
-		}
-
-		b, ok := current.GetWeight(dst)
-		if !ok {
-			return lowest
-		}
-
-		if b < a {
-			return current
-		}
-		return lowest
-	}
-}
-
-func reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
-	i := initializer
-	for _, item := range s {
-		i = f(i, item)
-	}
-	return i
-}
-
-func filter[S ~[]E, E any](s S, f func(E) bool) []E {
-	var filteredItems []E
-	for _, item := range s {
-		if f(item) {
-			filteredItems = append(filteredItems, item)
-		}
-	}
-	return filteredItems
 }
