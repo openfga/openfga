@@ -8,6 +8,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Fixed
+- Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
+
 ## [1.8.13] - 2025-05-22
 ### Added
 - New `DatastoreThrottle` configuration for Check, ListObjects, ListUsers. [#2452](https://github.com/openfga/openfga/pull/2452)
