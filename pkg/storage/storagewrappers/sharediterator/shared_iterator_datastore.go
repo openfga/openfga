@@ -203,7 +203,6 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	if found {
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.RLock()
 
 		span.SetAttributes(attribute.Bool("found", true))
 
@@ -212,23 +211,19 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		// will fail).
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			// This needs to be unlocked before sf.RelationshipTupleReader.ReadStartingWithUser
-			// to reduce the time holding lock across expensive operation
-			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 		}
-		keyItem.iter.mu.RUnlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
 		return item, nil
 	}
 	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
+		sf.internalStorage.mu.Unlock()
 		span.SetAttributes(attribute.Bool("overlimit", true))
 
-		sf.internalStorage.mu.Unlock()
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		// we cannot share this iterator because we have reached the size limit.
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
@@ -241,8 +236,8 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		counter: 1,
 		iter:    newIterator,
 	}
-	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
+	sharedIteratorCount.Inc()
 	span.SetAttributes(attribute.Bool("found", false))
 
 	actual, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
@@ -294,8 +289,6 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	if found {
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
-
-		keyItem.iter.mu.RLock()
 		span.SetAttributes(attribute.Bool("found", true))
 
 		// by the time we have access to keyItem.iter.mu, we know that
@@ -303,12 +296,10 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		// will fail).
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 		}
-		keyItem.iter.mu.RUnlock()
 
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
@@ -332,8 +323,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		counter: 1,
 		iter:    newIterator,
 	}
-	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
+	sharedIteratorCount.Inc()
 	span.SetAttributes(attribute.Bool("found", false))
 
 	actual, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
@@ -381,17 +372,14 @@ func (sf *IteratorDatastore) Read(
 	if found {
 		keyItem.counter++
 		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.RLock()
 		span.SetAttributes(attribute.Bool("found", true))
 
 		item, err := keyItem.iter.clone()
 		if err != nil {
-			keyItem.iter.mu.RUnlock()
 			sf.deref(cacheKey)
 			telemetry.TraceError(span, err)
 			return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 		}
-		keyItem.iter.mu.RUnlock()
 		sharedIteratorQueryHistogram.WithLabelValues(
 			storagewrappersutil.OperationRead, sf.method, "true",
 		).Observe(float64(time.Since(start).Milliseconds()))
@@ -412,8 +400,8 @@ func (sf *IteratorDatastore) Read(
 		counter: 1,
 		iter:    newIterator,
 	}
-	sharedIteratorCount.Inc()
 	sf.internalStorage.mu.Unlock()
+	sharedIteratorCount.Inc()
 	span.SetAttributes(attribute.Bool("found", false))
 
 	actual, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
@@ -446,9 +434,9 @@ func (sf *IteratorDatastore) deref(cacheKey string) {
 	}
 	item.counter--
 	if item.counter == 0 {
-		sharedIteratorCount.Dec()
 		delete(sf.internalStorage.iters, cacheKey)
 		sf.internalStorage.mu.Unlock()
+		sharedIteratorCount.Dec()
 		item.iter.cleanup() // will grab `mu` internally, thus must be yielded before called.
 		return
 	}
@@ -471,16 +459,17 @@ func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, iter *sharedIterat
 	if item.iter != iter {
 		// This is the case where the watchdogTimeout runs after the item has been dereferenced and then re-created.
 		// In this case, we only want to clean the timed-out shared iterator up - not the newly re-created iterator.
-		sf.logger.Debug("shared iterator watchdog timeout deref key but new shared iter is created in the meantime", zap.String("cacheKey", cacheKey))
 		sf.internalStorage.mu.Unlock()
+		sf.logger.Debug("shared iterator watchdog timeout deref key but new shared iter is created in the meantime", zap.String("cacheKey", cacheKey))
 
 		iter.cleanup()
 		return
 	}
 	// no one has deleted / recreate the map's entry. Time to clean myself up.
 	delete(sf.internalStorage.iters, cacheKey)
-	sharedIteratorCount.Dec()
 	sf.internalStorage.mu.Unlock()
+	sharedIteratorCount.Dec()
+
 	item.iter.cleanup()
 }
 
@@ -533,6 +522,8 @@ func (s *sharedIterator) clone() (*sharedIterator, error) {
 		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
 		return nil, errSharedIteratorAfterLastAdmissionTime
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	newIter := &sharedIterator{
 		manager:      s.manager,
@@ -599,8 +590,8 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	*/
 
 	if s.stopped {
-		span.SetAttributes(attribute.Bool("stopped", true))
 		s.mu.RUnlock()
+		span.SetAttributes(attribute.Bool("stopped", true))
 		return nil, storage.ErrIteratorDone
 	}
 
