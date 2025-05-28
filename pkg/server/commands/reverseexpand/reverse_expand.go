@@ -473,23 +473,14 @@ func (c *ReverseExpandQuery) shouldCheckPublicAssignable(targetReference *openfg
 	return publiclyAssignable, nil
 }
 
-func (c *ReverseExpandQuery) readTuplesAndExecute(
+func (c *ReverseExpandQuery) buildQueryFilters(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
-	defer span.End()
-
+) ([]*openfgav1.ObjectRelation, string, error) {
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
-
+	// type assertion to determine whether this is internal graph or weighted graph
+	// OR do we use a different key, req.edge vs req.weightedEdge
 	switch req.edge.Type {
 	case graph.DirectEdge:
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
@@ -499,7 +490,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		// weighted edges have GetWildcards() which works for this
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 
 		if publiclyAssignable {
@@ -534,6 +525,31 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		}
 	default:
 		panic("unsupported edge type")
+	}
+
+	return userFilter, relationFilter, nil
+}
+
+func (c *ReverseExpandQuery) readTuplesAndExecute(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
+	defer span.End()
+
+	var userFilter []*openfgav1.ObjectRelation
+	var relationFilter string
+
+	userFilter, relationFilter, err := c.buildQueryFilters(ctx, req)
+	if err != nil {
+		return err
 	}
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
