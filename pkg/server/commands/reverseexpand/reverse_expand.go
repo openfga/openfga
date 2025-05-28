@@ -516,8 +516,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersV2(
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
 		// TODO: might want a helper to get the type off it
 		from := req.weightedEdge.GetFrom().GetLabel()
-		rel := from[strings.Index(from, "#")+1:] // directs-employee#other_rel -> other_rel
-		relationFilter = rel
+		relationFilter = getRelationFromLabel(from) // directs-employee#other_rel -> other_rel
 
 		targetUserObjectType := req.weightedEdge.GetTo().GetLabel() // "employee"
 
@@ -759,9 +758,10 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteV2(
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(), //directs-employee
-		Relation:   relationFilter,                     // other-rel
-		UserFilter: userFilter,                         // .Object = employee#alg_combined_1
+		ObjectType: getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()), // e.g. directs-employee
+		//ObjectType: req.edge.TargetReference.GetType(),
+		Relation:   relationFilter, // other-rel
+		UserFilter: userFilter,     // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,
@@ -1007,7 +1007,7 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 			to := edge.GetTo().GetUniqueLabel()
 
 			// turn "document#viewer" into "viewer"
-			rel := to[strings.Index(to, "#")+1:]
+			rel := getRelationFromLabel(to)
 			r.User = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   sourceUserObj,
@@ -1099,5 +1099,20 @@ func filter[S ~[]E, E any](s S, f func(E) bool) []E {
 
 // expects a "type#rel"
 func getTypeFromLabel(label string) string {
+	idx := strings.Index(label, "#")
+	if idx == -1 {
+		return label
+	}
 
+	return label[idx+1:]
+}
+
+// expects a "type#rel"
+func getRelationFromLabel(label string) string {
+	idx := strings.Index(label, "#")
+	if idx == -1 {
+		return label
+	}
+
+	return label[:idx]
 }
