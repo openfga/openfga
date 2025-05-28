@@ -10386,3 +10386,25 @@ tests:
               relation: rel1
               object: document:x
             expectation: true
+  - name: combined_public_wildcard_userset
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type role
+            relations
+              define assignee: [user]
+          type deployment
+            relations
+              define can_access: [user:*, role#assignee]
+        tuples:
+          - user: role:superadmin#assignee
+            relation: can_access
+            object: deployment:1
+        checkAssertions:
+          - tuple:
+              user: user:jdoe
+              relation: can_access
+              object: deployment:1
+            expectation: false
