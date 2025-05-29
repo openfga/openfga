@@ -34,7 +34,6 @@ import (
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
-var globalWg weightedGraph.WeightedAuthorizationModelGraph // TODO: remove, for debugging convenience
 
 type ReverseExpandRequest struct {
 	StoreID          string
@@ -274,15 +273,14 @@ func (c *ReverseExpandQuery) execute(
 		span.SetAttributes(attribute.String("edge", req.edge.String()))
 	}
 
-	depth, ok := graph.ResolutionDepthFromContext(ctx)
-	if !ok {
-		ctx = graph.ContextWithResolutionDepth(ctx, 0)
-	} else {
+	if depth, ok := graph.ResolutionDepthFromContext(ctx); ok {
 		if depth >= c.resolveNodeLimit {
 			return graph.ErrResolutionDepthExceeded
 		}
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
+	} else {
+		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	}
 
 	var sourceUserRef *openfgav1.RelationReference
@@ -333,7 +331,10 @@ func (c *ReverseExpandQuery) execute(
 
 	wg := c.typesystem.GetWeightedGraph()
 	if wg != nil {
-		globalWg = *wg // TODO : remove - only for debugging convenience
+		// TODO : remove, for debugging only
+		if _, ok := ctx.Value("WG").(*typesystem.TypeSystem); !ok {
+			ctx = context.WithValue(ctx, "WG", wg)
+		}
 
 		targetTypeRel := req.weightedEdgeTypeRel
 		// This is true on the first call of reverse expand
