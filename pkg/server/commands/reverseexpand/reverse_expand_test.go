@@ -454,7 +454,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			}
 			results = append(results, res.Object)
 		case err := <-errChan:
-			require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
+			require.FailNowf(t, "unexpected error received on error channel", "err: %v", err.Error())
 			return
 		case <-ctx.Done():
 			return
