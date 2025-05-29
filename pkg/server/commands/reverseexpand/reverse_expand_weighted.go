@@ -80,7 +80,7 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 		case weightedGraph.TTUEdge:
 			fmt.Printf("JUSTIN TTU EDGE")
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandTupleToUserset(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.RewriteEdge:
 			fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
@@ -130,63 +130,29 @@ func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
 	return err
 }
 
-func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
+func (c *ReverseExpandQuery) reverseExpandTupleToUsersetWeighted(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-) ([]*openfgav1.ObjectRelation, string, error) {
-	var userFilter []*openfgav1.ObjectRelation
-	var relationFilter string
-	// type assertion to determine whether this is internal graph or weighted graph?
-	// OR do we use a different key, req.edge vs req.weightedEdge?
-	// or are there just completely different code paths
-	switch req.weightedEdge.GetEdgeType() {
-	case weightedGraph.DirectEdge:
-		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
-		// TODO: might want a helper to get the type off it
-		from := req.weightedEdge.GetFrom().GetLabel()
-		relationFilter = getRelationFromLabel(from) // directs-employee#other_rel -> other_rel
-
-		targetUserObjectType := req.weightedEdge.GetTo().GetLabel() // "employee"
-
-		publiclyAssignable := slices.Contains(req.weightedEdge.GetWildcards(), targetUserObjectType)
-
-		if publiclyAssignable {
-			// e.g. 'user:*'
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: tuple.TypedPublicWildcard(targetUserObjectType),
-			})
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
+		//attribute.String("edge", req.edge.String()),
+		attribute.String("source.user", req.User.String()),
+	))
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
 		}
+		span.End()
+	}()
 
-		// e.g. 'user:bob'
-		if val, ok := req.User.(*UserRefObject); ok {
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: tuple.BuildObject(val.Object.GetType(), val.Object.GetId()),
-			})
-		}
-
-		// e.g. 'group:eng#member'
-		if val, ok := req.User.(*UserRefObjectRelation); ok {
-			userFilter = append(userFilter, val.ObjectRelation)
-		}
-	case weightedGraph.TTUEdge:
-		relationFilter = req.edge.TuplesetRelation
-		// a TTU edge can only have a userset as a source node
-		// e.g. 'group:eng#member'
-		if val, ok := req.User.(*UserRefObjectRelation); ok {
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: val.ObjectRelation.GetObject(),
-			})
-			fmt.Printf("TTU EDGE GetObject(): %s", val.ObjectRelation.GetObject())
-		} else {
-			panic("unexpected source for reverse expansion of tuple to userset")
-		}
-	// TODO: are there any other cases?
-	default:
-		panic("unsupported edge type")
-	}
-
-	return userFilter, relationFilter, nil
+	err = c.readTuplesAndExecuteWeighted(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
+
 func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -307,6 +273,64 @@ LoopOnIterator:
 	}
 
 	return nil
+}
+
+func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+) ([]*openfgav1.ObjectRelation, string, error) {
+	var userFilter []*openfgav1.ObjectRelation
+	var relationFilter string
+	// type assertion to determine whether this is internal graph or weighted graph?
+	// OR do we use a different key, req.edge vs req.weightedEdge?
+	// or are there just completely different code paths
+	switch req.weightedEdge.GetEdgeType() {
+	case weightedGraph.DirectEdge:
+		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
+		// TODO: might want a helper to get the type off it
+		from := req.weightedEdge.GetFrom().GetLabel()
+		relationFilter = getRelationFromLabel(from) // directs-employee#other_rel -> other_rel
+
+		targetUserObjectType := req.weightedEdge.GetTo().GetLabel() // "employee"
+
+		publiclyAssignable := slices.Contains(req.weightedEdge.GetWildcards(), targetUserObjectType)
+
+		if publiclyAssignable {
+			// e.g. 'user:*'
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: tuple.TypedPublicWildcard(targetUserObjectType),
+			})
+		}
+
+		// e.g. 'user:bob'
+		if val, ok := req.User.(*UserRefObject); ok {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: tuple.BuildObject(val.Object.GetType(), val.Object.GetId()),
+			})
+		}
+
+		// e.g. 'group:eng#member'
+		if val, ok := req.User.(*UserRefObjectRelation); ok {
+			userFilter = append(userFilter, val.ObjectRelation)
+		}
+	case weightedGraph.TTUEdge:
+		relationFilter = req.edge.TuplesetRelation
+		// a TTU edge can only have a userset as a source node
+		// e.g. 'group:eng#member'
+		if val, ok := req.User.(*UserRefObjectRelation); ok {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: val.ObjectRelation.GetObject(),
+			})
+			fmt.Printf("TTU EDGE GetObject(): %s", val.ObjectRelation.GetObject())
+		} else {
+			panic("unexpected source for reverse expansion of tuple to userset")
+		}
+	// TODO: are there any other cases?
+	default:
+		panic("unsupported edge type")
+	}
+
+	return userFilter, relationFilter, nil
 }
 
 func hasPathTo(dest string) func(*weightedGraph.WeightedAuthorizationModelEdge) bool {
