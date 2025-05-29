@@ -383,20 +383,12 @@ func filter[S ~[]E, E any](s S, f func(E) bool) []E {
 
 // expects a "type#rel".
 func getTypeFromLabel(label string) string {
-	idx := strings.Index(label, "#")
-	if idx == -1 {
-		return label
-	}
-
-	return label[:idx]
+	userObject, _ := tuple.SplitObjectRelation(label)
+	return userObject
 }
 
 // expects a "type#rel".
 func getRelationFromLabel(label string) string {
-	idx := strings.Index(label, "#")
-	if idx == -1 {
-		return label
-	}
-
-	return label[idx+1:]
+	_, rel := tuple.SplitObjectRelation(label)
+	return rel
 }
