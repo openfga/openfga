@@ -327,8 +327,9 @@ func (c *ReverseExpandQuery) execute(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	wg := c.typesystem.GetWeightedGraph()
-	globalWg = *wg // for debugging convenience
 	if wg != nil {
+		globalWg = *wg // TODO : remove - only for debugging convenience
+
 		targetTypeRel := req.weightedEdgeTypeRel
 		// This is true on the first call of reverse expand
 		if targetTypeRel == "" {
@@ -346,7 +347,7 @@ func (c *ReverseExpandQuery) execute(
 			return err
 		}
 
-		err = c.LoopOverWeightedEdges(
+		return c.LoopOverWeightedEdges(
 			ctx,
 			edges,
 			needsCheck,
@@ -355,10 +356,8 @@ func (c *ReverseExpandQuery) execute(
 			resultChan,
 			sourceUserObj,
 		)
-		return nil
 	}
 
-	//return nil
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
@@ -474,7 +473,7 @@ func (c *ReverseExpandQuery) reverseExpandDirectV2(
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		//attribute.String("edge", req.edge.String()),
+		// attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
 	var err error
@@ -640,7 +639,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(), //directs-employee
+		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
 		Relation:   relationFilter,                     // other-rel
 		UserFilter: userFilter,                         // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
@@ -815,11 +814,11 @@ LoopOnIterator:
 		foundObject := tk.GetObject()
 		var newRelation string
 
-		switch req.edge.Type {
-		case graph.DirectEdge:
+		switch req.weightedEdge.GetEdgeType() {
+		case weightedGraph.DirectEdge:
 			newRelation = tk.GetRelation()
-		case graph.TupleToUsersetEdge:
-			newRelation = req.edge.TargetReference.GetRelation()
+		case weightedGraph.TTUEdge:
+			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO : validate this?
 		default:
 			panic("unsupported edge type")
 		}
@@ -840,6 +839,9 @@ LoopOnIterator:
 				Context:          req.Context,
 				edge:             req.edge,
 				Consistency:      req.Consistency,
+				// TODO : verify this
+				weightedEdge:        req.weightedEdge,
+				weightedEdgeTypeRel: req.weightedEdgeTypeRel,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
@@ -981,6 +983,7 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 	for _, edge := range edges {
 		// TODO: i think the getEdgesFromWeightedGraph func handles this for us, shouldn't need this
 		// intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
+		innerLoopEdge := edge
 		r := &ReverseExpandRequest{
 			Consistency:      req.Consistency,
 			Context:          req.Context,
@@ -990,9 +993,9 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 			StoreID:          req.StoreID,
 			User:             req.User,
 
+			weightedEdge: innerLoopEdge,
 			// TODO: this is just for cycle prevention, refactor so we can use weighted edge here as well
-			//edge:             innerLoopEdge,
-			//edge:             edge.GetTo(), // this doesn't match the API
+			edge: req.edge,
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -1097,7 +1100,7 @@ func filter[S ~[]E, E any](s S, f func(E) bool) []E {
 	return filteredItems
 }
 
-// expects a "type#rel"
+// expects a "type#rel".
 func getTypeFromLabel(label string) string {
 	idx := strings.Index(label, "#")
 	if idx == -1 {
@@ -1107,7 +1110,7 @@ func getTypeFromLabel(label string) string {
 	return label[idx+1:]
 }
 
-// expects a "type#rel"
+// expects a "type#rel".
 func getRelationFromLabel(label string) string {
 	idx := strings.Index(label, "#")
 	if idx == -1 {
