@@ -388,7 +388,7 @@ func getTypeFromLabel(label string) string {
 		return label
 	}
 
-	return label[idx+1:]
+	return label[:idx]
 }
 
 // expects a "type#rel".
@@ -398,5 +398,5 @@ func getRelationFromLabel(label string) string {
 		return label
 	}
 
-	return label[:idx]
+	return label[idx+1:]
 }
