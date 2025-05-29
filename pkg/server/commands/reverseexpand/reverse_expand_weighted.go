@@ -52,13 +52,13 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			fmt.Printf("JUSTIN DIRECT edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
+			//fmt.Printf("JUSTIN DIRECT edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			//r.weightedEdge = edge
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
-			fmt.Printf("JUSTIN Computed edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
+			//fmt.Printf("JUSTIN Computed edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			to := edge.GetTo().GetUniqueLabel()
 
@@ -293,7 +293,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 
 		targetUserObjectType := req.weightedEdge.GetTo().GetLabel() // "employee"
 
-		publiclyAssignable := slices.Contains(req.weightedEdge.GetWildcards(), targetUserObjectType)
+		publiclyAssignable := slices.Contains(req.weightedEdge.GetFrom().GetWildcards(), targetUserObjectType)
 
 		if publiclyAssignable {
 			// e.g. 'user:*'

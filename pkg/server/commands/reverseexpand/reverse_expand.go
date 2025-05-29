@@ -312,9 +312,10 @@ func (c *ReverseExpandQuery) execute(
 				return nil
 			}
 		} else if req.weightedEdge != nil {
-			key := sourceUserObj + req.weightedEdge.GetTo().GetUniqueLabel()
+			key := req.weightedEdge.GetTo().GetUniqueLabel()
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
+				println("Already hit, skipping: " + key)
 				return nil
 			}
 		}
@@ -402,6 +403,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
+			//println("Relation: " + innerLoopEdge.TargetReference.GetRelation())
 			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -562,6 +564,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		return err
 	}
 
+	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
+	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
@@ -590,6 +594,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
+		fmt.Printf("JUSTIN TUPLE KEY: %s\n", tk.String())
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
