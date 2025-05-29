@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"slices"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -38,7 +36,7 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 	for _, edge := range edges {
 		// TODO: i think the getEdgesFromWeightedGraph func handles this for us, shouldn't need this
 		// intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-		innerLoopEdge := edge
+		//innerLoopEdge := edge
 		r := &ReverseExpandRequest{
 			Consistency:      req.Consistency,
 			Context:          req.Context,
@@ -48,19 +46,19 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 			StoreID:          req.StoreID,
 			User:             req.User,
 
-			weightedEdge: innerLoopEdge,
-			// TODO: this is just for cycle prevention, refactor so we can use weighted edge here as well
-			edge: req.edge,
+			weightedEdge:        edge,
+			weightedEdgeTypeRel: edge.GetTo().GetUniqueLabel(),
+			edge:                req.edge,
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			fmt.Println("JUSTIN DIRECT EDGE")
-			r.weightedEdge = edge
+			fmt.Printf("JUSTIN DIRECT edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
+			//r.weightedEdge = edge
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
-			fmt.Println("JUSTIN COMPUTED EDGE")
+			fmt.Printf("JUSTIN Computed edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			to := edge.GetTo().GetUniqueLabel()
 
@@ -78,13 +76,12 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 				return errs
 			}
 		case weightedGraph.TTUEdge:
-			fmt.Printf("JUSTIN TTU EDGE")
+			//fmt.Printf("JUSTIN TTU EDGE")
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.RewriteEdge:
-			fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
-			r.weightedEdgeTypeRel = edge.GetTo().GetUniqueLabel()
+			//fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -137,8 +134,9 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUsersetWeighted(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
-		//attribute.String("edge", req.edge.String()),
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUsersetWeighted", trace.WithAttributes(
+		attribute.String("edge.from", req.weightedEdge.GetFrom().GetUniqueLabel()),
+		attribute.String("edge.to", req.weightedEdge.GetFrom().GetUniqueLabel()),
 		attribute.String("source.user", req.User.String()),
 	))
 	var err error
@@ -164,7 +162,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 		return ctx.Err()
 	}
 
-	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecuteWeighted")
 	defer span.End()
 
 	var userFilter []*openfgav1.ObjectRelation
@@ -189,6 +187,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	if err != nil {
 		return err
 	}
+	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
+	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
 
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
@@ -204,6 +204,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
+		fmt.Printf("JUSTIN TUPLE KEY: %s\n", tk.String())
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -287,7 +288,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 	switch req.weightedEdge.GetEdgeType() {
 	case weightedGraph.DirectEdge:
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
-		// TODO: might want a helper to get the type off it
 		from := req.weightedEdge.GetFrom().GetLabel()
 		relationFilter = getRelationFromLabel(from) // directs-employee#other_rel -> other_rel
 
