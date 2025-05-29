@@ -307,9 +307,14 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
-		// TODO: this will have to be tweaked since new edges don't behave the same
 		if req.edge != nil {
-			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
+			key := sourceUserObj + "#" + req.edge.String()
+			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+				// we've already visited this userset through this edge, exit to avoid an infinite cycle
+				return nil
+			}
+		} else if req.weightedEdge != nil {
+			key := sourceUserObj + req.weightedEdge.GetTo().GetUniqueLabel()
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
