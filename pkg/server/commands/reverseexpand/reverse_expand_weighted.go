@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"slices"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -87,15 +85,11 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.RewriteEdge:
-			//fmt.Printf("JUSTIN Rewrite edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
 			}
-			// Rewrite edge from directs-employee#alg_combined to exclusion:01JVZ4NBP9WMQ67GSMPNBXNGZR
-			// this'll need a dispatch with a new key, instead of "type#rel" it'll be "exclusion:01JVWQXTZYP578BTN93PR9JTQK"
-			// or intersection
 		default:
 			fmt.Printf("Unknown edge type %d\n", edge.GetEdgeType())
 			panic("unsupported edge type")
@@ -182,9 +176,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: getTypeFromLabel(req.weightedEdge.GetFrom().GetLabel()), // e.g. directs-employee
-		//ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   relationFilter, // other-rel
-		UserFilter: userFilter,     // .Object = employee#alg_combined_1
+		Relation:   relationFilter,                                          // other-rel
+		UserFilter: userFilter,                                              // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,
@@ -194,8 +187,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 		return err
 	}
 	fmt.Println("--------WEIGHTED-----------------")
-	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
-	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
+	fmt.Printf(" UserFilter: %s\n, RelationFilter %s\n", userFilter, relationFilter)
 
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
@@ -289,24 +281,28 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 ) ([]*openfgav1.ObjectRelation, string, error) {
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
-	// type assertion to determine whether this is internal graph or weighted graph?
-	// OR do we use a different key, req.edge vs req.weightedEdge?
-	// or are there just completely different code paths
+
+	// Should this actually be looking at the node we're heading towards?
 	switch req.weightedEdge.GetEdgeType() {
 	case weightedGraph.DirectEdge:
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
-		from := req.weightedEdge.GetFrom().GetLabel()
-		relationFilter = getRelationFromLabel(from) // directs-employee#other_rel -> other_rel
+		fromLabel := req.weightedEdge.GetFrom().GetLabel()
+		relationFilter = getRelationFromLabel(fromLabel) // directs-employee#other_rel -> other_rel
 
-		targetUserObjectType := req.weightedEdge.GetTo().GetLabel() // "employee"
+		toNode := req.weightedEdge.GetTo()
 
-		publiclyAssignable := slices.Contains(req.weightedEdge.GetFrom().GetWildcards(), targetUserObjectType)
+		//targetUserObjectType := toNode.GetLabel() // "employee"
+		fmt.Printf("JUSTIN buildQUeryFilters To node type: %d, label: %s\n", toNode.GetNodeType(), toNode.GetLabel())
 
-		if publiclyAssignable {
-			// e.g. 'user:*'
+		// e.g. 'user:*'
+		if toNode.GetNodeType() == weightedGraph.SpecificTypeWildcard {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: tuple.TypedPublicWildcard(targetUserObjectType),
+				Object: toNode.GetLabel(), // e.g. "employee:*"
 			})
+		}
+
+		// Should we just be using nodes?
+		if toNode.GetNodeType() == weightedGraph.SpecificType {
 		}
 
 		// e.g. 'user:bob'
@@ -317,8 +313,17 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		}
 
 		// e.g. 'group:eng#member'
+		// so is it if the TO node is direct to a userset?
+		// which would be a DirectEdge TO node with type weightedGraph.SpecificTypeAndRelation
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
-			userFilter = append(userFilter, val.ObjectRelation)
+			if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
+				userFilter = append(userFilter, val.ObjectRelation)
+			} else if toNode.GetNodeType() == weightedGraph.SpecificType {
+				userFilter = append(userFilter, &openfgav1.ObjectRelation{
+					Object: val.ObjectRelation.GetObject(),
+				})
+			}
+			//fmt.Printf("JUSTIN adding a realtion piece: %s - node type: %d\n", val.ObjectRelation, toNode.GetNodeType())
 		}
 	case weightedGraph.TTUEdge:
 		relationFilter = req.edge.TuplesetRelation

@@ -3,7 +3,6 @@ package reverseexpand
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -593,8 +592,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	}
 
 	fmt.Println("--------ORIGINAL-----------------")
-	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
-	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
+	fmt.Printf(" UserFilter: %s\n, RelationFilter %s\n", userFilter, relationFilter)
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
