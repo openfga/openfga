@@ -52,8 +52,13 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			//fmt.Printf("JUSTIN DIRECT edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
-			//r.weightedEdge = edge
+			//r.User = &UserRefObject{
+			//	Object: &openfgav1.Object{
+			//		Id: sourceUserObj,
+			//		// Why is dropping this relation necessary?
+			//	},
+			//}
+			fmt.Printf("User going into direct query: %+v\n", r.User)
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
@@ -70,6 +75,7 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 					Relation: rel,
 				},
 			}
+			fmt.Printf("User going into computed dispatch: %+v\n", r.User)
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -187,6 +193,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	if err != nil {
 		return err
 	}
+	fmt.Println("--------WEIGHTED-----------------")
 	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
 	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
 

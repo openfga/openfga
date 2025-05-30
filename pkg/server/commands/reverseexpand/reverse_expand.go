@@ -332,6 +332,7 @@ func (c *ReverseExpandQuery) execute(
 
 	wg := c.typesystem.GetWeightedGraph()
 	if wg != nil {
+		//if wg == nil {
 		// TODO : remove, for debugging only
 		if _, ok := ctx.Value("WG").(*typesystem.TypeSystem); !ok {
 			ctx = context.WithValue(ctx, "WG", wg)
@@ -392,6 +393,7 @@ LoopOnEdges:
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
+			fmt.Printf("User going into direct query: %+v\n", r.User)
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
@@ -403,7 +405,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			//println("Relation: " + innerLoopEdge.TargetReference.GetRelation())
+			fmt.Printf("User going into computed dispatch: %+v\n", r.User)
 			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -564,6 +566,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		return err
 	}
 
+	fmt.Println("--------ORIGINAL-----------------")
 	fmt.Printf("JUSTIN UserFilter: %s\n", userFilter)
 	fmt.Printf("JUSTIN RelationFilter: %s\n", relationFilter)
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
