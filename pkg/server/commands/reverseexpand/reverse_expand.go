@@ -3,6 +3,7 @@ package reverseexpand
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -130,6 +131,8 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+
+	listObjectOptimizationsEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -152,6 +155,12 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.listObjectOptimizationsEnabled = enabled
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
@@ -168,6 +177,8 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		// experimental optimizations
+		listObjectOptimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
 	}
 
 	for _, opt := range opts {
@@ -328,45 +339,21 @@ func (c *ReverseExpandQuery) execute(
 		}
 	}
 
-	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+	if c.listObjectOptimizationsEnabled {
+		wg := c.typesystem.GetWeightedGraph()
+		if wg != nil {
+			// TODO : remove, for debugging only
+			if _, ok := ctx.Value("WG").(*typesystem.TypeSystem); !ok {
+				ctx = context.WithValue(ctx, "WG", wg)
+			}
 
-	wg := c.typesystem.GetWeightedGraph()
-	if wg != nil {
-		//if wg == nil {
-		// TODO : remove, for debugging only
-		if _, ok := ctx.Value("WG").(*typesystem.TypeSystem); !ok {
-			ctx = context.WithValue(ctx, "WG", wg)
+			return c.loopOverEdgesUsingWeigtedGraph(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, wg, sourceUserType, sourceUserObj)
 		}
-
-		targetTypeRel := req.weightedEdgeTypeRel
-		// This is true on the first call of reverse expand
-		if targetTypeRel == "" {
-			targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
-		}
-
-		edges, needsCheck, err := c.getEdgesFromWeightedGraph(
-			wg,
-			targetTypeRel,
-			sourceUserType,
-			intersectionOrExclusionInPreviousEdges,
-		)
-
-		if err != nil {
-			return err
-		}
-
-		return c.LoopOverWeightedEdges(
-			ctx,
-			edges,
-			needsCheck,
-			req,
-			resolutionMetadata,
-			resultChan,
-			sourceUserObj,
-		)
 	}
 
 	g := graph.New(c.typesystem)
+
+	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
 	if err != nil {
@@ -427,6 +414,45 @@ LoopOnEdges:
 	}
 
 	return nil
+}
+
+func (c *ReverseExpandQuery) loopOverEdgesUsingWeigtedGraph(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+	wg *weightedGraph.WeightedAuthorizationModelGraph,
+	sourceUserType, sourceUserObj string,
+) error {
+	targetTypeRel := req.weightedEdgeTypeRel
+	// This is true on the first call of reverse expand
+	if targetTypeRel == "" {
+		targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+
+		targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+	}
+
+	edges, needsCheck, err := c.getEdgesFromWeightedGraph(
+		wg,
+		targetTypeRel,
+		sourceUserType,
+		intersectionOrExclusionInPreviousEdges,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return c.LoopOverWeightedEdges(
+		ctx,
+		edges,
+		needsCheck,
+		req,
+		resolutionMetadata,
+		resultChan,
+		sourceUserObj,
+	)
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
