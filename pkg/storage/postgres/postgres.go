@@ -37,21 +37,38 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 
 // Datastore provides a PostgreSQL based implementation of [storage.OpenFGADatastore].
 type Datastore struct {
-	stbl                   sq.StatementBuilderType
-	db                     *sql.DB
-	dbInfo                 *sqlcommon.DBInfo
+	writeStbl              sq.StatementBuilderType
+	readStbl               sq.StatementBuilderType
+	writeDb                *sql.DB
+	readDb                 *sql.DB
+	writeDbInfo            *sqlcommon.DBInfo
+	readDbInfo             *sqlcommon.DBInfo
 	logger                 logger.Logger
-	dbStatsCollector       prometheus.Collector
+	writeDbStatsCollector  prometheus.Collector
+	readDbStatsCollector   prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
+}
+
+type Option func(*Datastore)
+
+func WithReadDB(uri string, cfg *sqlcommon.Config) Option {
+	return func(d *Datastore) {
+		db, err := initDB(uri, cfg.ReadUsername, cfg.ReadPassword, cfg)
+		if err != nil {
+			d.logger.Error("failed to initialize read db", zap.Error(err))
+			return
+		}
+		d.readDb = db
+	}
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-// New creates a new [Datastore] storage.
-func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
-	if cfg.Username != "" || cfg.Password != "" {
+// initDB initializes a new postgres database connection.
+func initDB(uri string, username string, password string, cfg *sqlcommon.Config) (*sql.DB, error) {
+	if username != "" || password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {
 			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
@@ -84,11 +101,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
-	return NewWithDB(db, cfg)
-}
 
-// NewWithDB creates a new [Datastore] storage with the provided database connection.
-func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	if cfg.MaxIdleConns != 0 {
 		db.SetMaxIdleConns(cfg.MaxIdleConns) // default is 2, not retaining connections(0) would be detrimental for performance
 	}
@@ -97,6 +110,22 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
+	return db, nil
+}
+
+// New creates a new [Datastore] storage.
+func New(uri string, cfg *sqlcommon.Config, opts ...Option) (*Datastore, error) {
+
+	writeDb, err := initDB(uri, cfg.Username, cfg.Password, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("initialize postgres connection: %w", err)
+	}
+
+	return NewWithDB(writeDb, cfg)
+}
+
+// configureDB configures a postgres database connection.
+func configureDB(db *sql.DB, cfg *sqlcommon.Config) (prometheus.Collector, error) {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
@@ -121,26 +150,63 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		}
 	}
 
-	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres")
+	return collector, nil
+}
 
-	return &Datastore{
-		stbl:                   stbl,
-		db:                     db,
-		dbInfo:                 dbInfo,
+// NewWithDB creates a new [Datastore] storage with the provided database connection.
+func NewWithDB(writeDb *sql.DB, cfg *sqlcommon.Config, opts ...Option) (*Datastore, error) {
+
+	datastore := &Datastore{
+		writeDb:                writeDb,
 		logger:                 cfg.Logger,
-		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(datastore)
+	}
+
+	collector, err := configureDB(writeDb, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("configure db: %w", err)
+	}
+	writeStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(writeDb)
+	datastore.writeDbInfo = sqlcommon.NewDBInfo(writeDb, writeStbl, HandleSQLError, "postgres")
+	datastore.writeStbl = writeStbl
+	datastore.writeDbStatsCollector = collector
+
+	// If a readDB is provided, configure it. Otherwise, use the writeDB as the readDB.
+	switch {
+	case datastore.readDb != nil:
+		readCollector, err := configureDB(datastore.readDb, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("configure db: %w", err)
+		}
+		readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(datastore.readDb)
+		datastore.readDbInfo = sqlcommon.NewDBInfo(datastore.readDb, readStbl, HandleSQLError, "postgres")
+		datastore.readStbl = readStbl
+		datastore.readDbStatsCollector = readCollector
+	default:
+		datastore.readDb = writeDb
+		datastore.readDbInfo = datastore.writeDbInfo
+		datastore.readStbl = writeStbl
+		datastore.readDbStatsCollector = collector
+	}
+
+	return datastore, nil
 }
 
 // Close see [storage.OpenFGADatastore].Close.
 func (s *Datastore) Close() {
-	if s.dbStatsCollector != nil {
-		prometheus.Unregister(s.dbStatsCollector)
+	if s.writeDbStatsCollector != nil {
+		prometheus.Unregister(s.writeDbStatsCollector)
 	}
-	s.db.Close()
+	if s.readDbStatsCollector != nil {
+		prometheus.Unregister(s.readDbStatsCollector)
+	}
+	s.writeDb.Close()
+	s.readDb.Close()
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -174,7 +240,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
-	sb := s.stbl.
+	sb := s.readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -220,7 +286,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.writeDbInfo, store, deletes, writes, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -235,7 +301,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 	var conditionContext []byte
 	var record storage.TupleRecord
 
-	err := s.stbl.
+	err := s.readStbl.
 		Select(
 			"object_type", "object_id", "relation",
 			"_user",
@@ -288,7 +354,7 @@ func (s *Datastore) ReadUsersetTuples(
 	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
-	sb := s.stbl.
+	sb := s.readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -347,7 +413,7 @@ func (s *Datastore) ReadStartingWithUser(
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	builder := s.stbl.
+	builder := s.readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -378,7 +444,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, s.dbInfo, store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, s.readDbInfo, store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -386,7 +452,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	sb := s.stbl.
+	sb := s.readStbl.
 		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
@@ -449,7 +515,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, s.dbInfo, store)
+	return sqlcommon.FindLatestAuthorizationModel(ctx, s.readDbInfo, store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -462,7 +528,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, s.writeDbInfo, store, model)
 }
 
 // CreateStore adds a new store to storage.
@@ -473,7 +539,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	var id, name string
 	var createdAt, updatedAt time.Time
 
-	err := s.stbl.
+	err := s.writeStbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
 		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
@@ -497,7 +563,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	ctx, span := startTrace(ctx, "GetStore")
 	defer span.End()
 
-	row := s.stbl.
+	row := s.readStbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{
@@ -545,7 +611,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		whereClause = append(whereClause, sq.GtOrEq{"id": options.Pagination.From})
 	}
 
-	sb := s.stbl.
+	sb := s.readStbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(whereClause).
@@ -595,7 +661,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := startTrace(ctx, "DeleteStore")
 	defer span.End()
 
-	_, err := s.stbl.
+	_, err := s.writeStbl.
 		Update("store").
 		Set("deleted_at", sq.Expr("NOW()")).
 		Where(sq.Eq{"id": id}).
@@ -617,7 +683,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		return err
 	}
 
-	_, err = s.stbl.
+	_, err = s.writeStbl.
 		Insert("assertion").
 		Columns("store", "authorization_model_id", "assertions").
 		Values(store, modelID, marshalledAssertions).
@@ -636,7 +702,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := s.stbl.
+	err := s.readStbl.
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
@@ -674,7 +740,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		orderBy = "ulid desc"
 	}
 
-	sb := s.stbl.
+	sb := s.readStbl.
 		Select(
 			"ulid", "object_type", "object_id", "relation",
 			"_user",
@@ -759,7 +825,24 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db)
+	var writeStatus, readStatus storage.ReadinessStatus
+	var err error
+
+	writeStatus, err = sqlcommon.IsReady(ctx, s.writeDb)
+	if err != nil {
+		writeStatus.Message = err.Error()
+		writeStatus.IsReady = false
+	}
+	readStatus, err = sqlcommon.IsReady(ctx, s.readDb)
+	if err != nil {
+		readStatus.Message = err.Error()
+		readStatus.IsReady = false
+	}
+
+	return storage.ReadinessStatus{
+		Message: fmt.Sprintf("write: %s, read: %s", writeStatus.Message, readStatus.Message),
+		IsReady: writeStatus.IsReady && readStatus.IsReady,
+	}, err
 }
 
 // HandleSQLError processes an SQL error and converts it into a more

@@ -148,9 +148,15 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 
+	flags.String("datastore-read-uri", defaultConfig.Datastore.ReadURI, "the connection uri to use to connect to the read datastore (for postgres only)")
+
 	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
 
 	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
+
+	flags.String("datastore-read-username", "", "the connection username to use to connect to the read datastore (overwrites any username provided in the connection uri)")
+
+	flags.String("datastore-read-password", "", "the connection password to use to connect to the read datastore (overwrites any password provided in the connection uri)")
 
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
@@ -407,6 +413,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
+		sqlcommon.WithReadUsername(config.Datastore.ReadUsername),
+		sqlcommon.WithReadPassword(config.Datastore.ReadPassword),
 		sqlcommon.WithLogger(s.Logger),
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
@@ -439,7 +447,13 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 			return nil, nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
+		var opts []postgres.Option
+		if config.Datastore.ReadURI != "" {
+			opts = []postgres.Option{
+				postgres.WithReadDB(config.Datastore.ReadURI, dsCfg),
+			}
+		}
+		datastore, err = postgres.New(config.Datastore.URI, dsCfg, opts...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
