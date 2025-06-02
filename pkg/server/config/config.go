@@ -99,13 +99,13 @@ type DatastoreMetricsConfig struct {
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql', 'sqlite')
-	Engine       string
-	URI          string `json:"-"` // private field, won't be logged
-	ReadURI      string `json:"-"` // private field, won't be logged
-	Username     string
-	Password     string `json:"-"` // private field, won't be logged
-	ReadUsername string
-	ReadPassword string `json:"-"` // private field, won't be logged
+	Engine            string
+	URI               string `json:"-"` // private field, won't be logged
+	SecondaryURI      string `json:"-"` // private field, won't be logged
+	Username          string
+	Password          string `json:"-"` // private field, won't be logged
+	SecondaryUsername string
+	SecondaryPassword string `json:"-"` // private field, won't be logged
 
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int

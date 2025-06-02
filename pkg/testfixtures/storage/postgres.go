@@ -30,6 +30,13 @@ type postgresTestContainer struct {
 	version  int64
 	username string
 	password string
+	replica  *postgresReplicaContainer
+}
+
+type postgresReplicaContainer struct {
+	addr     string
+	username string
+	password string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
@@ -185,4 +192,109 @@ func (p *postgresTestContainer) GetUsername() string {
 
 func (p *postgresTestContainer) GetPassword() string {
 	return p.password
+}
+
+// CreateSecondary creates a secondary PostgreSQL container
+func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		dockerClient.Close()
+	})
+
+	containerCfg := container.Config{
+		Env: []string{
+			"POSTGRES_DB=defaultdb",
+			"POSTGRES_PASSWORD=secret",
+			"POSTGRES_REPLICATION_MODE=replica",
+			"POSTGRES_MASTER_HOST=" + p.addr,
+			"POSTGRES_MASTER_PORT=5432",
+			"POSTGRES_MASTER_USER=" + p.username,
+			"POSTGRES_MASTER_PASSWORD=" + p.password,
+		},
+		ExposedPorts: nat.PortSet{
+			nat.Port("5432/tcp"): {},
+		},
+		Image: postgresImage,
+	}
+
+	hostCfg := container.HostConfig{
+		AutoRemove:      true,
+		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
+	}
+
+	name := "postgres-replica-" + ulid.Make().String()
+
+	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	require.NoError(t, err, "failed to create postgres replica docker container")
+
+	t.Cleanup(func() {
+		t.Logf("stopping replica container %s", name)
+		timeoutSec := 5
+
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
+		if err != nil && !client.IsErrNotFound(err) {
+			t.Logf("failed to stop postgres replica container: %v", err)
+		}
+
+		t.Logf("stopped replica container %s", name)
+	})
+
+	err = dockerClient.ContainerStart(context.Background(), cont.ID, container.StartOptions{})
+	require.NoError(t, err, "failed to start postgres replica container")
+
+	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	require.NoError(t, err)
+
+	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
+	if !ok || len(m) == 0 {
+		require.Fail(t, "failed to get host port mapping from postgres replica container")
+	}
+
+	p.replica = &postgresReplicaContainer{
+		addr:     "localhost:" + m[0].HostPort,
+		username: "postgres",
+		password: "secret",
+	}
+
+	// Attendre que le replica soit prêt
+	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", p.replica.username, p.replica.password, p.replica.addr)
+	db, err := goose.OpenDBWithDriver("pgx", uri)
+	require.NoError(t, err)
+	defer db.Close()
+
+	backoffPolicy := backoff.NewExponentialBackOff()
+	backoffPolicy.MaxElapsedTime = 30 * time.Second
+	err = backoff.Retry(
+		func() error {
+			return db.Ping()
+		},
+		backoffPolicy,
+	)
+	require.NoError(t, err, "failed to connect to postgres replica container")
+
+	return nil
+}
+
+// GetReplicaConnectionURI returns the connection URI for the read replica
+func (p *postgresTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	if p.replica == nil {
+		return ""
+	}
+
+	creds := ""
+	if includeCredentials {
+		creds = fmt.Sprintf("%s:%s@", p.replica.username, p.replica.password)
+	}
+
+	return fmt.Sprintf(
+		"postgres://%s%s/%s?sslmode=disable",
+		creds,
+		p.replica.addr,
+		"defaultdb",
+	)
 }

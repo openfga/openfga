@@ -37,30 +37,17 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 
 // Datastore provides a PostgreSQL based implementation of [storage.OpenFGADatastore].
 type Datastore struct {
-	writeStbl              sq.StatementBuilderType
-	readStbl               sq.StatementBuilderType
-	writeDb                *sql.DB
-	readDb                 *sql.DB
-	writeDbInfo            *sqlcommon.DBInfo
-	readDbInfo             *sqlcommon.DBInfo
-	logger                 logger.Logger
-	writeDbStatsCollector  prometheus.Collector
-	readDbStatsCollector   prometheus.Collector
-	maxTuplesPerWriteField int
-	maxTypesPerModelField  int
-}
-
-type Option func(*Datastore)
-
-func WithReadDB(uri string, cfg *sqlcommon.Config) Option {
-	return func(d *Datastore) {
-		db, err := initDB(uri, cfg.ReadUsername, cfg.ReadPassword, cfg)
-		if err != nil {
-			d.logger.Error("failed to initialize read db", zap.Error(err))
-			return
-		}
-		d.readDb = db
-	}
+	primaryStbl               sq.StatementBuilderType
+	secondaryStbl             sq.StatementBuilderType
+	primaryDb                 *sql.DB
+	secondaryDb               *sql.DB
+	primaryDbInfo             *sqlcommon.DBInfo
+	secondaryDbInfo           *sqlcommon.DBInfo
+	logger                    logger.Logger
+	primaryDbStatsCollector   prometheus.Collector
+	secondaryDbStatsCollector prometheus.Collector
+	maxTuplesPerWriteField    int
+	maxTypesPerModelField     int
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -114,18 +101,26 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 }
 
 // New creates a new [Datastore] storage.
-func New(uri string, cfg *sqlcommon.Config, opts ...Option) (*Datastore, error) {
+func New(primaryUri, secondaryUri string, cfg *sqlcommon.Config) (*Datastore, error) {
 
-	writeDb, err := initDB(uri, cfg.Username, cfg.Password, cfg)
+	primaryDb, err := initDB(primaryUri, cfg.Username, cfg.Password, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
-	return NewWithDB(writeDb, cfg)
+	var secondaryDb *sql.DB
+	if secondaryUri != "" {
+		secondaryDb, err = initDB(secondaryUri, cfg.Username, cfg.Password, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("initialize postgres connection: %w", err)
+		}
+	}
+
+	return NewWithDB(primaryDb, secondaryDb, cfg)
 }
 
-// configureDB configures a postgres database connection.
-func configureDB(db *sql.DB, cfg *sqlcommon.Config) (prometheus.Collector, error) {
+func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.StatementBuilderType, prometheus.Collector, error) {
+	var stbl sq.StatementBuilderType
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
@@ -139,84 +134,94 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config) (prometheus.Collector, error
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("ping db: %w", err)
+		return nil, stbl, nil, fmt.Errorf("ping db: %w", err)
 	}
 
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
 		collector = collectors.NewDBStatsCollector(db, "openfga")
 		if err := prometheus.Register(collector); err != nil {
-			return nil, fmt.Errorf("initialize metrics: %w", err)
+			return nil, stbl, nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
 
-	return collector, nil
+	stbl = sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres")
+
+	return dbInfo, stbl, collector, nil
 }
 
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
-func NewWithDB(writeDb *sql.DB, cfg *sqlcommon.Config, opts ...Option) (*Datastore, error) {
+func NewWithDB(primaryDb, secondaryDb *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 
-	datastore := &Datastore{
-		writeDb:                writeDb,
-		logger:                 cfg.Logger,
-		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
-		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
-	}
-
-	for _, opt := range opts {
-		opt(datastore)
-	}
-
-	collector, err := configureDB(writeDb, cfg)
+	primaryDbInfo, primaryStbl, primaryCollector, err := configureDB(primaryDb, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("configure db: %w", err)
+		return nil, fmt.Errorf("configure primary db: %w", err)
 	}
-	writeStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(writeDb)
-	datastore.writeDbInfo = sqlcommon.NewDBInfo(writeDb, writeStbl, HandleSQLError, "postgres")
-	datastore.writeStbl = writeStbl
-	datastore.writeDbStatsCollector = collector
 
-	// If a readDB is provided, configure it. Otherwise, use the writeDB as the readDB.
-	switch {
-	case datastore.readDb != nil:
-		readCollector, err := configureDB(datastore.readDb, cfg)
+	var secondaryDbInfo *sqlcommon.DBInfo
+	var secondaryStbl sq.StatementBuilderType
+	var secondaryCollector prometheus.Collector
+	if secondaryDb != nil {
+		secondaryDbInfo, secondaryStbl, secondaryCollector, err = configureDB(secondaryDb, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("configure db: %w", err)
+			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
-		readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(datastore.readDb)
-		datastore.readDbInfo = sqlcommon.NewDBInfo(datastore.readDb, readStbl, HandleSQLError, "postgres")
-		datastore.readStbl = readStbl
-		datastore.readDbStatsCollector = readCollector
-	default:
-		datastore.readDb = writeDb
-		datastore.readDbInfo = datastore.writeDbInfo
-		datastore.readStbl = writeStbl
-		datastore.readDbStatsCollector = collector
 	}
 
-	return datastore, nil
+	return &Datastore{
+		primaryStbl:               primaryStbl,
+		secondaryStbl:             secondaryStbl,
+		primaryDb:                 primaryDb,
+		secondaryDb:               secondaryDb,
+		primaryDbInfo:             primaryDbInfo,
+		secondaryDbInfo:           secondaryDbInfo,
+		logger:                    cfg.Logger,
+		primaryDbStatsCollector:   primaryCollector,
+		secondaryDbStatsCollector: secondaryCollector,
+		maxTuplesPerWriteField:    cfg.MaxTuplesPerWriteField,
+		maxTypesPerModelField:     cfg.MaxTypesPerModelField,
+	}, nil
+}
+
+func (s *Datastore) isSecondaryConfigured() bool {
+	return s.secondaryDb != nil
 }
 
 // Close see [storage.OpenFGADatastore].Close.
 func (s *Datastore) Close() {
-	if s.writeDbStatsCollector != nil {
-		prometheus.Unregister(s.writeDbStatsCollector)
+	if s.primaryDbStatsCollector != nil {
+		prometheus.Unregister(s.primaryDbStatsCollector)
 	}
-	if s.readDbStatsCollector != nil {
-		prometheus.Unregister(s.readDbStatsCollector)
+	s.primaryDb.Close()
+	if s.isSecondaryConfigured() {
+		if s.secondaryDbStatsCollector != nil {
+			prometheus.Unregister(s.secondaryDbStatsCollector)
+		}
+		s.secondaryDb.Close()
 	}
-	s.writeDb.Close()
-	s.readDb.Close()
+}
+
+// getReadDbInfo returns the appropriate database info based on consistency options
+func (s *Datastore) getReadDbInfo() *sqlcommon.DBInfo {
+	if s.isSecondaryConfigured() {
+		return s.secondaryDbInfo
+	}
+	return s.primaryDbInfo
 }
 
 // getReadStbl returns the appropriate statement builder based on consistency options
-func (s *Datastore) getReadStbl(consistency openfgav1.ConsistencyPreference) sq.StatementBuilderType {
-	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+func (s *Datastore) getReadStbl(consistency *openfgav1.ConsistencyPreference) sq.StatementBuilderType {
+	if consistency != nil && *consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// If we are using higher consistency, we need to use the write database.
-		return s.writeStbl
+		return s.primaryStbl
 	}
-	// If we are using lower consistency, we can use the read database.
-	return s.readStbl
+	if s.isSecondaryConfigured() {
+		// If we are using lower consistency, we can use the read database.
+		return s.secondaryStbl
+	}
+	// If we are not using a secondary database, we can only use the primary database.
+	return s.primaryStbl
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -229,7 +234,7 @@ func (s *Datastore) Read(
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	readStbl := s.getReadStbl(options.Consistency.Preference)
+	readStbl := s.getReadStbl(&options.Consistency.Preference)
 	return s.read(ctx, store, tupleKey, nil, readStbl)
 }
 
@@ -238,7 +243,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	readStbl := s.getReadStbl(options.Consistency.Preference)
+	readStbl := s.getReadStbl(&options.Consistency.Preference)
 	iter, err := s.read(ctx, store, tupleKey, &options, readStbl)
 	if err != nil {
 		return nil, "", err
@@ -298,7 +303,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.writeDbInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.primaryDbInfo, store, deletes, writes, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -306,7 +311,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
-	readStbl := s.getReadStbl(options.Consistency.Preference)
+	readStbl := s.getReadStbl(&options.Consistency.Preference)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
@@ -367,7 +372,7 @@ func (s *Datastore) ReadUsersetTuples(
 	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
-	readStbl := s.getReadStbl(options.Consistency.Preference)
+	readStbl := s.getReadStbl(&options.Consistency.Preference)
 	sb := readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
@@ -418,7 +423,7 @@ func (s *Datastore) ReadStartingWithUser(
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
-	readStbl := s.getReadStbl(options.Consistency.Preference)
+	readStbl := s.getReadStbl(&options.Consistency.Preference)
 	var targetUsersArg []string
 	for _, u := range filter.UserFilter {
 		targetUser := u.GetObject()
@@ -459,7 +464,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, s.readDbInfo, store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, s.getReadDbInfo(), store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -467,7 +472,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	sb := s.readStbl.
+	sb := s.getReadStbl(nil).
 		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
@@ -530,7 +535,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, s.readDbInfo, store)
+	return sqlcommon.FindLatestAuthorizationModel(ctx, s.getReadDbInfo(), store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -543,7 +548,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.WriteAuthorizationModel(ctx, s.writeDbInfo, store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, s.primaryDbInfo, store, model)
 }
 
 // CreateStore adds a new store to storage.
@@ -554,7 +559,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	var id, name string
 	var createdAt, updatedAt time.Time
 
-	err := s.writeStbl.
+	err := s.primaryStbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
 		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
@@ -578,7 +583,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	ctx, span := startTrace(ctx, "GetStore")
 	defer span.End()
 
-	row := s.readStbl.
+	row := s.getReadStbl(nil).
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{
@@ -626,7 +631,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		whereClause = append(whereClause, sq.GtOrEq{"id": options.Pagination.From})
 	}
 
-	sb := s.readStbl.
+	sb := s.getReadStbl(nil).
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(whereClause).
@@ -676,7 +681,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := startTrace(ctx, "DeleteStore")
 	defer span.End()
 
-	_, err := s.writeStbl.
+	_, err := s.primaryStbl.
 		Update("store").
 		Set("deleted_at", sq.Expr("NOW()")).
 		Where(sq.Eq{"id": id}).
@@ -698,7 +703,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 		return err
 	}
 
-	_, err = s.writeStbl.
+	_, err = s.primaryStbl.
 		Insert("assertion").
 		Columns("store", "authorization_model_id", "assertions").
 		Values(store, modelID, marshalledAssertions).
@@ -717,7 +722,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := s.readStbl.
+	err := s.getReadStbl(nil).
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
@@ -755,7 +760,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 		orderBy = "ulid desc"
 	}
 
-	sb := s.readStbl.
+	sb := s.getReadStbl(nil).
 		Select(
 			"ulid", "object_type", "object_id", "relation",
 			"_user",
@@ -840,24 +845,35 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	var writeStatus, readStatus storage.ReadinessStatus
-	var err error
 
-	writeStatus, err = sqlcommon.IsReady(ctx, s.writeDb)
+	// check if primary is ready
+	readyStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
 	if err != nil {
-		writeStatus.Message = err.Error()
-		writeStatus.IsReady = false
-	}
-	readStatus, err = sqlcommon.IsReady(ctx, s.readDb)
-	if err != nil {
-		readStatus.Message = err.Error()
-		readStatus.IsReady = false
+		readyStatus.Message = err.Error()
+		readyStatus.IsReady = false
 	}
 
-	return storage.ReadinessStatus{
-		Message: fmt.Sprintf("write: %s, read: %s", writeStatus.Message, readStatus.Message),
-		IsReady: writeStatus.IsReady && readStatus.IsReady,
-	}, err
+	// if secondary is not configured, return primary status only
+	if !s.isSecondaryConfigured() {
+		return readyStatus, err
+	}
+
+	// if primary is not ready and secondary is configured, return primary status only
+	if !readyStatus.IsReady {
+		readyStatus.Message = fmt.Sprintf("primary: %s", readyStatus.Message)
+	}
+
+	// check if secondary is ready
+	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDb)
+	if err != nil {
+		readyStatus.Message = fmt.Sprintf("%s, secondary: %s", readyStatus.Message, err.Error())
+		readyStatus.IsReady = false
+	}
+
+	// if secondary is configured, return primary and secondary status
+	readyStatus.IsReady = readyStatus.IsReady && secondaryStatus.IsReady
+
+	return readyStatus, nil
 }
 
 // HandleSQLError processes an SQL error and converts it into a more

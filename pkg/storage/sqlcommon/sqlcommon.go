@@ -33,8 +33,8 @@ var tracer = otel.Tracer("pkg/storage/sqlcommon")
 type Config struct {
 	Username               string
 	Password               string
-	ReadUsername           string
-	ReadPassword           string
+	SecondaryUsername      string
+	SecondaryPassword      string
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
@@ -65,17 +65,17 @@ func WithPassword(password string) DatastoreOption {
 	}
 }
 
-// WithReadUsername returns a DatastoreOption that sets the read username in the Config.
-func WithReadUsername(username string) DatastoreOption {
+// WithSecondaryUsername returns a DatastoreOption that sets the secondary username in the Config.
+func WithSecondaryUsername(username string) DatastoreOption {
 	return func(config *Config) {
-		config.ReadUsername = username
+		config.SecondaryUsername = username
 	}
 }
 
-// WithReadPassword returns a DatastoreOption that sets the read password in the Config.
-func WithReadPassword(password string) DatastoreOption {
+// WithSecondaryPassword returns a DatastoreOption that sets the secondary password in the Config.
+func WithSecondaryPassword(password string) DatastoreOption {
 	return func(config *Config) {
-		config.ReadPassword = password
+		config.SecondaryPassword = password
 	}
 }
 

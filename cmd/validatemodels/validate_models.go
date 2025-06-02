@@ -63,7 +63,7 @@ func runValidate(_ *cobra.Command, _ []string) error {
 	case "mysql":
 		db, err = mysql.New(uri, sqlcommon.NewConfig())
 	case "postgres":
-		db, err = postgres.New(uri, sqlcommon.NewConfig())
+		db, err = postgres.New(uri, "", sqlcommon.NewConfig())
 	case "sqlite":
 		db, err = sqlite.New(uri, sqlcommon.NewConfig())
 	case "":

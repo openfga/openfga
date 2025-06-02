@@ -61,7 +61,7 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	case "memory":
 		ds = memory.New()
 	case "postgres":
-		ds, err = postgres.New(uri, sqlcommon.NewConfig())
+		ds, err = postgres.New(uri, "", sqlcommon.NewConfig())
 	case "mysql":
 		ds, err = mysql.New(uri, sqlcommon.NewConfig())
 	case "sqlite":

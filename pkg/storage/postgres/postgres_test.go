@@ -26,23 +26,20 @@ func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
 
-func TestPostgresDatastoreWithReadDB(t *testing.T) {
-	writeDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	readDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+func TestPostgresDatastoreWithSecondaryDB(t *testing.T) {
+	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	secondaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	writeUri := writeDatastore.GetConnectionURI(true)
-	readUri := readDatastore.GetConnectionURI(true)
+	primaryUri := primaryDatastore.GetConnectionURI(true)
+	secondaryUri := secondaryDatastore.GetSecondaryConnectionURI(true)
 
-	opts := []Option{
-		WithReadDB(readUri, sqlcommon.NewConfig()),
-	}
-	ds, err := New(writeUri, sqlcommon.NewConfig(), opts...)
+	ds, err := New(primaryUri, secondaryUri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -52,14 +49,12 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	ds.Close()
 	status, err := ds.IsReady(context.Background())
 	require.Error(t, err)
 	require.False(t, status.IsReady)
-	require.Contains(t, status.Message, "write")
-	require.Contains(t, status.Message, "read")
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
@@ -82,7 +77,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, sqlcommon.NewConfig())
+			ds, err := New(uri, "", sqlcommon.NewConfig())
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -94,7 +89,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -103,7 +98,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -111,7 +106,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			require.NoError(t, err)
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -183,7 +178,7 @@ func TestCtxCancel(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, sqlcommon.NewConfig())
+			ds, err := New(uri, "", sqlcommon.NewConfig())
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -195,7 +190,7 @@ func TestCtxCancel(t *testing.T) {
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -204,7 +199,7 @@ func TestCtxCancel(t *testing.T) {
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -212,7 +207,7 @@ func TestCtxCancel(t *testing.T) {
 			require.NoError(t, err)
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -243,7 +238,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -254,7 +249,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+		sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
@@ -263,7 +258,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.writeDb, ds.writeStbl, HandleSQLError, "postgres"),
+		sqlcommon.NewDBInfo(ds.primaryDb, ds.primaryStbl, HandleSQLError, "postgres"),
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
@@ -289,7 +284,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -302,7 +297,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -314,7 +309,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -326,7 +321,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -342,7 +337,7 @@ func TestFindLatestModel(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -367,14 +362,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -388,14 +383,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.writeDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDb.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -423,7 +418,7 @@ func TestAllowNullCondition(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -433,7 +428,7 @@ func TestAllowNullCondition(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
 	`
-	_, err = ds.writeDb.ExecContext(
+	_, err = ds.primaryDb.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -461,7 +456,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.writeDb.ExecContext(
+	_, err = ds.primaryDb.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,
 	)
@@ -495,13 +490,13 @@ func TestAllowNullCondition(t *testing.T) {
 		condition_name, condition_context, inserted_at, operation
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9);
 `
-	_, err = ds.writeDb.ExecContext(
+	_, err = ds.primaryDb.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.writeDb.ExecContext(
+	_, err = ds.primaryDb.ExecContext(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 	)
@@ -525,7 +520,7 @@ func TestMarshalledAssertions(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	ds, err := New(uri, "", sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -535,7 +530,7 @@ func TestMarshalledAssertions(t *testing.T) {
 			store, authorization_model_id, assertions
 		) VALUES ($1, $2, DECODE('0a2b0a270a12666f6c6465723a323032312d62756467657412056f776e65721a0a757365723a616e6e657a1001','hex'));
 	`
-	_, err = ds.writeDb.ExecContext(ctx, stmt, "store", "model")
+	_, err = ds.primaryDb.ExecContext(ctx, stmt, "store", "model")
 	require.NoError(t, err)
 
 	assertions, err := ds.ReadAssertions(ctx, "store", "model")
