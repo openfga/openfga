@@ -209,17 +209,28 @@ func (s *Datastore) Close() {
 	s.readDb.Close()
 }
 
+// getReadStbl returns the appropriate statement builder based on consistency options
+func (s *Datastore) getReadStbl(consistency openfgav1.ConsistencyPreference) sq.StatementBuilderType {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		// If we are using higher consistency, we need to use the write database.
+		return s.writeStbl
+	}
+	// If we are using lower consistency, we can use the read database.
+	return s.readStbl
+}
+
 // Read see [storage.RelationshipTupleReader].Read.
 func (s *Datastore) Read(
 	ctx context.Context,
 	store string,
 	tupleKey *openfgav1.TupleKey,
-	_ storage.ReadOptions,
+	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return s.read(ctx, store, tupleKey, nil)
+	readStbl := s.getReadStbl(options.Consistency.Preference)
+	return s.read(ctx, store, tupleKey, nil, readStbl)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
@@ -227,7 +238,8 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	iter, err := s.read(ctx, store, tupleKey, &options)
+	readStbl := s.getReadStbl(options.Consistency.Preference)
+	iter, err := s.read(ctx, store, tupleKey, &options, readStbl)
 	if err != nil {
 		return nil, "", err
 	}
@@ -236,11 +248,11 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions, readStbl sq.StatementBuilderType) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
-	sb := s.readStbl.
+	sb := readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -290,10 +302,11 @@ func (s *Datastore) Write(
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
-func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
+	readStbl := s.getReadStbl(options.Consistency.Preference)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
@@ -301,7 +314,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 	var conditionContext []byte
 	var record storage.TupleRecord
 
-	err := s.readStbl.
+	err := readStbl.
 		Select(
 			"object_type", "object_id", "relation",
 			"_user",
@@ -349,12 +362,13 @@ func (s *Datastore) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
-	_ storage.ReadUsersetTuplesOptions,
+	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
 	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
-	sb := s.readStbl.
+	readStbl := s.getReadStbl(options.Consistency.Preference)
+	sb := readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -399,11 +413,12 @@ func (s *Datastore) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
-	_ storage.ReadStartingWithUserOptions,
+	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
+	readStbl := s.getReadStbl(options.Consistency.Preference)
 	var targetUsersArg []string
 	for _, u := range filter.UserFilter {
 		targetUser := u.GetObject()
@@ -413,7 +428,7 @@ func (s *Datastore) ReadStartingWithUser(
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	builder := s.readStbl.
+	builder := readStbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
