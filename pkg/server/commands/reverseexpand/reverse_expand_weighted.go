@@ -214,6 +214,7 @@ LoopOnIterator:
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
+			fmt.Printf("JUSTIN TK Condition failed: %s\n", tk.String())
 			errs = errors.Join(errs, err)
 			continue
 		}
@@ -233,16 +234,24 @@ LoopOnIterator:
 
 		foundObject := tk.GetObject()
 		var newRelation string
+		fmt.Printf("JUSTIN found object: %s\n", tk.GetObject())
 
 		switch req.weightedEdge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			newRelation = tk.GetRelation()
+			// for direct edge I think we can just emit this and be done
+			// need the "needs check" bit
+			err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, foundObject, resultChan)
+			if err != nil {
+				panic("AHHHHH")
+			}
+			//newRelation = tk.GetRelation()
 		case weightedGraph.TTUEdge:
 			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO : validate this?
 		default:
 			panic("unsupported edge type")
 		}
 
+		// Do we still need this additional dispatch?
 		pool.Go(func(ctx context.Context) error {
 			return c.dispatch(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,

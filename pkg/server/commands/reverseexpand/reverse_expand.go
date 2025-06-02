@@ -271,6 +271,7 @@ func (c *ReverseExpandQuery) execute(
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
+	fmt.Printf("------Execute REQUEST-----------\n USER: %s\n", req.User.String())
 
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
@@ -330,8 +331,10 @@ func (c *ReverseExpandQuery) execute(
 			}
 		}
 
+		// I'm not sure this holds for the weighted graph?
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
 		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
+			fmt.Printf("Sending candidate: %s\n", sourceUserObj)
 			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
 				return err
 			}
@@ -379,7 +382,7 @@ LoopOnEdges:
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:
-			fmt.Printf("User going into direct query: %+v\n", r.User)
+			//fmt.Printf("User going into direct query: %+v\n", r.User)
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
@@ -391,7 +394,7 @@ LoopOnEdges:
 					Relation: innerLoopEdge.TargetReference.GetRelation(),
 				},
 			}
-			fmt.Printf("User going into computed dispatch: %+v\n", r.User)
+			//fmt.Printf("User going into computed dispatch: %+v\n", r.User)
 			err = c.dispatch(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -591,8 +594,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		return err
 	}
 
-	fmt.Println("--------ORIGINAL-----------------")
-	fmt.Printf(" UserFilter: %s\n, RelationFilter %s\n", userFilter, relationFilter)
+	//fmt.Println("--------ORIGINAL-----------------")
+	//fmt.Printf(" UserFilter: %s\n, RelationFilter %s\n", userFilter, relationFilter)
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
@@ -621,7 +624,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
-		fmt.Printf("JUSTIN TUPLE KEY: %s\n", tk.String())
+		//fmt.Printf("JUSTIN TUPLE KEY: %s\n", tk.String())
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -662,7 +665,7 @@ LoopOnIterator:
 		}
 
 		pool.Go(func(ctx context.Context) error {
-			return c.dispatch(ctx, &ReverseExpandRequest{
+			r2 := &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
 				Relation:   req.Relation,
@@ -677,7 +680,29 @@ LoopOnIterator:
 				Context:          req.Context,
 				edge:             req.edge,
 				Consistency:      req.Consistency,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			}
+			fmt.Printf("JUSTIN this tuple: %s\n the next userObject: %s\n next userObjectRelation: %s\n",
+				tk.String(),
+				foundObject,
+				newRelation,
+			)
+			return c.dispatch(ctx, r2, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			//return c.dispatch(ctx, &ReverseExpandRequest{
+			//	StoreID:    req.StoreID,
+			//	ObjectType: req.ObjectType,
+			//	Relation:   req.Relation,
+			//	User: &UserRefObjectRelation{
+			//		ObjectRelation: &openfgav1.ObjectRelation{
+			//			Object:   foundObject,
+			//			Relation: newRelation,
+			//		},
+			//		Condition: tk.GetCondition(),
+			//	},
+			//	ContextualTuples: req.ContextualTuples,
+			//	Context:          req.Context,
+			//	edge:             req.edge,
+			//	Consistency:      req.Consistency,
+			//}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
