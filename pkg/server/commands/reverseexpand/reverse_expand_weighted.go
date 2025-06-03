@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	weightedGraph "github.com/openfga/language/pkg/go/graph"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -151,13 +153,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	ctx, span := tracer.Start(ctx, "readTuplesAndExecuteWeighted")
 	defer span.End()
 
-	var userFilter []*openfgav1.ObjectRelation
-	var relationFilter string
-
-	userFilter, relationFilter, err := c.buildQueryFiltersWeighted(ctx, req)
-	if err != nil {
-		return err
-	}
+	userFilter, relationFilter := c.buildQueryFiltersWeighted(req)
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
@@ -225,7 +221,7 @@ LoopOnIterator:
 			if err != nil {
 				panic("AHHHHH")
 			}
-			//newRelation = tk.GetRelation()
+			// newRelation = tk.GetRelation()
 		case weightedGraph.TTUEdge:
 			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO : validate this?
 		default:
@@ -266,9 +262,8 @@ LoopOnIterator:
 }
 
 func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
-	ctx context.Context,
 	req *ReverseExpandRequest,
-) ([]*openfgav1.ObjectRelation, string, error) {
+) ([]*openfgav1.ObjectRelation, string) {
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
 
@@ -288,10 +283,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 			})
 		}
 
-		// Should we just be using nodes?
-		if toNode.GetNodeType() == weightedGraph.SpecificType {
-		}
-
 		// e.g. 'user:bob'
 		if val, ok := req.User.(*UserRefObject); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
@@ -300,8 +291,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		}
 
 		// e.g. 'group:eng#member'
-		// so is it if the TO node is direct to a userset?
-		// which would be a DirectEdge TO node with type weightedGraph.SpecificTypeAndRelation
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
 			if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
 				userFilter = append(userFilter, val.ObjectRelation)
@@ -322,12 +311,11 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
-	// TODO: are there any other cases?
 	default:
 		panic("unsupported edge type")
 	}
 
-	return userFilter, relationFilter, nil
+	return userFilter, relationFilter
 }
 
 func hasPathTo(dest string) func(*weightedGraph.WeightedAuthorizationModelEdge) bool {
