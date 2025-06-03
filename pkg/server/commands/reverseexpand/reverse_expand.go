@@ -5,9 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -339,10 +337,7 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	if c.listObjectOptimizationsEnabled {
-		wg := c.typesystem.GetWeightedGraph()
-		if wg != nil {
-			return c.loopOverEdgesUsingWeigtedGraph(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, wg, sourceUserType, sourceUserObj)
-		}
+		return c.loopOverEdgesUsingWeigtedGraph(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, sourceUserType, sourceUserObj)
 	}
 
 	g := graph.New(c.typesystem)
@@ -414,7 +409,6 @@ func (c *ReverseExpandQuery) loopOverEdgesUsingWeigtedGraph(
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
-	wg *weightedGraph.WeightedAuthorizationModelGraph,
 	sourceUserType, sourceUserObj string,
 ) error {
 	targetTypeRel := req.weightedEdgeTypeRel
@@ -425,11 +419,9 @@ func (c *ReverseExpandQuery) loopOverEdgesUsingWeigtedGraph(
 		targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
 	}
 
-	edges, needsCheck, err := c.getEdgesFromWeightedGraph(
-		wg,
+	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
 		targetTypeRel,
 		sourceUserType,
-		intersectionOrExclusionInPreviousEdges,
 	)
 
 	if err != nil {
