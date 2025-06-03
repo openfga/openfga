@@ -3,6 +3,7 @@ package listobjects
 import (
 	"context"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -173,8 +174,7 @@ condition xcond(x: string) {
   x == '1'
 }`,
 
-	//Tests: slices.Concat(directs, usersets, ttus),
-	Tests: directs,
+	Tests: slices.Concat(directs, usersets, ttus),
 }
 
 func runTestMatrix(t *testing.T, params testParams) {
