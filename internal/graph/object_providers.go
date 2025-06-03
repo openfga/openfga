@@ -56,6 +56,42 @@ func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRe
 	return userToUsersetMessageChan, nil
 }
 
+type recursiveTTUV3ObjectProvider struct {
+	ts               *typesystem.TypeSystem
+	tuplesetRelation string
+	computedRelation string
+	concurrencyLimit int
+}
+
+func newRecursiveTTUV3ObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset, concurrencyLimit int) *recursiveTTUV3ObjectProvider {
+	tuplesetRelation := ttu.GetTupleset().GetRelation()
+	computedRelation := ttu.GetComputedUserset().GetRelation()
+	return &recursiveTTUV3ObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation, concurrencyLimit: concurrencyLimit}
+}
+
+func (c *recursiveTTUV3ObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
+	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+
+	possibleParents, err := c.ts.GetDirectlyRelatedUserTypes(objectType, c.tuplesetRelation)
+	if err != nil {
+		return nil, err
+	}
+
+	leftChannels, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), c.concurrencyLimit)
+	if err != nil {
+		return nil, err
+	}
+	outChannel := make(chan usersetMessage, len(leftChannels))
+	leftChannel := fanInIteratorChannels(ctx, leftChannels, c.concurrencyLimit)
+	poolCtx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+
+	c.pool = concurrency.NewPool(poolCtx, 1)
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
+
+	return outChannel, nil
+}
+
 type recursiveTTUObjectProvider struct {
 	ts               *typesystem.TypeSystem
 	tuplesetRelation string

@@ -761,6 +761,86 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
+func (c *LocalChecker) recursiveCTEFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
+	usersetFromUser := hashset.New()
+	usersetFromObject := hashset.New()
+
+	cancellableCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	objectToUsersetIter := storage.WrapIterator(mapping.kind, iter)
+	defer objectToUsersetIter.Stop()
+	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
+
+	res := &ResolveCheckResponse{
+		Allowed: false,
+	}
+
+	// check to see if there are any recursive userset assigned. If not,
+	// we don't even need to check the terminal type side.
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+		if !ok {
+			return res, ctx.Err()
+		}
+		if objectToUsersetMessage.err != nil {
+			return nil, objectToUsersetMessage.err
+		}
+		usersetFromObject.Add(objectToUsersetMessage.userset)
+	}
+
+	userToUsersetMessageChan, err := objectProvider.Begin(cancellableCtx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer objectProvider.End()
+
+	userToUsersetDone := false
+	objectToUsersetDone := false
+
+	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
+	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
+	for !userToUsersetDone || !objectToUsersetDone {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
+			if !ok {
+				userToUsersetDone = true
+				if usersetFromUser.Size() == 0 {
+					return res, ctx.Err()
+				}
+				break
+			}
+			if userToUsersetMessage.err != nil {
+				return nil, userToUsersetMessage.err
+			}
+			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) {
+				res.Allowed = true
+				return res, nil
+			}
+		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+			if !ok {
+				// usersetFromObject must not be empty because we would have caught it earlier.
+				objectToUsersetDone = true
+				break
+			}
+			if objectToUsersetMessage.err != nil {
+				return nil, objectToUsersetMessage.err
+			}
+			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) {
+				res.Allowed = true
+				return res, nil
+			}
+		}
+	}
+
+	res.Allowed = false
+	return res, nil
+}
+
 func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
@@ -869,6 +949,24 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
+		kind:             storage.TTUKind,
+		tuplesetRelation: ttu.GetTupleset().GetRelation(),
+	}, objectProvider)
+}
+
+// recursiveTTUFastPathV2 solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
+// rightIter gives the iterator for the recursive TTU.
+func (c *LocalChecker) recursiveTTUFastPathV3(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveTTUFastPathV3")
+	defer span.End()
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+
+	ttu := rewrite.GetTupleToUserset()
+
+	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu, c.concurrencyLimit)
+
+	return c.recursiveCTEFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
 		tuplesetRelation: ttu.GetTupleset().GetRelation(),
 	}, objectProvider)

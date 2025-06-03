@@ -186,8 +186,15 @@ func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, tupleKey, op
 }
 
 // ReadRecursive implements storage.OpenFGADatastore.
-func (m *MockRelationshipTupleReader) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-	return m.ReadStartingWithUser(ctx, store, filter, options);
+func (m *MockRelationshipTupleReader) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		opts := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: 0,
+			},
+		}
+	return m.Read(ctx, store, tupleKey, opts);
 }
 
 // ReadPage mocks base method.
@@ -955,11 +962,17 @@ func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store s
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
-
-func (m *MockOpenFGADatastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-	return m.ReadStartingWithUser(ctx, store, filter, options)
+// ReadRecursive implements storage.OpenFGADatastore.
+func (m *MockOpenFGADatastore) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+		opts := storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: 0,
+			},
+		}
+	return m.Read(ctx, store, tupleKey, opts);
 }
-
 
 // ReadStartingWithUser indicates an expected call of ReadStartingWithUser.
 func (mr *MockOpenFGADatastoreMockRecorder) ReadStartingWithUser(ctx, store, filter, options any) *gomock.Call {

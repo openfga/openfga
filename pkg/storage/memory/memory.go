@@ -146,7 +146,9 @@ type MemoryBackend struct {
 }
 
 // ReadRecursive implements storage.OpenFGADatastore.
-func (s *MemoryBackend) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	panic("unimplemented")
 }
 

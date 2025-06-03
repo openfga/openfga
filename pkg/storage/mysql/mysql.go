@@ -159,7 +159,9 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 }
 
 // ReadRecursive implements storage.OpenFGADatastore.
-func (s *Datastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+func (s *Datastore) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	panic("unimplemented")
 }
 

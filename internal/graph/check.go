@@ -48,12 +48,13 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	usersetBatchSize     int
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate                     CheckResolver
+	concurrencyLimit             int
+	usersetBatchSize             int
+	logger                       logger.Logger
+	optimizationsEnabled         bool
+	maxResolutionDepth           uint32
+	recursiveOptimizationEnabled bool
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -68,6 +69,12 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 func WithOptimizations(enabled bool) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithRecursiveOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.recursiveOptimizationEnabled = enabled
 	}
 }
 
@@ -1461,22 +1468,34 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("computed_relation", computedRelation),
 		)
 
-		opts := storage.ReadOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.GetConsistency(),
-			},
+		storeID := req.GetStoreID()
+
+		var iter storage.TupleIterator
+		var err error
+		if !c.recursiveOptimizationEnabled {
+			opts := storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+
+			iter, err = ds.Read(
+				ctx,
+				storeID,
+				tuple.NewTupleKey(object, tuplesetRelation, ""),
+				opts,
+			)
+
+		} else {
+			iter, err := ds.ReadRecursive(ctx, storeID, tuple.NewTupleKey(object, tuplesetRelation, ""))
 		}
 
-		storeID := req.GetStoreID()
-		iter, err := ds.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey(object, tuplesetRelation, ""),
-			opts,
-		)
 		if err != nil {
 			return nil, err
 		}
+
+		// read recursion here
+		//iter, err := ds.ReadRecursive(ctx, storeID, tuple.NewTupleKey(object, tuplesetRelation, ""))
 
 		// filter out invalid tuples yielded by the database iterator
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
@@ -1501,7 +1520,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				resolver = c.checkTTUFastPathV2
 				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
 			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.recursiveTTUFastPathV2
+				// call TTU fastpath
+				if !c.recursiveOptimizationEnabled {
+					resolver = c.recursiveTTUFastPathV2
+				} else {
+					resolver = c.recursiveTTUFastPathV3
+				}
+
 				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
 			}
 		} else if !isUserset {
