@@ -47,6 +47,7 @@ const (
 	authorizationModelIDKey    = "authorization_model_id"
 
 	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
+	ExperimentalRecursionOptimizations   ExperimentalFeatureFlag = "enable-recursion-optimizations"
 	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
 	allowedLabel                                                 = "allowed"
@@ -956,6 +957,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithRecursiveOptimizations(s.IsExperimentallyEnabled(ExperimentalRecursionOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
