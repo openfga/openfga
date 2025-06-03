@@ -90,7 +90,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
-			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			to := edge.GetTo().GetUniqueLabel()
 
 			// turn "document#viewer" into "viewer"
@@ -101,6 +100,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 					Relation: rel,
 				},
 			}
+
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
@@ -122,11 +122,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	}
 
 	return errors.Join(errs, pool.Wait())
-	// Can we lift this to the caller? I don't want to have to pass in a span also this method signature is big
-	// if errs != nil {
-	//	telemetry.TraceError(span, errs)
-	//	return errs
-	//}
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
@@ -253,15 +248,13 @@ LoopOnIterator:
 
 		switch req.weightedEdge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			// for direct edge I think we can just emit this and be done
-			// need the "needs check" bit
 			err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, foundObject, resultChan)
 			errs = errors.Join(errs, err)
 
 			continue
 
 		case weightedGraph.TTUEdge:
-			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO : validate this?
+			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO: future branch
 		default:
 			panic("unsupported edge type")
 		}
@@ -351,7 +344,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
-	// TODO: are there any other cases?
 	default:
 		panic("unsupported edge type")
 	}

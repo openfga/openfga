@@ -327,7 +327,6 @@ func (c *ReverseExpandQuery) execute(
 			}
 		}
 
-		// I'm not sure this holds for the weighted graph?
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
 		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
 			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
@@ -470,11 +469,9 @@ func (c *ReverseExpandQuery) buildQueryFilters(
 
 	switch req.edge.Type {
 	case graph.DirectEdge:
-		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
 		relationFilter = req.edge.TargetReference.GetRelation() // "other_rel"
 		targetUserObjectType := req.User.GetObjectType()        // "employee"
 
-		// weighted edges have GetWildcards() which works for this
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
 			return nil, "", err
