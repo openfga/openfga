@@ -32,9 +32,6 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 	var errs error
 
 	for _, edge := range edges {
-		// TODO: i think the getEdgesFromWeightedGraph func handles this for us, shouldn't need this
-		// intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-		//innerLoopEdge := edge
 		r := &ReverseExpandRequest{
 			Consistency:      req.Consistency,
 			Context:          req.Context,
@@ -50,18 +47,10 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 		}
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
-			//r.User = &UserRefObject{
-			//	Object: &openfgav1.Object{
-			//		Id: sourceUserObj,
-			//		// Why is dropping this relation necessary?
-			//	},
-			//}
-			fmt.Printf("User going into direct query: %+v\n", r.User)
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
-			//fmt.Printf("JUSTIN Computed edge from %s to %s\n", edge.GetFrom().GetUniqueLabel(), edge.GetTo().GetUniqueLabel())
 			// follow the computed_userset edge, no new goroutine needed since it's not I/O intensive
 			to := edge.GetTo().GetUniqueLabel()
 
@@ -73,14 +62,12 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 					Relation: rel,
 				},
 			}
-			fmt.Printf("User going into computed dispatch: %+v\n", r.User)
 			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
 			}
 		case weightedGraph.TTUEdge:
-			//fmt.Printf("JUSTIN TTU EDGE")
 			pool.Go(func(ctx context.Context) error {
 				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
@@ -91,7 +78,6 @@ func (c *ReverseExpandQuery) LoopOverWeightedEdges(
 				return errs
 			}
 		default:
-			fmt.Printf("Unknown edge type %d\n", edge.GetEdgeType())
 			panic("unsupported edge type")
 		}
 	}
@@ -186,8 +172,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	if err != nil {
 		return err
 	}
-	fmt.Println("--------WEIGHTED-----------------")
-	fmt.Printf(" UserFilter: %s\n, RelationFilter %s\n", userFilter, relationFilter)
 
 	// filter out invalid tuples yielded by the database iterator
 	filteredIter := storage.NewFilteredTupleKeyIterator(
@@ -203,7 +187,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
-		fmt.Printf("JUSTIN TUPLE KEY: %s\n", tk.String())
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -214,7 +197,6 @@ LoopOnIterator:
 
 		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
-			fmt.Printf("JUSTIN TK Condition failed: %s\n", tk.String())
 			errs = errors.Join(errs, err)
 			continue
 		}
@@ -234,7 +216,6 @@ LoopOnIterator:
 
 		foundObject := tk.GetObject()
 		var newRelation string
-		fmt.Printf("JUSTIN found object: %s\n", tk.GetObject())
 
 		switch req.weightedEdge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -300,9 +281,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 
 		toNode := req.weightedEdge.GetTo()
 
-		//targetUserObjectType := toNode.GetLabel() // "employee"
-		fmt.Printf("JUSTIN buildQUeryFilters To node type: %d, label: %s\n", toNode.GetNodeType(), toNode.GetLabel())
-
 		// e.g. 'user:*'
 		if toNode.GetNodeType() == weightedGraph.SpecificTypeWildcard {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
@@ -332,7 +310,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 					Object: val.ObjectRelation.GetObject(),
 				})
 			}
-			//fmt.Printf("JUSTIN adding a realtion piece: %s - node type: %d\n", val.ObjectRelation, toNode.GetNodeType())
 		}
 	case weightedGraph.TTUEdge:
 		relationFilter = req.edge.TuplesetRelation
@@ -342,7 +319,6 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
 				Object: val.ObjectRelation.GetObject(),
 			})
-			fmt.Printf("TTU EDGE GetObject(): %s", val.ObjectRelation.GetObject())
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
