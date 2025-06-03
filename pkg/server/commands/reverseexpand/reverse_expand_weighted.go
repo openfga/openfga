@@ -18,9 +18,46 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-func (c *ReverseExpandQuery) LoopOverWeightedEdges(
+func (c *ReverseExpandQuery) loopOverEdgesUsingWeightedGraph(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+	sourceUserType, sourceUserObj string,
+) error {
+	targetTypeRel := req.weightedEdgeTypeRel
+	// This is true on the first call of reverse expand
+	if targetTypeRel == "" {
+		targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+
+		targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+	}
+
+	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+		targetTypeRel,
+		sourceUserType,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return c.loopOverWeightedEdges(
+		ctx,
+		edges,
+		intersectionOrExclusionInPreviousEdges || needsCheck,
+		req,
+		resolutionMetadata,
+		resultChan,
+		sourceUserObj,
+	)
+}
+
+func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	ctx context.Context,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	needsCheck bool,
@@ -111,6 +148,7 @@ func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
 		span.End()
 	}()
 
+	// Do we want to separate buildQueryFilters more, and feed it in below?
 	err = c.readTuplesAndExecuteWeighted(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 	return err
 }
@@ -218,10 +256,10 @@ LoopOnIterator:
 			// for direct edge I think we can just emit this and be done
 			// need the "needs check" bit
 			err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, foundObject, resultChan)
-			if err != nil {
-				panic("AHHHHH")
-			}
-			// newRelation = tk.GetRelation()
+			errs = errors.Join(errs, err)
+
+			continue
+
 		case weightedGraph.TTUEdge:
 			newRelation = req.weightedEdge.GetTo().GetLabel() // TODO : validate this?
 		default:
@@ -291,6 +329,8 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		}
 
 		// e.g. 'group:eng#member'
+		// so is it if the TO node is direct to a userset?
+		// which would be a DirectEdge TO node with type weightedGraph.SpecificTypeAndRelation
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
 			if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
 				userFilter = append(userFilter, val.ObjectRelation)
@@ -301,7 +341,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 			}
 		}
 	case weightedGraph.TTUEdge:
-		relationFilter = req.edge.TuplesetRelation
+		relationFilter = req.edge.TuplesetRelation // This needs to be updated
 		// a TTU edge can only have a userset as a source node
 		// e.g. 'group:eng#member'
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
@@ -311,59 +351,12 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		} else {
 			panic("unexpected source for reverse expansion of tuple to userset")
 		}
+	// TODO: are there any other cases?
 	default:
 		panic("unsupported edge type")
 	}
 
 	return userFilter, relationFilter
-}
-
-func hasPathTo(dest string) func(*weightedGraph.WeightedAuthorizationModelEdge) bool {
-	return func(edge *weightedGraph.WeightedAuthorizationModelEdge) bool {
-		_, ok := edge.GetWeight(dest)
-		return ok
-	}
-}
-
-func cheapestEdgeTo(dst string) func(*weightedGraph.WeightedAuthorizationModelEdge, *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
-	return func(lowest, current *weightedGraph.WeightedAuthorizationModelEdge) *weightedGraph.WeightedAuthorizationModelEdge {
-		if lowest == nil {
-			return current
-		}
-
-		a, ok := lowest.GetWeight(dst)
-		if !ok {
-			return current
-		}
-
-		b, ok := current.GetWeight(dst)
-		if !ok {
-			return lowest
-		}
-
-		if b < a {
-			return current
-		}
-		return lowest
-	}
-}
-
-func reduce[S ~[]E, E any, A any](s S, initializer A, f func(A, E) A) A {
-	i := initializer
-	for _, item := range s {
-		i = f(i, item)
-	}
-	return i
-}
-
-func filter[S ~[]E, E any](s S, f func(E) bool) []E {
-	var filteredItems []E
-	for _, item := range s {
-		if f(item) {
-			filteredItems = append(filteredItems, item)
-		}
-	}
-	return filteredItems
 }
 
 // expects a "type#rel".
