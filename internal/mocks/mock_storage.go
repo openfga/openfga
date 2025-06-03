@@ -185,6 +185,11 @@ func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, tupleKey, op
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Read), ctx, store, tupleKey, options)
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (m *MockRelationshipTupleReader) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	return m.ReadStartingWithUser(ctx, store, filter, options);
+}
+
 // ReadPage mocks base method.
 func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
@@ -950,6 +955,11 @@ func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store s
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
+
+func (m *MockOpenFGADatastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	return m.ReadStartingWithUser(ctx, store, filter, options)
+}
+
 
 // ReadStartingWithUser indicates an expected call of ReadStartingWithUser.
 func (mr *MockOpenFGADatastoreMockRecorder) ReadStartingWithUser(ctx, store, filter, options any) *gomock.Call {

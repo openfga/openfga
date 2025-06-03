@@ -413,6 +413,11 @@ func (s *Datastore) ReadUsersetTuples(
 	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *Datastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
 func (s *Datastore) ReadStartingWithUser(
 	ctx context.Context,

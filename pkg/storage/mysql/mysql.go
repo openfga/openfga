@@ -158,6 +158,11 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	return iter.ToArray(ctx, options.Pagination)
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *Datastore) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()

@@ -145,6 +145,11 @@ type MemoryBackend struct {
 	mutexAssertions sync.RWMutex
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *MemoryBackend) ReadRecursive(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter, options storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // Ensures that [MemoryBackend] implements the [storage.OpenFGADatastore] interface.
 var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
