@@ -97,12 +97,20 @@ AllImages:
 			nat.Port("5432/tcp"): {},
 		},
 		Image: postgresImage,
+		Cmd: []string{
+			"postgres",
+			"-c", "wal_level=replica",
+			"-c", "max_wal_senders=3",
+			"-c", "max_replication_slots=3",
+			"-c", "wal_keep_size=64MB",
+			"-c", "hot_standby=on",
+		},
 	}
 
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
+		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
 	name := "postgres-" + ulid.Make().String()
@@ -205,26 +213,69 @@ func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 		dockerClient.Close()
 	})
 
+	// Configure the master for replication
+	masterContainerID, err := p.getMasterContainerID(dockerClient)
+	require.NoError(t, err)
+
+	err = p.configureMasterForReplication(t, dockerClient, masterContainerID)
+	require.NoError(t, err)
+
+	// Wait for the master to be configured
+	time.Sleep(3 * time.Second)
+
+	// Extract host and port from master for basebackup
+	masterHost := "host.docker.internal"
+	masterPort := strings.Split(p.addr, ":")[1]
+
+	// Use standard PostgreSQL approach with docker-entrypoint-initdb.d
 	containerCfg := container.Config{
 		Env: []string{
 			"POSTGRES_DB=defaultdb",
 			"POSTGRES_PASSWORD=secret",
-			"POSTGRES_REPLICATION_MODE=replica",
-			"POSTGRES_MASTER_HOST=" + p.addr,
-			"POSTGRES_MASTER_PORT=5432",
-			"POSTGRES_MASTER_USER=" + p.username,
-			"POSTGRES_MASTER_PASSWORD=" + p.password,
+			"PGPASSWORD=secret",
+			"POSTGRES_INITDB_ARGS=--auth-host=trust",
+			fmt.Sprintf("POSTGRES_MASTER_HOST=%s", masterHost),
+			fmt.Sprintf("POSTGRES_MASTER_PORT=%s", masterPort),
 		},
 		ExposedPorts: nat.PortSet{
 			nat.Port("5432/tcp"): {},
 		},
-		Image: postgresImage,
+		Image:      postgresImage,
+		Entrypoint: []string{"/bin/bash", "-c"},
+		Cmd: []string{fmt.Sprintf(`
+set -e
+
+export PGPASSWORD=secret
+
+echo "Initializing PostgreSQL replica..."
+
+# Wait for master to be ready
+until pg_isready -h %s -p %s -U postgres; do
+    echo "Waiting for master..."
+    sleep 2
+done
+
+echo "Master ready, creating base backup..."
+
+# Remove default PGDATA content
+rm -rf $PGDATA/*
+
+# Create base backup
+pg_basebackup -h %s -p %s -U postgres -D $PGDATA -Fp -Xs -P -R
+
+# Configure as replica
+echo "hot_standby = on" >> $PGDATA/postgresql.conf
+touch $PGDATA/standby.signal
+
+echo "Starting PostgreSQL replica..."
+exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
+`, masterHost, masterPort, masterHost, masterPort)},
 	}
 
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
+		ExtraHosts:      []string{"host.docker.internal:host-gateway"},
 	}
 
 	name := "postgres-replica-" + ulid.Make().String()
@@ -261,23 +312,115 @@ func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 		password: "secret",
 	}
 
-	// Attendre que le replica soit prêt
+	// Wait for replica to be ready and synchronized
+	err = p.waitForReplicaSync(t)
+	require.NoError(t, err, "failed to sync replica")
+
+	return nil
+}
+
+// getMasterContainerID finds the master container ID
+func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client) (string, error) {
+	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	for _, cont := range containers {
+		for _, name := range cont.Names {
+			if strings.Contains(name, "postgres-") && !strings.Contains(name, "replica") && !strings.Contains(name, "basebackup") {
+				return cont.ID, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("master container not found")
+}
+
+// configureMasterForReplication configures the master to accept replication connections
+func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dockerClient *client.Client, masterContainerID string) error {
+	// Configuration for streaming replication - only pg_hba.conf and reload
+	commands := [][]string{
+		{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
+		{"psql", "-U", "postgres", "-d", "defaultdb", "-c", "SELECT pg_reload_conf()"},
+	}
+
+	for _, cmd := range commands {
+		execConfig := container.ExecOptions{
+			Cmd: cmd,
+		}
+
+		exec, err := dockerClient.ContainerExecCreate(context.Background(), masterContainerID, execConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create exec for command %v: %w", cmd, err)
+		}
+
+		err = dockerClient.ContainerExecStart(context.Background(), exec.ID, container.ExecStartOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to execute command %v: %w", cmd, err)
+		}
+
+		// Wait for command to complete
+		inspect, err := dockerClient.ContainerExecInspect(context.Background(), exec.ID)
+		if err != nil {
+			return fmt.Errorf("failed to inspect exec %v: %w", cmd, err)
+		}
+
+		if inspect.ExitCode != 0 {
+			t.Logf("Command %v completed with exit code %d", cmd, inspect.ExitCode)
+		}
+	}
+
+	return nil
+}
+
+// waitForReplicaSync waits for the replica to be synchronized with the master
+func (p *postgresTestContainer) waitForReplicaSync(t testing.TB) error {
 	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", p.replica.username, p.replica.password, p.replica.addr)
-	db, err := goose.OpenDBWithDriver("pgx", uri)
-	require.NoError(t, err)
-	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
-	err = backoff.Retry(
+	backoffPolicy.MaxElapsedTime = 120 * time.Second // Increase to 2 minutes for initialization
+	backoffPolicy.InitialInterval = 2 * time.Second  // Start with 2 seconds
+	backoffPolicy.MaxInterval = 10 * time.Second     // Cap at 10 seconds
+
+	return backoff.Retry(
 		func() error {
-			return db.Ping()
+			db, err := goose.OpenDBWithDriver("pgx", uri)
+			if err != nil {
+				t.Logf("Connection to replica failed (expected during initialization): %v", err)
+				return fmt.Errorf("failed to connect to replica: %w", err)
+			}
+			defer db.Close()
+
+			// Check that replica is in recovery mode (standby)
+			var inRecovery bool
+			err = db.QueryRow("SELECT pg_is_in_recovery()").Scan(&inRecovery)
+			if err != nil {
+				t.Logf("Failed to check recovery status (replica may still be initializing): %v", err)
+				return fmt.Errorf("failed to check recovery status: %w", err)
+			}
+
+			if !inRecovery {
+				return fmt.Errorf("replica is not in recovery mode")
+			}
+
+			// Check that replica is receiving WAL
+			var replicaLSN *string
+			err = db.QueryRow("SELECT pg_last_wal_receive_lsn()").Scan(&replicaLSN)
+			if err != nil {
+				t.Logf("Failed to get replica LSN: %v", err)
+				return fmt.Errorf("failed to get replica LSN: %w", err)
+			}
+
+			if replicaLSN == nil || *replicaLSN == "" {
+				return fmt.Errorf("replica has not received any WAL yet")
+			}
+
+			t.Logf("Replica is synchronized and receiving WAL at LSN: %s", *replicaLSN)
+			return nil
 		},
 		backoffPolicy,
 	)
-	require.NoError(t, err, "failed to connect to postgres replica container")
-
-	return nil
 }
 
 // GetReplicaConnectionURI returns the connection URI for the read replica

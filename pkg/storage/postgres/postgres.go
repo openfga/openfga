@@ -101,16 +101,16 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 }
 
 // New creates a new [Datastore] storage.
-func New(primaryUri, secondaryUri string, cfg *sqlcommon.Config) (*Datastore, error) {
+func New(cfg *sqlcommon.Config) (*Datastore, error) {
 
-	primaryDb, err := initDB(primaryUri, cfg.Username, cfg.Password, cfg)
+	primaryDb, err := initDB(cfg.URI, cfg.Username, cfg.Password, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
 	var secondaryDb *sql.DB
-	if secondaryUri != "" {
-		secondaryDb, err = initDB(secondaryUri, cfg.Username, cfg.Password, cfg)
+	if cfg.SecondaryURI != "" {
+		secondaryDb, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres connection: %w", err)
 		}
@@ -847,33 +847,40 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 
 	// check if primary is ready
-	readyStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
+	primaryReadyStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
 	if err != nil {
-		readyStatus.Message = err.Error()
-		readyStatus.IsReady = false
+		primaryReadyStatus.Message = err.Error()
+		primaryReadyStatus.IsReady = false
 	}
 
 	// if secondary is not configured, return primary status only
 	if !s.isSecondaryConfigured() {
-		return readyStatus, err
+		return primaryReadyStatus, nil
 	}
 
-	// if primary is not ready and secondary is configured, return primary status only
-	if !readyStatus.IsReady {
-		readyStatus.Message = fmt.Sprintf("primary: %s", readyStatus.Message)
+	if primaryReadyStatus.Message == "" {
+		primaryReadyStatus.Message = "ready"
 	}
+
+	multipleReadyStatus := storage.ReadinessStatus{}
+	messageTpl := "primary: %s, secondary: %s"
 
 	// check if secondary is ready
 	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDb)
 	if err != nil {
-		readyStatus.Message = fmt.Sprintf("%s, secondary: %s", readyStatus.Message, err.Error())
-		readyStatus.IsReady = false
+		secondaryStatus.Message = err.Error()
+		secondaryStatus.IsReady = false
+	}
+
+	if secondaryStatus.Message == "" {
+		secondaryStatus.Message = "ready"
 	}
 
 	// if secondary is configured, return primary and secondary status
-	readyStatus.IsReady = readyStatus.IsReady && secondaryStatus.IsReady
+	multipleReadyStatus.IsReady = primaryReadyStatus.IsReady && secondaryStatus.IsReady
+	multipleReadyStatus.Message = fmt.Sprintf(messageTpl, primaryReadyStatus.Message, secondaryStatus.Message)
 
-	return readyStatus, nil
+	return multipleReadyStatus, nil
 }
 
 // HandleSQLError processes an SQL error and converts it into a more

@@ -57,15 +57,18 @@ func MustBootstrapDatastore(t testing.TB, engine string) (storagefixtures.Datast
 	var ds storage.OpenFGADatastore
 	var err error
 
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+
 	switch engine {
 	case "memory":
 		ds = memory.New()
 	case "postgres":
-		ds, err = postgres.New(uri, "", sqlcommon.NewConfig())
+		ds, err = postgres.New(cfg)
 	case "mysql":
-		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+		ds, err = mysql.New(cfg)
 	case "sqlite":
-		ds, err = sqlite.New(uri, sqlcommon.NewConfig())
+		ds, err = sqlite.New(cfg)
 	default:
 		t.Fatalf("unsupported datastore engine: %q", engine)
 	}

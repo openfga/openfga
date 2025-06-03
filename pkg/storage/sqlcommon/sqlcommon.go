@@ -31,6 +31,8 @@ var tracer = otel.Tracer("pkg/storage/sqlcommon")
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
 type Config struct {
+	URI                    string
+	SecondaryURI           string
 	Username               string
 	Password               string
 	SecondaryUsername      string
@@ -50,6 +52,20 @@ type Config struct {
 // DatastoreOption defines a function type
 // used for configuring a Config object.
 type DatastoreOption func(*Config)
+
+// WithURI returns a DatastoreOption that sets the URI in the Config.
+func WithURI(uri string) DatastoreOption {
+	return func(config *Config) {
+		config.URI = uri
+	}
+}
+
+// WithSecondaryURI returns a DatastoreOption that sets the secondary URI in the Config.
+func WithSecondaryURI(uri string) DatastoreOption {
+	return func(config *Config) {
+		config.SecondaryURI = uri
+	}
+}
 
 // WithUsername returns a DatastoreOption that sets the username in the Config.
 func WithUsername(username string) DatastoreOption {

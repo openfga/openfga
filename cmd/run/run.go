@@ -411,6 +411,8 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	// SQL Token Serializer by default
 	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
 	datastoreOptions := []sqlcommon.DatastoreOption{
+		sqlcommon.WithURI(config.Datastore.URI),
+		sqlcommon.WithSecondaryURI(config.Datastore.SecondaryURI),
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithSecondaryUsername(config.Datastore.SecondaryUsername),
@@ -442,17 +444,17 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		}
 		datastore = memory.New(opts...)
 	case "mysql":
-		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
+		datastore, err = mysql.New(dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		datastore, err = postgres.New(config.Datastore.URI, config.Datastore.SecondaryURI, dsCfg)
+		datastore, err = postgres.New(dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	case "sqlite":
-		datastore, err = sqlite.New(config.Datastore.URI, dsCfg)
+		datastore, err = sqlite.New(dsCfg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("initialize sqlite datastore: %w", err)
 		}

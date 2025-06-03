@@ -364,8 +364,8 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := postgres.New(
-		uri,
 		sqlcommon.NewConfig(
+			sqlcommon.WithURI(uri),
 			sqlcommon.WithUsername(testDatastore.GetUsername()),
 			sqlcommon.WithPassword(testDatastore.GetPassword()),
 		),
@@ -402,8 +402,8 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(false)
 	ds, err := mysql.New(
-		uri,
 		sqlcommon.NewConfig(
+			sqlcommon.WithURI(uri),
 			sqlcommon.WithUsername(testDatastore.GetUsername()),
 			sqlcommon.WithPassword(testDatastore.GetPassword()),
 		),
@@ -844,7 +844,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
-		ds, err := postgres.New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(10)))
+		cfg := sqlcommon.NewConfig()
+		cfg.URI = uri
+		ds, err := postgres.New(cfg)
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -860,7 +862,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI(true)
-		ds, err := mysql.New(uri, sqlcommon.NewConfig(sqlcommon.WithMaxOpenConns(10)))
+		cfg := sqlcommon.NewConfig()
+		cfg.URI = uri
+		ds, err := mysql.New(cfg)
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -870,7 +874,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
 
 		uri := testDatastore.GetConnectionURI(true)
-		ds, err := sqlite.New(uri, sqlcommon.NewConfig())
+		cfg := sqlcommon.NewConfig()
+		cfg.URI = uri
+		ds, err := sqlite.New(cfg)
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -953,7 +959,8 @@ func TestReleasesConnections(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := postgres.New(uri, sqlcommon.NewConfig(
+	ds, err := postgres.New(sqlcommon.NewConfig(
+		sqlcommon.WithURI(uri),
 		sqlcommon.WithMaxOpenConns(1),
 		sqlcommon.WithMaxTuplesPerWrite(2000),
 	))

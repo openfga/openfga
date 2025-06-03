@@ -26,30 +26,41 @@ func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
 
-func TestPostgresDatastoreWithSecondaryDB(t *testing.T) {
+func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	secondaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	primaryDatastore.CreateSecondary(t)
 
 	primaryUri := primaryDatastore.GetConnectionURI(true)
-	secondaryUri := secondaryDatastore.GetSecondaryConnectionURI(true)
 
-	ds, err := New(primaryUri, secondaryUri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = primaryUri
+	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(true)
+
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
-	test.RunAllTests(t, ds)
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+	require.Equal(t, "primary: ready, secondary: ready", status.Message)
 }
 
 func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	ds.Close()
 	status, err := ds.IsReady(context.Background())
@@ -77,7 +88,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, "", sqlcommon.NewConfig())
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = uri
+			ds, err := New(cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -178,7 +191,9 @@ func TestCtxCancel(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, "", sqlcommon.NewConfig())
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = uri
+			ds, err := New(cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -238,7 +253,9 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -284,7 +301,9 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -309,7 +328,9 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -337,7 +358,9 @@ func TestFindLatestModel(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -418,7 +441,9 @@ func TestAllowNullCondition(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -520,7 +545,9 @@ func TestMarshalledAssertions(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, "", sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
