@@ -760,8 +760,7 @@ func IsVersionReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, e
 	}, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
-// and the datastore has the latest migration applied.
+// IsReady returns true if the connection to the datastore is successful.
 func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

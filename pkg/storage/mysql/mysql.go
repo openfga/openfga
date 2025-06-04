@@ -43,7 +43,7 @@ type Datastore struct {
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
-	versionReady           storage.ReadinessStatus
+	versionReady           bool
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -127,7 +127,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
-		versionReady:           storage.ReadinessStatus{IsReady: false},
+		versionReady:           false,
 	}, nil
 }
 
@@ -779,12 +779,12 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady] and [sqlcommon.IsVersionReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	if !s.versionReady.IsReady {
+	if !s.versionReady {
 		versionReady, err := sqlcommon.IsVersionReady(ctx, s.db)
 		if err != nil {
 			return versionReady, err
 		}
-		s.versionReady = versionReady
+		s.versionReady = versionReady.IsReady
 		return versionReady, nil
 	}
 	// we have established version is ready, we want to ping from now on.
