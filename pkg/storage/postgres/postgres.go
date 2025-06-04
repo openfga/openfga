@@ -846,24 +846,21 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 
-	// check if primary is ready
-	primaryReadyStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
-	if err != nil {
-		primaryReadyStatus.Message = err.Error()
-		primaryReadyStatus.IsReady = false
-	}
-
 	// if secondary is not configured, return primary status only
 	if !s.isSecondaryConfigured() {
-		return primaryReadyStatus, nil
+		return sqlcommon.IsReady(ctx, s.primaryDb)
 	}
 
-	if primaryReadyStatus.Message == "" {
-		primaryReadyStatus.Message = "ready"
+	// check if primary is ready
+	primaryStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
+	if err != nil {
+		primaryStatus.Message = err.Error()
+		primaryStatus.IsReady = false
 	}
 
-	multipleReadyStatus := storage.ReadinessStatus{}
-	messageTpl := "primary: %s, secondary: %s"
+	if primaryStatus.IsReady && primaryStatus.Message == "" {
+		primaryStatus.Message = "ready"
+	}
 
 	// check if secondary is ready
 	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDb)
@@ -872,13 +869,14 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 		secondaryStatus.IsReady = false
 	}
 
-	if secondaryStatus.Message == "" {
+	if secondaryStatus.IsReady && secondaryStatus.Message == "" {
 		secondaryStatus.Message = "ready"
 	}
 
-	// if secondary is configured, return primary and secondary status
-	multipleReadyStatus.IsReady = primaryReadyStatus.IsReady && secondaryStatus.IsReady
-	multipleReadyStatus.Message = fmt.Sprintf(messageTpl, primaryReadyStatus.Message, secondaryStatus.Message)
+	multipleReadyStatus := storage.ReadinessStatus{}
+	messageTpl := "primary: %s, secondary: %s"
+	multipleReadyStatus.IsReady = primaryStatus.IsReady && secondaryStatus.IsReady
+	multipleReadyStatus.Message = fmt.Sprintf(messageTpl, primaryStatus.Message, secondaryStatus.Message)
 
 	return multipleReadyStatus, nil
 }
