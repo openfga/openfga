@@ -729,8 +729,9 @@ func ReadAuthorizationModel(
 	return ret, nil
 }
 
-// IsVersionReady returns true if the datastore has the latest migration applied.
-func IsVersionReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
+// IsReady returns true if connection to datastore is successful AND
+// (the datastore has the latest migration applied OR skipVersionCheck).
+func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
@@ -738,6 +739,12 @@ func IsVersionReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, e
 	// if error is due to connection issue.
 	if pingErr := db.PingContext(ctx); pingErr != nil {
 		return storage.ReadinessStatus{}, pingErr
+	}
+
+	if skipVersionCheck {
+		return storage.ReadinessStatus{
+			IsReady: true,
+		}, nil
 	}
 
 	revision, err := goose.GetDBVersionContext(ctx, db)
@@ -754,19 +761,6 @@ func IsVersionReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, e
 				"'. Run 'openfga migrate'.",
 			IsReady: false,
 		}, nil
-	}
-	return storage.ReadinessStatus{
-		IsReady: true,
-	}, nil
-}
-
-// IsReady returns true if the connection to the datastore is successful.
-func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if pingErr := db.PingContext(ctx); pingErr != nil {
-		return storage.ReadinessStatus{}, pingErr
 	}
 	return storage.ReadinessStatus{
 		IsReady: true,

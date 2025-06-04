@@ -777,18 +777,14 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	return changes, ulid, nil
 }
 
-// IsReady see [sqlcommon.IsReady] and [sqlcommon.IsVersionReady].
+// IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	if !s.versionReady {
-		versionReady, err := sqlcommon.IsVersionReady(ctx, s.db)
-		if err != nil {
-			return versionReady, err
-		}
-		s.versionReady = versionReady.IsReady
-		return versionReady, nil
+	versionReady, err := sqlcommon.IsReady(ctx, s.versionReady, s.db)
+	if err != nil {
+		return versionReady, err
 	}
-	// we have established version is ready, we want to ping from now on.
-	return sqlcommon.IsReady(ctx, s.db)
+	s.versionReady = versionReady.IsReady
+	return versionReady, nil
 }
 
 // HandleSQLError processes an SQL error and converts it into a more
