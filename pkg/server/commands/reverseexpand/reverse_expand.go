@@ -336,7 +336,30 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	if c.listObjectOptimizationsEnabled {
-		return c.loopOverEdgesUsingWeightedGraph(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata, sourceUserType, sourceUserObj)
+		targetTypeRel := req.weightedEdgeTypeRel
+
+		if targetTypeRel == "" { // This is true on the first call of reverse expand
+			targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+
+			targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+		}
+		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+			targetTypeRel,
+			sourceUserType,
+		)
+
+		if err != nil {
+			return err
+		}
+		return c.loopOverWeightedEdges(
+			ctx,
+			edges,
+			needsCheck || intersectionOrExclusionInPreviousEdges,
+			req,
+			resolutionMetadata,
+			resultChan,
+			sourceUserObj,
+		)
 	}
 
 	g := graph.New(c.typesystem)

@@ -18,44 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
-
-func (c *ReverseExpandQuery) loopOverEdgesUsingWeightedGraph(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-	sourceUserType, sourceUserObj string,
-) error {
-	targetTypeRel := req.weightedEdgeTypeRel
-	// This is true on the first call of reverse expand
-	if targetTypeRel == "" {
-		targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
-
-		targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
-	}
-
-	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
-		targetTypeRel,
-		sourceUserType,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	return c.loopOverWeightedEdges(
-		ctx,
-		edges,
-		intersectionOrExclusionInPreviousEdges || needsCheck,
-		req,
-		resolutionMetadata,
-		resultChan,
-		sourceUserObj,
-	)
-}
 
 func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	ctx context.Context,
