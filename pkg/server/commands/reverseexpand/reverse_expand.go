@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 
@@ -44,9 +45,7 @@ type ReverseExpandRequest struct {
 
 	edge *graph.RelationshipEdge
 
-	weightedEdge *weightedGraph.WeightedAuthorizationModelEdge
-
-	// TODO: might need another piece here
+	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
 	weightedEdgeTypeRel string
 }
 
@@ -348,18 +347,22 @@ func (c *ReverseExpandQuery) execute(
 			sourceUserType,
 		)
 
-		if err != nil {
-			return err
+		if err == nil {
+			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
+			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+			// and then fall back to the non-weighted version of reverse_expand
+			return c.loopOverWeightedEdges(
+				ctx,
+				edges,
+				needsCheck || intersectionOrExclusionInPreviousEdges,
+				req,
+				resolutionMetadata,
+				resultChan,
+				sourceUserObj,
+			)
 		}
-		return c.loopOverWeightedEdges(
-			ctx,
-			edges,
-			needsCheck || intersectionOrExclusionInPreviousEdges,
-			req,
-			resolutionMetadata,
-			resultChan,
-			sourceUserObj,
-		)
+
+		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
 	}
 
 	g := graph.New(c.typesystem)
