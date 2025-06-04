@@ -53,10 +53,10 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			})
 		case weightedGraph.ComputedEdge:
-			to := edge.GetTo().GetUniqueLabel()
+			toLabel := edge.GetTo().GetUniqueLabel()
 
 			// turn "document#viewer" into "viewer"
-			rel := getRelationFromLabel(to)
+			rel := tuple.GetRelation(toLabel)
 			r.User = &UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   sourceUserObj,
@@ -266,7 +266,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 	case weightedGraph.DirectEdge:
 		// the .From() for a direct edge will have a type#rel e.g. directs-employee#other_rel
 		fromLabel := req.weightedEdge.GetFrom().GetLabel()
-		relationFilter = getRelationFromLabel(fromLabel) // directs-employee#other_rel -> other_rel
+		relationFilter = tuple.GetRelation(fromLabel) // directs-employee#other_rel -> other_rel
 
 		toNode := req.weightedEdge.GetTo()
 
@@ -318,10 +318,4 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 func getTypeFromLabel(label string) string {
 	userObject, _ := tuple.SplitObjectRelation(label)
 	return userObject
-}
-
-// expects a "type#rel".
-func getRelationFromLabel(label string) string {
-	_, rel := tuple.SplitObjectRelation(label)
-	return rel
 }
