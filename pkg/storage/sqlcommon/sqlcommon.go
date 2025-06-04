@@ -737,6 +737,10 @@ func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 
 	revision, err := goose.GetDBVersionContext(ctx, db)
 	if err != nil {
+		// return a clearer error if possible.
+		if pingErr := db.PingContext(ctx); pingErr != nil {
+			return storage.ReadinessStatus{}, pingErr
+		}
 		return storage.ReadinessStatus{}, err
 	}
 
