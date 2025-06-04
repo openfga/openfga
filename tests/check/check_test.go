@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"io"
 	"net/http"
 	"testing"
@@ -22,6 +23,7 @@ import (
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -37,10 +39,9 @@ func TestMatrixPostgres(t *testing.T) {
 	runMatrixWithEngine(t, "postgres")
 }
 
-// TODO: re-enable
-// func TestMatrixMysql(t *testing.T) {
-//	runMatrixWithEngine(t, "mysql")
-//}
+func TestMatrixMysql(t *testing.T) {
+	runMatrixWithEngine(t, "mysql")
+}
 
 // TODO: re-enable after investigating write contention in test
 // func TestMatrixSqlite(t *testing.T) {
@@ -52,7 +53,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{"enable-check-optimizations"})
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{string(server.ExperimentalCheckOptimizations)})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
@@ -288,7 +289,7 @@ func TestServerLogs(t *testing.T) {
 
 				resp, err = client.Do(httpReq)
 				_, _ = io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 			if test.expectedError && test.grpcReq != nil {
 				require.Error(t, err)
@@ -331,7 +332,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, "enable-check-optimizations")
+	cfg.Experimentals = append(cfg.Experimentals, string(server.ExperimentalCheckOptimizations))
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
@@ -339,10 +340,6 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.SharedIterator.Enabled = true
 
 	cfg.CheckIteratorCache.Enabled = true
-
-	if engine == "mysql" {
-		cfg.ContextPropagationToDatastore = true
-	}
 
 	// Some tests/stages are sensitive to the cache TTL,
 	// so we set it to a very low value to still exercise
