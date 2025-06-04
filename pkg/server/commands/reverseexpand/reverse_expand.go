@@ -334,14 +334,15 @@ func (c *ReverseExpandQuery) execute(
 		}
 	}
 
+	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+
 	if c.listObjectOptimizationsEnabled {
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
-			targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
-
 			targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
 		}
+	
 		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
 			targetTypeRel,
 			sourceUserType,
@@ -366,8 +367,6 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	g := graph.New(c.typesystem)
-
-	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
 	if err != nil {
