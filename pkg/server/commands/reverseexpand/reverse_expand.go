@@ -340,9 +340,9 @@ func (c *ReverseExpandQuery) execute(
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
-			targetTypeRel = targetObjRef.GetType() + "#" + targetObjRef.GetRelation()
+			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 		}
-	
+
 		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
 			targetTypeRel,
 			sourceUserType,
