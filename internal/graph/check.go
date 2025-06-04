@@ -188,7 +188,7 @@ func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- check
 		close(limiter)
 
 		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())
 		}
 
 		return nil
@@ -352,7 +352,7 @@ func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandl
 		})
 
 		if recoveredError != nil {
-			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -369,7 +369,7 @@ func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandl
 			subChan <- checkOutcome{resp, err}
 		})
 		if recoveredError != nil {
-			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())}
 		}
 	}()
 
@@ -678,7 +678,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 						if recoveredError != nil {
 							concurrency.TrySendThroughChannel(
 								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+								checkOutcome{err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())},
 								outcomes,
 							)
 						}
@@ -763,7 +763,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())
 		}
 		return nil
 	})
@@ -856,7 +856,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())
 		}
 		return nil
 	})
@@ -903,7 +903,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 					if recoveredError != nil {
 						concurrency.TrySendThroughChannel(
 							ctx,
-							checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+							checkOutcome{err: fmt.Errorf("%w: %w", ErrPanic, recoveredError.AsError())},
 							outcomes,
 						)
 					}
