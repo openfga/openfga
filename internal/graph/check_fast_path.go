@@ -26,6 +26,8 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
+var ErrShortCircuit = errors.New("short circuit")
+
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
 func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg, error) {
@@ -616,7 +618,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit int) chan *iterator.Msg {
+func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, _ int) chan *iterator.Msg {
 	limit := len(chans)
 
 	out := make(chan *iterator.Msg, limit)
@@ -628,7 +630,7 @@ func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, conc
 
 	// It is ok if the limit is < concurrencyLimit because that
 	// is the pool's max limit.
-	pool := concurrency.NewPool(ctx, concurrencyLimit)
+	pool := concurrency.NewPool(ctx, limit)
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
@@ -688,7 +690,10 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
-	chans := make([]chan *iterator.Msg, 0, currentUsersetLevel.Size())
+	pool := concurrency.NewPool(ctx, c.concurrencyLimit)
+	mu := &sync.Mutex{}
+	nextUsersetLevel := hashset.New()
+
 	for _, usersetInterface := range currentUsersetLevel.Values() {
 		userset := usersetInterface.(string)
 		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
@@ -704,58 +709,36 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
 			continue
 		}
-		c := make(chan *iterator.Msg, 1)
-		if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: mapper}, c) {
-			mapper.Stop() // will not be received to be cleaned up
-		}
-		close(c)
-		chans = append(chans, c)
-	}
-	leftChan := fanInIteratorChannels(ctx, chans, c.concurrencyLimit)
-	leftOpen := true
-	defer func() {
-		if leftOpen {
-			go drainIteratorChannel(leftChan)
-		}
-	}()
-	nextUsersetLevel := hashset.New()
-
-ConsumerLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			close(checkOutcomeChan)
-			return
-		case msg, ok := <-leftChan:
-			if !ok {
-				// nothing was found in this level, break to proceed into the next one
-				leftOpen = false
-				break ConsumerLoop
-			}
-			for {
-				t, err := msg.Iter.Next(ctx)
-				if err != nil {
-					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
-					}
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
-					close(checkOutcomeChan)
-					return
+		// if the pool is short-circuited, the iterator should be stopped
+		defer mapper.Stop()
+		pool.Go(func(ctx context.Context) error {
+			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
+			for usersetMsg := range objectToUsersetMessageChan {
+				if usersetMsg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
+					return nil
 				}
-
-				if usersetFromUser.Contains(t) {
-					msg.Iter.Stop()
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{Allowed: true}}, checkOutcomeChan)
-					close(checkOutcomeChan)
-					return
+				userset := usersetMsg.userset
+				if usersetFromUser.Contains(userset) {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
+						Allowed: true,
+					}}, checkOutcomeChan)
+					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
-
-				nextUsersetLevel.Add(t)
+				mu.Lock()
+				nextUsersetLevel.Add(userset)
+				mu.Unlock()
 			}
-		}
+			return nil
+		})
 	}
 
+	// wait for all checks to wrap up
+	// if a match was found, clean up
+	if err := pool.Wait(); err != nil && errors.Is(err, ErrShortCircuit) {
+		close(checkOutcomeChan)
+		return
+	}
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
