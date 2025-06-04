@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
+- SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
 
 ## [1.8.13] - 2025-05-22
 ### Added
