@@ -39,13 +39,13 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 type Datastore struct {
 	primaryStbl               sq.StatementBuilderType
 	secondaryStbl             sq.StatementBuilderType
-	primaryDb                 *sql.DB
-	secondaryDb               *sql.DB
-	primaryDbInfo             *sqlcommon.DBInfo
-	secondaryDbInfo           *sqlcommon.DBInfo
+	primaryDB                 *sql.DB
+	secondaryDB               *sql.DB
+	primaryDBInfo             *sqlcommon.DBInfo
+	secondaryDBInfo           *sqlcommon.DBInfo
 	logger                    logger.Logger
-	primaryDbStatsCollector   prometheus.Collector
-	secondaryDbStatsCollector prometheus.Collector
+	primaryDBStatsCollector   prometheus.Collector
+	secondaryDBStatsCollector prometheus.Collector
 	maxTuplesPerWriteField    int
 	maxTypesPerModelField     int
 }
@@ -102,21 +102,20 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 
 // New creates a new [Datastore] storage.
 func New(cfg *sqlcommon.Config) (*Datastore, error) {
-
-	primaryDb, err := initDB(cfg.URI, cfg.Username, cfg.Password, cfg)
+	primaryDB, err := initDB(cfg.URI, cfg.Username, cfg.Password, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
-	var secondaryDb *sql.DB
+	var secondaryDB *sql.DB
 	if cfg.SecondaryURI != "" {
-		secondaryDb, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres connection: %w", err)
 		}
 	}
 
-	return NewWithDB(primaryDb, secondaryDb, cfg)
+	return NewWithDB(primaryDB, secondaryDB, cfg)
 }
 
 func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.StatementBuilderType, prometheus.Collector, error) {
@@ -152,18 +151,17 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.State
 }
 
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
-func NewWithDB(primaryDb, secondaryDb *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
-
-	primaryDbInfo, primaryStbl, primaryCollector, err := configureDB(primaryDb, cfg)
+func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
+	primaryDBInfo, primaryStbl, primaryCollector, err := configureDB(primaryDB, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("configure primary db: %w", err)
 	}
 
-	var secondaryDbInfo *sqlcommon.DBInfo
+	var secondaryDBInfo *sqlcommon.DBInfo
 	var secondaryStbl sq.StatementBuilderType
 	var secondaryCollector prometheus.Collector
-	if secondaryDb != nil {
-		secondaryDbInfo, secondaryStbl, secondaryCollector, err = configureDB(secondaryDb, cfg)
+	if secondaryDB != nil {
+		secondaryDBInfo, secondaryStbl, secondaryCollector, err = configureDB(secondaryDB, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
@@ -172,45 +170,45 @@ func NewWithDB(primaryDb, secondaryDb *sql.DB, cfg *sqlcommon.Config) (*Datastor
 	return &Datastore{
 		primaryStbl:               primaryStbl,
 		secondaryStbl:             secondaryStbl,
-		primaryDb:                 primaryDb,
-		secondaryDb:               secondaryDb,
-		primaryDbInfo:             primaryDbInfo,
-		secondaryDbInfo:           secondaryDbInfo,
+		primaryDB:                 primaryDB,
+		secondaryDB:               secondaryDB,
+		primaryDBInfo:             primaryDBInfo,
+		secondaryDBInfo:           secondaryDBInfo,
 		logger:                    cfg.Logger,
-		primaryDbStatsCollector:   primaryCollector,
-		secondaryDbStatsCollector: secondaryCollector,
+		primaryDBStatsCollector:   primaryCollector,
+		secondaryDBStatsCollector: secondaryCollector,
 		maxTuplesPerWriteField:    cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:     cfg.MaxTypesPerModelField,
 	}, nil
 }
 
 func (s *Datastore) isSecondaryConfigured() bool {
-	return s.secondaryDb != nil
+	return s.secondaryDB != nil
 }
 
 // Close see [storage.OpenFGADatastore].Close.
 func (s *Datastore) Close() {
-	if s.primaryDbStatsCollector != nil {
-		prometheus.Unregister(s.primaryDbStatsCollector)
+	if s.primaryDBStatsCollector != nil {
+		prometheus.Unregister(s.primaryDBStatsCollector)
 	}
-	s.primaryDb.Close()
+	s.primaryDB.Close()
 	if s.isSecondaryConfigured() {
-		if s.secondaryDbStatsCollector != nil {
-			prometheus.Unregister(s.secondaryDbStatsCollector)
+		if s.secondaryDBStatsCollector != nil {
+			prometheus.Unregister(s.secondaryDBStatsCollector)
 		}
-		s.secondaryDb.Close()
+		s.secondaryDB.Close()
 	}
 }
 
-// getReadDbInfo returns the appropriate database info based on consistency options
-func (s *Datastore) getReadDbInfo() *sqlcommon.DBInfo {
+// getReadDBInfo returns the appropriate database info based on consistency options.
+func (s *Datastore) getReadDBInfo() *sqlcommon.DBInfo {
 	if s.isSecondaryConfigured() {
-		return s.secondaryDbInfo
+		return s.secondaryDBInfo
 	}
-	return s.primaryDbInfo
+	return s.primaryDBInfo
 }
 
-// getReadStbl returns the appropriate statement builder based on consistency options
+// getReadStbl returns the appropriate statement builder based on consistency options.
 func (s *Datastore) getReadStbl(consistency *openfgav1.ConsistencyPreference) sq.StatementBuilderType {
 	if consistency != nil && *consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// If we are using higher consistency, we need to use the write database.
@@ -303,7 +301,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.primaryDbInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -464,7 +462,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.ReadAuthorizationModel(ctx, s.getReadDbInfo(), store, modelID)
+	return sqlcommon.ReadAuthorizationModel(ctx, s.getReadDBInfo(), store, modelID)
 }
 
 // ReadAuthorizationModels see [storage.AuthorizationModelReadBackend].ReadAuthorizationModels.
@@ -535,7 +533,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.FindLatestAuthorizationModel(ctx, s.getReadDbInfo(), store)
+	return sqlcommon.FindLatestAuthorizationModel(ctx, s.getReadDBInfo(), store)
 }
 
 // MaxTypesPerAuthorizationModel see [storage.TypeDefinitionWriteBackend].MaxTypesPerAuthorizationModel.
@@ -548,7 +546,7 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.WriteAuthorizationModel(ctx, s.primaryDbInfo, store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, s.primaryDBInfo, store, model)
 }
 
 // CreateStore adds a new store to storage.
@@ -845,14 +843,13 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-
 	// if secondary is not configured, return primary status only
 	if !s.isSecondaryConfigured() {
-		return sqlcommon.IsReady(ctx, s.primaryDb)
+		return sqlcommon.IsReady(ctx, s.primaryDB)
 	}
 
 	// check if primary is ready
-	primaryStatus, err := sqlcommon.IsReady(ctx, s.primaryDb)
+	primaryStatus, err := sqlcommon.IsReady(ctx, s.primaryDB)
 	if err != nil {
 		primaryStatus.Message = err.Error()
 		primaryStatus.IsReady = false
@@ -863,7 +860,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	}
 
 	// check if secondary is ready
-	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDb)
+	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDB)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false

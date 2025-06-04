@@ -202,7 +202,7 @@ func (p *postgresTestContainer) GetPassword() string {
 	return p.password
 }
 
-// CreateSecondary creates a secondary PostgreSQL container
+// CreateSecondary creates a secondary PostgreSQL container.
 func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
@@ -213,29 +213,29 @@ func (p *postgresTestContainer) CreateSecondary(t testing.TB) error {
 		dockerClient.Close()
 	})
 
-	// Configure the master for replication
+	// Configure the master for replication.
 	masterContainerID, err := p.getMasterContainerID(dockerClient)
 	require.NoError(t, err)
 
 	err = p.configureMasterForReplication(t, dockerClient, masterContainerID)
 	require.NoError(t, err)
 
-	// Wait for the master to be configured
+	// Wait for the master to be configured.
 	time.Sleep(3 * time.Second)
 
-	// Extract host and port from master for basebackup
+	// Extract host and port from master for basebackup.
 	masterHost := "host.docker.internal"
 	masterPort := strings.Split(p.addr, ":")[1]
 
-	// Use standard PostgreSQL approach with docker-entrypoint-initdb.d
+	// Use standard PostgreSQL approach with docker-entrypoint-initdb.d.
 	containerCfg := container.Config{
 		Env: []string{
 			"POSTGRES_DB=defaultdb",
 			"POSTGRES_PASSWORD=secret",
 			"PGPASSWORD=secret",
 			"POSTGRES_INITDB_ARGS=--auth-host=trust",
-			fmt.Sprintf("POSTGRES_MASTER_HOST=%s", masterHost),
-			fmt.Sprintf("POSTGRES_MASTER_PORT=%s", masterPort),
+			"POSTGRES_MASTER_HOST=" + masterHost,
+			"POSTGRES_MASTER_PORT=" + masterPort,
 		},
 		ExposedPorts: nat.PortSet{
 			nat.Port("5432/tcp"): {},
@@ -312,14 +312,14 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 		password: "secret",
 	}
 
-	// Wait for replica to be ready and synchronized
+	// Wait for replica to be ready and synchronized.
 	err = p.waitForReplicaSync(t)
 	require.NoError(t, err, "failed to sync replica")
 
 	return nil
 }
 
-// getMasterContainerID finds the master container ID
+// getMasterContainerID finds the master container ID.
 func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client) (string, error) {
 	containers, err := dockerClient.ContainerList(context.Background(), container.ListOptions{})
 	if err != nil {
@@ -337,9 +337,9 @@ func (p *postgresTestContainer) getMasterContainerID(dockerClient *client.Client
 	return "", fmt.Errorf("master container not found")
 }
 
-// configureMasterForReplication configures the master to accept replication connections
+// configureMasterForReplication configures the master to accept replication connections.
 func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dockerClient *client.Client, masterContainerID string) error {
-	// Configuration for streaming replication - only pg_hba.conf and reload
+	// Configuration for streaming replication - only pg_hba.conf and reload.
 	commands := [][]string{
 		{"sh", "-c", "echo 'host replication postgres all trust' >> /var/lib/postgresql/data/pg_hba.conf"},
 		{"psql", "-U", "postgres", "-d", "defaultdb", "-c", "SELECT pg_reload_conf()"},
@@ -360,7 +360,7 @@ func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dock
 			return fmt.Errorf("failed to execute command %v: %w", cmd, err)
 		}
 
-		// Wait for command to complete
+		// Wait for command to complete.
 		inspect, err := dockerClient.ContainerExecInspect(context.Background(), exec.ID)
 		if err != nil {
 			return fmt.Errorf("failed to inspect exec %v: %w", cmd, err)
@@ -374,14 +374,14 @@ func (p *postgresTestContainer) configureMasterForReplication(t testing.TB, dock
 	return nil
 }
 
-// waitForReplicaSync waits for the replica to be synchronized with the master
+// waitForReplicaSync waits for the replica to be synchronized with the master.
 func (p *postgresTestContainer) waitForReplicaSync(t testing.TB) error {
 	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", p.replica.username, p.replica.password, p.replica.addr)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 120 * time.Second // Increase to 2 minutes for initialization
-	backoffPolicy.InitialInterval = 2 * time.Second  // Start with 2 seconds
-	backoffPolicy.MaxInterval = 10 * time.Second     // Cap at 10 seconds
+	backoffPolicy.MaxElapsedTime = 120 * time.Second // Increase to 2 minutes for initialization.
+	backoffPolicy.InitialInterval = 2 * time.Second  // Start with 2 seconds.
+	backoffPolicy.MaxInterval = 10 * time.Second     // Cap at 10 seconds.
 
 	return backoff.Retry(
 		func() error {
@@ -423,7 +423,7 @@ func (p *postgresTestContainer) waitForReplicaSync(t testing.TB) error {
 	)
 }
 
-// GetReplicaConnectionURI returns the connection URI for the read replica
+// GetSecondaryConnectionURI returns the connection URI for the read replica.
 func (p *postgresTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
 	if p.replica == nil {
 		return ""
