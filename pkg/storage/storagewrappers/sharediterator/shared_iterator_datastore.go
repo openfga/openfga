@@ -251,6 +251,8 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
+	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
+	// The number of items addmitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -370,6 +372,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
+	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
+	// The number of items addmitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -488,6 +492,8 @@ func (sf *IteratorDatastore) Read(
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
+	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
+	// The number of items addmitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -580,6 +586,7 @@ var BufferSize = 100
 // Atomic variables are used to manage data shared between clones.
 type sharedIterator struct {
 	// mu is a mutex to ensure that only one goroutine can access the current iterator instance at a time.
+	// mu is a value type because it is not shared between iterator instances.
 	mu sync.Mutex
 
 	// cleanup is a function that will be called when all shared iterator instances have stopped.
@@ -587,9 +594,11 @@ type sharedIterator struct {
 
 	// head is the index of the next item to be returned by the current iterator instance.
 	// It is incremented each time an item is returned by the iterator in a call to Next.
+	// head is a value type because it is not shared between iterator instances.
 	head int
 
 	// stopped is an atomic boolean that indicates whether the current iterator instance has been stopped.
+	// stopped is a value type because it is not shared between iterator instances.
 	stopped atomic.Bool
 
 	// ctx is a shared context between all clones and manages the lifetime of a call to fetch.
@@ -702,6 +711,7 @@ func (s *sharedIterator) clone() *sharedIterator {
 // If there is an error while fetching items, it stores the error in the shared error pointer.
 // It also manages the channel that signals when new items are available.
 // The fetch method is called by the shared iterator instances when they need to fetch new items.
+// fetch is not safe to call concurrently, so it is guarded by the fetching atomic boolean.
 func (s *sharedIterator) fetch() {
 	buf := make([]*openfgav1.Tuple, BufferSize)
 
