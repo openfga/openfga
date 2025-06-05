@@ -634,7 +634,7 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
-	refs.Add(1)
+	refs.Store(1)
 
 	var wg sync.WaitGroup
 
