@@ -266,20 +266,20 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
 
-	// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-	// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-	timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-		if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
-			sf.internalStorage.ctr.Add(-1)
-		}
-	})
-
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
 		it, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 		if err != nil {
 			return nil, err
 		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+			}
+		})
 
 		// Create a new shared iterator from the original iterator.
 		// This allows the iterator to be shared across multiple requests.
@@ -385,20 +385,20 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
 
-	// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-	// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-	timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-		if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
-			sf.internalStorage.ctr.Add(-1)
-		}
-	})
-
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
 		it, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 		if err != nil {
 			return nil, err
 		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+			}
+		})
 
 		// Create a new shared iterator from the original iterator.
 		// This allows the iterator to be shared across multiple requests.
@@ -503,20 +503,20 @@ func (sf *IteratorDatastore) Read(
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
 
-	// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-	// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-	timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-		if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
-			sf.internalStorage.ctr.Add(-1)
-		}
-	})
-
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
 		it, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 		if err != nil {
 			return nil, err
 		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+			}
+		})
 
 		// Create a new shared iterator from the original iterator.
 		// This allows the iterator to be shared across multiple requests.
