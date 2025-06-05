@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
-	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -33,7 +32,6 @@ type setOperatorType int
 
 var (
 	ErrUnknownSetOperator = fmt.Errorf("%w: unexpected set operator type encountered", openfgaErrors.ErrUnknown)
-	ErrPanic              = errors.New("panic captured")
 )
 
 const (
@@ -45,6 +43,18 @@ const (
 type checkOutcome struct {
 	resp *ResolveCheckResponse
 	err  error
+}
+
+func sendTo(ctx context.Context, ch chan<- checkOutcome, resp **ResolveCheckResponse, err *error) {
+	if resp == nil {
+		resp = new(*ResolveCheckResponse)
+	}
+
+	if err == nil {
+		err = new(error)
+	}
+
+	concurrency.TrySendThroughChannel(ctx, checkOutcome{*resp, *err}, ch)
 }
 
 type LocalChecker struct {
@@ -135,91 +145,71 @@ type CheckFuncReducer func(ctx context.Context, concurrencyLimit int, handlers .
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
 // every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
 // evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
+func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) {
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	var wg conc.WaitGroup
+	var wg sync.WaitGroup
 
-	checker := func(fn CheckHandlerFunc) {
-		defer func() {
-			<-limiter
-		}()
+	release := func() {
+		wg.Done()
+		<-limiter
+	}
 
-		resolved := make(chan checkOutcome, 1)
-
-		if ctx.Err() != nil {
-			resultChan <- checkOutcome{nil, ctx.Err()}
-			return
-		}
-
-		wg.Go(func() {
-			defer close(resolved)
-
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
-		})
-
+outer:
+	for _, handler := range handlers {
 		select {
+		case limiter <- struct{}{}:
+			wg.Add(1)
+			//nolint:errcheck
+			go func() (resp *ResolveCheckResponse, err error) {
+				defer release()
+				defer concurrency.HandleCrash(ctx)
+				defer sendTo(ctx, resultChan, &resp, &err)
+				defer concurrency.RecoverFromPanic(&err)
+
+				resp, err = handler(ctx)
+				return
+			}()
 		case <-ctx.Done():
-			return
-		case res := <-resolved:
-			resultChan <- res
+			break outer
 		}
 	}
 
-	wg.Go(func() {
-	outer:
-		for _, handler := range handlers {
-			fn := handler // capture loop var
-
-			select {
-			case limiter <- struct{}{}:
-				wg.Go(func() {
-					checker(fn)
-				})
-			case <-ctx.Done():
-				break outer
-			}
-		}
-	})
-
-	return func() error {
-		recoveredError := wg.WaitAndRecover()
-		close(limiter)
-
-		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-		}
-
-		return nil
-	}
+	wg.Wait()
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	var wg sync.WaitGroup
 
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-			resp = nil
-		}
-		close(resultChan)
+	defer close(resultChan)
+	defer wg.Wait()
+	defer cancel()
+
+	wg.Add(1)
+	//nolint:errcheck
+	go func() (err error) {
+		defer wg.Done()
+		defer concurrency.HandleCrash(ctx)
+		defer sendTo(ctx, resultChan, nil, &err)
+		defer concurrency.RecoverFromPanic(&err)
+
+		resolver(ctx, concurrencyLimit, resultChan, handlers...)
+		return
 	}()
 
-	var elErr error
+	var err error
 	var cycleDetected bool
+
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				elErr = result.err
+				err = errors.Join(err, result.err)
 				continue
 			}
 
@@ -228,33 +218,28 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 			}
 
 			if result.resp.GetAllowed() {
-				resp = result.resp
-				return
+				return result.resp, nil
 			}
 		case <-ctx.Done():
-			err = ctx.Err()
-			return
+			return nil, ctx.Err()
 		}
 	}
 
-	if elErr != nil {
-		err = elErr
-		return
+	if err != nil {
+		return nil, err
 	}
 
-	resp = &ResolveCheckResponse{
+	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: ResolveCheckResponseMetadata{
 			CycleDetected: cycleDetected,
 		},
-	}
-
-	return
+	}, nil
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) == 0 {
 		return &ResolveCheckResponse{
 			Allowed: false,
@@ -266,48 +251,51 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+	var wg sync.WaitGroup
 
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-		}
-		close(resultChan)
+	defer close(resultChan)
+	defer wg.Wait()
+	defer cancel()
+
+	wg.Add(1)
+	//nolint:errcheck
+	go func() (err error) {
+		defer wg.Done()
+		defer concurrency.HandleCrash(ctx)
+		defer sendTo(ctx, resultChan, nil, &err)
+		defer concurrency.RecoverFromPanic(&err)
+
+		resolver(ctx, concurrencyLimit, resultChan, handlers...)
+		return
 	}()
 
-	var elErr error
+	var err error
+
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
 				telemetry.TraceError(span, result.err)
-				elErr = errors.Join(elErr, result.err)
+				err = errors.Join(err, result.err)
 				continue
 			}
 
 			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				resp = result.resp
-				return
+				return result.resp, nil
 			}
 		case <-ctx.Done():
-			err = ctx.Err()
-			return
+			return nil, ctx.Err()
 		}
 	}
 
 	// all operands are either truthy or we've seen at least one error
-	if elErr != nil {
-		err = elErr
-		return
+	if err != nil {
+		return nil, err
 	}
 
-	resp = &ResolveCheckResponse{
+	return &ResolveCheckResponse{
 		Allowed: true,
-	}
-
-	return
+	}, nil
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -339,38 +327,36 @@ func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandl
 	subHandler := handlers[1]
 
 	limiter <- struct{}{}
+
+	release := func() {
+		wg.Done()
+		<-limiter
+	}
+
 	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
+	//nolint:errcheck
+	go func() (resp *ResolveCheckResponse, err error) {
+		defer release()
+		defer concurrency.HandleCrash(ctx)
+		defer sendTo(ctx, baseChan, &resp, &err)
+		defer concurrency.RecoverFromPanic(&err)
 
-			resp, err := baseHandler(ctx)
-			baseChan <- checkOutcome{resp, err}
-		})
-
-		if recoveredError != nil {
-			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
+		resp, err = baseHandler(ctx)
+		return
 	}()
 
 	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
 
-			resp, err := subHandler(ctx)
-			subChan <- checkOutcome{resp, err}
-		})
-		if recoveredError != nil {
-			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
+	wg.Add(1)
+	//nolint:errcheck
+	go func() (resp *ResolveCheckResponse, err error) {
+		defer release()
+		defer concurrency.HandleCrash(ctx)
+		defer sendTo(ctx, subChan, &resp, &err)
+		defer concurrency.RecoverFromPanic(&err)
+
+		resp, err = subHandler(ctx)
+		return
 	}()
 
 	response := &ResolveCheckResponse{
@@ -678,7 +664,7 @@ func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatc
 						if recoveredError != nil {
 							concurrency.TrySendThroughChannel(
 								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+								checkOutcome{err: fmt.Errorf("%w: %s", concurrency.ErrPanic, recoveredError.AsError())},
 								outcomes,
 							)
 						}
@@ -763,7 +749,7 @@ func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveChe
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return fmt.Errorf("%w: %s", concurrency.ErrPanic, recoveredError.AsError())
 		}
 		return nil
 	})
@@ -856,7 +842,7 @@ func (c *LocalChecker) checkMembership(ctx context.Context, req *ResolveCheckReq
 		})
 
 		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+			return fmt.Errorf("%w: %s", concurrency.ErrPanic, recoveredError.AsError())
 		}
 		return nil
 	})
@@ -903,7 +889,7 @@ func (c *LocalChecker) processUsersets(ctx context.Context, req *ResolveCheckReq
 					if recoveredError != nil {
 						concurrency.TrySendThroughChannel(
 							ctx,
-							checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
+							checkOutcome{err: fmt.Errorf("%w: %s", concurrency.ErrPanic, recoveredError.AsError())},
 							outcomes,
 						)
 					}
@@ -1031,7 +1017,7 @@ func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMa
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", ErrPanic, r)}, usersetMessageChan)
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", concurrency.ErrPanic, r)}, usersetMessageChan)
 			}
 
 			close(usersetMessageChan)
