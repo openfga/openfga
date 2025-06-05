@@ -171,15 +171,6 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 	return sf
 }
 
-func length(m *sync.Map) int {
-	var i int
-	m.Range(func(_, _ any) bool {
-		i++
-		return true
-	})
-	return i
-}
-
 func (sf *IteratorDatastore) ReadStartingWithUser(
 	ctx context.Context,
 	store string,

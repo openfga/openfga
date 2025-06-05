@@ -27,6 +27,15 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func length(m *sync.Map) int {
+	var i int
+	m.Range(func(_, _ any) bool {
+		i++
+		return true
+	})
+	return i
+}
+
 type testIteratorInfo struct {
 	iter storage.TupleIterator
 	err  error
