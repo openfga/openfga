@@ -799,7 +799,7 @@ func (s *sharedIterator) Head(ctx context.Context) (tup *openfgav1.Tuple, e erro
 
 	if s.head >= len(items) && err != nil {
 		if err == storage.ErrIteratorDone {
-			return nil, storage.ErrIteratorDone
+			return nil, err
 		}
 		telemetry.TraceError(span, err)
 		return nil, err
