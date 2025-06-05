@@ -209,7 +209,17 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	}
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	if length(&sf.internalStorage.iters) >= int(sf.internalStorage.limit) {
+	var count int
+
+	full := count >= int(sf.internalStorage.limit)
+
+	sf.internalStorage.iters.Range(func(_, _ any) bool {
+		count++
+		full = count >= int(sf.internalStorage.limit)
+		return !full
+	})
+
+	if full {
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
@@ -286,7 +296,17 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	if length(&sf.internalStorage.iters) >= int(sf.internalStorage.limit) {
+	var count int
+
+	full := count >= int(sf.internalStorage.limit)
+
+	sf.internalStorage.iters.Range(func(_, _ any) bool {
+		count++
+		full = count >= int(sf.internalStorage.limit)
+		return !full
+	})
+
+	if full {
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
@@ -362,7 +382,17 @@ func (sf *IteratorDatastore) Read(
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	if length(&sf.internalStorage.iters) >= int(sf.internalStorage.limit) {
+	var count int
+
+	full := count >= int(sf.internalStorage.limit)
+
+	sf.internalStorage.iters.Range(func(_, _ any) bool {
+		count++
+		full = count >= int(sf.internalStorage.limit)
+		return !full
+	})
+
+	if full {
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
