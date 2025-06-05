@@ -706,12 +706,12 @@ func (s *sharedIterator) clone() *sharedIterator {
 	}
 }
 
-// fetch is a method that fetches items from the underlying storage.TupleIterator.
+// Fetch is a method that fetches items from the underlying storage.TupleIterator.
 // It reads a fixed number of items (BufferSize) from the iterator and stores them in the shared items slice.
 // If there is an error while fetching items, it stores the error in the shared error pointer.
 // It also manages the channel that signals when new items are available.
 // The fetch method is called by the shared iterator instances when they need to fetch new items.
-// fetch is not safe to call concurrently, so it is guarded by the fetching atomic boolean.
+// Fetch is not safe to call concurrently, so it is guarded by the fetching atomic boolean.
 func (s *sharedIterator) fetch() {
 	buf := make([]*openfgav1.Tuple, BufferSize)
 
