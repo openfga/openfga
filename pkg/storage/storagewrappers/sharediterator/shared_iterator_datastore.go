@@ -426,19 +426,22 @@ type sharedIterator struct {
 	cleanup func()
 	head    int
 	stopped atomic.Bool
-	cancel  func()
+	ctx     context.Context
+	cancel  context.CancelFunc
 
-	err   *atomic.Pointer[error]
-	items *atomic.Pointer[[]*openfgav1.Tuple]
-	refs  *atomic.Int64
-	wg    *sync.WaitGroup
-	ch    *atomic.Pointer[chan struct{}]
+	it       storage.TupleIterator
+	fetching *atomic.Bool
+	err      *atomic.Pointer[error]
+	items    *atomic.Pointer[[]*openfgav1.Tuple]
+	refs     *atomic.Int64
+	wg       *sync.WaitGroup
+	ch       *atomic.Pointer[chan struct{}]
 }
 
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	var done bool
+	var fetching atomic.Bool
 
 	ch := make(chan struct{})
 	var pch atomic.Pointer[chan struct{}]
@@ -457,60 +460,17 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	titems := make([]*openfgav1.Tuple, 0)
 	items.Store(&titems)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer it.Stop()
-
-		buf := make([]*openfgav1.Tuple, BufferSize)
-
-		ptrError := err.Load()
-
-		for !done {
-			c := pch.Load()
-			select {
-			case *c <- struct{}{}:
-				var i int
-				var e error
-
-				for ; i < BufferSize; i++ {
-					t, ierr := it.Next(ctx)
-					if ierr != nil {
-						e = ierr
-						done = true
-						break
-					}
-					buf[i] = t
-				}
-				ptrItems := items.Load()
-				loadedItems := *ptrItems
-				loadedItems = append(loadedItems, buf[:i]...)
-				items.Store(&loadedItems)
-				if e != nil {
-					if e == context.Canceled || e == context.DeadlineExceeded {
-						e = storage.ErrIteratorDone
-					}
-					err.Store(&e)
-				}
-				nc := make(chan struct{})
-				pch.CompareAndSwap(c, &nc)
-				close(*c)
-			case <-ctx.Done():
-				done = true
-			}
-		}
-		err.CompareAndSwap(ptrError, &storage.ErrIteratorDone)
-		close(*pch.Load())
-	}()
-
 	newIter := sharedIterator{
-		cleanup: cleanup,
-		cancel:  cancel,
-		items:   &items,
-		err:     &err,
-		refs:    &refs,
-		wg:      &wg,
-		ch:      &pch,
+		ctx:      ctx,
+		cancel:   cancel,
+		cleanup:  cleanup,
+		it:       it,
+		fetching: &fetching,
+		items:    &items,
+		err:      &err,
+		refs:     &refs,
+		wg:       &wg,
+		ch:       &pch,
 	}
 
 	return &newIter
@@ -526,16 +486,51 @@ func (s *sharedIterator) clone() *sharedIterator {
 
 		if s.refs.CompareAndSwap(remaining, remaining+1) {
 			return &sharedIterator{
-				cleanup: s.cleanup,
-				cancel:  s.cancel,
-				items:   s.items,
-				err:     s.err,
-				refs:    s.refs,
-				wg:      s.wg,
-				ch:      s.ch,
+				ctx:      s.ctx,
+				cancel:   s.cancel,
+				cleanup:  s.cleanup,
+				it:       s.it,
+				fetching: s.fetching,
+				items:    s.items,
+				err:      s.err,
+				refs:     s.refs,
+				wg:       s.wg,
+				ch:       s.ch,
 			}
 		}
 	}
+}
+
+func (s *sharedIterator) fetch() {
+	buf := make([]*openfgav1.Tuple, BufferSize)
+
+	c := s.ch.Load()
+
+	var i int
+	var e error
+
+	for ; i < BufferSize; i++ {
+		t, ierr := s.it.Next(s.ctx)
+		if ierr != nil {
+			e = ierr
+			break
+		}
+		buf[i] = t
+	}
+	ptrItems := s.items.Load()
+	loadedItems := *ptrItems
+	loadedItems = append(loadedItems, buf[:i]...)
+	s.items.Store(&loadedItems)
+
+	if e != nil {
+		if e == context.Canceled || e == context.DeadlineExceeded {
+			e = storage.ErrIteratorDone
+		}
+		s.err.Store(&e)
+	}
+	nc := make(chan struct{})
+	s.ch.CompareAndSwap(c, &nc)
+	close(*c)
 }
 
 func (s *sharedIterator) Head(ctx context.Context) (tup *openfgav1.Tuple, e error) {
@@ -559,6 +554,15 @@ func (s *sharedIterator) Head(ctx context.Context) (tup *openfgav1.Tuple, e erro
 	err := *s.err.Load()
 
 	for ch := *s.ch.Load(); s.head >= len(items) && err == nil; items, err, ch = *s.items.Load(), *s.err.Load(), *s.ch.Load() {
+		if s.fetching.CompareAndSwap(false, true) {
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				defer s.fetching.Store(false)
+				s.fetch()
+			}()
+		}
+
 		select {
 		case <-ch:
 		case <-ctx.Done():
@@ -598,6 +602,15 @@ func (s *sharedIterator) Next(ctx context.Context) (tup *openfgav1.Tuple, e erro
 	err := *s.err.Load()
 
 	for ch := *s.ch.Load(); s.head >= len(items) && err == nil; items, err, ch = *s.items.Load(), *s.err.Load(), *s.ch.Load() {
+		if s.fetching.CompareAndSwap(false, true) {
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				defer s.fetching.Store(false)
+				s.fetch()
+			}()
+		}
+
 		select {
 		case <-ch:
 		case <-ctx.Done():
@@ -625,5 +638,6 @@ func (s *sharedIterator) Stop() {
 		s.cleanup()
 		s.cancel()
 		s.wg.Wait()
+		s.it.Stop()
 	}
 }
