@@ -838,15 +838,19 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 			// https://github.com/uber-go/goleak/discussions/89
 			goleak.IgnoreTopFunction("testing.(*B).run1"),
 			goleak.IgnoreTopFunction("testing.(*B).doBench"),
+			// Ignore CPU profiler goroutine when running benchmarks with -cpuprofile
+			goleak.IgnoreAnyFunction("runtime/pprof.profileWriter"),
 		)
 	})
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI(true)
-		cfg := sqlcommon.NewConfig()
-		cfg.URI = uri
-		ds, err := postgres.New(cfg)
+		ds, err := postgres.New(sqlcommon.NewConfig(
+			sqlcommon.WithURI(uri),
+			sqlcommon.WithMaxOpenConns(10),
+			sqlcommon.WithMaxIdleConns(10),
+		))
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -862,9 +866,11 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI(true)
-		cfg := sqlcommon.NewConfig()
-		cfg.URI = uri
-		ds, err := mysql.New(cfg)
+		ds, err := mysql.New(sqlcommon.NewConfig(
+			sqlcommon.WithURI(uri),
+			sqlcommon.WithMaxOpenConns(10),
+			sqlcommon.WithMaxIdleConns(10),
+		))
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
@@ -874,9 +880,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "sqlite")
 
 		uri := testDatastore.GetConnectionURI(true)
-		cfg := sqlcommon.NewConfig()
-		cfg.URI = uri
-		ds, err := sqlite.New(cfg)
+		ds, err := sqlite.New(sqlcommon.NewConfig(
+			sqlcommon.WithURI(uri),
+		))
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)
 		test.RunAllBenchmarks(b, ds)
