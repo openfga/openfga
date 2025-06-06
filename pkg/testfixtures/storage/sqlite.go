@@ -72,3 +72,11 @@ func (m *sqliteTestContainer) GetUsername() string {
 func (m *sqliteTestContainer) GetPassword() string {
 	return ""
 }
+
+func (m *sqliteTestContainer) CreateSecondary(t testing.TB) error {
+	return nil
+}
+
+func (m *sqliteTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	return ""
+}

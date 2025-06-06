@@ -28,7 +28,9 @@ func TestMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -39,7 +41,9 @@ func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	ds.Close()
 	status, err := ds.IsReady(context.Background())
@@ -67,7 +71,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, sqlcommon.NewConfig())
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = uri
+			ds, err := New(cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -168,7 +174,9 @@ func TestCtxCancel(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, sqlcommon.NewConfig())
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = uri
+			ds, err := New(cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -230,7 +238,9 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -276,7 +286,9 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -301,7 +313,9 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -328,7 +342,9 @@ func TestFindLatestModel(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -409,7 +425,9 @@ func TestAllowNullCondition(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -511,7 +529,9 @@ func TestMarshalledAssertions(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -595,7 +615,9 @@ func TestNew(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := New(tt.args.uri, tt.args.cfg)
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = tt.args.uri
+			got, err := New(cfg)
 			if got != nil {
 				defer got.Close()
 			}

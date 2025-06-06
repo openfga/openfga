@@ -20,7 +20,9 @@ func TestSQLiteDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -30,7 +32,9 @@ func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	ds.Close()
 	status, err := ds.IsReady(context.Background())
@@ -58,7 +62,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 			uri := testDatastore.GetConnectionURI(true)
-			ds, err := New(uri, sqlcommon.NewConfig())
+			cfg := sqlcommon.NewConfig()
+			cfg.URI = uri
+			ds, err := New(cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -146,7 +152,9 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
 
 	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
+	cfg := sqlcommon.NewConfig()
+	cfg.URI = uri
+	ds, err := New(cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 

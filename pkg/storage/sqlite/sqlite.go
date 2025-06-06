@@ -92,7 +92,8 @@ func PrepareDSN(uri string) (string, error) {
 }
 
 // New creates a new [Datastore] storage.
-func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
+func New(cfg *sqlcommon.Config) (*Datastore, error) {
+	uri := cfg.URI
 	uri, err := PrepareDSN(uri)
 	if err != nil {
 		return nil, err
