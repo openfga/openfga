@@ -287,7 +287,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		// This allows the iterator to be shared across multiple requests.
 		// The cleanup function will be called when the shared iterator is stopped, which will remove it from the internal storage.
 		// This ensures that the internal storage does not grow indefinitely and that the iterator is cleaned up properly.
-		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
+		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage immediately.
 		newIterator := newSharedIterator(it, func() {
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
