@@ -1736,7 +1736,7 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 
 	// This means we cannot reach the source type requested, so there are no relevant edges.
 	if !hasPathTo(currentNode, sourceType) {
-		return nil, false, nil
+		return nil, false, fmt.Errorf("node %s has no path to %s", targetTypeRelation, sourceType)
 	}
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)

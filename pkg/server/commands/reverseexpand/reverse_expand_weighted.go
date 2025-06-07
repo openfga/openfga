@@ -20,61 +20,139 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func (c *ReverseExpandQuery) loopOverWeightedEdges(
+type reverseExpandParams struct {
+	ctx                                    context.Context
+	req                                    *ReverseExpandRequest
+	resultChan                             chan<- *ReverseExpandResult
+	intersectionOrExclusionInPreviousEdges bool
+	resolutionMetadata                     *ResolutionMetadata
+}
+
+func newReverseExpandWeightedParams(
 	ctx context.Context,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
-	needsCheck bool,
 	req *ReverseExpandRequest,
-	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) *reverseExpandParams {
+	return &reverseExpandParams{
+		ctx:                                    ctx,
+		req:                                    req,
+		resultChan:                             resultChan,
+		intersectionOrExclusionInPreviousEdges: intersectionOrExclusionInPreviousEdges,
+		resolutionMetadata:                     resolutionMetadata,
+	}
+}
+
+type copyOptions func(input *reverseExpandParams)
+
+func (in *reverseExpandParams) copy(opts ...copyOptions) *reverseExpandParams {
+	result := &reverseExpandParams{
+		ctx:                                    in.ctx,
+		req:                                    in.req.copy(),
+		resultChan:                             in.resultChan,
+		intersectionOrExclusionInPreviousEdges: in.intersectionOrExclusionInPreviousEdges,
+		resolutionMetadata:                     in.resolutionMetadata,
+	}
+	for _, opt := range opts {
+		opt(result)
+	}
+	return result
+}
+
+func (in *reverseExpandParams) copyWithCtx(ctx context.Context) *reverseExpandParams {
+	return in.copy(withCtx(ctx))
+}
+
+func withEdge(edge *weightedGraph.WeightedAuthorizationModelEdge) copyOptions {
+	return func(input *reverseExpandParams) {
+		input.req.weightedEdge = edge
+	}
+}
+
+func withEdgeTypeRel(weightedEdgeTypeRel string) copyOptions {
+	return func(input *reverseExpandParams) {
+		input.req.weightedEdgeTypeRel = weightedEdgeTypeRel
+	}
+}
+
+func withCtx(ctx context.Context) copyOptions {
+	return func(input *reverseExpandParams) {
+		input.ctx = ctx
+	}
+}
+
+func withUser(user IsUserRef) copyOptions {
+	return func(in *reverseExpandParams) {
+		in.req = in.req.copyWithUser(user)
+	}
+}
+
+// create a query for expand -> go down the tree.
+func (c *ReverseExpandQuery) expand(p *reverseExpandParams) error {
+	return c.dispatch(
+		p.ctx,
+		p.req,
+		p.resultChan,
+		p.intersectionOrExclusionInPreviousEdges,
+		p.resolutionMetadata,
+	)
+}
+
+// create a query for reverse expand -> go up three
+
+func (c *ReverseExpandQuery) loopOverWeightedEdges(
+	p *reverseExpandParams,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	sourceUserObj string,
 ) error {
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(p.ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
 	for _, edge := range edges {
-		r := &ReverseExpandRequest{
-			Consistency:      req.Consistency,
-			Context:          req.Context,
-			ContextualTuples: req.ContextualTuples,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-			StoreID:          req.StoreID,
-			User:             req.User,
-
-			weightedEdge:        edge,
-			weightedEdgeTypeRel: edge.GetTo().GetUniqueLabel(),
-			edge:                req.edge,
-		}
+		params := p.copy(
+			withEdge(edge),
+			withEdgeTypeRel(edge.GetTo().GetUniqueLabel()),
+		)
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandDirectWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				return c.reverseExpandDirectWeighted(params)
 			})
 		case weightedGraph.ComputedEdge:
+			c.logger.Debug("LOWE: weightedGraph.ComputedEdge -> dispatch",
+				zap.String("from", edge.GetFrom().GetUniqueLabel()),
+				zap.String("to", edge.GetTo().GetUniqueLabel()),
+			)
 			toLabel := edge.GetTo().GetUniqueLabel()
 
 			// turn "document#viewer" into "viewer"
 			rel := tuple.GetRelation(toLabel)
-			r.User = &UserRefObjectRelation{
-				ObjectRelation: &openfgav1.ObjectRelation{
-					Object:   sourceUserObj,
-					Relation: rel,
-				},
-			}
 
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			params = params.copy(
+				withUser(&UserRefObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
+						Object:   sourceUserObj,
+						Relation: rel,
+					},
+				}),
+			)
+
+			err := c.expand(params)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
 			}
 		case weightedGraph.TTUEdge:
+			c.logger.Debug("LOWE: weightedGraph.TTUEdge -> reverseExpandTupleToUsersetWeighted", zap.Any("user", p.req.User))
 			pool.Go(func(ctx context.Context) error {
-				return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				return c.reverseExpandTupleToUsersetWeighted(params)
 			})
+			// -> go down the tree
 		case weightedGraph.RewriteEdge:
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			c.logger.Debug("LOWE: weightedGraph.RewriteEdge -> dispatch", zap.String("to", edge.GetTo().GetUniqueLabel()))
+			err := c.expand(params)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -87,16 +165,10 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	return errors.Join(errs, pool.Wait())
 }
 
-func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
+func (c *ReverseExpandQuery) reverseExpandDirectWeighted(p *reverseExpandParams) error {
+	ctx, span := tracer.Start(p.ctx, "reverseExpandDirect", trace.WithAttributes(
 		// attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.User.String()),
+		attribute.String("source.user", p.req.User.String()),
 	))
 	var err error
 	defer func() {
@@ -105,23 +177,19 @@ func (c *ReverseExpandQuery) reverseExpandDirectWeighted(
 		}
 		span.End()
 	}()
+
+	p.ctx = ctx
 
 	// Do we want to separate buildQueryFilters more, and feed it in below?
-	err = c.readTuplesAndExecuteWeighted(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecuteWeighted(p)
 	return err
 }
 
-func (c *ReverseExpandQuery) reverseExpandTupleToUsersetWeighted(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUsersetWeighted", trace.WithAttributes(
-		attribute.String("edge.from", req.weightedEdge.GetFrom().GetUniqueLabel()),
-		attribute.String("edge.to", req.weightedEdge.GetFrom().GetUniqueLabel()),
-		attribute.String("source.user", req.User.String()),
+func (c *ReverseExpandQuery) reverseExpandTupleToUsersetWeighted(p *reverseExpandParams) error {
+	ctx, span := tracer.Start(p.ctx, "reverseExpandTupleToUsersetWeighted", trace.WithAttributes(
+		attribute.String("edge.from", p.req.weightedEdge.GetFrom().GetUniqueLabel()),
+		attribute.String("edge.to", p.req.weightedEdge.GetFrom().GetUniqueLabel()),
+		attribute.String("source.user", p.req.User.String()),
 	))
 	var err error
 	defer func() {
@@ -131,17 +199,14 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUsersetWeighted(
 		span.End()
 	}()
 
-	err = c.readTuplesAndExecuteWeighted(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	p.ctx = ctx
+
+	err = c.readTuplesAndExecuteWeighted(p)
 	return err
 }
 
-func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
+func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(p *reverseExpandParams) error {
+	ctx := p.ctx
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -149,6 +214,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecuteWeighted(
 	ctx, span := tracer.Start(ctx, "readTuplesAndExecuteWeighted")
 	defer span.End()
 
+	req := p.req
 	userFilter, relationFilter := c.buildQueryFiltersWeighted(req)
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
@@ -222,27 +288,17 @@ LoopOnIterator:
 			panic("unsupported edge type")
 		}
 
+		params := p.copy(withUser(&UserRefObjectRelation{
+			ObjectRelation: &openfgav1.ObjectRelation{
+				Object:   foundObject,
+				Relation: newRelation,
+			},
+			Condition: tk.GetCondition(),
+		}))
+
 		// Do we still need this additional dispatch?
 		pool.Go(func(ctx context.Context) error {
-			return c.dispatch(ctx, &ReverseExpandRequest{
-				StoreID:    req.StoreID,
-				ObjectType: req.ObjectType,
-				Relation:   req.Relation,
-				User: &UserRefObjectRelation{
-					ObjectRelation: &openfgav1.ObjectRelation{
-						Object:   foundObject,
-						Relation: newRelation,
-					},
-					Condition: tk.GetCondition(),
-				},
-				ContextualTuples: req.ContextualTuples,
-				Context:          req.Context,
-				edge:             req.edge,
-				Consistency:      req.Consistency,
-				// TODO : verify this
-				weightedEdge:        req.weightedEdge,
-				weightedEdgeTypeRel: req.weightedEdgeTypeRel,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			return c.expand(params)
 		})
 	}
 
@@ -268,6 +324,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		fromLabel := req.weightedEdge.GetFrom().GetLabel()
 		relationFilter = tuple.GetRelation(fromLabel) // directs-employee#other_rel -> other_rel
 
+		// TODO : special handling if the TO node is a userset
 		toNode := req.weightedEdge.GetTo()
 
 		// e.g. 'user:*'
@@ -285,7 +342,7 @@ func (c *ReverseExpandQuery) buildQueryFiltersWeighted(
 		}
 
 		// e.g. 'group:eng#member'
-		// so is it if the TO node is direct to a userset?
+		// TODO : so is it if the TO node is direct to a userset?
 		// which would be a DirectEdge TO node with type weightedGraph.SpecificTypeAndRelation
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
 			if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {

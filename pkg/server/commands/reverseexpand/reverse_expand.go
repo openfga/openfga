@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 
@@ -47,6 +46,36 @@ type ReverseExpandRequest struct {
 
 	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
 	weightedEdgeTypeRel string
+
+	fallbackToStandard bool
+}
+
+func (r *ReverseExpandRequest) copy() *ReverseExpandRequest {
+	return &ReverseExpandRequest{
+		StoreID:             r.StoreID,
+		ObjectType:          r.ObjectType,
+		Relation:            r.Relation,
+		User:                r.User,
+		ContextualTuples:    r.ContextualTuples,
+		Context:             r.Context,
+		Consistency:         r.Consistency,
+		edge:                r.edge,
+		weightedEdge:        r.weightedEdge,
+		weightedEdgeTypeRel: r.weightedEdgeTypeRel,
+		fallbackToStandard:  r.fallbackToStandard,
+	}
+}
+
+func (r *ReverseExpandRequest) copyWithUser(user IsUserRef) *ReverseExpandRequest {
+	result := r.copy()
+	result.User = user
+	return result
+}
+
+func (r *ReverseExpandRequest) copyWithEdge(edge *graph.RelationshipEdge) *ReverseExpandRequest {
+	result := r.copy()
+	result.edge = edge
+	return result
 }
 
 type IsUserRef interface {
@@ -336,7 +365,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.listObjectOptimizationsEnabled {
+	if c.listObjectOptimizationsEnabled && !req.fallbackToStandard {
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
@@ -353,15 +382,20 @@ func (c *ReverseExpandQuery) execute(
 			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 			// and then fall back to the non-weighted version of reverse_expand
 			return c.loopOverWeightedEdges(
-				ctx,
+				newReverseExpandWeightedParams(
+					ctx,
+					req,
+					resultChan,
+					needsCheck || intersectionOrExclusionInPreviousEdges,
+					resolutionMetadata,
+				),
 				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges,
-				req,
-				resolutionMetadata,
-				resultChan,
 				sourceUserObj,
 			)
 		}
+
+		// we can't handle usersets, so we fall back to standard impl
+		req.fallbackToStandard = true
 
 		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
 	}
