@@ -581,6 +581,49 @@ func (sf *IteratorDatastore) Read(
 // This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
 var BufferSize = 100
 
+// reader is an interface that defines a method to read items from a source iterator.
+type reader[T any] interface {
+	// Read reads items from the source iterator into the provided buffer.
+	Read(context.Context, []T) (int, error)
+}
+
+// stopper is an interface that defines a method to stop the iterator.
+type stopper interface {
+	// Stop stops the iterator and releases any resources associated with it.
+	Stop()
+}
+
+// readStopper is an interface that combines the reader and stopper interfaces.
+type readStopper[T any] interface {
+	reader[T]
+	stopper
+}
+
+// iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
+type iteratorReader[T any] struct {
+	storage.Iterator[T]
+}
+
+// Read reads items from the iterator into the provided buffer.
+// The method will read up to the length of the buffer, and if there are fewer items available,
+// it will return the number of items read and an error if any occurred.
+func (ir *iteratorReader[T]) Read(ctx context.Context, buf []T) (int, error) {
+	var i int
+	var e error
+
+	buflen := len(buf)
+
+	for ; i < buflen; i++ {
+		t, ierr := ir.Next(ctx)
+		if ierr != nil {
+			e = ierr
+			break
+		}
+		buf[i] = t
+	}
+	return i, e
+}
+
 // sharedIterator is a thread-safe iterator that allows multiple goroutines to share the same iterator.
 // It uses a mutex to ensure that only one goroutine can access an individual iterator instance at a time.
 // Atomic variables are used to manage data shared between clones.
@@ -607,8 +650,8 @@ type sharedIterator struct {
 	// cancel is a function that cancels the shared context when all shared iterator instances have stopped.
 	cancel context.CancelFunc
 
-	// it is the underlying storage.TupleIterator that provides the actual implementation of reading tuples.
-	it storage.TupleIterator
+	// ir is the underlying iterator reader that provides the actual implementation of reading tuples.
+	ir readStopper[*openfgav1.Tuple]
 
 	// fetching is a shared atomic boolean that indicates whether any shared iterator instance is currently fetching items.
 	fetching *atomic.Bool
@@ -659,11 +702,15 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	titems := make([]*openfgav1.Tuple, 0)
 	items.Store(&titems)
 
+	ir := &iteratorReader[*openfgav1.Tuple]{
+		Iterator: it,
+	}
+
 	newIter := sharedIterator{
 		ctx:      ctx,
 		cancel:   cancel,
 		cleanup:  cleanup,
-		it:       it,
+		ir:       ir,
 		fetching: &fetching,
 		items:    &items,
 		err:      &err,
@@ -694,7 +741,7 @@ func (s *sharedIterator) clone() *sharedIterator {
 				ctx:      s.ctx,
 				cancel:   s.cancel,
 				cleanup:  s.cleanup,
-				it:       s.it,
+				ir:       s.ir,
 				fetching: s.fetching,
 				items:    s.items,
 				err:      s.err,
@@ -704,27 +751,6 @@ func (s *sharedIterator) clone() *sharedIterator {
 			}
 		}
 	}
-}
-
-// Fetch is a method that fetches items from the underlying storage.TupleIterator.
-// It reads items into the provided buffer and returns the number of items fetched and any error encountered.
-// This method is used internally by the shared iterator to fetch items in batches.
-// It returns the number of items fetched and an error if any occurred during the fetch operation.
-func (s *sharedIterator) fetch(buf []*openfgav1.Tuple) (int, error) {
-	var i int
-	var e error
-
-	buflen := len(buf)
-
-	for ; i < buflen; i++ {
-		t, ierr := s.it.Next(s.ctx)
-		if ierr != nil {
-			e = ierr
-			break
-		}
-		buf[i] = t
-	}
-	return i, e
 }
 
 // FetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
@@ -753,12 +779,12 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 				}()
 
 				buf := make([]*openfgav1.Tuple, BufferSize)
-				written, e := s.fetch(buf)
+				read, e := s.ir.Read(s.ctx, buf)
 
 				// Load the current items from the shared items pointer and append the newly fetched items to it.
 				ptrItems := s.items.Load()
 				loadedItems := *ptrItems
-				loadedItems = append(loadedItems, buf[:written]...)
+				loadedItems = append(loadedItems, buf[:read]...)
 				s.items.Store(&loadedItems)
 
 				if e != nil {
@@ -860,6 +886,6 @@ func (s *sharedIterator) Stop() {
 		s.cleanup()
 		s.cancel()
 		s.wg.Wait()
-		s.it.Stop()
+		s.ir.Stop()
 	}
 }
