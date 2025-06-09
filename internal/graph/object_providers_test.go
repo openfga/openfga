@@ -454,6 +454,8 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 }
 
 func TestIteratorToUserset(t *testing.T) {
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
 	type inputMessage struct {
 		input []string
 		err   error
@@ -508,6 +510,15 @@ func TestIteratorToUserset(t *testing.T) {
 			},
 			ctx:         context.Background(),
 			expectedErr: fmt.Errorf("error"),
+		},
+		{
+			name: "cancelledCtx",
+			inputMessages: []inputMessage{
+				{input: []string{"1"}},
+			},
+			expectedResult: nil,
+			ctx:            cancelledCtx,
+			expectedErr:    context.Canceled,
 		},
 	}
 	for _, tt := range tests {
