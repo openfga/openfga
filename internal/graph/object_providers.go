@@ -157,31 +157,32 @@ func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx
 			}
 			go drainIteratorChannel(src)
 		}()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case msg, ok := <-src:
-			if !ok {
-				leftOpen = false
-				return nil
-			}
-			if msg.Err != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
-				return msg.Err
-			}
-			for {
-				t, err := msg.Iter.Next(ctx)
-				if err != nil {
-					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
-					}
-					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
-					return err
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case msg, ok := <-src:
+				if !ok {
+					leftOpen = false
+					return nil
 				}
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
+				if msg.Err != nil {
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
+					return msg.Err
+				}
+				for {
+					t, err := msg.Iter.Next(ctx)
+					if err != nil {
+						msg.Iter.Stop()
+						if storage.IterIsDoneOrCancelled(err) {
+							break
+						}
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
+						return err
+					}
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
+				}
 			}
 		}
-		return nil
 	}
 }

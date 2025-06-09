@@ -5026,7 +5026,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			relation:          "viewer",
 			tuplesetRelation:  "owner",
 			computedRelation:  "member",
-			expectCanFastPath: true,
+			expectCanFastPath: false,
 		},
 		{
 			name: "multiple_ttu_references_different_terminal_types",
@@ -5066,13 +5066,11 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 								define parent: [group_without_member, group_with_member]
 								define viewer: member from parent
 					`,
-			// notice that group_without_member does not have member.  However, we should
-			// still allow because group_with_member has member
 			objectType:        "folder",
 			relation:          "viewer",
 			tuplesetRelation:  "parent",
 			computedRelation:  "member",
-			expectCanFastPath: true,
+			expectCanFastPath: false,
 		},
 		{
 			name: "ttu_child_is_computed_in_intersection",

@@ -43,6 +43,7 @@ type Datastore struct {
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
+	versionReady           bool
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -75,21 +76,13 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
 func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
-	if cfg.MaxOpenConns != 0 {
-		db.SetMaxOpenConns(cfg.MaxOpenConns)
-	}
-
 	if cfg.MaxIdleConns != 0 {
-		db.SetMaxIdleConns(cfg.MaxIdleConns)
+		db.SetMaxIdleConns(cfg.MaxIdleConns) // default is 2, not retaining connections(0) would be detrimental for performance
 	}
 
-	if cfg.ConnMaxIdleTime != 0 {
-		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	}
-
-	if cfg.ConnMaxLifetime != 0 {
-		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	}
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
@@ -126,6 +119,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
+		versionReady:           false,
 	}, nil
 }
 
@@ -777,7 +771,12 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db)
+	versionReady, err := sqlcommon.IsReady(ctx, s.versionReady, s.db)
+	if err != nil {
+		return versionReady, err
+	}
+	s.versionReady = versionReady.IsReady
+	return versionReady, nil
 }
 
 // HandleSQLError processes an SQL error and converts it into a more
