@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -42,6 +43,39 @@ type ReverseExpandRequest struct {
 	Consistency      openfgav1.ConsistencyPreference
 
 	edge *graph.RelationshipEdge
+
+	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
+	weightedEdgeTypeRel string
+
+	fallbackToStandard bool
+}
+
+func (r *ReverseExpandRequest) copy() *ReverseExpandRequest {
+	return &ReverseExpandRequest{
+		StoreID:             r.StoreID,
+		ObjectType:          r.ObjectType,
+		Relation:            r.Relation,
+		User:                r.User,
+		ContextualTuples:    r.ContextualTuples,
+		Context:             r.Context,
+		Consistency:         r.Consistency,
+		edge:                r.edge,
+		weightedEdge:        r.weightedEdge,
+		weightedEdgeTypeRel: r.weightedEdgeTypeRel,
+		fallbackToStandard:  r.fallbackToStandard,
+	}
+}
+
+func (r *ReverseExpandRequest) copyWithUser(user IsUserRef) *ReverseExpandRequest {
+	result := r.copy()
+	result.User = user
+	return result
+}
+
+func (r *ReverseExpandRequest) copyWithEdge(edge *graph.RelationshipEdge) *ReverseExpandRequest {
+	result := r.copy()
+	result.edge = edge
+	return result
 }
 
 type IsUserRef interface {
@@ -122,6 +156,8 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+
+	listObjectOptimizationsEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -144,6 +180,12 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.listObjectOptimizationsEnabled = enabled
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
@@ -160,6 +202,8 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		// experimental optimizations
+		listObjectOptimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
 	}
 
 	for _, opt := range opts {
@@ -265,15 +309,14 @@ func (c *ReverseExpandQuery) execute(
 		span.SetAttributes(attribute.String("edge", req.edge.String()))
 	}
 
-	depth, ok := graph.ResolutionDepthFromContext(ctx)
-	if !ok {
-		ctx = graph.ContextWithResolutionDepth(ctx, 0)
-	} else {
+	if depth, ok := graph.ResolutionDepthFromContext(ctx); ok {
 		if depth >= c.resolveNodeLimit {
 			return graph.ErrResolutionDepthExceeded
 		}
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
+	} else {
+		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	}
 
 	var sourceUserRef *openfgav1.RelationReference
@@ -299,7 +342,13 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
 		if req.edge != nil {
-			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
+			key := sourceUserObj + "#" + req.edge.String()
+			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+				// we've already visited this userset through this edge, exit to avoid an infinite cycle
+				return nil
+			}
+		} else if req.weightedEdge != nil {
+			key := req.weightedEdge.GetTo().GetUniqueLabel()
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
@@ -316,17 +365,40 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	/* TODO: the logic in this commented block is for implementation by follow up branch
-	targetTypeRel := tuple.ToObjectRelationString(req.ObjectType, req.Relation)
-	edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(targetTypeRel, sourceUserType)
+	if c.listObjectOptimizationsEnabled && !req.fallbackToStandard {
+		targetTypeRel := req.weightedEdgeTypeRel
 
-	if err == nil {
-	// errs = c.LoopOnWeightedEdges(edges, ...otherStuff)
-	} else {
-	// log a message for why GetEdgesFromWeightedGraph failed and then
-	// let this continue to the old implementation
+		if targetTypeRel == "" { // This is true on the first call of reverse expand
+			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+		}
+
+		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+			targetTypeRel,
+			sourceUserType,
+		)
+
+		if err == nil {
+			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
+			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+			// and then fall back to the non-weighted version of reverse_expand
+			return c.loopOverWeightedEdges(
+				newReverseExpandWeightedParams(
+					ctx,
+					req,
+					resultChan,
+					needsCheck || intersectionOrExclusionInPreviousEdges,
+					resolutionMetadata,
+				),
+				edges,
+				sourceUserObj,
+			)
+		}
+
+		// we can't handle usersets, so we fall back to standard impl
+		req.fallbackToStandard = true
+
+		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
 	}
-	*/
 
 	g := graph.New(c.typesystem)
 
@@ -448,31 +520,20 @@ func (c *ReverseExpandQuery) shouldCheckPublicAssignable(targetReference *openfg
 	return publiclyAssignable, nil
 }
 
-func (c *ReverseExpandQuery) readTuplesAndExecute(
-	ctx context.Context,
+func (c *ReverseExpandQuery) buildQueryFilters(
 	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
-	defer span.End()
-
+) ([]*openfgav1.ObjectRelation, string, error) {
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
 
 	switch req.edge.Type {
 	case graph.DirectEdge:
-		relationFilter = req.edge.TargetReference.GetRelation()
-		targetUserObjectType := req.User.GetObjectType()
+		relationFilter = req.edge.TargetReference.GetRelation() // "other_rel"
+		targetUserObjectType := req.User.GetObjectType()        // "employee"
 
 		publiclyAssignable, err := c.shouldCheckPublicAssignable(req.edge.TargetReference, req.User)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
 
 		if publiclyAssignable {
@@ -508,11 +569,36 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		panic("unsupported edge type")
 	}
 
+	return userFilter, relationFilter, nil
+}
+
+func (c *ReverseExpandQuery) readTuplesAndExecute(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
+	defer span.End()
+
+	var userFilter []*openfgav1.ObjectRelation
+	var relationFilter string
+
+	userFilter, relationFilter, err := c.buildQueryFilters(req)
+	if err != nil {
+		return err
+	}
+
 	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   relationFilter,
-		UserFilter: userFilter,
+		ObjectType: req.edge.TargetReference.GetType(), // directs-employee
+		Relation:   relationFilter,                     // other-rel
+		UserFilter: userFilter,                         // .Object = employee#alg_combined_1
 	}, storage.ReadStartingWithUserOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.Consistency,

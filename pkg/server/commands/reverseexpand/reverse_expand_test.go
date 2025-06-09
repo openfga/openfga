@@ -454,7 +454,7 @@ func TestReverseExpandIgnoresInvalidTuples(t *testing.T) {
 			}
 			results = append(results, res.Object)
 		case err := <-errChan:
-			require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
+			require.FailNowf(t, "unexpected error received on error channel", "err: %v", err.Error())
 			return
 		case <-ctx.Done():
 			return
@@ -591,6 +591,9 @@ func TestReverseExpandThrottle(t *testing.T) {
 func TestReverseExpandDispatchCount(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
 	tests := []struct {
 		name                    string
 		model                   string
@@ -735,6 +738,8 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 					break ConsumerLoop
 				case <-ctx.Done():
 					break ConsumerLoop
+				case <-time.After(30 * time.Millisecond):
+					require.FailNow(t, "unexpected timeout on channel receive")
 				}
 			}
 			require.Equal(t, test.expectedDispatchCount, resolutionMetadata.DispatchCounter.Load())
