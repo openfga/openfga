@@ -434,7 +434,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 	))
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := fanInIteratorChannels(cancellableCtx, leftChans, c.concurrencyLimit)
+	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
@@ -445,7 +445,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
-		go drainIteratorChannel(leftChan)
+		iterator.Drain(leftChan)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -555,7 +555,7 @@ func produceLeftChannels(
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
-				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans, concurrencyLimit))
+				iterator.Drain(iterator.FanInIteratorChannels(ctx, leftChans))
 			}
 			return nil, err
 		}
@@ -618,50 +618,6 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, _ int) chan *iterator.Msg {
-	limit := len(chans)
-
-	out := make(chan *iterator.Msg, limit)
-
-	if limit == 0 {
-		close(out)
-		return out
-	}
-
-	// It is ok if the limit is < concurrencyLimit because that
-	// is the pool's max limit.
-	pool := concurrency.NewPool(ctx, limit)
-
-	for _, c := range chans {
-		pool.Go(func(ctx context.Context) error {
-			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
-					}
-				}
-			}
-			return nil
-		})
-	}
-
-	go func() {
-		// NOTE: the consumer of this channel will block waiting for it to close
-		_ = pool.Wait()
-		close(out)
-	}()
-
-	return out
-}
-
-func drainIteratorChannel(c chan *iterator.Msg) {
-	for msg := range c {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	}
-}
-
 // Note that visited does not necessary means that there are cycles.  For the following model,
 // type user
 // type group
@@ -706,7 +662,6 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
-			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
 			continue
 		}
 		// if the pool is short-circuited, the iterator should be stopped
