@@ -128,10 +128,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// TODO: don't forget telemetry
 
 	typeRel := req.stack.Pop()
-	to := req.weightedEdge.GetTo().GetUniqueLabel()
-	var userId string
+	to := req.weightedEdge.GetTo()
+	var userID string
 	if val, ok := req.User.(*UserRefObject); ok {
-		userId = val.Object.GetId()
+		userID = val.Object.GetId()
 	}
 	// build iterator
 	// loop over iterator
@@ -140,8 +140,17 @@ func (c *ReverseExpandQuery) queryForTuples(
 	//      if stack not empty: copy the stack and call this method again with the new result as the object
 	// c.buildFiltersV2(req)
 
-	// TODO: temporary for the simple case here
-	userFilter := []*openfgav1.ObjectRelation{{Object: tuple.BuildObject(to, userId)}}
+	var userFilter []*openfgav1.ObjectRelation
+	switch to.GetNodeType() {
+	case weightedGraph.SpecificType:
+		// Direct user reference
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
+	case weightedGraph.SpecificTypeWildcard:
+		// The label on wildcard leaf nodes is formatted as "type:*" e.g. "user:*"
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
+	case weightedGraph.SpecificTypeAndRelation:
+		panic("not implemented yet")
+	}
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
