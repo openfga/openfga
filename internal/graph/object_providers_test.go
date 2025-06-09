@@ -468,16 +468,13 @@ func TestIteratorToUserset(t *testing.T) {
 		expectedErr    error
 	}{
 		{
-			name: "simple",
+			name: "single_message",
 			inputMessages: []inputMessage{
-				{input: []string{"1", "2"}},
+				{input: []string{"1"}},
 			},
 			expectedResult: []usersetMessage{
 				{
 					userset: "1",
-				},
-				{
-					userset: "2",
 				},
 			},
 			ctx: context.Background(),
@@ -485,8 +482,7 @@ func TestIteratorToUserset(t *testing.T) {
 		{
 			name: "multiple_messages",
 			inputMessages: []inputMessage{
-				{input: []string{"1"}},
-				{input: []string{"2"}},
+				{input: []string{"1", "2", "3", "4", "5"}},
 			},
 			expectedResult: []usersetMessage{
 				{
@@ -494,6 +490,15 @@ func TestIteratorToUserset(t *testing.T) {
 				},
 				{
 					userset: "2",
+				},
+				{
+					userset: "3",
+				},
+				{
+					userset: "4",
+				},
+				{
+					userset: "5",
 				},
 			},
 			ctx: context.Background(),
@@ -541,7 +546,7 @@ func TestIteratorToUserset(t *testing.T) {
 					output = append(output, msg)
 				}
 			}()
-			err := iteratorToUserset(inputMessages, outChan)(tt.ctx)
+			err := iteratorToUserset(inputMessages, outChan, 1)(tt.ctx)
 			require.Equal(t, tt.expectedErr, err)
 
 			wg.Wait()
