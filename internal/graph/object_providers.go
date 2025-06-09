@@ -90,17 +90,16 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChannels, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), c.concurrencyLimit)
+	leftChans, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), c.concurrencyLimit)
 	if err != nil {
 		return nil, err
 	}
-	outChannel := make(chan usersetMessage, len(leftChannels))
-	leftChannel := fanInIteratorChannels(ctx, leftChannels, c.concurrencyLimit)
+	outChannel := make(chan usersetMessage, len(leftChans))
+	leftChannel := iterator.FanInIteratorChannels(ctx, leftChans)
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
-
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel, len(leftChannels)))
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
 
 	return outChannel, nil
 }
@@ -136,28 +135,23 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 		return nil, err
 	}
 	outChannel := make(chan usersetMessage, len(leftChans))
-	leftChannel := fanInIteratorChannels(ctx, leftChans, c.concurrencyLimit)
+	leftChannel := iterator.FanInIteratorChannels(ctx, leftChans)
 	poolCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel, len(leftChans)))
+	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
 
 	return outChannel, nil
 }
 
-func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage, limit int) func(ctx context.Context) error {
+func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		leftOpen := true
-
-		pool := concurrency.NewPool(ctx, limit)
-
 		defer func() {
-			_ = pool.Wait()
 			close(dst)
-			if !leftOpen {
-				return
+			if leftOpen {
+				iterator.Drain(src)
 			}
-			go drainIteratorChannel(src)
 		}()
 
 		for {
@@ -174,21 +168,18 @@ func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage, limit in
 					return msg.Err
 				}
 
-				pool.Go(func(ctx context.Context) error {
-					for {
-						t, err := msg.Iter.Next(ctx)
-						if err != nil {
-							msg.Iter.Stop()
-							if storage.IterIsDoneOrCancelled(err) {
-								break
-							}
-							concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
+				for {
+					t, err := msg.Iter.Next(ctx)
+					if err != nil {
+						msg.Iter.Stop()
+						if storage.IterIsDoneOrCancelled(err) {
 							break
 						}
-						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
+						break
 					}
-					return nil
-				})
+					concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
+				}
 			}
 		}
 	}

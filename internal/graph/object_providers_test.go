@@ -546,7 +546,7 @@ func TestIteratorToUserset(t *testing.T) {
 					output = append(output, msg)
 				}
 			}()
-			err := iteratorToUserset(inputMessages, outChan, 1)(tt.ctx)
+			err := iteratorToUserset(inputMessages, outChan)(tt.ctx)
 			require.Equal(t, tt.expectedErr, err)
 
 			wg.Wait()
