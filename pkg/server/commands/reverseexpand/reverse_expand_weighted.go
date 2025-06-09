@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -90,7 +92,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				return errs
 			}
 		case weightedGraph.TTUEdge: // This is not handled yet
-			panic("AHHH")
+			panic("not implemented yet")
 			// pool.Go(func(ctx context.Context) error {
 			//	return c.reverseExpandTupleToUsersetWeighted(ctx, r, resultChan, needsCheck, resolutionMetadata)
 			//})
@@ -131,13 +133,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 	if val, ok := req.User.(*UserRefObject); ok {
 		userId = val.Object.GetId()
 	}
-	// fmt.Printf("JUSTIN new method would have queried for:"+
-	//	"\n\ttype#rel: %s"+
-	//	"\n\tTo: %s"+
-	//	"\n\tuserId: %s\n",
-	//	typeRel, to, userId,
-	//)
-
 	// build iterator
 	// loop over iterator
 	//   for each result
@@ -169,6 +164,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	)
 	defer filteredIter.Stop()
 
+	var errs error
 LoopOnIterator:
 	for {
 		tk, err := filteredIter.Next(ctx)
@@ -176,24 +172,43 @@ LoopOnIterator:
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
-			// errs = errors.Join(errs, err)
+			errs = errors.Join(errs, err)
 			break LoopOnIterator
 		}
 
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+		if err != nil {
+			errs = errors.Join(errs, err)
+			continue
+		}
+
+		if !condEvalResult.ConditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = errors.Join(errs, condition.NewEvaluationError(
+					tk.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(tk),
+						condEvalResult.MissingParameters),
+				))
+			}
+
+			continue
+		}
 		fmt.Printf("JUSTIN TK FOUND: %s\n", tk.String())
 		if req.stack.Len() == 0 {
 			_ = c.trySendCandidate(ctx, needsCheck, tk.GetObject(), resultChan)
 			continue
 		} else {
 			// trigger query for tuples all over again
-			c.queryForTuples(ctx, req, needsCheck, resultChan)
+			fmt.Println("Recursion")
+			//c.queryForTuples(ctx, req, needsCheck, resultChan)
 			// queryForTuples()
 			// new object we just found
 			// stack with 1 less element
 		}
 	}
 
-	return nil
+	return errs
 }
 
 // func (c *ReverseExpandQuery) buildFiltersV2(
