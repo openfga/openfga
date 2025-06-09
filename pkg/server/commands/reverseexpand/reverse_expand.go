@@ -11,9 +11,11 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -42,6 +44,10 @@ type ReverseExpandRequest struct {
 	Consistency      openfgav1.ConsistencyPreference
 
 	edge *graph.RelationshipEdge
+
+	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
+	weightedEdgeTypeRel string
+	stack               relationStack
 }
 
 type IsUserRef interface {
@@ -124,7 +130,8 @@ type ReverseExpandQuery struct {
 	candidateObjectsMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver *graph.LocalChecker
+	localCheckResolver             *graph.LocalChecker
+	listObjectOptimizationsEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -153,6 +160,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 		if found {
 			d.localCheckResolver = localCheckResolver
 		}
+	}
+}
+
+func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.listObjectOptimizationsEnabled = enabled
 	}
 }
 
@@ -328,6 +341,39 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+
+	if c.listObjectOptimizationsEnabled {
+		targetTypeRel := req.weightedEdgeTypeRel
+
+		if targetTypeRel == "" { // This is true on the first call of reverse expand
+			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+
+			// The relation stack has to be initialized on the first request
+			req.stack.Push(targetTypeRel)
+		}
+
+		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+			targetTypeRel,
+			sourceUserType,
+		)
+
+		if err == nil {
+			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
+			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+			// and then fall back to the non-weighted version of reverse_expand
+			return c.loopOverWeightedEdges(
+				ctx,
+				edges,
+				needsCheck || intersectionOrExclusionInPreviousEdges,
+				req,
+				resolutionMetadata,
+				resultChan,
+				sourceUserObj,
+			)
+		}
+
+		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
+	}
 
 	g := graph.New(c.typesystem)
 

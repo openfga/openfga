@@ -947,3 +947,174 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 		})
 	}
 }
+
+func TestReverseExpandNew(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	tests := []struct {
+		name            string
+		model           string
+		tuples          []string
+		objectType      string
+		relation        string
+		user            *UserRefObject
+		expectedObjects []string
+	}{
+		{
+			name: "simple_ttu",
+			model: `model
+				  schema 1.1
+		
+				type organization
+				  relations
+					define member: [user]
+					define repo_admin: [user, organization#member]
+				type repo
+				  relations
+					define admin: repo_admin from owner
+					define owner: [organization]
+				type user
+		`,
+			tuples: []string{
+				"repo:fga#owner@organization:jz",
+				"organization:jz#repo_admin@user:justin",
+			},
+			objectType:      "repo",
+			relation:        "admin",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedObjects: []string{"repo:fga"},
+		},
+		//	{
+		//		name: "ttu_from_union",
+		//		model: `model
+		//		  schema 1.1
+		//
+		//		type organization
+		//		  relations
+		//			define member: [user]
+		//			define repo_admin: [user, organization#member]
+		//		type repo
+		//		  relations
+		//			define admin: [user, team#member] or repo_admin from owner
+		//			define owner: [organization]
+		//		type team
+		//		  relations
+		//			define member: [user, team#member]
+		//
+		//		type user
+		// `,
+		//		tuples: []string{
+		//			"repo:fga#owner@organization:justin_and_zee",
+		//			//"organization:justin_and_zee#member@user:justin",
+		//			"organization:justin_and_zee#repo_admin@user:justin",
+		//		},
+		//		objectType:      "repo",
+		//		relation:        "admin",
+		//		user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		//		expectedObjects: []string{"repo:fga"},
+		//	},
+		//	{
+		//		name: "ttu_multiple_types_with_rewrites",
+		//		model: `model
+		//		  schema 1.1
+		//
+		//		type organization
+		//		  relations
+		//			define member: [user]
+		//			define repo_admin: [team#member] or member
+		//		type repo
+		//		  relations
+		//			define admin: [team#member] or repo_admin from owner
+		//			define owner: [organization]
+		//		type team
+		//		  relations
+		//		    define member: [user]
+		//		type user
+		//`,
+		//		tuples: []string{
+		//			"team:jz#member@user:justin",
+		//			"organization:jz#repo_admin@team:jz#member",
+		//			"repo:fga#owner@organization:jz",
+		//		},
+		//		objectType:      "repo",
+		//		relation:        "admin",
+		//		user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		//		expectedObjects: []string{"repo:fga"},
+		//	},
+		//{
+		//	name: "direct_and_algebraic",
+		//	model: `model
+		//	  schema 1.1
+		//
+		//	type user
+		//	type repo
+		//	  relations
+		//		define member: [user]
+		//		define member_wild: [user:*]
+		//		define computed_member: member
+		//		define owner: [user]
+		//		define admin: [user] or computed_member
+		//		define or_admin: owner or admin
+		//`,
+		//	tuples: []string{
+		//		"repo:fga#member@user:justin",
+		//		"repo:fga#owner@user:z",
+		//	},
+		//	objectType:      "repo",
+		//	relation:        "or_admin",
+		//	user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		//	expectedObjects: []string{"repo:fga"},
+		//},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			resultChan := make(chan *ReverseExpandResult)
+			errChan := make(chan error, 1)
+			typesys, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+			require.NoError(t, err)
+			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+			resolutionMetadata := NewResolutionMetadata()
+			go func() {
+				q := NewReverseExpandQuery(
+					ds,
+					typesys,
+					WithListObjectOptimizationsEnabled(true),
+				)
+
+				err = q.Execute(ctx, &ReverseExpandRequest{
+					StoreID:    storeID,
+					ObjectType: test.objectType,
+					Relation:   test.relation,
+					User:       test.user,
+				}, resultChan, resolutionMetadata)
+
+				if err != nil {
+					errChan <- err
+				}
+			}()
+
+			var results []string
+		ConsumerLoop:
+			for {
+				select {
+				case result, open := <-resultChan:
+					if !open {
+						break ConsumerLoop
+					}
+					results = append(results, result.Object)
+				case err := <-errChan:
+					require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
+					break ConsumerLoop
+				case <-ctx.Done():
+					break ConsumerLoop
+				}
+			}
+			require.ElementsMatch(t, test.expectedObjects, results)
+		})
+	}
+}
