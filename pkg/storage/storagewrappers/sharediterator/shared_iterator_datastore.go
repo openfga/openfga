@@ -665,9 +665,6 @@ type sharedIterator struct {
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
 
-	// wg is a shared wait group that is used to wait for all clones to finish fetching items before cleaning up.
-	wg *sync.WaitGroup
-
 	// ch is a shared atomic pointer to a channel that is used to signal when new items are available.
 	ch *atomic.Pointer[chan struct{}]
 }
@@ -687,8 +684,6 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
 	refs.Store(1)
-
-	var wg sync.WaitGroup
 
 	// Initialize the error pointer to nil, indicating that there are no errors at the start.
 	// This will be used to store any errors that occur during the iteration.
@@ -715,7 +710,6 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 		items:    &items,
 		err:      &err,
 		refs:     &refs,
-		wg:       &wg,
 		ch:       &pch,
 	}
 
@@ -746,7 +740,6 @@ func (s *sharedIterator) clone() *sharedIterator {
 				items:    s.items,
 				err:      s.err,
 				refs:     s.refs,
-				wg:       s.wg,
 				ch:       s.ch,
 			}
 		}
@@ -759,24 +752,15 @@ func (s *sharedIterator) clone() *sharedIterator {
 func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.Tuple, err *error) {
 	*items = *s.items.Load()
 	*err = *s.err.Load()
-	ch := s.ch.Load()
 
 	// Iterate until we have items available or an error occurs.
-	for ; s.head >= len(*items) && *err == nil; *items, *err, ch = *s.items.Load(), *s.err.Load(), s.ch.Load() {
-		if s.fetching.CompareAndSwap(false, true) {
-			// If we are not already fetching, we start a new goroutine to fetch items.
-			s.wg.Add(1)
-			go func(c *chan struct{}) {
-				defer s.wg.Done()
-				defer s.fetching.Store(false)
+	for ; s.head >= len(*items) && *err == nil; *items, *err = *s.items.Load(), *s.err.Load() {
+		ch := *s.ch.Load()
 
-				defer func() {
-					// Initialize a new channel to signal that new items are available on the next fetch.
-					nc := make(chan struct{})
-					s.ch.CompareAndSwap(c, &nc)
-					// Close the old channel to signal waiting consumers to wake up.
-					close(*c)
-				}()
+		if !s.fetching.Swap(true) {
+			// If we are not already fetching, we start a new goroutine to fetch items.
+			go func() {
+				defer s.fetching.Store(false)
 
 				buf := make([]*openfgav1.Tuple, BufferSize)
 				read, e := s.ir.Read(s.ctx, buf)
@@ -794,14 +778,20 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 					}
 					s.err.Store(&e)
 				}
-			}(ch)
+
+				// Initialize a new channel to signal that new items are available on the next fetch.
+				newCh := make(chan struct{})
+				currentCh := s.ch.Swap(&newCh)
+				// Close the old channel to signal waiting consumers to wake up.
+				close(*currentCh)
+			}()
 		}
 
 		// Wait for new items to be available or for the context to be done.
 		// This allows the iterator to block until new items are fetched or the context is canceled.
 		// This is important to ensure that we do not return stale data or block indefinitely.
 		select {
-		case <-*ch:
+		case <-ch:
 		case <-ctx.Done():
 			return
 		}
@@ -813,9 +803,6 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 // If the iterator is stopped or there are no items available, it returns an error.
 // It also handles fetching new items if the current head is beyond the available items.
 func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -833,11 +820,11 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 		return nil, ctx.Err()
 	}
 
-	if s.head >= len(items) && err != nil {
-		if err == storage.ErrIteratorDone {
+	if s.head >= len(items) {
+		if err != nil {
 			return nil, err
 		}
-		return nil, err
+		return nil, storage.ErrIteratorDone
 	}
 
 	return items[s.head], nil
@@ -847,7 +834,10 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 // It is used to peek at the next item without consuming it.
 // If the iterator is stopped or there are no items available, it returns an error.
 // It also handles fetching new items if the current head is beyond the available items.
-func (s *sharedIterator) Head(ctx context.Context) (tup *openfgav1.Tuple, e error) {
+func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	ctx, span := tracer.Start(
 		ctx,
 		"sharedIterator.Head",
@@ -861,18 +851,22 @@ func (s *sharedIterator) Head(ctx context.Context) (tup *openfgav1.Tuple, e erro
 // It is used to consume the next item in the iterator.
 // If the iterator is stopped or there are no items available, it returns an error.
 // It also handles fetching new items if the current head is beyond the available items.
-func (s *sharedIterator) Next(ctx context.Context) (tup *openfgav1.Tuple, e error) {
+func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	ctx, span := tracer.Start(
 		ctx,
 		"sharedIterator.Next",
 	)
 	defer span.End()
 
-	defer func() {
-		s.head++
-	}()
-
-	return s.current(ctx)
+	result, err := s.current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.head++
+	return result, nil
 }
 
 // Stop stops the shared iterator and cleans up resources.
@@ -885,7 +879,6 @@ func (s *sharedIterator) Stop() {
 	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 {
 		s.cleanup()
 		s.cancel()
-		s.wg.Wait()
 		s.ir.Stop()
 	}
 }
