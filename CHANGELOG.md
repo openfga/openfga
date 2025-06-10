@@ -10,6 +10,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Shared iterator refactor to reduce lock contention. [#2478](https://github.com/openfga/openfga/pull/2478)
 
+## [1.8.14] - 2025-06-10
 ### Fixed
 - Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
 - SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
@@ -1309,7 +1310,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.13...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.14...HEAD
+[1.8.14]: https://github.com/openfga/openfga/compare/v1.8.13...v1.8.14
 [1.8.13]: https://github.com/openfga/openfga/compare/v1.8.12...v1.8.13
 [1.8.12]: https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12
 [1.8.11]: https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11
