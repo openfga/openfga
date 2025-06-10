@@ -60,14 +60,13 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		err error
 	)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
 	switch engine {
 	case "mysql":
-		db, err = mysql.New(cfg)
+		db, err = mysql.New(uri, cfg)
 	case "postgres":
-		db, err = postgres.New(cfg)
+		db, err = postgres.New(uri, cfg)
 	case "sqlite":
-		db, err = sqlite.New(cfg)
+		db, err = sqlite.New(uri, cfg)
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	case "memory":

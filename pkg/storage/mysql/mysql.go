@@ -49,8 +49,7 @@ type Datastore struct {
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
 // New creates a new [Datastore] storage.
-func New(cfg *sqlcommon.Config) (*Datastore, error) {
-	uri := cfg.URI
+func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {

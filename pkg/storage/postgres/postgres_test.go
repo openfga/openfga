@@ -27,8 +27,7 @@ func TestPostgresDatastore(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -41,10 +40,9 @@ func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	primaryURI := primaryDatastore.GetConnectionURI(true)
 
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = primaryURI
 	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(true)
 
-	ds, err := New(cfg)
+	ds, err := New(primaryURI, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -59,8 +57,7 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	ds.Close()
 	status, err := ds.IsReady(context.Background())
@@ -89,8 +86,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			uri := testDatastore.GetConnectionURI(true)
 			cfg := sqlcommon.NewConfig()
-			cfg.URI = uri
-			ds, err := New(cfg)
+			ds, err := New(uri, cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -192,8 +188,7 @@ func TestCtxCancel(t *testing.T) {
 
 			uri := testDatastore.GetConnectionURI(true)
 			cfg := sqlcommon.NewConfig()
-			cfg.URI = uri
-			ds, err := New(cfg)
+			ds, err := New(uri, cfg)
 			require.NoError(t, err)
 			defer ds.Close()
 
@@ -254,8 +249,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -302,8 +296,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -329,8 +322,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -359,8 +351,7 @@ func TestFindLatestModel(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -442,8 +433,7 @@ func TestAllowNullCondition(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -546,8 +536,7 @@ func TestMarshalledAssertions(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.URI = uri
-	ds, err := New(cfg)
+	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 

@@ -101,8 +101,8 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 }
 
 // New creates a new [Datastore] storage.
-func New(cfg *sqlcommon.Config) (*Datastore, error) {
-	primaryDB, err := initDB(cfg.URI, cfg.Username, cfg.Password, cfg)
+func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
+	primaryDB, err := initDB(uri, cfg.Username, cfg.Password, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
