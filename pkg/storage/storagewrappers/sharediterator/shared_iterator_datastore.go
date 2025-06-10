@@ -252,7 +252,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
 	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items addmitted may be able to exceed the limit.
+	// The number of items admitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -373,7 +373,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
 	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items addmitted may be able to exceed the limit.
+	// The number of items admitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -493,7 +493,7 @@ func (sf *IteratorDatastore) Read(
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
 	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items addmitted may be able to exceed the limit.
+	// The number of items admitted may be able to exceed the limit.
 	sf.internalStorage.iters.Range(func(_, _ any) bool {
 		count++
 		full = count >= int(sf.internalStorage.limit)
@@ -746,7 +746,7 @@ func (s *sharedIterator) clone() *sharedIterator {
 	}
 }
 
-// FetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
+// fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
 func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.Tuple, err *error) {
