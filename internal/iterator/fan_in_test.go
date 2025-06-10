@@ -78,7 +78,6 @@ func TestFanInIteratorChannels(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 	ctx := context.Background()
-	cancellable, cancel := context.WithCancel(ctx)
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
@@ -94,8 +93,8 @@ func TestFanInIteratorChannels(t *testing.T) {
 		makeIterChan(ctrl, "8", true),
 		makeIterChan(ctrl, "9", true))
 
-	out := FanInIteratorChannels(cancellable, chans)
-	cancel()
+	out := FanInIteratorChannels(ctx, chans)
+
 	iterations := 0
 	for msg := range out {
 		id, err := msg.Iter.Next(ctx)
@@ -109,4 +108,30 @@ func TestFanInIteratorChannels(t *testing.T) {
 		msg.Iter.Stop()
 		iterations++
 	}
+	require.Equal(t, 9, iterations)
+	cancellable, cancel := context.WithCancel(ctx)
+	cancel() // Stop would still be called in all entries even tho its been cancelled
+	chans = make([]chan *Msg, 0, 5)
+	chans = append(chans,
+		makeIterChan(ctrl, "1", true),
+		makeIterChan(ctrl, "2", true),
+		makeIterChan(ctrl, "3", true),
+		makeIterChan(ctrl, "4", true),
+		makeIterChan(ctrl, "5", true),
+	)
+	out = FanInIteratorChannels(cancellable, chans)
+	iterations = 0
+	for msg := range out {
+		id, err := msg.Iter.Next(ctx)
+		require.NoError(t, err)
+		i, err := strconv.Atoi(id)
+		require.NoError(t, err)
+		require.Positive(t, i)
+		require.LessOrEqual(t, i, 5)
+		_, err = msg.Iter.Next(ctx)
+		require.Equal(t, storage.ErrIteratorDone, err)
+		msg.Iter.Stop()
+		iterations++
+	}
+	require.LessOrEqual(t, iterations, 5)
 }

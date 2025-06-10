@@ -538,9 +538,10 @@ func TestIteratorToUserset(t *testing.T) {
 			// this is the expected goroutine due to "iterator error"
 			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
 		})
+		iterError := errors.New("iterator error")
 		chans := make([]chan *iterator.Msg, 0, 2)
 		iterChan1 := make(chan *iterator.Msg, 1)
-		iterChan1 <- &iterator.Msg{Err: errors.New("iterator error")}
+		iterChan1 <- &iterator.Msg{Err: iterError}
 		close(iterChan1)
 		chans = append(chans, iterChan1)
 		iterChan2 := make(chan *iterator.Msg, 1)
@@ -555,7 +556,9 @@ func TestIteratorToUserset(t *testing.T) {
 		count := 0
 		for msg := range outChan {
 			if msg.err != nil {
-				count++
+				if errors.Is(msg.err, mocks.ErrSimulatedError) || errors.Is(msg.err, iterError) {
+					count++
+				}
 			}
 		}
 		require.Equal(t, 2, count)
