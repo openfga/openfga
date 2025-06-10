@@ -753,17 +753,25 @@ func ReadAuthorizationModel(
 	return ret, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
-// and the datastore has the latest migration applied.
-func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
+// IsReady returns true if connection to datastore is successful AND
+// (the datastore has the latest migration applied OR skipVersionCheck).
+func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
-		return storage.ReadinessStatus{}, err
+	// do ping first to ensure we have better error message
+	// if error is due to connection issue.
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		return storage.ReadinessStatus{}, pingErr
 	}
 
-	revision, err := goose.GetDBVersion(db)
+	if skipVersionCheck {
+		return storage.ReadinessStatus{
+			IsReady: true,
+		}, nil
+	}
+
+	revision, err := goose.GetDBVersionContext(ctx, db)
 	if err != nil {
 		return storage.ReadinessStatus{}, err
 	}

@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -12,6 +13,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -449,4 +451,101 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestIteratorToUserset(t *testing.T) {
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	type inputMessage struct {
+		input []string
+		err   error
+	}
+	tests := []struct {
+		name           string
+		ctx            context.Context
+		inputMessages  []inputMessage
+		expectedResult []usersetMessage
+		expectedErr    error
+	}{
+		{
+			name: "simple",
+			inputMessages: []inputMessage{
+				{input: []string{"1", "2"}},
+			},
+			expectedResult: []usersetMessage{
+				{
+					userset: "1",
+				},
+				{
+					userset: "2",
+				},
+			},
+			ctx: context.Background(),
+		},
+		{
+			name: "multiple_messages",
+			inputMessages: []inputMessage{
+				{input: []string{"1"}},
+				{input: []string{"2"}},
+			},
+			expectedResult: []usersetMessage{
+				{
+					userset: "1",
+				},
+				{
+					userset: "2",
+				},
+			},
+			ctx: context.Background(),
+		},
+		{
+			name: "error_message",
+			inputMessages: []inputMessage{
+				{err: fmt.Errorf("error")},
+			},
+			expectedResult: []usersetMessage{
+				{
+					err: fmt.Errorf("error"),
+				},
+			},
+			ctx:         context.Background(),
+			expectedErr: fmt.Errorf("error"),
+		},
+		{
+			name: "cancelledCtx",
+			inputMessages: []inputMessage{
+				{input: []string{"1"}},
+			},
+			expectedResult: nil,
+			ctx:            cancelledCtx,
+			expectedErr:    context.Canceled,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inputMessages := make(chan *iterator.Msg, len(tt.inputMessages))
+			for _, msg := range tt.inputMessages {
+				inputMessages <- &iterator.Msg{
+					Iter: storage.NewStaticIterator(msg.input),
+					Err:  msg.err,
+				}
+			}
+			close(inputMessages)
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			var output []usersetMessage
+			outChan := make(chan usersetMessage)
+			go func() {
+				defer wg.Done()
+				for msg := range outChan {
+					output = append(output, msg)
+				}
+			}()
+			err := iteratorToUserset(inputMessages, outChan)(tt.ctx)
+			require.Equal(t, tt.expectedErr, err)
+
+			wg.Wait()
+			require.Equal(t, tt.expectedResult, output)
+		})
+	}
 }

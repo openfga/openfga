@@ -48,6 +48,7 @@ type Datastore struct {
 	secondaryDBStatsCollector prometheus.Collector
 	maxTuplesPerWriteField    int
 	maxTypesPerModelField     int
+	versionReady              bool
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -179,6 +180,7 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 		secondaryDBStatsCollector: secondaryCollector,
 		maxTuplesPerWriteField:    cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:     cfg.MaxTypesPerModelField,
+		versionReady:              false,
 	}, nil
 }
 
@@ -844,15 +846,14 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	// if secondary is not configured, return primary status only
-	if !s.isSecondaryConfigured() {
-		return sqlcommon.IsReady(ctx, s.primaryDB)
+	primaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.primaryDB)
+	if err != nil {
+		return primaryStatus, err
 	}
 
-	// check if primary is ready
-	primaryStatus, err := sqlcommon.IsReady(ctx, s.primaryDB)
-	if err != nil {
-		primaryStatus.Message = err.Error()
-		primaryStatus.IsReady = false
+	if !s.isSecondaryConfigured() {
+		s.versionReady = primaryStatus.IsReady
+		return primaryStatus, nil
 	}
 
 	if primaryStatus.IsReady && primaryStatus.Message == "" {
@@ -860,7 +861,7 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	}
 
 	// check if secondary is ready
-	secondaryStatus, err := sqlcommon.IsReady(ctx, s.secondaryDB)
+	secondaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.secondaryDB)
 	if err != nil {
 		secondaryStatus.Message = err.Error()
 		secondaryStatus.IsReady = false
@@ -874,6 +875,8 @@ func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error
 	messageTpl := "primary: %s, secondary: %s"
 	multipleReadyStatus.IsReady = primaryStatus.IsReady && secondaryStatus.IsReady
 	multipleReadyStatus.Message = fmt.Sprintf(messageTpl, primaryStatus.Message, secondaryStatus.Message)
+
+	s.versionReady = multipleReadyStatus.IsReady
 
 	return multipleReadyStatus, nil
 }
