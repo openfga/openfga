@@ -109,7 +109,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 		require.Equal(t, storage.ErrIteratorDone, err)
 		msg.Iter.Stop()
 		iterations++
-		if iterations > 2 {
+		if iterations == 2 {
 			cancel()
 		}
 	}

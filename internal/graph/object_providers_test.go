@@ -461,7 +461,7 @@ func TestIteratorToUserset(t *testing.T) {
 		outChan := make(chan usersetMessage, 1)
 		ctx := context.Background()
 		go iteratorsToUserset(ctx, chans, outChan)
-		for _ = range outChan {
+		for range outChan {
 			require.Fail(t, "should not receive any messages")
 		}
 	})
@@ -487,7 +487,7 @@ func TestIteratorToUserset(t *testing.T) {
 			require.LessOrEqual(t, id, len(chans))
 			count++
 		}
-		require.Equal(t, count, len(chans))
+		require.Equal(t, 5, count)
 	})
 	t.Run("cancellation", func(t *testing.T) {
 		t.Cleanup(func() {
@@ -498,7 +498,7 @@ func TestIteratorToUserset(t *testing.T) {
 		for i := 1; i <= 5; i++ {
 			iterChan := make(chan *iterator.Msg, 1)
 			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
-			//close(iterChan) -> by not closing, ctx.Done() is the exit clause
+			// close(iterChan) -> by not closing, ctx.Done() is the exit clause
 			chans = append(chans, iterChan)
 		}
 		outChan := make(chan usersetMessage, len(chans))
@@ -542,6 +542,6 @@ func TestIteratorToUserset(t *testing.T) {
 				count++
 			}
 		}
-		require.Equal(t, count, 2)
+		require.Equal(t, 2, count)
 	})
 }

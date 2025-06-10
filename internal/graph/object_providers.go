@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/checkutil"
@@ -127,7 +128,7 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 	return outChannel, nil
 }
 
-// TODO: This should be iteratorsToObjectID since ultimately, the mapper was already applied and its just and ObjectID
+// TODO: This should be iteratorsToObjectID since ultimately, the mapper was already applied and its just and ObjectID.
 func iteratorsToUserset(ctx context.Context, chans []chan *iterator.Msg, out chan usersetMessage) {
 	if len(chans) == 0 {
 		close(out)
@@ -179,5 +180,4 @@ func iteratorsToUserset(ctx context.Context, chans []chan *iterator.Msg, out cha
 		_ = pool.Wait()
 		close(out)
 	}()
-	return
 }
