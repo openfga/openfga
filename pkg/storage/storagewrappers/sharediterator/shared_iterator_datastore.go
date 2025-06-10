@@ -872,9 +872,6 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // Stop stops the shared iterator and cleans up resources.
 // It decrements the reference count and checks if it should clean up the iterator.
 // If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
-// It also cancels the shared context and waits for all goroutines to finish before returning.
-// This ensures that the iterator is properly cleaned up and does not leak resources.
-// The Stop method is thread-safe and ensures that the iterator is stopped only once.
 func (s *sharedIterator) Stop() {
 	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 {
 		s.cleanup()
