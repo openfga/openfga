@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -13,6 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -524,27 +524,32 @@ func TestIteratorToUserset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inputMessages := make(chan *iterator.Msg, len(tt.inputMessages))
-			for _, msg := range tt.inputMessages {
-				inputMessages <- &iterator.Msg{
-					Iter: storage.NewStaticIterator(msg.input),
-					Err:  msg.err,
-				}
-			}
-			close(inputMessages)
-			wg := sync.WaitGroup{}
-			wg.Add(1)
+			pool := concurrency.NewPool(context.Background(), concurrencyLimit)
 			var output []usersetMessage
 			outChan := make(chan usersetMessage)
-			go func() {
-				defer wg.Done()
+			pool.Go(func(ctx context.Context) error {
+				return iteratorToUserset(inputMessages, outChan)(tt.ctx)
+			})
+
+			pool.Go(func(_ context.Context) error {
 				for msg := range outChan {
 					output = append(output, msg)
 				}
-			}()
-			err := iteratorToUserset(inputMessages, outChan)(tt.ctx)
-			require.Equal(t, tt.expectedErr, err)
+				return nil
+			})
+			pool.Go(func(_ context.Context) error {
+				for _, msg := range tt.inputMessages {
+					inputMessages <- &iterator.Msg{
+						Iter: storage.NewStaticIterator(msg.input),
+						Err:  msg.err,
+					}
+				}
+				close(inputMessages)
+				return nil
+			})
 
-			wg.Wait()
+			err := pool.Wait()
+			require.Equal(t, tt.expectedErr, err)
 			require.Equal(t, tt.expectedResult, output)
 		})
 	}
