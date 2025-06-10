@@ -2,6 +2,8 @@ module github.com/openfga/openfga
 
 go 1.24.2
 
+toolchain go1.24.3
+
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc/v2 v2.1.0
