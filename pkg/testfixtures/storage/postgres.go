@@ -289,7 +289,7 @@ exec docker-entrypoint.sh postgres -c hot_standby=on -c wal_level=replica
 		timeoutSec := 5
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !client.IsErrNotFound(err) {
+		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop postgres replica container: %v", err)
 		}
 
