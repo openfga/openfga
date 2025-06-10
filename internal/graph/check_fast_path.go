@@ -705,16 +705,17 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, 1)
+	wg := sync.WaitGroup{}
 	defer func() {
 		cancel()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		wg.Wait()
 	}()
-	pool.Go(func(ctx context.Context) error {
-		c.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
-		return nil
-	})
+	wg.Add(1)
+	go func() {
+		c.breadthFirstRecursiveMatch(cancellableCtx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
+		wg.Done()
+	}()
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
