@@ -2,7 +2,6 @@ package iterator
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 
@@ -96,6 +95,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 		makeIterChan(ctrl, "9", true))
 
 	out := FanInIteratorChannels(cancellable, chans)
+	cancel()
 	iterations := 0
 	for msg := range out {
 		id, err := msg.Iter.Next(ctx)
@@ -103,14 +103,10 @@ func TestFanInIteratorChannels(t *testing.T) {
 		i, err := strconv.Atoi(id)
 		require.NoError(t, err)
 		require.Positive(t, i)
-		fmt.Println(i)
 		require.LessOrEqual(t, i, 9)
 		_, err = msg.Iter.Next(ctx)
 		require.Equal(t, storage.ErrIteratorDone, err)
 		msg.Iter.Stop()
 		iterations++
-		if iterations == 2 {
-			cancel()
-		}
 	}
 }
