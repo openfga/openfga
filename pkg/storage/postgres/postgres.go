@@ -845,12 +845,12 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	// if secondary is not configured, return primary status only
 	primaryStatus, err := sqlcommon.IsReady(ctx, s.versionReady, s.primaryDB)
 	if err != nil {
 		return primaryStatus, err
 	}
 
+	// if secondary is not configured, return primary status only
 	if !s.isSecondaryConfigured() {
 		s.versionReady = primaryStatus.IsReady
 		return primaryStatus, nil
