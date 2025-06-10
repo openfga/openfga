@@ -20,6 +20,7 @@ linters:
     - perfsprint
     - protogetter
     - revive
+    - recvcheck
     - staticcheck
     - tagalign
     - testifylint
