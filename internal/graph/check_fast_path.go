@@ -743,7 +743,6 @@ ConsumerLoop:
 			}
 		}
 	}
-	cancel() // prevent further processing of other checks
 	// context cancellation from upstream (e.g. client)
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
