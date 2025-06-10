@@ -689,7 +689,7 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 
 	// wait for all checks to wrap up
 	// if a match was found, clean up
-	if err := pool.Wait(); err != nil && errors.Is(err, ErrShortCircuit) {
+	if err := pool.Wait(); errors.Is(err, ErrShortCircuit) {
 		close(checkOutcomeChan)
 		return
 	}
