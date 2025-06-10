@@ -2,8 +2,9 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync"
+	"strconv"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -20,8 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
-
-const concurrencyLimit = 50
 
 func TestRecursiveObjectProvider(t *testing.T) {
 	t.Cleanup(func() {
@@ -160,7 +159,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 			require.NoError(t, err)
 
 			t.Run("when_invalid_req", func(t *testing.T) {
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				invalidReq, err := NewResolveCheckRequest(ResolveCheckRequestParams{
@@ -182,7 +181,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -207,7 +206,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
 					}), nil)
 
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -232,7 +231,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					Times(1).
 					Return(nil, mockError)
 
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -251,7 +250,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 						return iterator, nil
 					})
 
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -276,7 +275,7 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 					}), nil)
 
-				c := newRecursiveTTUObjectProvider(ts, ttu, concurrencyLimit)
+				c := newRecursiveTTUObjectProvider(ts, ttu)
 				t.Cleanup(c.End)
 
 				ctx, cancel := context.WithCancel(setRequestContext(context.Background(), ts, mockDatastore, nil))
@@ -337,7 +336,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).Return(storage.NewStaticTupleIterator(nil), nil)
 
-				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
+				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -362,7 +361,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:3", "admin", "user:XYZ")},
 					}), nil)
 
-				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
+				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -387,7 +386,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					Times(1).
 					Return(nil, mockError)
 
-				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
+				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -406,7 +405,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 						return iterator, nil
 					})
 
-				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
+				c := newRecursiveUsersetObjectProvider(ts)
 				t.Cleanup(c.End)
 
 				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
@@ -431,7 +430,7 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 						{Key: tuple.NewTupleKey("document:1", "parent", "user:XYZ")},
 					}), nil)
 
-				c := newRecursiveUsersetObjectProvider(ts, concurrencyLimit)
+				c := newRecursiveUsersetObjectProvider(ts)
 
 				t.Cleanup(c.End)
 
@@ -454,103 +453,95 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 }
 
 func TestIteratorToUserset(t *testing.T) {
-	cancelledCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	type inputMessage struct {
-		input []string
-		err   error
-	}
-	tests := []struct {
-		name           string
-		ctx            context.Context
-		inputMessages  []inputMessage
-		expectedResult []usersetMessage
-		expectedErr    error
-	}{
-		{
-			name: "single_message",
-			inputMessages: []inputMessage{
-				{input: []string{"1"}},
-			},
-			expectedResult: []usersetMessage{
-				{
-					userset: "1",
-				},
-			},
-			ctx: context.Background(),
-		},
-		{
-			name: "multiple_messages",
-			inputMessages: []inputMessage{
-				{input: []string{"1", "2", "3", "4", "5"}},
-			},
-			expectedResult: []usersetMessage{
-				{
-					userset: "1",
-				},
-				{
-					userset: "2",
-				},
-				{
-					userset: "3",
-				},
-				{
-					userset: "4",
-				},
-				{
-					userset: "5",
-				},
-			},
-			ctx: context.Background(),
-		},
-		{
-			name: "error_message",
-			inputMessages: []inputMessage{
-				{err: fmt.Errorf("error")},
-			},
-			expectedResult: []usersetMessage{
-				{
-					err: fmt.Errorf("error"),
-				},
-			},
-			ctx:         context.Background(),
-			expectedErr: fmt.Errorf("error"),
-		},
-		{
-			name: "cancelledCtx",
-			inputMessages: []inputMessage{
-				{input: []string{"1"}},
-			},
-			expectedResult: nil,
-			ctx:            cancelledCtx,
-			expectedErr:    context.Canceled,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			inputMessages := make(chan *iterator.Msg, len(tt.inputMessages))
-			for _, msg := range tt.inputMessages {
-				inputMessages <- &iterator.Msg{
-					Iter: storage.NewStaticIterator(msg.input),
-					Err:  msg.err,
-				}
-			}
-			close(inputMessages)
-			wg := sync.WaitGroup{}
-			wg.Add(1)
-			var output []usersetMessage
-			outChan := make(chan usersetMessage)
-			go func() {
-				defer wg.Done()
-				for msg := range outChan {
-					output = append(output, msg)
-				}
-			}()
-			err := iteratorToUserset(inputMessages, outChan)(tt.ctx)
-			require.Equal(t, tt.expectedErr, err)
-
-			wg.Wait()
-			require.Equal(t, tt.expectedResult, output)
+	t.Run("empty", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
 		})
-	}
+		chans := make([]chan *iterator.Msg, 0, 1)
+		outChan := make(chan usersetMessage, 1)
+		ctx := context.Background()
+		go iteratorsToUserset(ctx, chans, outChan)
+		for _ = range outChan {
+			require.Fail(t, "should not receive any messages")
+		}
+	})
+	t.Run("returns_results", func(t *testing.T) {
+		t.Cleanup(func() {
+			goleak.VerifyNone(t)
+		})
+		chans := make([]chan *iterator.Msg, 0, 5)
+		for i := 1; i <= 5; i++ {
+			iterChan := make(chan *iterator.Msg, 1)
+			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
+			close(iterChan)
+			chans = append(chans, iterChan)
+		}
+		outChan := make(chan usersetMessage, len(chans))
+		ctx := context.Background()
+		go iteratorsToUserset(ctx, chans, outChan)
+		count := 0
+		for msg := range outChan {
+			id, err := strconv.Atoi(msg.userset)
+			require.NoError(t, err)
+			require.Positive(t, id)
+			require.LessOrEqual(t, id, len(chans))
+			count++
+		}
+		require.Equal(t, count, len(chans))
+	})
+	t.Run("cancellation", func(t *testing.T) {
+		t.Cleanup(func() {
+			// this is the expected goroutine
+			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
+		})
+		chans := make([]chan *iterator.Msg, 0, 5)
+		for i := 1; i <= 5; i++ {
+			iterChan := make(chan *iterator.Msg, 1)
+			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
+			//close(iterChan) -> by not closing, ctx.Done() is the exit clause
+			chans = append(chans, iterChan)
+		}
+		outChan := make(chan usersetMessage, len(chans))
+		ctx := context.Background()
+		ctx, cancel := context.WithCancel(ctx)
+		cancel()
+		go iteratorsToUserset(ctx, chans, outChan)
+
+		count := 0
+		for msg := range outChan {
+			id, err := strconv.Atoi(msg.userset)
+			require.NoError(t, err)
+			require.Positive(t, id)
+			require.LessOrEqual(t, id, 5)
+			count++
+		}
+		require.LessOrEqual(t, count, 5)
+	})
+	t.Run("handles_errors", func(t *testing.T) {
+		t.Cleanup(func() {
+			// this is the expected goroutine due to "iterator error"
+			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
+		})
+		chans := make([]chan *iterator.Msg, 0, 2)
+		iterChan1 := make(chan *iterator.Msg, 1)
+		iterChan1 <- &iterator.Msg{Err: errors.New("iterator error")}
+		close(iterChan1)
+		chans = append(chans, iterChan1)
+		iterChan2 := make(chan *iterator.Msg, 1)
+		iterChan2 <- &iterator.Msg{Iter: mocks.NewErrorIterator[string]([]string{"1"})}
+		close(iterChan2)
+		chans = append(chans, iterChan2)
+
+		outChan := make(chan usersetMessage, len(chans))
+		ctx := context.Background()
+		go iteratorsToUserset(ctx, chans, outChan)
+
+		count := 0
+		for msg := range outChan {
+			if msg.err != nil {
+				count++
+			}
+		}
+		require.Equal(t, count, 2)
+	})
 }
