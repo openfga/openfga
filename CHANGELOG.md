@@ -8,9 +8,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.8.14] - 2025-06-10
 ### Fixed
 - Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
+
+## [1.8.14] - 2025-06-10
+### Fixed
 - Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
 - SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
 - When `enable-check-optimizations` experiment flag is enabled, incorrect check for model with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
