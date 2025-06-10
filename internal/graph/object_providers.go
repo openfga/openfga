@@ -170,7 +170,6 @@ func iteratorsToUserset(ctx context.Context, chans []chan *iterator.Msg, out cha
 						}
 						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, out)
 					}
-					return nil
 				}
 			}
 		})

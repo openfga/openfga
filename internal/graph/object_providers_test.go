@@ -244,10 +244,10 @@ func TestRecursiveTTUObjectProvider(t *testing.T) {
 					ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).
 					DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-						iterator := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+						iter := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 							{Key: tuple.NewTupleKey("document:1", "admin", "user:XYZ")},
 						})
-						return iterator, nil
+						return iter, nil
 					})
 
 				c := newRecursiveTTUObjectProvider(ts, ttu)
@@ -399,10 +399,10 @@ func TestRecursiveUsersetObjectProvider(t *testing.T) {
 					ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 					Times(1).
 					DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-						iterator := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
+						iter := mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 							{Key: tuple.NewTupleKey("document:1", "parent", "user:XYZ")},
 						})
-						return iterator, nil
+						return iter, nil
 					})
 
 				c := newRecursiveUsersetObjectProvider(ts)
@@ -467,27 +467,43 @@ func TestIteratorToUserset(t *testing.T) {
 	})
 	t.Run("returns_results", func(t *testing.T) {
 		t.Cleanup(func() {
-			goleak.VerifyNone(t)
+			// this is the expected goroutine
+			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
 		})
-		chans := make([]chan *iterator.Msg, 0, 5)
-		for i := 1; i <= 5; i++ {
-			iterChan := make(chan *iterator.Msg, 1)
-			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
-			close(iterChan)
-			chans = append(chans, iterChan)
-		}
+		chans := make([]chan *iterator.Msg, 0, 3)
+		iterChan1 := make(chan *iterator.Msg, 2)
+		iterChan1 <- &iterator.Msg{Iter: mocks.NewErrorIterator[string]([]string{"1"})}
+		iterChan1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"2"})}
+		close(iterChan1)
+		chans = append(chans, iterChan1)
+		iterChan2 := make(chan *iterator.Msg, 2)
+		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"3", "4"})}
+		iterChan2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"5", "6"})}
+		close(iterChan2)
+		chans = append(chans, iterChan2)
+		iterChan3 := make(chan *iterator.Msg, 1)
+		iterChan3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"7"})}
+		close(iterChan3)
+		chans = append(chans, iterChan3)
+
 		outChan := make(chan usersetMessage, len(chans))
 		ctx := context.Background()
 		go iteratorsToUserset(ctx, chans, outChan)
 		count := 0
 		for msg := range outChan {
+			if msg.err != nil {
+				if errors.Is(msg.err, mocks.ErrSimulatedError) {
+					continue
+				}
+				require.Fail(t, "unexpected error", msg.err)
+			}
 			id, err := strconv.Atoi(msg.userset)
 			require.NoError(t, err)
 			require.Positive(t, id)
-			require.LessOrEqual(t, id, len(chans))
+			require.LessOrEqual(t, id, 7)
 			count++
 		}
-		require.Equal(t, 5, count)
+		require.Equal(t, 7, count)
 	})
 	t.Run("cancellation", func(t *testing.T) {
 		t.Cleanup(func() {
