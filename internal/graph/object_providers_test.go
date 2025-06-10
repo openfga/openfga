@@ -457,7 +457,7 @@ func TestIteratorToUserset(t *testing.T) {
 		t.Cleanup(func() {
 			goleak.VerifyNone(t)
 		})
-		chans := make([]chan *iterator.Msg, 0, 1)
+		chans := make([]<-chan *iterator.Msg, 0, 1)
 		outChan := make(chan usersetMessage, 1)
 		ctx := context.Background()
 		go iteratorsToUserset(ctx, chans, outChan)
@@ -470,7 +470,7 @@ func TestIteratorToUserset(t *testing.T) {
 			// this is the expected goroutine
 			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
 		})
-		chans := make([]chan *iterator.Msg, 0, 3)
+		chans := make([]<-chan *iterator.Msg, 0, 3)
 		iterChan1 := make(chan *iterator.Msg, 2)
 		iterChan1 <- &iterator.Msg{Iter: mocks.NewErrorIterator[string]([]string{"1"})}
 		iterChan1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"2"})}
@@ -510,7 +510,7 @@ func TestIteratorToUserset(t *testing.T) {
 			// this is the expected goroutine
 			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
 		})
-		chans := make([]chan *iterator.Msg, 0, 5)
+		chans := make([]<-chan *iterator.Msg, 0, 5)
 		for i := 1; i <= 5; i++ {
 			iterChan := make(chan *iterator.Msg, 1)
 			iterChan <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{strconv.Itoa(i)})}
@@ -539,7 +539,7 @@ func TestIteratorToUserset(t *testing.T) {
 			goleak.VerifyNone(t, goleak.IgnoreTopFunction("github.com/openfga/openfga/internal/iterator.Drain.func1"))
 		})
 		iterError := errors.New("iterator error")
-		chans := make([]chan *iterator.Msg, 0, 2)
+		chans := make([]<-chan *iterator.Msg, 0, 2)
 		iterChan1 := make(chan *iterator.Msg, 1)
 		iterChan1 <- &iterator.Msg{Err: iterError}
 		close(iterChan1)

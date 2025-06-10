@@ -129,7 +129,7 @@ func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *Resolve
 }
 
 // TODO: This should be iteratorsToObjectID since ultimately, the mapper was already applied and its just and ObjectID.
-func iteratorsToUserset(ctx context.Context, chans []chan *iterator.Msg, out chan usersetMessage) {
+func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out chan usersetMessage) {
 	if len(chans) == 0 {
 		close(out)
 		return

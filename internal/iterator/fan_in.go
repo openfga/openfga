@@ -114,7 +114,7 @@ func (f *FanIn) Add(ch chan *Msg) bool {
 	return concurrency.TrySendThroughChannel(f.ctx, ch, f.addCh)
 }
 
-func Drain(ch chan *Msg) *sync.WaitGroup {
+func Drain(ch <-chan *Msg) *sync.WaitGroup {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
@@ -145,7 +145,7 @@ func (f *FanIn) Stop() {
 	f.cancel()
 }
 
-func FanInIteratorChannels(ctx context.Context, chans []chan *Msg) chan *Msg {
+func FanInIteratorChannels(ctx context.Context, chans []<-chan *Msg) <-chan *Msg {
 	limit := len(chans)
 
 	out := make(chan *Msg, limit)

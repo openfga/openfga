@@ -428,7 +428,7 @@ func fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Bool("allowed", false),
 	))
@@ -534,9 +534,9 @@ func produceLeftChannels(
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
-) ([]chan *iterator.Msg, error) {
+) ([]<-chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
+	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
 		rel, err := typesys.GetRelation(parentType.GetType(), relation)

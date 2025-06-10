@@ -81,7 +81,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
-	chans := make([]chan *Msg, 0, 9)
+	chans := make([]<-chan *Msg, 0, 9)
 	chans = append(chans,
 		makeIterChan(ctrl, "1", true),
 		makeIterChan(ctrl, "2", true),
@@ -111,7 +111,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 	require.Equal(t, 9, iterations)
 	cancellable, cancel := context.WithCancel(ctx)
 	cancel() // Stop would still be called in all entries even tho its been cancelled
-	chans = make([]chan *Msg, 0, 5)
+	chans = make([]<-chan *Msg, 0, 5)
 	chans = append(chans,
 		makeIterChan(ctrl, "1", true),
 		makeIterChan(ctrl, "2", true),
