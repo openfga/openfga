@@ -59,13 +59,14 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		db  storage.OpenFGADatastore
 		err error
 	)
+	cfg := sqlcommon.NewConfig()
 	switch engine {
 	case "mysql":
-		db, err = mysql.New(uri, sqlcommon.NewConfig())
+		db, err = mysql.New(uri, cfg)
 	case "postgres":
-		db, err = postgres.New(uri, sqlcommon.NewConfig())
+		db, err = postgres.New(uri, cfg)
 	case "sqlite":
-		db, err = sqlite.New(uri, sqlcommon.NewConfig())
+		db, err = sqlite.New(uri, cfg)
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	case "memory":
