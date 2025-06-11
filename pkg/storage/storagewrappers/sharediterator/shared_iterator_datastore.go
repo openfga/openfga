@@ -824,6 +824,8 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 		if err != nil {
 			return nil, err
 		}
+		// This is a guard clause to ensure we do not access out of bounds.
+		// If we reach here, it means there is a bug in the underlying iterator.
 		return nil, storage.ErrIteratorDone
 	}
 
