@@ -102,24 +102,25 @@ type storageItem struct {
 func (s *storageItem) unwrap() (*sharedIterator, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if s.iter == nil {
-		// If the iterator is not yet created, call the producer function to create it.
-		it, err := s.producer()
-		if err != nil {
-			return nil, err
-		}
-		s.iter = it
-		clone := it.clone()
-
-		// Stop the original iterator since we are returning a clone.
-		// This is important so that the original iterator does not continue to hold a reference count.
-		// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
-		// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
-		it.Stop()
-		return clone, nil
+	
+	if s.iter != nil {
+		return s.iter.clone(), nil
 	}
-	return s.iter.clone(), nil
+
+	// If the iterator is not yet created, call the producer function to create it.
+	it, err := s.producer()
+	if err != nil {
+		return nil, err
+	}
+	s.iter = it
+	clone := it.clone()
+
+	// Stop the original iterator since we are returning a clone.
+	// This is important so that the original iterator does not continue to hold a reference count.
+	// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
+	// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
+	it.Stop()
+	return clone, nil
 }
 
 type DatastoreStorageOpt func(*Storage)
