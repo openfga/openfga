@@ -17,6 +17,14 @@ type DatastoreTestContainer interface {
 
 	GetUsername() string
 	GetPassword() string
+
+	// CreateSecondary creates a secondary datastore if supported.
+	// Returns an error if the operation fails or if the datastore doesn't support secondary datastores.
+	CreateSecondary(t testing.TB) error
+
+	// GetSecondaryConnectionURI returns the connection URI for the secondary datastore if one exists.
+	// Returns an empty string if no secondary datastore exists.
+	GetSecondaryConnectionURI(includeCredentials bool) string
 }
 
 type memoryTestContainer struct{}
@@ -35,6 +43,14 @@ func (m memoryTestContainer) GetPassword() string {
 
 func (m memoryTestContainer) GetDatabaseSchemaVersion() int64 {
 	return 1
+}
+
+func (m memoryTestContainer) CreateSecondary(t testing.TB) error {
+	return nil
+}
+
+func (m memoryTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	return ""
 }
 
 // RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
