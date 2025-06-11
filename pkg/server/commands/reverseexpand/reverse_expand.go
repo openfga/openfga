@@ -349,7 +349,7 @@ func (c *ReverseExpandQuery) execute(
 			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 
 			// The relation stack has to be initialized on the first request
-			req.stack.Push(targetTypeRel)
+			req.stack.Push(typeRelEntry{typeRel: targetTypeRel})
 		}
 
 		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(

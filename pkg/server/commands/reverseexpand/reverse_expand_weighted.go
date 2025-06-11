@@ -15,29 +15,33 @@ import (
 	"sync"
 )
 
+type typeRelEntry struct {
+	typeRel string // e.g. "organization#admin"
+
+	// Only present for userset relations. Useful for cases like "rel admin: [user, team#member]"
+	// where we need to know to check for "team:fga#member"
+	usersetRelation string
+}
+
 // TODO: this stack might need to be a stack of UserRefObject or UserRefObjectRelation or something
 // to be able to handle usersets and TTUs properly
 // relationStack is a stack of type#rel strings we build while traversing the graph to locate leaf nodes
-type relationStack []string
+type relationStack []typeRelEntry
 
-func (r *relationStack) Push(value string) {
+func (r *relationStack) Push(value typeRelEntry) {
 	*r = append(*r, value)
 }
 
-func (r *relationStack) Pop() string {
+func (r *relationStack) Pop() typeRelEntry {
 	element := (*r)[len(*r)-1]
 	*r = (*r)[0 : len(*r)-1]
 	return element
 }
 
-func (r *relationStack) Copy() []string {
+func (r *relationStack) Copy() []typeRelEntry {
 	dst := make(relationStack, len(*r)) // Create a new slice with the same length
 	copy(dst, *r)
 	return dst
-}
-
-func (r *relationStack) Len() int {
-	return len(*r)
 }
 
 // loopOverWeightedEdges iterates over a set of weightedGraphEdges that can resolve a particular
@@ -117,9 +121,11 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// and prevent infinite loops. need to rebuild that loop prevention with weighted graph data.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				_ = r.stack.Pop()
-				r.stack.Push(toNode.GetUniqueLabel())
+				//newEntry := typeRelEntry{typeRel: edge.GetTo().GetUniqueLabel()}
+				//r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
 					fmt.Printf("JUSTIN computed edge going to USERSET: %s\n", toNode.GetUniqueLabel())
+					//newEntry.usersetRelation
 				}
 			}
 
@@ -137,8 +143,8 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				// Replace the existing type#rel on the stack with the TTU relation
 				_ = r.stack.Pop()
-				r.stack.Push(edge.GetTuplesetRelation())
-				r.stack.Push(toNode.GetUniqueLabel())
+				r.stack.Push(typeRelEntry{typeRel: edge.GetTuplesetRelation()})
+				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
 					fmt.Printf("JUSTIN TTU edge going to USERSET: %s\n", toNode.GetUniqueLabel())
 				}
@@ -157,7 +163,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// bc operator nodes are not real types
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				_ = r.stack.Pop()
-				r.stack.Push(toNode.GetUniqueLabel())
+				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				if toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation {
 					fmt.Printf("JUSTIN REWRITE edge going to USERSET: %s\n", toNode.GetUniqueLabel())
 				}
@@ -227,13 +233,18 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		var typeRel string
 		var userFilter []*openfgav1.ObjectRelation
-		// this is true on every call Except the first
+
+		// This is true on every call except the first
 		if objectOverride != "" {
-			typeRel = r.stack.Pop()
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{
-				Object: objectOverride,
-			})
+			entry := r.stack.Pop()
+			typeRel = entry.typeRel
+			filter := &openfgav1.ObjectRelation{Object: objectOverride}
+			if entry.usersetRelation != "" {
+				filter.Relation = entry.usersetRelation
+			}
+			userFilter = append(userFilter, filter)
 		} else {
+			// this else block ONLY hits on the first call
 			var userID string
 			var userType string
 			// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
@@ -247,15 +258,19 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			switch to.GetNodeType() {
 			case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
-				typeRel = req.stack.Pop()
+				typeRel = req.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
 
 			case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
-				typeRel = req.stack.Pop()
+				typeRel = req.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
 
 			case weightedGraph.SpecificTypeAndRelation: // Userset, To() -> "group#member"
 				typeRel = to.GetUniqueLabel()
+
+				// Hack to prove it's possible, add explainer if this works
+				relation := tuple.GetRelation(typeRel)
+				req.stack[len(req.stack)-1].usersetRelation = relation
 
 				// For this case, we can't build the ObjectRelation with the To() from the edge, because it doesn't
 				// Point at an actual type like "user". So we have to use the userType from the original request
@@ -294,7 +309,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		for {
 			tk, err := filteredIter.Next(ctx)
 			if err != nil {
-				if !errors.Is(err, storage.ErrIteratorDone) {
+				if errors.Is(err, storage.ErrIteratorDone) {
 					break
 				}
 				errChan <- err
@@ -322,7 +337,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			}
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
-			if r.stack.Len() == 0 {
+			if len(r.stack) == 0 {
 				_ = c.trySendCandidate(ctx, needsCheck, tk.GetObject(), resultChan)
 				continue
 			} else {

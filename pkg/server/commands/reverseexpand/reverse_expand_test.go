@@ -978,8 +978,8 @@ func TestReverseExpandNew(t *testing.T) {
 		`,
 			tuples: []string{
 				"repo:fga#owner@organization:jz",
-				//"organization:jz#repo_admin@user:justin",
-				"organization:jz#member@user:justin",
+				"organization:jz#repo_admin@organization:j#member",
+				"organization:j#member@user:justin",
 			},
 			objectType:      "repo",
 			relation:        "admin",
