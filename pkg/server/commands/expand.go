@@ -287,7 +287,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	for {
 		tk, err := filteredIter.Next(ctx)
 		if err != nil {
-			if errors.Is(err, storage.ErrCollision) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
