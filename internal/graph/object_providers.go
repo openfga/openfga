@@ -3,8 +3,6 @@ package graph
 import (
 	"context"
 
-	"github.com/sourcegraph/conc/pool"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/checkutil"
@@ -63,14 +61,12 @@ type recursiveTTUObjectProvider struct {
 	tuplesetRelation string
 	computedRelation string
 	cancel           context.CancelFunc
-	pool             *pool.ContextPool
-	concurrencyLimit int
 }
 
-func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset, concurrencyLimit int) *recursiveTTUObjectProvider {
+func newRecursiveTTUObjectProvider(ts *typesystem.TypeSystem, ttu *openfgav1.TupleToUserset) *recursiveTTUObjectProvider {
 	tuplesetRelation := ttu.GetTupleset().GetRelation()
 	computedRelation := ttu.GetComputedUserset().GetRelation()
-	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation, concurrencyLimit: concurrencyLimit}
+	return &recursiveTTUObjectProvider{ts: ts, tuplesetRelation: tuplesetRelation, computedRelation: computedRelation}
 }
 
 var _ objectProvider = (*recursiveTTUObjectProvider)(nil)
@@ -78,9 +74,6 @@ var _ objectProvider = (*recursiveTTUObjectProvider)(nil)
 func (c *recursiveTTUObjectProvider) End() {
 	if c.cancel != nil {
 		c.cancel()
-	}
-	if c.pool != nil {
-		_ = c.pool.Wait()
 	}
 }
 
@@ -92,30 +85,24 @@ func (c *recursiveTTUObjectProvider) Begin(ctx context.Context, req *ResolveChec
 		return nil, err
 	}
 
-	leftChannels, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation), c.concurrencyLimit)
+	leftChans, err := produceLeftChannels(ctx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(c.computedRelation))
 	if err != nil {
 		return nil, err
 	}
-	outChannel := make(chan usersetMessage, len(leftChannels))
-	leftChannel := fanInIteratorChannels(ctx, leftChannels, c.concurrencyLimit)
-	poolCtx, cancel := context.WithCancel(ctx)
+	outChannel := make(chan usersetMessage, len(leftChans))
+	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
-
-	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
-
+	go iteratorsToUserset(ctx, leftChans, outChannel)
 	return outChannel, nil
 }
 
 type recursiveUsersetObjectProvider struct {
-	ts               *typesystem.TypeSystem
-	cancel           context.CancelFunc
-	pool             *pool.ContextPool
-	concurrencyLimit int
+	ts     *typesystem.TypeSystem
+	cancel context.CancelFunc
 }
 
-func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem, concurrencyLimit int) *recursiveUsersetObjectProvider {
-	return &recursiveUsersetObjectProvider{ts: ts, concurrencyLimit: concurrencyLimit}
+func newRecursiveUsersetObjectProvider(ts *typesystem.TypeSystem) *recursiveUsersetObjectProvider {
+	return &recursiveUsersetObjectProvider{ts: ts}
 }
 
 var _ objectProvider = (*recursiveUsersetObjectProvider)(nil)
@@ -124,65 +111,72 @@ func (c *recursiveUsersetObjectProvider) End() {
 	if c.cancel != nil {
 		c.cancel()
 	}
-	if c.pool != nil {
-		_ = c.pool.Wait()
-	}
 }
 
 func (c *recursiveUsersetObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
 	objectType := tuple.GetType(req.GetTupleKey().GetObject())
 	reference := []*openfgav1.RelationReference{{Type: objectType, RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: req.GetTupleKey().GetRelation()}}}
 
-	leftChans, err := produceLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc(), c.concurrencyLimit)
+	leftChans, err := produceLeftChannels(ctx, req, reference, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
 	outChannel := make(chan usersetMessage, len(leftChans))
-	leftChannel := fanInIteratorChannels(ctx, leftChans, c.concurrencyLimit)
-	poolCtx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
-	c.pool = concurrency.NewPool(poolCtx, 1)
-	c.pool.Go(iteratorToUserset(leftChannel, outChannel))
-
+	go iteratorsToUserset(ctx, leftChans, outChannel)
 	return outChannel, nil
 }
 
-func iteratorToUserset(src chan *iterator.Msg, dst chan usersetMessage) func(ctx context.Context) error {
-	return func(ctx context.Context) error {
-		leftOpen := true
-		defer func() {
-			close(dst)
-			if !leftOpen {
-				return
-			}
-			go drainIteratorChannel(src)
-		}()
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case msg, ok := <-src:
-				if !ok {
-					leftOpen = false
+// TODO: This should be iteratorsToObjectID since ultimately, the mapper was already applied and its just and ObjectID.
+func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out chan usersetMessage) {
+	if len(chans) == 0 {
+		close(out)
+		return
+	}
+
+	pool := concurrency.NewPool(ctx, len(chans))
+
+	for _, c := range chans {
+		pool.Go(func(ctx context.Context) error {
+			open := true
+			defer func() {
+				if open {
+					iterator.Drain(c)
+				}
+			}()
+			for {
+				select {
+				case <-ctx.Done():
 					return nil
-				}
-				if msg.Err != nil {
-					concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, dst)
-					return msg.Err
-				}
-				for {
-					t, err := msg.Iter.Next(ctx)
-					if err != nil {
-						msg.Iter.Stop()
-						if storage.IterIsDoneOrCancelled(err) {
+				case msg, ok := <-c:
+					if !ok {
+						open = false
+						return nil
+					}
+					if msg.Err != nil {
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, out)
+						return nil
+					}
+					for {
+						t, err := msg.Iter.Next(ctx)
+						if err != nil {
+							msg.Iter.Stop()
+							if storage.IterIsDoneOrCancelled(err) {
+								break
+							}
+							concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, out)
 							break
 						}
-						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, dst)
-						return err
+						concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, out)
 					}
-					concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: t}, dst)
 				}
 			}
-		}
+		})
 	}
+
+	go func() {
+		_ = pool.Wait()
+		close(out)
+	}()
 }
