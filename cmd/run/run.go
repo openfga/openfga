@@ -148,9 +148,15 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 
+	flags.String("datastore-secondary-uri", defaultConfig.Datastore.SecondaryURI, "the connection uri to use to connect to the secondary datastore (for postgres only)")
+
 	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
 
 	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
+
+	flags.String("datastore-secondary-username", "", "the connection username to use to connect to the secondary datastore (overwrites any username provided in the connection uri)")
+
+	flags.String("datastore-secondary-password", "", "the connection password to use to connect to the secondary datastore (overwrites any password provided in the connection uri)")
 
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
@@ -405,8 +411,11 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 	// SQL Token Serializer by default
 	tokenSerializer := sqlcommon.NewSQLContinuationTokenSerializer()
 	datastoreOptions := []sqlcommon.DatastoreOption{
+		sqlcommon.WithSecondaryURI(config.Datastore.SecondaryURI),
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
+		sqlcommon.WithSecondaryUsername(config.Datastore.SecondaryUsername),
+		sqlcommon.WithSecondaryPassword(config.Datastore.SecondaryPassword),
 		sqlcommon.WithLogger(s.Logger),
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
