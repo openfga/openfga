@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Fixed
 - Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
+- Fix for picking up env vars for `migrate` pkg [#2493](https://github.com/openfga/openfga/issues/2493)
 
 ## [1.8.14] - 2025-06-10
 ### Fixed
