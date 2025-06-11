@@ -102,7 +102,7 @@ type storageItem struct {
 func (s *storageItem) unwrap() (*sharedIterator, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if s.iter != nil {
 		return s.iter.clone(), nil
 	}
