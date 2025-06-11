@@ -752,8 +752,6 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 		if !s.fetching.Swap(true) {
 			// If we are not already fetching, we start a new goroutine to fetch items.
 			go func() {
-				defer s.fetching.Store(false)
-
 				buf := make([]*openfgav1.Tuple, BufferSize)
 				read, e := s.ir.Read(s.ctx, buf)
 
@@ -774,6 +772,12 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 				// Initialize a new channel to signal that new items are available on the next fetch.
 				newCh := make(chan struct{})
 				currentCh := s.ch.Swap(&newCh)
+
+				// Important! The fetching state must be set to false before closing the old channel.
+				// This avoids a race condition in which a goroutine waiting on the channel close might
+				// enter this function again and try to fetch items before the fetching state is reset.
+				s.fetching.Store(false)
+
 				// Close the old channel to signal waiting consumers to wake up.
 				close(*currentCh)
 			}()
