@@ -218,15 +218,33 @@
                     ],
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
+                "secondaryUri": {
+                    "description": "The connection uri to use to connect to the secondary datastore (for postgres only).",
+                    "type": "string",
+                    "examples": [
+                        "postgres://user:pass@host:port/datastore?opts"
+                    ],
+                    "x-env-variable": "OPENFGA_DATASTORE_SECONDARY_URI"
+                },
                 "username": {
                     "description": "The connection username to connect to the datastore (overwrites any username provided in the connection uri).",
                     "type": "string",
                     "x-env-variable": "OPENFGA_DATASTORE_USERNAME"
                 },
+                "secondaryUsername": {
+                    "description": "The connection username to connect to the secondary datastore (overwrites any username provided in the connection uri).",
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_DATASTORE_SECONDARY_USERNAME"
+                },
                 "password": {
                     "description": "The connection password to connect to the datastore (overwrites any password provided in the connection uri).",
                     "type": "string",
                     "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
+                },
+                "secondaryPassword": {
+                    "description": "The connection password to connect to the secondary datastore (overwrites any password provided in the connection uri).",
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_DATASTORE_SECONDARY_PASSWORD"
                 },
                 "maxCacheSize": {
                     "description": "The maximum number of authorization models that will be cached in memory",

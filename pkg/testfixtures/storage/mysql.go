@@ -183,3 +183,11 @@ func (m *mySQLTestContainer) GetUsername() string {
 func (m *mySQLTestContainer) GetPassword() string {
 	return m.password
 }
+
+func (m *mySQLTestContainer) CreateSecondary(t testing.TB) error {
+	return nil
+}
+
+func (m *mySQLTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	return ""
+}
