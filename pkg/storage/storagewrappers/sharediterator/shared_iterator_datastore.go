@@ -243,12 +243,9 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If it has, we will bypass the shared iterator and use the inner reader directly.
 	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
 	var count int
-	var full bool
 
 	// If the limit is zero, we will not use the shared iterator.
-	if sf.internalStorage.limit == 0 {
-		full = true
-	}
+	full := sf.internalStorage.limit == 0
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
@@ -364,12 +361,9 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If it has, we will bypass the shared iterator and use the inner reader directly.
 	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
 	var count int
-	var full bool
 
 	// If the limit is zero, we will not use the shared iterator.
-	if sf.internalStorage.limit == 0 {
-		full = true
-	}
+	full := sf.internalStorage.limit == 0
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
@@ -484,12 +478,9 @@ func (sf *IteratorDatastore) Read(
 	// If it has, we will bypass the shared iterator and use the inner reader directly.
 	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
 	var count int
-	var full bool
 
 	// If the limit is zero, we will not use the shared iterator.
-	if sf.internalStorage.limit == 0 {
-		full = true
-	}
+	full := sf.internalStorage.limit == 0
 
 	// Iterate over the internal storage to count the number of items.
 	// This call will short-circuit if the count exceeds the limit.
