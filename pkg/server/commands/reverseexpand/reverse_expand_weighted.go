@@ -21,6 +21,8 @@ type typeRelEntry struct {
 	// Only present for userset relations. Useful for cases like "rel admin: [user, team#member]"
 	// where we need to know to check for "team:fga#member"
 	usersetRelation string
+
+	isRecursive bool
 }
 
 // TODO: this stack might need to be a stack of UserRefObject or UserRefObjectRelation or something
@@ -35,6 +37,11 @@ func (r *relationStack) Push(value typeRelEntry) {
 func (r *relationStack) Pop() typeRelEntry {
 	element := (*r)[len(*r)-1]
 	*r = (*r)[0 : len(*r)-1]
+	return element
+}
+
+func (r *relationStack) Peek() typeRelEntry {
+	element := (*r)[len(*r)-1]
 	return element
 }
 
@@ -91,7 +98,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			edge:                req.edge,
 			stack:               req.stack.Copy(),
 		}
-		fmt.Printf("Justin Edge: %s --> %s Stack: %s\n",
+		fmt.Printf("Justin Edge: %s --> %s Stack: %+v\n",
 			edge.GetFrom().GetUniqueLabel(),
 			edge.GetTo().GetUniqueLabel(),
 			r.stack.Copy(),
@@ -113,7 +120,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
 			// TODO: maybe for direct edges which point to usersets we should be continuing the traversal
-			fmt.Printf("Justin Direct Edge: \n\t%s\n\t%s\n\t%s\n",
+			fmt.Printf("Justin Direct Edge: \n\t%s\n\t%s\n\t%+v\n",
 				edge.GetFrom().GetUniqueLabel(),
 				toNode.GetUniqueLabel(),
 				r.stack.Copy(),
@@ -141,7 +148,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				return errs
 			}
 		case weightedGraph.TTUEdge:
-			fmt.Printf("Justin TTU Edge before: \n\t%s\n\t%s\n\t%s\n",
+			fmt.Printf("Justin TTU Edge before: \n\t%s\n\t%s\n\t%+v\n",
 				edge.GetFrom().GetUniqueLabel(),
 				toNode.GetUniqueLabel(),
 				r.stack.Copy(),
@@ -149,7 +156,17 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				// Replace the existing type#rel on the stack with the TTU relation
 				_ = r.stack.Pop()
-				r.stack.Push(typeRelEntry{typeRel: edge.GetTuplesetRelation()})
+
+				// TODO: for the morning
+				// if this edge has weight[user] == INF, this is a recursive TTU
+				// mark the tuplesetrelation as recursive, and leave it on the stack
+				// check the screenshot on your desktop
+				tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+				weight, _ := edge.GetWeight("user") // Make this more legit
+				if weight == weightedGraph.Infinite {
+					tuplesetRel.isRecursive = true
+				}
+				r.stack.Push(tuplesetRel)
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 			// TODO: I think we can determine whether it's recursive here, and if it is we should indicate that
@@ -161,7 +178,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// if we still have stack:
 			//		if this is recursive:
 			//			trySendCandidate anyway, and then retrigger with the same relation again forever, until we stop finding tuples
-			fmt.Printf("Justin TTU Edge after: \n\t%s\n\t%s\n\t%s\n",
+			fmt.Printf("Justin TTU Edge after: \n\t%s\n\t%s\n\t%+v\n",
 				edge.GetFrom().GetUniqueLabel(),
 				toNode.GetUniqueLabel(),
 				r.stack.Copy(),
@@ -246,7 +263,12 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		// This is true on every call except the first
 		if foundObject != "" {
-			entry := r.stack.Pop()
+			entry := r.stack.Peek()
+			// For recursive relations, don't actually pop the relation off the stack.
+			if !entry.isRecursive {
+				// If it is *not* recursive (most cases), remove the last element
+				r.stack.Pop()
+			}
 			typeRel = entry.typeRel
 			filter := &openfgav1.ObjectRelation{Object: foundObject}
 			if entry.usersetRelation != "" {
@@ -361,28 +383,34 @@ func (c *ReverseExpandQuery) queryForTuples(
 			if len(r.stack) == 0 {
 				_ = c.trySendCandidate(ctx, needsCheck, tk.GetObject(), resultChan)
 				continue
-			} else {
-				// if there are more relations in the stack, we need to evaluate the object found here against
-				// the next type#rel one level higher in the tree.
-				fmt.Println("Recursion")
-				foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
-
-				newReq := &ReverseExpandRequest{
-					StoreID:          r.StoreID,
-					Consistency:      r.Consistency,
-					Context:          r.Context,
-					ContextualTuples: r.ContextualTuples,
-					User:             r.User,
-					stack:            r.stack.Copy(),
-					weightedEdge:     r.weightedEdge, // Inherited but not used by the override path
-				}
-
-				wg.Add(1)
-				go queryFunc(qCtx, newReq, foundObject)
-				// so now we need to query this object against the last stack type#rel
-				// e.g. organization:jz#member@user:justin
-				// now we need organization:jz
 			}
+			// TODO: this is missing the initial relation :sad:
+			// Maybe you need to compare with the request itself in here as well
+			// the block below might also need that comparison, what if there is a recursive TTU
+			// somewhere down the chain of resolution. Do recursive TTUs need to kick off 2 separate
+			// follow up queries? One without removing the top element and one with removing it?
+			// I think yes
+			if r.stack.Peek().isRecursive {
+				_ = c.trySendCandidate(ctx, needsCheck, tk.GetObject(), resultChan)
+				continue
+			}
+
+			// if there are more relations in the stack, we need to evaluate the object found here against
+			// the next type#rel one level higher in the tree.
+			foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
+
+			newReq := &ReverseExpandRequest{
+				StoreID:          r.StoreID,
+				Consistency:      r.Consistency,
+				Context:          r.Context,
+				ContextualTuples: r.ContextualTuples,
+				User:             r.User,
+				stack:            r.stack.Copy(),
+				weightedEdge:     r.weightedEdge, // Inherited but not used by the override path
+			}
+
+			wg.Add(1)
+			go queryFunc(qCtx, newReq, foundObject)
 		}
 	}
 
