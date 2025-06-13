@@ -12,6 +12,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Add support for separate read and write datastores for PostgreSQL. [#2479](https://github.com/openfga/openfga/pull/2479)
 
+### Changed
+- Shared iterator refactor to reduce lock contention. [#2478](https://github.com/openfga/openfga/pull/2478)
+
 ### Fixed
 - Improve Check performance for models with recursion and `enable-check-optimizations` experiment flag is enabled. [#2492](https://github.com/openfga/openfga/pull/2492)
 - Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
