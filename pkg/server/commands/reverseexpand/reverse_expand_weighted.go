@@ -401,8 +401,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 			// 1. Continue the recursion: The user in the found tuple might be a member of another group.
 			// 2. Exit the recursion: The object of the found tuple might satisfy the next relation in the stack.
 			if r.stack.Peek().isRecursive {
-				// If the recursive relation is the last one in the stack, the found object itself could be a final result.
-				if len(r.stack) == 1 {
+				// If the recursive relation is the last one in the stack, foundObject could be a final result.
+				if len(r.stack) == 1 && tuple.GetType(tk.GetObject()) == req.ObjectType {
 					_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				}
 
