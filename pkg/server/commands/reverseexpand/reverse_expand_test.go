@@ -960,7 +960,29 @@ func TestReverseExpandNew(t *testing.T) {
 		user            *UserRefObject
 		expectedObjects []string
 	}{
-		//define repo_admin: [user, organization#member]
+		{
+			name: "direct_and_algebraic",
+			model: `model
+			  schema 1.1
+		
+			type user
+			type repo
+			  relations
+				define member: [user]
+				define computed_member: member
+				define owner: [user]
+				define admin: [user] or computed_member
+				define or_admin: owner or admin
+		`,
+			tuples: []string{
+				"repo:fga#member@user:justin",
+				"repo:fga#owner@user:z",
+			},
+			objectType:      "repo",
+			relation:        "or_admin",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedObjects: []string{"repo:fga"},
+		},
 		{
 			name: "simple_ttu",
 			model: `model
@@ -1007,7 +1029,6 @@ func TestReverseExpandNew(t *testing.T) {
 		`,
 			tuples: []string{
 				"repo:fga#owner@organization:justin_and_zee",
-				//"organization:justin_and_zee#member@user:justin",
 				"organization:justin_and_zee#repo_admin@user:justin",
 			},
 			objectType:      "repo",
@@ -1044,29 +1065,6 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"repo:fga"},
 		},
 		{
-			name: "direct_and_algebraic",
-			model: `model
-			  schema 1.1
-		
-			type user
-			type repo
-			  relations
-				define member: [user]
-				define computed_member: member
-				define owner: [user]
-				define admin: [user] or computed_member
-				define or_admin: owner or admin
-		`,
-			tuples: []string{
-				"repo:fga#member@user:justin",
-				"repo:fga#owner@user:z",
-			},
-			objectType:      "repo",
-			relation:        "or_admin",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedObjects: []string{"repo:fga"},
-		},
-		{
 			name: "ttu_recursive",
 			model: `model
 				  schema 1.1
@@ -1087,6 +1085,29 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "ttu_recursive",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expectedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
+		},
+		{
+			name: "simple_userset",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define teammate: [user, team#member]
+		`,
+			tuples: []string{
+				"team:fga#member@user:justin",
+				"org:j#teammate@team:fga#member",
+				"org:z#teammate@user:justin",
+			},
+			objectType:      "org",
+			relation:        "teammate",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedObjects: []string{"org:j", "org:z"},
 		},
 		{
 			name: "userset_to_union",
@@ -1111,29 +1132,6 @@ func TestReverseExpandNew(t *testing.T) {
 			relation:        "teammate",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expectedObjects: []string{"org:j"},
-		},
-		{
-			name: "simple_userset",
-			model: `model
-				  schema 1.1
-		
-				type user
-				type team
-				  relations
-					define member: [user]
-				type org
-				  relations
-					define teammate: [user, team#member]
-		`,
-			tuples: []string{
-				"team:fga#member@user:justin",
-				"org:j#teammate@team:fga#member",
-				"org:z#teammate@user:justin",
-			},
-			objectType:      "org",
-			relation:        "teammate",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedObjects: []string{"org:j", "org:z"},
 		},
 		{
 			name: "recursive_userset",
