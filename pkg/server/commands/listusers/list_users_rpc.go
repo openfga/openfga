@@ -987,7 +987,7 @@ func tupleConditionMet(ctx context.Context, reqCtx *structpb.Struct, typesys *ty
 }
 
 func panicError(recovered *panics.Recovered) error {
-	return fmt.Errorf("%w: %s", ErrPanic, recovered.AsError())
+	return fmt.Errorf("%w: %w", ErrPanic, recovered.AsError())
 }
 
 func panicExpanseResponse(recovered *panics.Recovered) expandResponse {
