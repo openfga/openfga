@@ -50,7 +50,7 @@ func TestMigrationRegistry(t *testing.T) {
 	t.Run("DefaultRegistry", func(t *testing.T) {
 		registry := migrate.GetDefaultRegistry()
 		require.NotNil(t, registry)
-		
+
 		engines := registry.GetSupportedEngines()
 		require.ElementsMatch(t, []string{"postgres", "mysql", "sqlite"}, engines)
 	})
@@ -58,9 +58,9 @@ func TestMigrationRegistry(t *testing.T) {
 	t.Run("CustomProvider", func(t *testing.T) {
 		// Create a mock provider for testing
 		mockProvider := &mockMigrationProvider{engine: "mock"}
-		
+
 		migrate.RegisterMigrationProvider("mock", mockProvider)
-		
+
 		registry := migrate.GetDefaultRegistry()
 		provider, exists := registry.GetProvider("mock")
 		require.True(t, exists)
@@ -70,10 +70,9 @@ func TestMigrationRegistry(t *testing.T) {
 	t.Run("RunMigrationsWithRegistry", func(t *testing.T) {
 		_, _, uri := util.MustBootstrapDatastore(t, "postgres")
 
-
 		// Create custom registry
 		customRegistry := migrate.GetDefaultRegistry()
-		
+
 		config := migrate.MigrationConfig{
 			Engine:        "postgres",
 			URI:           uri,
@@ -81,7 +80,7 @@ func TestMigrationRegistry(t *testing.T) {
 			Timeout:       5 * time.Second,
 			Verbose:       true,
 		}
-		
+
 		err := migrate.RunMigrationsWithRegistry(customRegistry, config)
 		require.NoError(t, err)
 	})
@@ -89,11 +88,10 @@ func TestMigrationRegistry(t *testing.T) {
 	t.Run("RunMigrationsWithProvider", func(t *testing.T) {
 		_, _, uri := util.MustBootstrapDatastore(t, "postgres")
 
-
 		registry := migrate.GetDefaultRegistry()
 		provider, exists := registry.GetProvider("postgres")
 		require.True(t, exists)
-		
+
 		config := migrate.MigrationConfig{
 			Engine:        "postgres",
 			URI:           uri,
@@ -101,28 +99,28 @@ func TestMigrationRegistry(t *testing.T) {
 			Timeout:       5 * time.Second,
 			Verbose:       true,
 		}
-		
+
 		err := migrate.RunMigrationsWithProvider(provider, config)
 		require.NoError(t, err)
 	})
 
 	t.Run("UnsupportedEngine", func(t *testing.T) {
 		registry := migrate.GetDefaultRegistry()
-		
+
 		config := migrate.MigrationConfig{
 			Engine:        "unsupported",
 			URI:           "test://uri",
 			TargetVersion: 0,
 			Timeout:       5 * time.Second,
 		}
-		
+
 		err := migrate.RunMigrationsWithRegistry(registry, config)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no migration provider registered for engine: unsupported")
 	})
 }
 
-// mockMigrationProvider for testing
+// mockMigrationProvider for testing.
 type mockMigrationProvider struct {
 	engine string
 }

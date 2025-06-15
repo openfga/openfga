@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockMigrationProvider for testing
+// MockMigrationProvider for testing.
 type MockMigrationProvider struct {
-	engine          string
-	shouldFail      bool
-	currentVersion  int64
-	migrationsRun   bool
+	engine         string
+	shouldFail     bool
+	currentVersion int64
+	migrationsRun  bool
 }
 
 func NewMockMigrationProvider(engine string) *MockMigrationProvider {
@@ -52,9 +52,9 @@ func TestMigratorRegistry(t *testing.T) {
 	t.Run("RegisterProvider", func(t *testing.T) {
 		registry := NewMigratorRegistry()
 		provider := NewMockMigrationProvider("test-engine")
-		
+
 		registry.RegisterProvider("test-engine", provider)
-		
+
 		engines := registry.GetSupportedEngines()
 		require.Len(t, engines, 1)
 		require.Contains(t, engines, "test-engine")
@@ -63,13 +63,13 @@ func TestMigratorRegistry(t *testing.T) {
 	t.Run("GetProvider", func(t *testing.T) {
 		registry := NewMigratorRegistry()
 		provider := NewMockMigrationProvider("test-engine")
-		
+
 		registry.RegisterProvider("test-engine", provider)
-		
+
 		retrieved, exists := registry.GetProvider("test-engine")
 		require.True(t, exists)
 		require.Equal(t, provider, retrieved)
-		
+
 		nonExistent, exists := registry.GetProvider("non-existent")
 		require.False(t, exists)
 		require.Nil(t, nonExistent)
@@ -77,13 +77,13 @@ func TestMigratorRegistry(t *testing.T) {
 
 	t.Run("GetSupportedEngines", func(t *testing.T) {
 		registry := NewMigratorRegistry()
-		
+
 		provider1 := NewMockMigrationProvider("engine1")
 		provider2 := NewMockMigrationProvider("engine2")
-		
+
 		registry.RegisterProvider("engine1", provider1)
 		registry.RegisterProvider("engine2", provider2)
-		
+
 		engines := registry.GetSupportedEngines()
 		require.Len(t, engines, 2)
 		require.ElementsMatch(t, []string{"engine1", "engine2"}, engines)
@@ -91,13 +91,13 @@ func TestMigratorRegistry(t *testing.T) {
 
 	t.Run("OverrideProvider", func(t *testing.T) {
 		registry := NewMigratorRegistry()
-		
+
 		provider1 := NewMockMigrationProvider("test-engine")
 		provider2 := NewMockMigrationProvider("test-engine")
-		
+
 		registry.RegisterProvider("test-engine", provider1)
 		registry.RegisterProvider("test-engine", provider2) // Override
-		
+
 		retrieved, exists := registry.GetProvider("test-engine")
 		require.True(t, exists)
 		require.Equal(t, provider2, retrieved) // Should be the second provider
@@ -116,7 +116,7 @@ func TestMigrationConfig(t *testing.T) {
 			Username:      "user",
 			Password:      "pass",
 		}
-		
+
 		require.Equal(t, "postgres", config.Engine)
 		require.Equal(t, "postgres://user:pass@localhost:5432/db", config.URI)
 		require.Equal(t, uint(5), config.TargetVersion)
@@ -130,22 +130,22 @@ func TestMigrationConfig(t *testing.T) {
 func TestMockMigrationProvider(t *testing.T) {
 	t.Run("SuccessfulOperations", func(t *testing.T) {
 		provider := NewMockMigrationProvider("mock-engine")
-		
+
 		require.Equal(t, "mock-engine", provider.GetSupportedEngine())
-		
+
 		config := MigrationConfig{
 			Engine:  "mock-engine",
 			URI:     "mock://uri",
 			Timeout: 5 * time.Second,
 		}
-		
+
 		ctx := context.Background()
-		
+
 		// Test RunMigrations
 		err := provider.RunMigrations(ctx, config)
 		require.NoError(t, err)
 		require.True(t, provider.migrationsRun)
-		
+
 		// Test GetCurrentVersion
 		version, err := provider.GetCurrentVersion(ctx, config)
 		require.NoError(t, err)
@@ -155,20 +155,20 @@ func TestMockMigrationProvider(t *testing.T) {
 	t.Run("FailureScenarios", func(t *testing.T) {
 		provider := NewMockMigrationProvider("mock-engine")
 		provider.shouldFail = true
-		
+
 		config := MigrationConfig{
 			Engine:  "mock-engine",
 			URI:     "mock://uri",
 			Timeout: 5 * time.Second,
 		}
-		
+
 		ctx := context.Background()
-		
+
 		// Test RunMigrations failure
 		err := provider.RunMigrations(ctx, config)
 		require.Error(t, err)
 		require.Equal(t, context.DeadlineExceeded, err)
-		
+
 		// Test GetCurrentVersion failure
 		version, err := provider.GetCurrentVersion(ctx, config)
 		require.Error(t, err)

@@ -13,20 +13,20 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// SQLiteMigrationProvider implements MigrationProvider for SQLite
+// SQLiteMigrationProvider implements MigrationProvider for SQLite.
 type SQLiteMigrationProvider struct{}
 
-// NewSQLiteMigrationProvider creates a new SQLite migration provider
+// NewSQLiteMigrationProvider creates a new SQLite migration provider.
 func NewSQLiteMigrationProvider() *SQLiteMigrationProvider {
 	return &SQLiteMigrationProvider{}
 }
 
-// GetSupportedEngine returns the database engine this provider supports
+// GetSupportedEngine returns the database engine this provider supports.
 func (s *SQLiteMigrationProvider) GetSupportedEngine() string {
 	return "sqlite"
 }
 
-// RunMigrations executes SQLite database migrations
+// RunMigrations executes SQLite database migrations.
 func (s *SQLiteMigrationProvider) RunMigrations(ctx context.Context, config storage.MigrationConfig) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(config.Verbose)
@@ -61,7 +61,7 @@ func (s *SQLiteMigrationProvider) RunMigrations(ctx context.Context, config stor
 	return s.executeMigrations(db, config)
 }
 
-// GetCurrentVersion returns the current migration version
+// GetCurrentVersion returns the current migration version.
 func (s *SQLiteMigrationProvider) GetCurrentVersion(ctx context.Context, config storage.MigrationConfig) (int64, error) {
 	uri, err := s.prepareURI(config)
 	if err != nil {
@@ -78,12 +78,12 @@ func (s *SQLiteMigrationProvider) GetCurrentVersion(ctx context.Context, config 
 	return goose.GetDBVersion(db)
 }
 
-// prepareURI processes the database URI
+// prepareURI processes the database URI.
 func (s *SQLiteMigrationProvider) prepareURI(config storage.MigrationConfig) (string, error) {
 	return PrepareDSN(config.URI)
 }
 
-// executeMigrations runs the actual migration commands
+// executeMigrations runs the actual migration commands.
 func (s *SQLiteMigrationProvider) executeMigrations(db *sql.DB, config storage.MigrationConfig) error {
 	migrationsPath := assets.SqliteMigrationDir
 

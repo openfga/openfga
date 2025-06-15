@@ -11,7 +11,7 @@ import (
 
 func TestPostgresMigrationProviderSimple(t *testing.T) {
 	provider := NewPostgresMigrationProvider()
-	
+
 	t.Run("GetSupportedEngine", func(t *testing.T) {
 		require.Equal(t, "postgres", provider.GetSupportedEngine())
 	})

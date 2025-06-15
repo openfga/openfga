@@ -14,20 +14,20 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// PostgresMigrationProvider implements MigrationProvider for PostgreSQL
+// PostgresMigrationProvider implements MigrationProvider for PostgreSQL.
 type PostgresMigrationProvider struct{}
 
-// NewPostgresMigrationProvider creates a new PostgreSQL migration provider
+// NewPostgresMigrationProvider creates a new PostgreSQL migration provider.
 func NewPostgresMigrationProvider() *PostgresMigrationProvider {
 	return &PostgresMigrationProvider{}
 }
 
-// GetSupportedEngine returns the database engine this provider supports
+// GetSupportedEngine returns the database engine this provider supports.
 func (p *PostgresMigrationProvider) GetSupportedEngine() string {
 	return "postgres"
 }
 
-// RunMigrations executes PostgreSQL database migrations
+// RunMigrations executes PostgreSQL database migrations.
 func (p *PostgresMigrationProvider) RunMigrations(ctx context.Context, config storage.MigrationConfig) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(config.Verbose)
@@ -62,7 +62,7 @@ func (p *PostgresMigrationProvider) RunMigrations(ctx context.Context, config st
 	return p.executeMigrations(db, config)
 }
 
-// GetCurrentVersion returns the current migration version
+// GetCurrentVersion returns the current migration version.
 func (p *PostgresMigrationProvider) GetCurrentVersion(ctx context.Context, config storage.MigrationConfig) (int64, error) {
 	uri, err := p.prepareURI(config)
 	if err != nil {
@@ -79,7 +79,7 @@ func (p *PostgresMigrationProvider) GetCurrentVersion(ctx context.Context, confi
 	return goose.GetDBVersion(db)
 }
 
-// prepareURI processes the database URI with username/password overrides
+// prepareURI processes the database URI with username/password overrides.
 func (p *PostgresMigrationProvider) prepareURI(config storage.MigrationConfig) (string, error) {
 	dbURI, err := url.Parse(config.URI)
 	if err != nil {
@@ -103,7 +103,7 @@ func (p *PostgresMigrationProvider) prepareURI(config storage.MigrationConfig) (
 	return dbURI.String(), nil
 }
 
-// executeMigrations runs the actual migration commands
+// executeMigrations runs the actual migration commands.
 func (p *PostgresMigrationProvider) executeMigrations(db *sql.DB, config storage.MigrationConfig) error {
 	migrationsPath := assets.PostgresMigrationDir
 

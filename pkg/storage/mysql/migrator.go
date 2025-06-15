@@ -14,20 +14,20 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// MySQLMigrationProvider implements MigrationProvider for MySQL
+// MySQLMigrationProvider implements MigrationProvider for MySQL.
 type MySQLMigrationProvider struct{}
 
-// NewMySQLMigrationProvider creates a new MySQL migration provider
+// NewMySQLMigrationProvider creates a new MySQL migration provider.
 func NewMySQLMigrationProvider() *MySQLMigrationProvider {
 	return &MySQLMigrationProvider{}
 }
 
-// GetSupportedEngine returns the database engine this provider supports
+// GetSupportedEngine returns the database engine this provider supports.
 func (m *MySQLMigrationProvider) GetSupportedEngine() string {
 	return "mysql"
 }
 
-// RunMigrations executes MySQL database migrations
+// RunMigrations executes MySQL database migrations.
 func (m *MySQLMigrationProvider) RunMigrations(ctx context.Context, config storage.MigrationConfig) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(config.Verbose)
@@ -62,7 +62,7 @@ func (m *MySQLMigrationProvider) RunMigrations(ctx context.Context, config stora
 	return m.executeMigrations(db, config)
 }
 
-// GetCurrentVersion returns the current migration version
+// GetCurrentVersion returns the current migration version.
 func (m *MySQLMigrationProvider) GetCurrentVersion(ctx context.Context, config storage.MigrationConfig) (int64, error) {
 	uri, err := m.prepareURI(config)
 	if err != nil {
@@ -79,7 +79,7 @@ func (m *MySQLMigrationProvider) GetCurrentVersion(ctx context.Context, config s
 	return goose.GetDBVersion(db)
 }
 
-// prepareURI processes the database URI with username/password overrides
+// prepareURI processes the database URI with username/password overrides.
 func (m *MySQLMigrationProvider) prepareURI(config storage.MigrationConfig) (string, error) {
 	dsn, err := mysql.ParseDSN(config.URI)
 	if err != nil {
@@ -96,7 +96,7 @@ func (m *MySQLMigrationProvider) prepareURI(config storage.MigrationConfig) (str
 	return dsn.FormatDSN(), nil
 }
 
-// executeMigrations runs the actual migration commands
+// executeMigrations runs the actual migration commands.
 func (m *MySQLMigrationProvider) executeMigrations(db *sql.DB, config storage.MigrationConfig) error {
 	migrationsPath := assets.MySQLMigrationDir
 

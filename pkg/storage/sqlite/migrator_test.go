@@ -11,7 +11,7 @@ import (
 
 func TestSQLiteMigrationProvider(t *testing.T) {
 	provider := NewSQLiteMigrationProvider()
-	
+
 	t.Run("GetSupportedEngine", func(t *testing.T) {
 		require.Equal(t, "sqlite", provider.GetSupportedEngine())
 	})

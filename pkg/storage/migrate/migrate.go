@@ -12,20 +12,20 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
-// MigrationConfig contains the configuration needed for running migrations
+// MigrationConfig contains the configuration needed for running migrations.
 type MigrationConfig = storage.MigrationConfig
 
 var (
-	// defaultRegistry is the global migration provider registry
+	// DefaultRegistry is the global migration provider registry.
 	defaultRegistry *storage.MigratorRegistry
 	registryOnce    sync.Once
 )
 
-// initDefaultRegistry initializes the default migration registry with built-in providers
+// initDefaultRegistry initializes the default migration registry with built-in providers.
 func initDefaultRegistry() {
 	registryOnce.Do(func() {
 		defaultRegistry = storage.NewMigratorRegistry()
-		
+
 		// Register built-in migration providers
 		defaultRegistry.RegisterProvider("postgres", postgres.NewPostgresMigrationProvider())
 		defaultRegistry.RegisterProvider("mysql", mysql.NewMySQLMigrationProvider())
@@ -33,25 +33,25 @@ func initDefaultRegistry() {
 	})
 }
 
-// GetDefaultRegistry returns the default migration provider registry
+// GetDefaultRegistry returns the default migration provider registry.
 func GetDefaultRegistry() *storage.MigratorRegistry {
 	initDefaultRegistry()
 	return defaultRegistry
 }
 
-// RegisterMigrationProvider allows applications to register custom migration providers
+// RegisterMigrationProvider allows applications to register custom migration providers.
 func RegisterMigrationProvider(engine string, provider storage.MigrationProvider) {
 	initDefaultRegistry()
 	defaultRegistry.RegisterProvider(engine, provider)
 }
 
-// RunMigrationsWithProvider runs migrations using a specific migration provider
+// RunMigrationsWithProvider runs migrations using a specific migration provider.
 func RunMigrationsWithProvider(provider storage.MigrationProvider, cfg storage.MigrationConfig) error {
 	ctx := context.Background()
 	return provider.RunMigrations(ctx, cfg)
 }
 
-// RunMigrationsWithRegistry runs migrations using a specific migration registry
+// RunMigrationsWithRegistry runs migrations using a specific migration registry.
 func RunMigrationsWithRegistry(registry *storage.MigratorRegistry, cfg storage.MigrationConfig) error {
 	if cfg.Engine == "memory" {
 		log.Println("no migrations to run for `memory` datastore")
