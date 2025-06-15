@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Database connection pool timeout settings (ConnMaxIdleTime, ConnMaxLifetime) now work correctly. [#2501](https://github.com/openfga/openfga/pull/2501)
+- Database connection pool timeout settings (`ConnMaxIdleTime`, `ConnMaxLifetime`) now work correctly. [#2501](https://github.com/openfga/openfga/pull/2501)
 
 
 ## [1.8.15] - 2025-06-11
