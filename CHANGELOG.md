@@ -8,6 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+### Added
+- Refactored migration system for dependency injection and library integration. [#2502](https://github.com/openfga/openfga/pull/2502)
+  - Introduced `MigrationProvider` interface for custom migration implementations
+  - Moved per-database migration logic to individual drivers (`postgres/`, `mysql/`, `sqlite/`)
+  - Added `MigratorRegistry` for flexible provider management
+  - Maintains full backward compatibility with existing `RunMigrations` API
+  - Enables applications embedding OpenFGA as a library to inject their own migration systems
+  - Provides multiple integration patterns: default, custom provider, registry, and direct provider usage
+
 ## [1.8.15] - 2025-06-11
 ### Added
 - Add support for separate read and write datastores for PostgreSQL. [#2479](https://github.com/openfga/openfga/pull/2479)
@@ -19,9 +28,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve Check performance for models with recursion and `enable-check-optimizations` experiment flag is enabled. [#2492](https://github.com/openfga/openfga/pull/2492)
 - Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
 - Fix for picking up env vars for `migrate` pkg [#2493](https://github.com/openfga/openfga/issues/2493)
-
-## [1.8.14] - 2025-06-10
-### Fixed
 - Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
 - SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
 - When `enable-check-optimizations` experiment flag is enabled, incorrect check for model with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
