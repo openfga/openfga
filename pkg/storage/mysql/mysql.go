@@ -81,14 +81,8 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
-
-	if cfg.ConnMaxIdleTime != 0 {
-		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	}
-
-	if cfg.ConnMaxLifetime != 0 {
-		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	}
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute

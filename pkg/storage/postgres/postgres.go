@@ -95,14 +95,8 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 	}
 
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
-
-	if cfg.ConnMaxIdleTime != 0 {
-		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-	}
-
-	if cfg.ConnMaxLifetime != 0 {
-		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	}
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 
 	return db, nil
 }
