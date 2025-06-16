@@ -1087,6 +1087,86 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
 		},
 		{
+			name: "ttu_with_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define parent: [company]
+					define org_cycle: [user] or company_cycle from parent
+				type company
+				  relations
+					define parent: [org]
+					define company_cycle: [user] or org_cycle from parent
+		`,
+			tuples: []string{
+				"company:a#parent@org:a",
+				"org:a#parent@company:b",
+				"company:b#parent@org:b",
+				"org:b#parent@company:c",
+				"company:c#company_cycle@user:bob",
+				//"org:b#org_cycle@user:anne",
+			},
+			objectType: "org",
+			relation:   "org_cycle",
+			//user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "intersection_both_side_infinite_weight_ttu_debug",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type team
+						relations
+							define parent: [team]
+							define member: [user] or member from parent
+					type org
+						relations
+							define member: [team#member]
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:b#parent@team:a",
+				"team:c#parent@team:b",
+				"org:a#member@team:c#member",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
+			name: "intersection_both_side_infinite_weight_ttu_debug2",
+			model: `model
+				    schema 1.1
+		
+					type user
+					type team
+						relations
+							define parent: [team]
+							define member: [user] or member from parent
+					type org
+						relations
+							define team: [team]
+							define member: member from team
+		`,
+			tuples: []string{
+				"team:a#member@user:bob",
+				"team:b#parent@team:a",
+				"team:c#parent@team:b",
+				"org:a#team@team:c",
+			},
+			objectType:      "org",
+			relation:        "member",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a"},
+		},
+		{
 			name: "simple_userset",
 			model: `model
 				  schema 1.1
