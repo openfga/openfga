@@ -1058,26 +1058,60 @@ func TestReverseExpandNew(t *testing.T) {
 				type user
 				type org
 				  relations
+					define org_parent: [company]
+					define org_cycle: [user] or company_cycle from org_parent
+				type company
+				  relations
+					define company_parent: [org]
+					define company_cycle: [user] or org_cycle from company_parent
+		`,
+			tuples: []string{
+				"company:b#company_parent@org:a",
+				"org:a#org_parent@company:b",
+				"company:b#company_parent@org:b",
+				"org:b#org_parent@company:c",
+				"company:c#company_cycle@user:bob",
+			},
+			objectType:      "org",
+			relation:        "org_cycle",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "ttu_with_3_model_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
 					define parent: [company]
-					define org_cycle: [user] or company_cycle from parent
+					define can_access: [user] or can_access from parent
+				type org
+				  relations
+					define parent: [team]
+					define can_access: [user] or can_access from parent
 				type company
 				  relations
 					define parent: [org]
-					define company_cycle: [user] or org_cycle from parent
+					define can_access: [user] or can_access from parent
 		`,
 			tuples: []string{
-				"company:a#parent@org:a",
-				"org:a#parent@company:b",
-				"company:b#parent@org:b",
-				"org:b#parent@company:c",
-				"company:c#company_cycle@user:bob",
-				//"org:b#org_cycle@user:anne",
+				// Tuples to create a long cycle
+				"company:a_corp#parent@org:a_org",
+				"org:a_org#parent@team:a_team",
+				"team:a_team#parent@company:b_corp",
+				"company:b_corp#parent@org:b_org",
+				"org:b_org#parent@team:b_team",
+				"team:b_team#parent@company:a_corp",
+
+				// Tuple to grant user:bob access into the cycle
+				"company:a_corp#can_access@user:bob",
 			},
-			objectType: "org",
-			relation:   "org_cycle",
-			//user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+			objectType:      "org",
+			relation:        "can_access",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a", "org:b"},
+			expectedObjects: []string{"org:a_org", "org:b_org"},
 		},
 		{
 			name: "intersection_both_side_infinite_weight_ttu_debug",
