@@ -1325,7 +1325,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Early support for preshared key or OIDC authentication methods
 
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.8.16...HEAD
-[1.8.15]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
+[1.8.16]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
 [1.8.15]: https://github.com/openfga/openfga/compare/v1.8.14...v1.8.15
 [1.8.14]: https://github.com/openfga/openfga/compare/v1.8.13...v1.8.14
 [1.8.13]: https://github.com/openfga/openfga/compare/v1.8.12...v1.8.13
