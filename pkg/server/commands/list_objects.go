@@ -52,7 +52,7 @@ var (
 	})
 )
 
-type ListObjectsQuery struct {
+type listObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
@@ -69,6 +69,17 @@ type ListObjectsQuery struct {
 	checkResolver            graph.CheckResolver
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
+}
+
+type ListObjectsQuery interface {
+	// Execute the listObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
+	// or until q.listObjectsDeadline is hit, whichever happens first.
+	Execute(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error)
+
+	// ExecuteStreamed executes the listObjectsQuery, returning a stream of object IDs.
+	// It ignores the value of q.listObjectsMaxResults and returns all available results
+	// until q.listObjectsDeadline is hit.
+	ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error)
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -95,62 +106,62 @@ type ListObjectsResponse struct {
 	ResolutionMetadata ListObjectsResolutionMetadata
 }
 
-type ListObjectsQueryOption func(d *ListObjectsQuery)
+type ListObjectsQueryOption func(d *listObjectsQuery)
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.listObjectsDeadline = deadline
 	}
 }
 
 func WithDispatchThrottlerConfig(config threshold.Config) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.dispatchThrottlerConfig = config
 	}
 }
 
 func WithListObjectsMaxResults(maxResults uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.listObjectsMaxResults = maxResults
 	}
 }
 
 // WithResolveNodeLimit see server.WithResolveNodeLimit.
 func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit.
 func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.resolveNodeBreadthLimit = limit
 	}
 }
 
 func WithLogger(l logger.Logger) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.logger = l
 	}
 }
 
 // WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects.
 func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.maxConcurrentReads = limit
 	}
 }
 
 func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResources, cacheSettings serverconfig.CacheSettings) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.cacheSettings = cacheSettings
 		d.sharedDatastoreResources = sharedDatastoreResources
 	}
 }
 
 func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
+	return func(d *listObjectsQuery) {
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
@@ -160,7 +171,7 @@ func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	opts ...ListObjectsQueryOption,
-) (*ListObjectsQuery, error) {
+) (ListObjectsQuery, error) {
 	if ds == nil {
 		return nil, fmt.Errorf("the provided datastore parameter 'ds' must be non-nil")
 	}
@@ -169,7 +180,7 @@ func NewListObjectsQuery(
 		return nil, fmt.Errorf("the provided CheckResolver parameter 'checkResolver' must be non-nil")
 	}
 
-	query := &ListObjectsQuery{
+	query := &listObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
 		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
@@ -224,7 +235,7 @@ type listObjectsRequest interface {
 // The resultsChan is **always** closed by evaluate when it is done with its work,
 // which is either when all results have been yielded, the deadline has been met,
 // or some other terminal error case has occurred.
-func (q *ListObjectsQuery) evaluate(
+func (q *listObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
@@ -431,9 +442,9 @@ func trySendObject(ctx context.Context, object string, objectsFound *atomic.Uint
 	concurrency.TrySendThroughChannel(ctx, ListObjectsResult{ObjectID: object}, resultsChan)
 }
 
-// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
+// Execute the listObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
 // or until q.listObjectsDeadline is hit, whichever happens first.
-func (q *ListObjectsQuery) Execute(
+func (q *listObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
@@ -494,10 +505,10 @@ func (q *ListObjectsQuery) Execute(
 	}, nil
 }
 
-// ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
+// ExecuteStreamed executes the listObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit.
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
+func (q *listObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
