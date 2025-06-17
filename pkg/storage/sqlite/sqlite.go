@@ -50,7 +50,7 @@ type Datastore struct {
 // Ensures that SQLite implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-// Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
+// PrepareDSN Prepare a raw DSN from config for use with SQLite, specifying defaults for journal mode and busy timeout.
 func PrepareDSN(uri string) (string, error) {
 	// Set journal mode and busy timeout pragmas if not specified.
 	query := url.Values{}
@@ -132,7 +132,7 @@ func (s *Datastore) Close() {
 	if s.dbStatsCollector != nil {
 		prometheus.Unregister(s.dbStatsCollector)
 	}
-	s.db.Close()
+	_ = s.db.Close()
 }
 
 // Read see [storage.RelationshipTupleReader].Read.
@@ -159,7 +159,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(options.Pagination)
+	return iter.ToArray(ctx, options.Pagination)
 }
 
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
@@ -204,12 +204,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	rows, err := sb.QueryContext(ctx)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	return NewSQLTupleIterator(rows, HandleSQLError), nil
+	return NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -515,12 +510,8 @@ func (s *Datastore) ReadUsersetTuples(
 		}
 		sb = sb.Where(orConditions)
 	}
-	rows, err := sb.QueryContext(ctx)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
 
-	return NewSQLTupleIterator(rows, HandleSQLError), nil
+	return NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -564,12 +555,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
 
-	rows, err := builder.QueryContext(ctx)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-
-	return NewSQLTupleIterator(rows, HandleSQLError), nil
+	return NewSQLTupleIterator(builder, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
