@@ -1094,26 +1094,60 @@ func TestReverseExpandNew(t *testing.T) {
 				type user
 				type org
 				  relations
-					define parent: [company]
-					define org_cycle: [user] or company_cycle from parent
+					define org_to_company: [company]
+					define org_cycle: [user] or company_cycle from org_to_company
 				type company
 				  relations
-					define parent: [org]
-					define company_cycle: [user] or org_cycle from parent
+					define company_to_org: [org]
+					define company_cycle: [user] or org_cycle from company_to_org
 		`,
 			tuples: []string{
-				"company:a#parent@org:a",
-				"org:a#parent@company:b",
-				"company:b#parent@org:b",
-				"org:b#parent@company:c",
+				"company:b#company_to_org@org:a",
+				"org:a#org_to_company@company:b",
+				"company:b#company_to_org@org:b",
+				"org:b#org_to_company@company:c",
 				"company:c#company_cycle@user:bob",
-				//"org:b#org_cycle@user:anne",
 			},
-			objectType: "org",
-			relation:   "org_cycle",
-			//user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+			objectType:      "org",
+			relation:        "org_cycle",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "ttu_with_3_model_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define team_to_company: [company]
+					define can_access: [user] or can_access from team_to_company
+				type org
+				  relations
+					define org_to_team: [team]
+					define can_access: [user] or can_access from org_to_team
+				type company
+				  relations
+					define company_to_org: [org]
+					define can_access: [user] or can_access from company_to_org
+		`,
+			tuples: []string{
+				// Tuples to create a long cycle
+				"company:a_corp#company_to_org@org:a_org",
+				"org:a_org#org_to_team@team:a_team",
+				"team:a_team#team_to_company@company:b_corp",
+				"company:b_corp#company_to_org@org:b_org",
+				"org:b_org#org_to_team@team:b_team",
+				"team:b_team#team_to_company@company:a_corp",
+
+				// Tuple to grant user:bob access into the cycle
+				"company:a_corp#can_access@user:bob",
+			},
+			objectType:      "org",
+			relation:        "can_access",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedObjects: []string{"org:a_org", "org:b_org"},
 		},
 		{
 			name: "intersection_both_side_infinite_weight_ttu_debug",
