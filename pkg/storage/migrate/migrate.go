@@ -73,11 +73,14 @@ func RunMigrations(cfg MigrationConfig) error {
 		if err != nil {
 			return fmt.Errorf("invalid database uri: %w", err)
 		}
-		// if username not set
-		if cfg.Username == "" && dbURI.User != nil {
+		if cfg.Username != "" {
+			username = cfg.Username
+		} else if dbURI.User != nil {
 			username = dbURI.User.Username()
 		}
-		if cfg.Password == "" && dbURI.User != nil {
+		if cfg.Password != "" {
+			password = cfg.Password
+		} else if dbURI.User != nil {
 			password, _ = dbURI.User.Password()
 		}
 		dbURI.User = url.UserPassword(username, password)
