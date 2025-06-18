@@ -512,11 +512,12 @@ func (c *ReverseExpandQuery) queryCycle(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	startObject string,
-	stack relationStack,
+	relationCycle relationStack,
 	resultChan chan<- *ReverseExpandResult,
 	errChan chan<- error,
 ) {
 	fmt.Printf("JUSTIN IN THE CYCLE FUNC\n")
+	var wg sync.WaitGroup
 	// The Map: map[
 	//	org:[
 	//		{typeRel:org#org_to_team usersetRelation: isRecursive:true}
@@ -527,73 +528,92 @@ func (c *ReverseExpandQuery) queryCycle(
 
 	// We're reading from the stack in a loop, but we don't want to actually .Pop() because we could do this
 	// loop many times and we can't throw away elements
-	startPos := len(stack) - 1 // TODO: in recursive version, If pos < 0, set it to end of list
-	stackEntry := stack[startPos]
-	typeRel := stackEntry.typeRel
 
-	filter := &openfgav1.ObjectRelation{Object: startObject}
-	if stackEntry.usersetRelation != "" {
-		filter.Relation = stackEntry.usersetRelation
-	}
-	userFilter := []*openfgav1.ObjectRelation{filter}
-	objectType, relation := tuple.SplitObjectRelation(typeRel)
+	jobDedupeMap := new(sync.Map)
+	var queryFunc func(context.Context, *ReverseExpandRequest, string, relationStack, int)
+	//numJobs := atomic.Int32{} // TODO: remove, this is for debugging
+	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, object string, relationCycle relationStack, position int) {
+		defer wg.Done()
+		// If we have already run through the full cycle of tuples in the stack we need to reset to
+		// The beginning of the cycle again
+		if position < 0 {
+			position = len(relationCycle) - 1
+		}
+		stackEntry := relationCycle[position]
+		typeRel := stackEntry.typeRel
 
-	filteredIter, err := c.buildFilteredIterator(ctx, req.StoreID, objectType, relation, userFilter, req.Consistency)
-	if err != nil {
-		// idk do seomhting
-		panic("ahh")
-	}
-	defer filteredIter.Stop()
+		filter := &openfgav1.ObjectRelation{Object: object}
+		if stackEntry.usersetRelation != "" {
+			filter.Relation = stackEntry.usersetRelation
+		}
+		userFilter := []*openfgav1.ObjectRelation{filter}
+		objectType, relation := tuple.SplitObjectRelation(typeRel)
 
-LoopOnIterator:
-	for {
-		tk, err := filteredIter.Next(ctx)
+		// TODO: this is direct copy pasted from the other query func in this file
+		// Create a unique key for the current query to avoid duplicate work.
+		key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
+			return current.String() + accumulator
+		})
+		key += relation + objectType
+		if _, loaded := jobDedupeMap.LoadOrStore(key, struct{}{}); loaded {
+			// If this exact query has been run before in this path, abort.
+			return
+		}
+
+		filteredIter, err := c.buildFilteredIterator(ctx, req.StoreID, objectType, relation, userFilter, req.Consistency)
 		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-			errChan <- err
-			break LoopOnIterator
+			// idk do seomhting
+			panic("ahh")
 		}
+		defer filteredIter.Stop()
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
-		if err != nil {
-			errChan <- err
-			continue
-		}
-
-		if !condEvalResult.ConditionMet {
-			if len(condEvalResult.MissingParameters) > 0 {
-				errChan <- condition.NewEvaluationError(
-					tk.GetCondition().GetName(),
-					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-						tuple.TupleKeyToString(tk),
-						condEvalResult.MissingParameters),
-				)
+	LoopOnIterator:
+		for {
+			tk, err := filteredIter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				errChan <- err
+				break LoopOnIterator
 			}
 
-			continue
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+			if err != nil {
+				errChan <- err
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				if len(condEvalResult.MissingParameters) > 0 {
+					errChan <- condition.NewEvaluationError(
+						tk.GetCondition().GetName(),
+						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+							tuple.TupleKeyToString(tk),
+							condEvalResult.MissingParameters),
+					)
+				}
+
+				continue
+			}
+
+			foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
+			fmt.Printf("JUSTIN CYCLE LOGIC FOUND AN OBJECT: %s\n", foundObject)
+			if tuple.GetType(foundObject) == req.ObjectType {
+				fmt.Printf("JUSTIN CYCLE LOGIC FOUND CANDIDATE: %s\n", foundObject)
+				_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
+			}
+
+			// TODO: then we have to kick this back off again
+			wg.Add(1)
+			go queryFunc(ctx, req, foundObject, relationCycle, position-1)
 		}
 
-		foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
-		fmt.Printf("JUSTIN CYCLE LOGIC FOUND AN OBJECT: %s\n", foundObject)
-		if tuple.GetType(foundObject) == req.ObjectType {
-			fmt.Printf("JUSTIN CYCLE LOGIC FOUND CANDIDATE: %s\n", foundObject)
-			_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
-		}
-
-		// TODO: then we have to kick this back off again
 	}
 	// First query for this object with the last relation in thes tack
-	// then for every resulting object found with that query, query again for each of those objects and the next relation in the stack
-	// and so on until we stop finding tuples
-
-	//typeRel = entry.typeRel
-	//filter := &openfgav1.ObjectRelation{Object: foundObject}
-	//if entry.usersetRelation != "" {
-	//	filter.Relation = entry.usersetRelation
-	//}
-	//userFilter = append(userFilter, filter)
+	wg.Add(1)
+	go queryFunc(ctx, req, startObject, relationCycle, len(relationCycle)-1)
+	wg.Wait()
 }
 
 // TODO: this MUST have stop called on it externally
