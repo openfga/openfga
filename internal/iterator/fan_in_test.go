@@ -13,13 +13,11 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func makeIterChan(ctrl *gomock.Controller, id string, next bool) chan *Msg {
+func makeIterChan(ctrl *gomock.Controller, id string) chan *Msg {
 	iterChan := make(chan *Msg, 1)
 	iter := mocks.NewMockIterator[string](ctrl)
-	if next {
-		iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(id, nil)
-		iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", storage.ErrIteratorDone)
-	}
+	iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(id, nil)
+	iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", storage.ErrIteratorDone)
 	iter.EXPECT().Stop().MinTimes(1)
 	iterChan <- &Msg{Iter: iter}
 	close(iterChan)
@@ -36,15 +34,15 @@ func TestFanInIteratorChannels(t *testing.T) {
 
 	chans := make([]<-chan *Msg, 0, 9)
 	chans = append(chans,
-		makeIterChan(ctrl, "1", true),
-		makeIterChan(ctrl, "2", true),
-		makeIterChan(ctrl, "3", true),
-		makeIterChan(ctrl, "4", true),
-		makeIterChan(ctrl, "5", true),
-		makeIterChan(ctrl, "6", true),
-		makeIterChan(ctrl, "7", true),
-		makeIterChan(ctrl, "8", true),
-		makeIterChan(ctrl, "9", true))
+		makeIterChan(ctrl, "1"),
+		makeIterChan(ctrl, "2"),
+		makeIterChan(ctrl, "3"),
+		makeIterChan(ctrl, "4"),
+		makeIterChan(ctrl, "5"),
+		makeIterChan(ctrl, "6"),
+		makeIterChan(ctrl, "7"),
+		makeIterChan(ctrl, "8"),
+		makeIterChan(ctrl, "9"))
 
 	out := FanInIteratorChannels(ctx, chans)
 
@@ -66,11 +64,11 @@ func TestFanInIteratorChannels(t *testing.T) {
 	cancel() // Stop would still be called in all entries even tho its been cancelled
 	chans = make([]<-chan *Msg, 0, 5)
 	chans = append(chans,
-		makeIterChan(ctrl, "1", true),
-		makeIterChan(ctrl, "2", true),
-		makeIterChan(ctrl, "3", true),
-		makeIterChan(ctrl, "4", true),
-		makeIterChan(ctrl, "5", true),
+		makeIterChan(ctrl, "1"),
+		makeIterChan(ctrl, "2"),
+		makeIterChan(ctrl, "3"),
+		makeIterChan(ctrl, "4"),
+		makeIterChan(ctrl, "5"),
 	)
 	out = FanInIteratorChannels(cancellable, chans)
 	iterations = 0
