@@ -31,8 +31,11 @@ var tracer = otel.Tracer("pkg/storage/sqlcommon")
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
 type Config struct {
+	SecondaryURI           string
 	Username               string
 	Password               string
+	SecondaryUsername      string
+	SecondaryPassword      string
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
@@ -49,6 +52,13 @@ type Config struct {
 // used for configuring a Config object.
 type DatastoreOption func(*Config)
 
+// WithSecondaryURI returns a DatastoreOption that sets the secondary URI in the Config.
+func WithSecondaryURI(uri string) DatastoreOption {
+	return func(config *Config) {
+		config.SecondaryURI = uri
+	}
+}
+
 // WithUsername returns a DatastoreOption that sets the username in the Config.
 func WithUsername(username string) DatastoreOption {
 	return func(config *Config) {
@@ -60,6 +70,20 @@ func WithUsername(username string) DatastoreOption {
 func WithPassword(password string) DatastoreOption {
 	return func(config *Config) {
 		config.Password = password
+	}
+}
+
+// WithSecondaryUsername returns a DatastoreOption that sets the secondary username in the Config.
+func WithSecondaryUsername(username string) DatastoreOption {
+	return func(config *Config) {
+		config.SecondaryUsername = username
+	}
+}
+
+// WithSecondaryPassword returns a DatastoreOption that sets the secondary password in the Config.
+func WithSecondaryPassword(password string) DatastoreOption {
+	return func(config *Config) {
+		config.SecondaryPassword = password
 	}
 }
 
@@ -220,6 +244,7 @@ func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTup
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
+	ctx = context.WithoutCancel(ctx)
 	rows, err := t.sb.QueryContext(ctx)
 	if err != nil {
 		return t.handleSQLError(err)
@@ -729,17 +754,25 @@ func ReadAuthorizationModel(
 	return ret, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
-// and the datastore has the latest migration applied.
-func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
+// IsReady returns true if connection to datastore is successful AND
+// (the datastore has the latest migration applied OR skipVersionCheck).
+func IsReady(ctx context.Context, skipVersionCheck bool, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
-		return storage.ReadinessStatus{}, err
+	// do ping first to ensure we have better error message
+	// if error is due to connection issue.
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		return storage.ReadinessStatus{}, pingErr
 	}
 
-	revision, err := goose.GetDBVersion(db)
+	if skipVersionCheck {
+		return storage.ReadinessStatus{
+			IsReady: true,
+		}, nil
+	}
+
+	revision, err := goose.GetDBVersionContext(ctx, db)
 	if err != nil {
 		return storage.ReadinessStatus{}, err
 	}

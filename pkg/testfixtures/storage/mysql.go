@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -108,7 +109,7 @@ AllImages:
 		timeoutSec := 5
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
-		if err != nil && !client.IsErrNotFound(err) {
+		if err != nil && !errdefs.IsNotFound(err) {
 			t.Logf("failed to stop mysql container: %v", err)
 		}
 		t.Logf("stopped container %s", name)
@@ -181,4 +182,12 @@ func (m *mySQLTestContainer) GetUsername() string {
 
 func (m *mySQLTestContainer) GetPassword() string {
 	return m.password
+}
+
+func (m *mySQLTestContainer) CreateSecondary(t testing.TB) error {
+	return nil
+}
+
+func (m *mySQLTestContainer) GetSecondaryConnectionURI(includeCredentials bool) string {
+	return ""
 }

@@ -43,6 +43,7 @@ type Datastore struct {
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
+	versionReady           bool
 }
 
 // Ensures that Datastore implements the OpenFGADatastore interface.
@@ -118,6 +119,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
+		versionReady:           false,
 	}, nil
 }
 
@@ -769,7 +771,12 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 
 // IsReady see [sqlcommon.IsReady].
 func (s *Datastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
-	return sqlcommon.IsReady(ctx, s.db)
+	versionReady, err := sqlcommon.IsReady(ctx, s.versionReady, s.db)
+	if err != nil {
+		return versionReady, err
+	}
+	s.versionReady = versionReady.IsReady
+	return versionReady, nil
 }
 
 // HandleSQLError processes an SQL error and converts it into a more

@@ -7,8 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- SQLite based iterators will load tuples only when needed (lazy loading). [#2511](https://github.com/openfga/openfga/pull/2511)
+
+## [1.8.16] - 2025-06-17
 ### Fixed
+- Context cancelation was preventing database connections from being reused. [#2508](https://github.com/openfga/openfga/pull/2508)
+
+## [1.8.15] - 2025-06-11
+### Added
+- Add support for separate read and write datastores for PostgreSQL. [#2479](https://github.com/openfga/openfga/pull/2479)
+
+### Changed
+- Shared iterator refactor to reduce lock contention. [#2478](https://github.com/openfga/openfga/pull/2478)
+
+### Fixed
+- Improve Check performance for models with recursion and `enable-check-optimizations` experiment flag is enabled. [#2492](https://github.com/openfga/openfga/pull/2492)
+- Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
+- Fix for picking up env vars for `migrate` pkg [#2493](https://github.com/openfga/openfga/issues/2493)
+
+## [1.8.14] - 2025-06-10
+### Fixed
+- Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
 - SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
+- When `enable-check-optimizations` experiment flag is enabled, incorrect check for model with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
+- Correlate storage context with caller's context. [#2292](https://github.com/openfga/openfga/pull/2292)
 
 ## [1.8.13] - 2025-05-22
 ### Added
@@ -1303,7 +1326,10 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.13...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.16...HEAD
+[1.8.16]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
+[1.8.15]: https://github.com/openfga/openfga/compare/v1.8.14...v1.8.15
+[1.8.14]: https://github.com/openfga/openfga/compare/v1.8.13...v1.8.14
 [1.8.13]: https://github.com/openfga/openfga/compare/v1.8.12...v1.8.13
 [1.8.12]: https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12
 [1.8.11]: https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11

@@ -92,6 +92,15 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.uri", flags.Lookup("datastore-uri"))
 		util.MustBindEnv("datastore.uri", "OPENFGA_DATASTORE_URI")
 
+		util.MustBindPFlag("datastore.secondaryUri", flags.Lookup("datastore-secondary-uri"))
+		util.MustBindEnv("datastore.secondaryUri", "OPENFGA_DATASTORE_SECONDARY_URI")
+
+		util.MustBindPFlag("datastore.secondaryUsername", flags.Lookup("datastore-secondary-username"))
+		util.MustBindEnv("datastore.secondaryUsername", "OPENFGA_DATASTORE_SECONDARY_USERNAME")
+
+		util.MustBindPFlag("datastore.secondaryPassword", flags.Lookup("datastore-secondary-password"))
+		util.MustBindEnv("datastore.secondaryPassword", "OPENFGA_DATASTORE_SECONDARY_PASSWORD")
+
 		util.MustBindPFlag("datastore.username", flags.Lookup("datastore-username"))
 		util.MustBindEnv("datastore.username", "OPENFGA_DATASTORE_USERNAME")
 
