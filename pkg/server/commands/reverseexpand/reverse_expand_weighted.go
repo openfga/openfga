@@ -29,8 +29,8 @@ type typeRelEntry struct {
 	isRecursive bool
 }
 
+// TODO: add these where appropriate, not here
 var typeToCycleMap = make(map[string]relationStack)
-
 var globalCyclesMap = new(sync.Map)
 
 // relationStack represents the path of queryable relationships encountered on the way to a terminal type.
@@ -145,32 +145,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 					typeToCycleMap[objType] = stackForStorage
 					fmt.Printf("STORING CYCLE: for objectType: %s, %+v\n", objType, stackForStorage)
 				}
-				//if edge.GetTuplesetRelation() != "" {
-				//	// if there is a tupleset relation, we should use it when we put this in the map
-				//	objType, _ = tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-				//} else {
-				//	objType, _ = tuple.SplitObjectRelation(toNode.GetUniqueLabel())
-				//}
 
-				//newStack := r.stack.Copy()
-				//if len(newStack) == 1 {
-				//	fake := 1
-				//	println(fake)
-				//	fmt.Printf("SMALL CYCLE SOMEHOW: type %s, stack: %+v\n", objType, newStack)
-				//}
-				//newStack.Pop()
-				//globalMapForDebug[objType] = newStack
-				//fmt.Printf("Bailing to prevent cycle"+
-				//	"\n\tKey: %s,"+
-				//	"\n\tStack was: %+v"+
-				//	"\n\tTuplesetRelation: %s"+
-				//	"\n\tnewobj: %+v"+
-				//	"\n\tTriggering Type: %s\n\n",
-				//	key,
-				//	r.stack,
-				//	edge.GetTo().GetUniqueLabel(),
-				//	globalMapForDebug,
-				//	objType)
 				continue
 			}
 		}
@@ -391,28 +366,12 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return
 		}
 
-		//iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		//	ObjectType: objectType,
-		//	Relation:   relation,
-		//	UserFilter: userFilter,
-		//}, storage.ReadStartingWithUserOptions{
-		//	Consistency: storage.ConsistencyOptions{
-		//		Preference: req.Consistency,
-		//	},
-		//})
 		filteredIter, err := c.buildFilteredIterator(ctx, req.StoreID, objectType, relation, userFilter, req.Consistency)
 		if err != nil {
 			errChan <- err
 			return
 		}
 		defer filteredIter.Stop()
-
-		// filter out invalid tuples yielded by the database iterator
-		//filteredIter := storage.NewFilteredTupleKeyIterator(
-		//	storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		//	validation.FilterInvalidTuples(c.typesystem),
-		//)
-		//defer filteredIter.Stop()
 
 	LoopOnIterator:
 		for {
@@ -486,7 +445,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 					// Kick off query loop over cycle
 					c.queryCycle(ctx, req, foundObject, cycleStack, resultChan, errChan)
-					//continue
 				}
 
 				// Path 1: Continue the recursive search.
@@ -627,7 +585,6 @@ func (c *ReverseExpandQuery) queryCycle(
 				_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
 			}
 
-			// TODO: then we have to kick this back off again
 			wg.Add(1)
 			go queryFunc(ctx, req, foundObject, relationCycle, position-1)
 		}
