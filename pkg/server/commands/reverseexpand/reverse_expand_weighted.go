@@ -373,27 +373,28 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return
 		}
 
-		iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-			ObjectType: objectType,
-			Relation:   relation,
-			UserFilter: userFilter,
-		}, storage.ReadStartingWithUserOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.Consistency,
-			},
-		})
-
+		//iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
+		//	ObjectType: objectType,
+		//	Relation:   relation,
+		//	UserFilter: userFilter,
+		//}, storage.ReadStartingWithUserOptions{
+		//	Consistency: storage.ConsistencyOptions{
+		//		Preference: req.Consistency,
+		//	},
+		//})
+		filteredIter, err := c.buildFilteredIterator(ctx, req.StoreID, objectType, relation, userFilter, req.Consistency)
 		if err != nil {
 			errChan <- err
 			return
 		}
+		defer filteredIter.Stop()
 
 		// filter out invalid tuples yielded by the database iterator
-		filteredIter := storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(c.typesystem),
-		)
-		defer filteredIter.Stop()
+		//filteredIter := storage.NewFilteredTupleKeyIterator(
+		//	storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		//	validation.FilterInvalidTuples(c.typesystem),
+		//)
+		//defer filteredIter.Stop()
 
 	LoopOnIterator:
 		for {
@@ -453,13 +454,17 @@ func (c *ReverseExpandQuery) queryForTuples(
 				// TODO: Testing cycle stuff
 				//fmt.Printf("Recursive relation hit: %s\n", r.stack.Peek().typeRel)
 
-				if _, ok := globalMapForDebug[tuple.GetType(tk.GetObject())]; ok {
+				if cycleStack, ok := globalMapForDebug[tuple.GetType(tk.GetObject())]; ok {
 					fmt.Printf("--------------------------HIT----------------------"+
 						"\n\tObject: %s"+
 						"\n\tThe Map: %+v\n",
 						tk.GetObject(),
 						globalMapForDebug,
 					)
+
+					// Kick off query loop over cycle
+					c.queryCycle(ctx, req, foundObject, cycleStack, resultChan, errChan)
+					continue
 				}
 
 				// Path 1: Continue the recursive search.
@@ -500,4 +505,124 @@ func (c *ReverseExpandQuery) queryForTuples(
 		errs = errors.Join(errs, err)
 	}
 	return errs
+}
+
+// TODO: explain this better if it actually works out
+func (c *ReverseExpandQuery) queryCycle(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	startObject string,
+	stack relationStack,
+	resultChan chan<- *ReverseExpandResult,
+	errChan chan<- error,
+) {
+	fmt.Printf("JUSTIN IN THE CYCLE FUNC\n")
+	// The Map: map[
+	//	org:[
+	//		{typeRel:org#org_to_team usersetRelation: isRecursive:true}
+	//		{typeRel:team#team_to_company usersetRelation: isRecursive:true}
+	//		{typeRel:company#company_to_org usersetRelation: isRecursive:true} // start here and walk back
+	//	]]
+	//entry := r.stack.Peek()
+
+	// We're reading from the stack in a loop, but we don't want to actually .Pop() because we could do this
+	// loop many times and we can't throw away elements
+	startPos := len(stack) - 1 // TODO: in recursive version, If pos < 0, set it to end of list
+	stackEntry := stack[startPos]
+	typeRel := stackEntry.typeRel
+
+	filter := &openfgav1.ObjectRelation{Object: startObject}
+	if stackEntry.usersetRelation != "" {
+		filter.Relation = stackEntry.usersetRelation
+	}
+	userFilter := []*openfgav1.ObjectRelation{filter}
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	filteredIter, err := c.buildFilteredIterator(ctx, req.StoreID, objectType, relation, userFilter, req.Consistency)
+	if err != nil {
+		// idk do seomhting
+		panic("ahh")
+	}
+	defer filteredIter.Stop()
+
+LoopOnIterator:
+	for {
+		tk, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			errChan <- err
+			break LoopOnIterator
+		}
+
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+		if err != nil {
+			errChan <- err
+			continue
+		}
+
+		if !condEvalResult.ConditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errChan <- condition.NewEvaluationError(
+					tk.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(tk),
+						condEvalResult.MissingParameters),
+				)
+			}
+
+			continue
+		}
+
+		foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
+		fmt.Printf("JUSTIN CYCLE LOGIC FOUND AN OBJECT: %s\n", foundObject)
+		if tuple.GetType(foundObject) == req.ObjectType {
+			fmt.Printf("JUSTIN CYCLE LOGIC FOUND CANDIDATE: %s\n", foundObject)
+			_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
+		}
+
+		// TODO: then we have to kick this back off again
+	}
+	// First query for this object with the last relation in thes tack
+	// then for every resulting object found with that query, query again for each of those objects and the next relation in the stack
+	// and so on until we stop finding tuples
+
+	//typeRel = entry.typeRel
+	//filter := &openfgav1.ObjectRelation{Object: foundObject}
+	//if entry.usersetRelation != "" {
+	//	filter.Relation = entry.usersetRelation
+	//}
+	//userFilter = append(userFilter, filter)
+}
+
+// TODO: this MUST have stop called on it externally
+func (c *ReverseExpandQuery) buildFilteredIterator(
+	ctx context.Context,
+	storeID string,
+	objectType string,
+	relation string,
+	userFilter []*openfgav1.ObjectRelation,
+	consistency openfgav1.ConsistencyPreference,
+) (storage.TupleKeyIterator, error) {
+	iter, err := c.datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+		ObjectType: objectType,
+		Relation:   relation,
+		UserFilter: userFilter,
+	}, storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: consistency,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		validation.FilterInvalidTuples(c.typesystem),
+	)
+
+	return filteredIter, nil
 }
