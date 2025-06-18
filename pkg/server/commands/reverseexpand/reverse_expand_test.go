@@ -1058,18 +1058,18 @@ func TestReverseExpandNew(t *testing.T) {
 				type user
 				type org
 				  relations
-					define org_parent: [company]
-					define org_cycle: [user] or company_cycle from org_parent
+					define org_to_company: [company]
+					define org_cycle: [user] or company_cycle from org_to_company
 				type company
 				  relations
-					define company_parent: [org]
-					define company_cycle: [user] or org_cycle from company_parent
+					define company_to_org: [org]
+					define company_cycle: [user] or org_cycle from company_to_org
 		`,
 			tuples: []string{
-				"company:b#company_parent@org:a",
-				"org:a#org_parent@company:b",
-				"company:b#company_parent@org:b",
-				"org:b#org_parent@company:c",
+				"company:b#company_to_org@org:a",
+				"org:a#org_to_company@company:b",
+				"company:b#company_to_org@org:b",
+				"org:b#org_to_company@company:c",
 				"company:c#company_cycle@user:bob",
 			},
 			objectType:      "org",
@@ -1085,25 +1085,25 @@ func TestReverseExpandNew(t *testing.T) {
 				type user
 				type team
 				  relations
-					define parent: [company]
-					define can_access: [user] or can_access from parent
+					define team_to_company: [company]
+					define can_access: [user] or can_access from team_to_company
 				type org
 				  relations
-					define parent: [team]
-					define can_access: [user] or can_access from parent
+					define org_to_team: [team]
+					define can_access: [user] or can_access from org_to_team
 				type company
 				  relations
-					define parent: [org]
-					define can_access: [user] or can_access from parent
+					define company_to_org: [org]
+					define can_access: [user] or can_access from company_to_org
 		`,
 			tuples: []string{
 				// Tuples to create a long cycle
-				"company:a_corp#parent@org:a_org",
-				"org:a_org#parent@team:a_team",
-				"team:a_team#parent@company:b_corp",
-				"company:b_corp#parent@org:b_org",
-				"org:b_org#parent@team:b_team",
-				"team:b_team#parent@company:a_corp",
+				"company:a_corp#company_to_org@org:a_org",
+				"org:a_org#org_to_team@team:a_team",
+				"team:a_team#team_to_company@company:b_corp",
+				"company:b_corp#company_to_org@org:b_org",
+				"org:b_org#org_to_team@team:b_team",
+				"team:b_team#team_to_company@company:a_corp",
 
 				// Tuple to grant user:bob access into the cycle
 				"company:a_corp#can_access@user:bob",
