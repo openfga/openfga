@@ -29,7 +29,9 @@ type typeRelEntry struct {
 	isRecursive bool
 }
 
-var globalMapForDebug = make(map[string][]typeRelEntry)
+var typeToCycleMap = make(map[string]*relationStack)
+
+var globalCyclesMap = new(sync.Map)
 
 // relationStack represents the path of queryable relationships encountered on the way to a terminal type.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes to this stack.
@@ -132,16 +134,30 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				} else {
 					objType, _ = tuple.SplitObjectRelation(toNode.GetUniqueLabel())
 				}
-				// TODO: THIS WORKS if you read the relations in stack order, starting with the key type
-				// The Map: map[
-				//	org:[
-				//		{typeRel:org#org_to_team usersetRelation: isRecursive:true}
-				//		{typeRel:team#team_to_company usersetRelation: isRecursive:true}
-				//		{typeRel:company#company_to_org usersetRelation: isRecursive:true} // start here and walk back
-				//	]]
-				newStack := r.stack.Copy()
-				newStack.Pop()
-				globalMapForDebug[objType] = newStack
+
+				if cycle, alreadyExists := globalCyclesMap.Load(key); alreadyExists {
+					typeToCycleMap[objType] = cycle.(*relationStack)
+				} else {
+					stackForStorage := r.stack.Copy()
+					stackForStorage.Pop() // TODO: explain why this is again
+					globalCyclesMap.Store(key, stackForStorage)
+					typeToCycleMap[objType] = &stackForStorage
+				}
+				//if edge.GetTuplesetRelation() != "" {
+				//	// if there is a tupleset relation, we should use it when we put this in the map
+				//	objType, _ = tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+				//} else {
+				//	objType, _ = tuple.SplitObjectRelation(toNode.GetUniqueLabel())
+				//}
+
+				//newStack := r.stack.Copy()
+				//if len(newStack) == 1 {
+				//	fake := 1
+				//	println(fake)
+				//	fmt.Printf("SMALL CYCLE SOMEHOW: type %s, stack: %+v\n", objType, newStack)
+				//}
+				//newStack.Pop()
+				//globalMapForDebug[objType] = newStack
 				//fmt.Printf("Bailing to prevent cycle"+
 				//	"\n\tKey: %s,"+
 				//	"\n\tStack was: %+v"+
@@ -454,13 +470,13 @@ func (c *ReverseExpandQuery) queryForTuples(
 				// TODO: Testing cycle stuff
 				//fmt.Printf("Recursive relation hit: %s\n", r.stack.Peek().typeRel)
 
-				if cycleStack, ok := globalMapForDebug[tuple.GetType(tk.GetObject())]; ok {
-					fmt.Printf("--------------------------HIT----------------------"+
-						"\n\tObject: %s"+
-						"\n\tThe Map: %+v\n",
-						tk.GetObject(),
-						globalMapForDebug,
-					)
+				if cycleStack, ok := typeToCycleMap[tuple.GetType(tk.GetObject())]; ok {
+					//fmt.Printf("--------------------------HIT----------------------"+
+					//	"\n\tObject: %s"+
+					//	"\n\tThe Map: %+v\n",
+					//	tk.GetObject(),
+					//	globalMapForDebug,
+					//)
 
 					// Kick off query loop over cycle
 					c.queryCycle(ctx, req, foundObject, cycleStack, resultChan, errChan)
@@ -512,11 +528,11 @@ func (c *ReverseExpandQuery) queryCycle(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	startObject string,
-	relationCycle relationStack,
+	relationCycle *relationStack,
 	resultChan chan<- *ReverseExpandResult,
 	errChan chan<- error,
 ) {
-	fmt.Printf("JUSTIN IN THE CYCLE FUNC\n")
+	//fmt.Printf("JUSTIN IN THE CYCLE FUNC\n")
 	var wg sync.WaitGroup
 	// The Map: map[
 	//	org:[
@@ -530,16 +546,20 @@ func (c *ReverseExpandQuery) queryCycle(
 	// loop many times and we can't throw away elements
 
 	jobDedupeMap := new(sync.Map)
-	var queryFunc func(context.Context, *ReverseExpandRequest, string, relationStack, int)
+	var queryFunc func(context.Context, *ReverseExpandRequest, string, *relationStack, int)
 	//numJobs := atomic.Int32{} // TODO: remove, this is for debugging
-	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, object string, relationCycle relationStack, position int) {
+	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, object string, relationCycle *relationStack, position int) {
 		defer wg.Done()
+
+		// dereference for use below
+		cycle := *relationCycle
+
 		// If we have already run through the full cycle of tuples in the stack we need to reset to
 		// The beginning of the cycle again
 		if position < 0 {
-			position = len(relationCycle) - 1
+			position = len(cycle) - 1
 		}
-		stackEntry := relationCycle[position]
+		stackEntry := cycle[position]
 		typeRel := stackEntry.typeRel
 
 		filter := &openfgav1.ObjectRelation{Object: object}
@@ -598,9 +618,9 @@ func (c *ReverseExpandQuery) queryCycle(
 			}
 
 			foundObject := tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
-			fmt.Printf("JUSTIN CYCLE LOGIC FOUND AN OBJECT: %s\n", foundObject)
+			//fmt.Printf("JUSTIN CYCLE LOGIC FOUND AN OBJECT: %s\n", foundObject)
 			if tuple.GetType(foundObject) == req.ObjectType {
-				fmt.Printf("JUSTIN CYCLE LOGIC FOUND CANDIDATE: %s\n", foundObject)
+				//fmt.Printf("JUSTIN CYCLE LOGIC FOUND CANDIDATE: %s\n", foundObject)
 				_ = c.trySendCandidate(ctx, false, foundObject, resultChan)
 			}
 
@@ -612,7 +632,7 @@ func (c *ReverseExpandQuery) queryCycle(
 	}
 	// First query for this object with the last relation in thes tack
 	wg.Add(1)
-	go queryFunc(ctx, req, startObject, relationCycle, len(relationCycle)-1)
+	go queryFunc(ctx, req, startObject, relationCycle, len(*relationCycle)-1)
 	wg.Wait()
 }
 
