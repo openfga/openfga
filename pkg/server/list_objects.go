@@ -134,6 +134,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		req.GetConsistency().String(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
+	checkCount := float64(result.ResolutionMetadata.CheckCount.Load())
+	listObjectsCheckCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+		utils.Bucketize(uint(checkCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	wasRequestThrottled := result.ResolutionMetadata.WasThrottled.Load()
 	if wasRequestThrottled {
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()

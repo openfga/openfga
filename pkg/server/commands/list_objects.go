@@ -82,6 +82,9 @@ type ListObjectsResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// CheckCount is the total number of check requests made during the ListObjects execution for the optimized path
+	CheckCount *atomic.Uint32
 }
 
 func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
@@ -89,6 +92,7 @@ func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
 		DatastoreQueryCount: new(atomic.Uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
+		CheckCount:          new(atomic.Uint32),
 	}
 }
 
@@ -348,6 +352,7 @@ func (q *ListObjectsQuery) evaluate(
 				return err
 			}
 			resolutionMetadata.DispatchCounter.Add(reverseExpandResolutionMetadata.DispatchCounter.Load())
+			resolutionMetadata.CheckCount.Add(reverseExpandResolutionMetadata.CheckCount.Load())
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
 			}

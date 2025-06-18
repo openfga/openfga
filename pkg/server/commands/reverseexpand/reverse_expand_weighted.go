@@ -551,6 +551,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	// Calling check on list objects candidates against non lowest weight edges
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
+			resolutionMetadata.CheckCount.Add(1)
 			handlerFunc := c.localCheckResolver.CheckSetOperation(ctx,
 				&graph.ResolveCheckRequest{
 					StoreID:              req.StoreID,
@@ -639,6 +640,7 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 	}
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
+			resolutionMetadata.CheckCount.Add(1)
 			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
 				&graph.ResolveCheckRequest{
 					StoreID:              req.StoreID,

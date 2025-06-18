@@ -238,12 +238,16 @@ type ResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// The number of times internal check was called for the optimization path
+	CheckCount *atomic.Uint32
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
 		DispatchCounter: new(atomic.Uint32),
 		WasThrottled:    new(atomic.Bool),
+		CheckCount:      new(atomic.Uint32),
 	}
 }
 
@@ -290,6 +294,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastore)
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
