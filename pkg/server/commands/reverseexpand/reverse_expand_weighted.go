@@ -30,7 +30,7 @@ type typeRelEntry struct {
 }
 
 // TODO: add these where appropriate, not here
-var typeToCycleMap = make(map[string]relationStack)
+var typeToCycleMap = new(sync.Map)
 var globalCyclesMap = new(sync.Map)
 
 // relationStack represents the path of queryable relationships encountered on the way to a terminal type.
@@ -94,8 +94,8 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
 ) error {
-	pool := concurrency.NewPool(ctx, 1) // TODO: this is not a real value
-	// pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 1) // TODO: this is to make dev debugging easier
+	//pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	var errs error
 
@@ -137,12 +137,12 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 
 				fmt.Printf("JUSTIN HIT A CYCLE %s, %+v\n", key, r.stack)
 				if cycle, alreadyExists := globalCyclesMap.Load(key); alreadyExists {
-					typeToCycleMap[objType] = cycle.(relationStack)
+					typeToCycleMap.Store(objType, cycle.(relationStack))
 				} else {
 					stackForStorage := r.stack.Copy()
 					stackForStorage.Pop() // TODO: explain why this is again
 					globalCyclesMap.Store(key, stackForStorage)
-					typeToCycleMap[objType] = stackForStorage
+					typeToCycleMap.Store(objType, stackForStorage)
 					fmt.Printf("STORING CYCLE: for objectType: %s, %+v\n", objType, stackForStorage)
 				}
 
@@ -431,11 +431,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 					_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				}
 
-				// TODO: Testing cycle stuff
-				//fmt.Printf("Recursive relation hit: %s\n", r.stack.Peek().typeRel)
-
-				//if cycleStack, ok := typeToCycleMap[tuple.GetType(tk.GetObject())]; ok {
-				if cycleStack, ok := typeToCycleMap[tuple.GetType(tk.GetObject())]; ok {
+				if cycleStack, ok := typeToCycleMap.Load(tuple.GetType(tk.GetObject())); ok {
 					fmt.Printf("--------------------------HIT----------------------"+
 						"\n\tObject: %s"+
 						"\n\tThe stack: %+v\n",
@@ -444,7 +440,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 					)
 
 					// Kick off query loop over cycle
-					c.queryCycle(ctx, req, foundObject, cycleStack, resultChan, errChan)
+					c.queryCycle(ctx, req, foundObject, cycleStack.(relationStack), resultChan, errChan)
 				}
 
 				// Path 1: Continue the recursive search.
@@ -452,6 +448,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				// relation on the stack, to find further nested relationships.
 				wg.Add(1)
 				go queryFunc(qCtx, r, foundObject)
+				// TODO: it is possible that we'll find already-found results, and we should terminate early
 
 				//// Path 2: Exit the recursion and move up the hierarchy.
 				//// This is only possible if there are other relations higher up in the stack.
