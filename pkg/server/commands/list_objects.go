@@ -314,6 +314,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithDispatchThrottlerConfig(q.dispatchThrottlerConfig),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
+			reverseexpand.WithCheckResolver(q.checkResolver),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

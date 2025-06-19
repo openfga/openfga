@@ -434,6 +434,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		ResolveCheck(gomock.Any(), gomock.Any()).
 		Return(nil, errors.ErrUnknown).
 		Times(1)
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
 	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
 
@@ -481,6 +482,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 		return &graph.ResolveCheckResponse{}, nil
 	})
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
 	// Need to make sure list objects attempts to invalidate when cache is enabled
 	mockCacheController := mocks.NewMockCacheController(ctrl)
