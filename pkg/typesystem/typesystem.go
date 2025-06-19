@@ -1701,7 +1701,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-// GetEdgesFromWeightedGraph returns all edges which have a path to the source type. It's responsible for handling
+// GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
 // Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
 // are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
 // return all relevant edges from an OR.
@@ -1711,15 +1711,15 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 // E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
 // it will return the first edge encountered.
 //
-// For BUT NOT relations, GetEdgesFromWeightedGraph first checks if the BUT NOT applies to the source type, and if it
+// For BUT NOT relations, GetEdgesForListObjects first checks if the BUT NOT applies to the source type, and if it
 // does it will mark this result as "requires check".
 // E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
 // we do not mark as "requires check".
-// After determining whether this result will require check, GetEdgesFromWeightedGraph will prune off the last edge of the
+// After determining whether this result will require check, GetEdgesForListObjects will prune off the last edge of the
 // Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
 //
-// GetEdgesFromWeightedGraph returns a list of edges, boolean indicating whether Check is needed, and an error.
-func (t *TypeSystem) GetEdgesFromWeightedGraph(
+// GetEdgesForListObjects returns a list of edges, boolean indicating whether Check is needed, and an error.
+func (t *TypeSystem) GetEdgesForListObjects(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
@@ -1766,7 +1766,7 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 			// For AND relations, mark as "needs check" and just pick the lowest weight edge
 			needsCheck = true
 
-			lowestWeightEdge := utils.Reduce(edges, nil, cheapestEdgeTo(sourceType))
+			lowestWeightEdge := cheapestEdgeTo(edges, sourceType)
 
 			// return only the lowest weight edge
 			edges = []*graph.WeightedAuthorizationModelEdge{lowestWeightEdge}
@@ -1805,8 +1805,8 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 	return ok
 }
 
-func cheapestEdgeTo(dst string) func(*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
-	return func(lowest, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
+func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
+	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
 		if lowest == nil {
 			return current
 		}
@@ -1825,7 +1825,7 @@ func cheapestEdgeTo(dst string) func(*graph.WeightedAuthorizationModelEdge, *gra
 			return current
 		}
 		return lowest
-	}
+	})
 }
 
 func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {

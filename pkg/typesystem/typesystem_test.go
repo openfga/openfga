@@ -7062,7 +7062,7 @@ func TestPathExists(t *testing.T) {
 	}
 }
 
-func TestGetEdgesFromWeightedGraph(t *testing.T) {
+func TestGetEdgesForListObjects(t *testing.T) {
 	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
 		model := `
 		model
@@ -7081,7 +7081,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#allowed", "other")
+		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "other")
 		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
@@ -7092,7 +7092,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.False(t, needsCheck)
 
 		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(exclusionLabel, "other")
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
 		require.NoError(t, err)
 
 		// We've hit the exclusion and it applies to 'type other', so this should be true
@@ -7104,7 +7104,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.Equal(t, graph.DirectEdge, edges[0].GetEdgeType())
 
 		// Now get edges for type user, the exclusion does not apply to user so this should not need check
-		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(exclusionLabel, "user")
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
@@ -7128,7 +7128,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#allowed", "user")
+		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#allowed", "user")
 		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
@@ -7137,7 +7137,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		require.False(t, needsCheck)
 
 		intersectionLabel := edges[0].GetTo().GetUniqueLabel()
-		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(intersectionLabel, "user")
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(intersectionLabel, "user")
 		require.NoError(t, err)
 
 		// 2 edges exist, but we should only receive the lower-weight edge
@@ -7173,7 +7173,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, needsCheck, err := typeSystem.GetEdgesFromWeightedGraph("group#or_relation", "user")
+		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#or_relation", "user")
 		require.NoError(t, err)
 
 		// If this assertion fails then we broke something in the weighted graph itself
@@ -7184,13 +7184,13 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		unionLabel := edges[0].GetTo().GetUniqueLabel()
 
 		// Two of these edges lead to user
-		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(unionLabel, "user")
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "user")
 		require.NoError(t, err)
 		require.Len(t, edges, 2)
 		require.False(t, needsCheck)
 
 		// One of these edges leads to employee
-		edges, needsCheck, err = typeSystem.GetEdgesFromWeightedGraph(unionLabel, "employee")
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(unionLabel, "employee")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
