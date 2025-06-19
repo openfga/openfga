@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"maps"
 	"reflect"
 	"slices"
@@ -1774,24 +1773,11 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	}
 
 	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := slices.Collect(filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+	relevantEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
 		return hasPathTo(edge, sourceType)
 	}))
 
 	return relevantEdges, needsCheck, nil
-}
-
-func filter[T any](s []T, predicate func(T) bool) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, item := range s {
-			if predicate(item) {
-				if !yield(item) {
-					// Stop if yield returns false (no more items)
-					return
-				}
-			}
-		}
-	}
 }
 
 type weightedGraphItem interface {
