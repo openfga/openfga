@@ -421,6 +421,9 @@ func (c *ReverseExpandQuery) queryForTuples(
 				continue
 			}
 
+			// TODO: probably want to introduce a pool in the if/else below, this has potential to blow up into
+			// thousands of routines depending on what comes back from the DB. Can't wg.Add() forever
+
 			// This is the logic for handling recursive relations, such as `define member: [user] or group#member`.
 			// When we find a tuple related to a recursive relation, we need to explore two paths concurrently:
 			// 1. Continue the recursion: The user in the found tuple might be a member of another group.
@@ -447,7 +450,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				// We call `queryFunc` again with the same request (`r`), which keeps the recursive
 				// relation on the stack, to find further nested relationships.
 				wg.Add(1)
-				go queryFunc(qCtx, r, foundObject)
+				go queryFunc(qCtx, r.clone(), foundObject)
 				// TODO: it is possible that we'll find already-found results, and we should terminate early
 
 				//// Path 2: Exit the recursion and move up the hierarchy.
