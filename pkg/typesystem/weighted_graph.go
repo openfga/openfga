@@ -55,10 +55,14 @@ func (t *TypeSystem) getNodeAndEdgesFromWeightedGraph(
 }
 
 type IntersectionEdges struct {
-	LowestEdge                *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
-	Siblings                  []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
-	DirectEdges               []*graph.WeightedAuthorizationModelEdge // all the direct edges
-	DirectEdgesAreLeastWeight bool                                    // whether direct edges are the lowest weight edges
+	LowestEdge *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
+	Siblings   []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
+	// We need to separate out the direct edges from the other edges so that in the case of direct edges are not the lowest weight,
+	// the check against these direct edges do not require checking against these individual directly assigned edges.
+	// Instead, these directly assigned edges should be treated as a group such that if one of these edges satisfy,
+	// the intersection satisfy.
+	DirectEdges               []*graph.WeightedAuthorizationModelEdge
+	DirectEdgesAreLeastWeight bool // whether direct edges are the lowest weight edges
 }
 
 // GetEdgesForIntersection returns the lowest weighted edge and
@@ -115,7 +119,10 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionUniqueLabel string, sou
 	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges)-len(directEdges))
 
 	// Now, assign all the non directly assigned edges that are not the lowest
-	// weight to the sibling edges
+	// weight to the sibling edges. Even if the directly assigned edges are not the lowest
+	// weight, we want to treat these directly assigned edges separately. The reason is that
+	// if one of these directly assigned edge satisfy, the list objects candidate may still
+	// be valid.
 	for _, edge := range edges {
 		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
 			if hasPathTo(edge, sourceType) {
