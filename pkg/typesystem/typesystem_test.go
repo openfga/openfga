@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -7075,9 +7073,6 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define allowed: [user, other] but not banned
 		`
 
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
@@ -7122,9 +7117,6 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define allowed: [user] and admin
 		`
 
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
@@ -7167,9 +7159,6 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define or_relation: a or b or c or d
 		`
 
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
@@ -7209,9 +7198,6 @@ func TestGetEdgesForListObjects(t *testing.T) {
 				define exclusion: [user, other] but not (a or b)
 		`
 
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
@@ -7237,6 +7223,10 @@ func TestGetEdgesForListObjects(t *testing.T) {
 		require.Len(t, edges, 1)
 		require.True(t, needsCheck)
 	})
+}
+
+func TestCheapestEdgeTo(t *testing.T) {
+
 }
 
 func BenchmarkNewAndValidate(b *testing.B) {
