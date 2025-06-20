@@ -2,7 +2,6 @@ package utils
 
 import "iter"
 
-
 // Filter functions similar to other language list filter functions.
 // It accepts a generic slice and a predicate function to apply to each element,
 // returning an iterator sequence containing only the elements for which the predicate returned true.
