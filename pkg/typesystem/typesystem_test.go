@@ -7244,6 +7244,7 @@ func TestCheapestEdgeTo(t *testing.T) {
 			relations
 				define parent: [group]
 				define ttu_weight3: [group#member] or org_member from parent
+				define userset: [user, group#member]
 		`
 
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
