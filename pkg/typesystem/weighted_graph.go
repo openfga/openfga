@@ -79,7 +79,6 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 
 	hasDirectEdges := true
 
-	// non-direct edges
 	if lowestWeight == 0 {
 		if edges[0].GetEdgeType() == graph.DirectEdge {
 			// this means that all the direct edges are not connected.
