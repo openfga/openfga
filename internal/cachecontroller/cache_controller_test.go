@@ -348,7 +348,6 @@ func TestInMemoryCacheController_findChangesAndInvalidateIfNecessary(t *testing.
 				cache:                 mockCache,
 				ttl:                   10 * time.Second,
 				iteratorCacheTTL:      30 * time.Second,
-				changelogBuckets:      []uint{0, 25, 50, 75, 100},
 				inflightInvalidations: sync.Map{},
 				logger:                logger.NewNoopLogger(),
 			}
