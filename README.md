@@ -1,13 +1,13 @@
 # OpenFGA
 
+[![Join our community](https://img.shields.io/badge/slack-cncf_%23openfga-40abb8.svg?logo=slack)](https://openfga.dev/community)
+[<img src="https://devin.ai/assets/deepwiki-badge.png" alt="Ask questions about OpenFGA on DeepWiki" height="20"/>](https://deepwiki.com/auth0/auth0-mcp-server)
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
 [![Docker Pulls](https://img.shields.io/docker/pulls/openfga/openfga)](https://hub.docker.com/r/openfga/openfga/tags)
 [![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)](https://app.codecov.io/gh/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374/badge)](https://bestpractices.coreinfrastructure.org/projects/6374)
-[![Join our community](https://img.shields.io/badge/slack-cncf_%23openfga-40abb8.svg?logo=slack)](https://openfga.dev/community)
-[![Twitter](https://img.shields.io/twitter/follow/openfga?color=%23179CF0&logo=twitter&style=flat-square "@openfga on Twitter")](https://twitter.com/openfga)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga?ref=badge_shield)
 [![Artifact HUB](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/openfga)](https://artifacthub.io/packages/helm/openfga/openfga)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/openfga/openfga/badge)](https://securityscorecards.dev/viewer/?uri=github.com/openfga/openfga)
@@ -17,7 +17,7 @@ A high-performance and flexible authorization/permission engine built for develo
 
 OpenFGA is designed to make it easy for developers to model their application permissions and add and integrate fine-grained authorization into their applications.
 
-It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL 14, MySQL 8 and SQLite (currently in beta).
+It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL 14+, MySQL 8 and SQLite (currently in beta).
 
 It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Java](https://central.sonatype.com/artifact/dev.openfga/openfga-sdk), [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. It can also be used [as a library](https://pkg.go.dev/github.com/openfga/openfga/pkg/server#example-NewServerWithOpts).
 
