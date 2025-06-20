@@ -60,7 +60,7 @@ func TestFilterInts(t *testing.T) {
 	}
 }
 
-// person struct for testing with custom types
+// person struct for testing with custom types.
 type person struct {
 	Name string
 	Age  int
