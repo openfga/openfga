@@ -3839,6 +3839,22 @@ func TestCheckTTUSlowPath(t *testing.T) {
 			require.Equal(t, tt.expected, resp)
 		})
 	}
+
+	t.Run("should_error_if_panic_occurs", func(t *testing.T) {
+		iter := &mockPanicIterator[*openfgav1.TupleKey]{}
+		checker := NewLocalChecker()
+		defer checker.Close()
+		req := &ResolveCheckRequest{
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
+		}
+
+		resp, err := checker.checkTTUSlowPath(context.Background(), req, typesystem.TupleToUserset("owner", "member"), iter)
+
+		require.ErrorContains(t, err, panicErr)
+		require.ErrorIs(t, err, ErrPanic)
+		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
+	})
 }
 
 func TestStreamedLookupUsersetFromIterator(t *testing.T) {
