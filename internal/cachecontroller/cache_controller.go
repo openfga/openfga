@@ -100,7 +100,6 @@ type InMemoryCacheController struct {
 	// ttl for the entry that keeps the last timestamp for a Write for a storeID.
 	ttl                   time.Duration
 	iteratorCacheTTL      time.Duration
-	changelogBuckets      []uint
 	inflightInvalidations sync.Map
 	logger                logger.Logger
 }
@@ -111,7 +110,6 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 		cache:                 cache,
 		ttl:                   ttl,
 		iteratorCacheTTL:      iteratorCacheTTL,
-		changelogBuckets:      []uint{0, 25, 50, 75, 100},
 		inflightInvalidations: sync.Map{},
 		logger:                logger.NewNoopLogger(),
 	}
