@@ -1794,7 +1794,11 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
 	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
 		if lowest == nil {
-			return current
+			_, ok := current.GetWeight(dst)
+			if ok {
+				return current
+			}
+			return nil
 		}
 
 		a, ok := lowest.GetWeight(dst)

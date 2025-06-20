@@ -7226,7 +7226,80 @@ func TestGetEdgesForListObjects(t *testing.T) {
 }
 
 func TestCheapestEdgeTo(t *testing.T) {
+	t.Run("returns_lowest_weight_edge_for_type", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type org
+			relations
+				define member: [user]
+		type group
+			relations
+				define parent: [org]
+				define member: [user]
+				define org_member: member from parent
+		type team
+			relations
+				define parent: [group]
+				define ttu: [group#member] or org_member from parent
+				define userset: [user, group#member]
+		`
 
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		wg := typeSystem.authzWeightedGraph
+		allEdges := wg.GetEdges()
+
+		// This node has two edges, one with weight 1 and one with weight 2
+		result := cheapestEdgeTo(allEdges["team#userset"], "user")
+		weight, _ := result.GetWeight("user")
+		require.Equal(t, weight, 1)
+
+		ttuNode, ok := wg.GetNodeByID("team#ttu")
+		require.True(t, ok)
+
+		edges, ok := wg.GetEdgesFromNode(ttuNode)
+		require.True(t, ok)
+		require.Len(t, edges, 1) // this should be only the OR
+
+		unionNode := edges[0].GetTo()
+		edges, ok = wg.GetEdgesFromNode(unionNode)
+		require.True(t, ok)
+		require.Len(t, edges, 2)
+
+		// There is a weight 2 and a weight 3 from here
+		result = cheapestEdgeTo(edges, "user")
+		weight, _ = result.GetWeight("user")
+		require.Equal(t, weight, 2)
+	})
+
+	t.Run("returns_nil_if_type_cant_be_reached", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type group
+			relations
+				define member: [user]
+		type team
+			relations
+				define parent: [group]
+				define ttu: [group#member] or member from parent
+				define userset: [user, group#member]
+		`
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		allEdges := typeSystem.authzWeightedGraph.GetEdges()
+
+		// This node has two edges but neither goes to "other"
+		result := cheapestEdgeTo(allEdges["team#userset"], "other")
+		require.Nil(t, result)
+	})
 }
 
 func BenchmarkNewAndValidate(b *testing.B) {
