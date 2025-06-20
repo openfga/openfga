@@ -3,6 +3,7 @@ package cachecontroller
 import (
 	"context"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -52,7 +52,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"invalidation_required", "changes_size"})
+	}, []string{"invalidation_required", "invalidation_type"})
 )
 
 type CacheController interface {
@@ -227,7 +227,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		}
 	}
 
-	if entry.LastModified.Before(timestampOfLastInvalidation) {
+	if entry.LastModified.Before(timestampOfLastInvalidation) || entry.LastModified.Equal(timestampOfLastInvalidation) {
 		// no new changes, no need to perform invalidations
 		span.SetAttributes(attribute.Bool("invalidations", false))
 		c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary no invalidation as entry.LastModified before last verified",
@@ -235,7 +235,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 			zap.Time("entry.LastModified", entry.LastModified),
 			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
 
-		findChangesAndInvalidateHistogram.WithLabelValues("false", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
+		findChangesAndInvalidateHistogram.WithLabelValues("false", "none").Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
 
@@ -257,6 +257,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		}
 	}
 
+	invalidated := true
 	partialInvalidation := true
 
 	// all changes happened after the last invalidation, thus we should revoke all the cached iterators for the store.
@@ -271,6 +272,8 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		// only increment if we're going to enter the invalidation for loop below
 		if idx >= 0 {
 			cacheInvalidationCounter.Inc()
+		} else {
+			invalidated = false
 		}
 		for ; idx >= 0; idx-- {
 			t := changes[idx].GetTupleKey()
@@ -286,7 +289,7 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
 		zap.Bool("partialInvalidation", partialInvalidation))
 	span.SetAttributes(attribute.Bool("invalidations", true))
-	findChangesAndInvalidateHistogram.WithLabelValues("true", utils.Bucketize(uint(len(changes)), c.changelogBuckets)).Observe(float64(time.Since(start).Milliseconds()))
+	findChangesAndInvalidateHistogram.WithLabelValues(strconv.FormatBool(invalidated), strconv.FormatBool(partialInvalidation)).Observe(float64(time.Since(start).Milliseconds()))
 }
 
 // invalidateIteratorCache writes a new key to the cache with a very long TTL.
