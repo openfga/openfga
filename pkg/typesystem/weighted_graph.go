@@ -63,7 +63,8 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 				// The first step is to establish the largest weight for all the direct edges as they need to be
 				// treated as a group. This weight will serve as the baseline for other siblings to compare against.
 				directEdges = append(directEdges, edge)
-				if weight, ok := edge.GetWeight(sourceType); ok && weight > lowestWeight {
+				// note that the weight must be defined because of hasPathTo
+				if weight, _ := edge.GetWeight(sourceType); weight > lowestWeight {
 					directEdgesAreLowest = true
 					lowestWeight = weight
 				}
@@ -76,7 +77,7 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 				// the parent node already.
 				return IntersectionEdges{}, nil
 			}
-			if weight, ok := edge.GetWeight(sourceType); ok && (weight < lowestWeight || edgeNum == 0) {
+			if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || edgeNum == 0 {
 				// in the case of the first edge, we need to initialize as the least weight
 				// for other edges to compare against it.
 				// For non-first edges, only replace if it has the lowest weight.
