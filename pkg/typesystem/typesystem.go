@@ -1739,7 +1739,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	}
 
 	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok {
+	if !ok || len(edges) == 0 {
 		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
