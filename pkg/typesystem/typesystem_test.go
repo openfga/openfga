@@ -7195,7 +7195,50 @@ func TestGetEdgesForListObjects(t *testing.T) {
 		require.Len(t, edges, 1)
 		require.False(t, needsCheck)
 	})
+
+	t.Run("prunes_union_from_right_side_of_exclusion", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type group
+			relations
+				define a: [user]
+				define b: [other]
+				define exclusion: [user, other] but not (a or b)
+		`
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, needsCheck, err := typeSystem.GetEdgesForListObjects("group#exclusion", "user")
+		require.NoError(t, err)
+
+		// If this assertion fails then we broke something in the weighted graph itself
+		// This is just the best way to get to the union node
+		require.Len(t, edges, 1)
+		require.False(t, needsCheck)
+
+		exclusionLabel := edges[0].GetTo().GetUniqueLabel()
+
+		// One of these edges lead to user
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "user")
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+		require.True(t, needsCheck)
+
+		// One of these edges leads to employee
+		edges, needsCheck, err = typeSystem.GetEdgesForListObjects(exclusionLabel, "other")
+		require.NoError(t, err)
+		require.Len(t, edges, 1)
+		require.True(t, needsCheck)
+	})
 }
+
 func BenchmarkNewAndValidate(b *testing.B) {
 	model := testutils.MustTransformDSLToProtoWithID(`
 		model
