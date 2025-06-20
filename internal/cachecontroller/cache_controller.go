@@ -200,9 +200,9 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		return
 	}
 
-	mostRecentChanges := changes[0]
+	lastChangelog := changes[0]
 	entry := &storage.ChangelogCacheEntry{
-		LastModified: mostRecentChanges.GetTimestamp().AsTime(),
+		LastModified: lastChangelog.GetTimestamp().AsTime(),
 	}
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
@@ -212,32 +212,31 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 	c.cache.Set(cacheKey, entry, c.ttl)
 
 	invalidationType := "none"
-	timestampOfLastInvalidation := time.Time{}
+	lastInvalidation := time.Time{}
+
 	if lastCacheRecord != nil {
-		decodedRecord, ok := lastCacheRecord.(*storage.ChangelogCacheEntry)
-		if ok {
+		if decodedRecord, ok := lastCacheRecord.(*storage.ChangelogCacheEntry); ok {
 			// if the change log cache is available and valid, use the last modified
-			// time to have better consistency. Otherwise, the timestampOfLastInvalidation will
-			// be the beginning of time which imply the need to invalidate one or more records.
-			timestampOfLastInvalidation = decodedRecord.LastModified
+			// time to have better consistency. Otherwise, the lastInvalidation will
+			// be the beginning of time which imply the need to invalidate all records.
+			lastInvalidation = decodedRecord.LastModified
 		} else {
 			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("cacheKey", cacheKey))
 		}
 	}
 
-	if !timestampOfLastInvalidation.After(entry.LastModified) {
+	if !lastChangelog.GetTimestamp().AsTime().After(lastInvalidation) {
 		// no new changes, no need to perform invalidations
-		span.SetAttributes(attribute.Bool("invalidations", false))
+		span.SetAttributes(attribute.String("invalidationType", invalidationType))
 		c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary no invalidation as entry.LastModified before last verified",
 			zap.String("store_id", storeID),
 			zap.Time("entry.LastModified", entry.LastModified),
-			zap.Time("timestampOfLastInvalidation", timestampOfLastInvalidation))
-
+			zap.Time("timestampOfLastInvalidation", lastInvalidation))
 		findChangesAndInvalidateHistogram.WithLabelValues(invalidationType).Observe(float64(time.Since(start).Milliseconds()))
 		return
 	}
 
-	timestampOfLastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
+	lastIteratorInvalidation := time.Now().Add(-c.iteratorCacheTTL)
 
 	// need to consider there might just be 1 change
 	// iterate from the oldest to most recent to determine if the last change is part of the current batch
@@ -250,14 +249,13 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		//
 		// Note that we only want to add invalidation entries for changes with timestamp >= now - iterator cache's TTL
 		// because anything older than that time would not live in the iterator cache anyway.
-		if changes[idx].GetTimestamp().AsTime().After(timestampOfLastIteratorInvalidation) {
+		if changes[idx].GetTimestamp().AsTime().After(lastIteratorInvalidation) {
 			break
 		}
 	}
 
 	// all changes happened after the last invalidation, thus we should revoke all the cached iterators for the store.
 	if idx == len(changes)-1 {
-		cacheInvalidationCounter.Inc()
 		invalidationType = "full"
 		c.invalidateIteratorCache(storeID)
 	} else {
@@ -266,7 +264,6 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 
 		// only increment if we're going to enter the invalidation for loop below
 		if idx >= 0 {
-			cacheInvalidationCounter.Inc()
 			invalidationType = "partial"
 		}
 		for ; idx >= 0; idx-- {
@@ -277,10 +274,13 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 		}
 	}
 
+	if invalidationType != "none" {
+		cacheInvalidationCounter.Inc()
+	}
 	c.logger.Debug("InMemoryCacheController findChangesAndInvalidateIfNecessary invalidation",
 		zap.String("store_id", storeID),
 		zap.Time("entry.LastModified", entry.LastModified),
-		zap.Time("timestampOfLastIteratorInvalidation", timestampOfLastIteratorInvalidation),
+		zap.Time("timestampOfLastIteratorInvalidation", lastIteratorInvalidation),
 		zap.String("invalidationType", invalidationType))
 	span.SetAttributes(attribute.String("invalidationType", invalidationType))
 	findChangesAndInvalidateHistogram.WithLabelValues(invalidationType).Observe(float64(time.Since(start).Milliseconds()))
