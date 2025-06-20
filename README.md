@@ -1,7 +1,7 @@
 # OpenFGA
 
 [![Join our community](https://img.shields.io/badge/slack-cncf_%23openfga-40abb8.svg?logo=slack)](https://openfga.dev/community)
-[<img src="https://devin.ai/assets/deepwiki-badge.png" alt="Ask questions about OpenFGA on DeepWiki" height="20"/>](https://deepwiki.com/auth0/auth0-mcp-server)
+[<img src="https://devin.ai/assets/deepwiki-badge.png" alt="Ask questions about OpenFGA on DeepWiki" height="20"/>](https://deepwiki.com/openfga/openfga)
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
 [![Docker Pulls](https://img.shields.io/docker/pulls/openfga/openfga)](https://hub.docker.com/r/openfga/openfga/tags)
