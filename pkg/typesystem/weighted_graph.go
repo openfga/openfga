@@ -56,8 +56,11 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 	directEdgesAreLowest := false
 	lowestWeight := 0
 
+	// Process all edges first to separate direct from non-direct
+	nonDirectEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+
 	// It is assumed that direct edge always appear first.
-	for edgeNum, edge := range edges {
+	for _, edge := range edges {
 		if hasPathTo(edge, sourceType) {
 			if edge.GetEdgeType() == graph.DirectEdge {
 				// The first step is to establish the largest weight for all the direct edges as they need to be
@@ -68,23 +71,32 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 					directEdgesAreLowest = true
 					lowestWeight = weight
 				}
-				continue
+			} else {
+				nonDirectEdges = append(nonDirectEdges, edge)
 			}
-			// non-direct edges
-			if lowestWeight == 0 && edgeNum != 0 {
-				// this means that all the direct edges are not connected.
-				// In reality, should not happen because the caller should have trimmed
-				// the parent node already.
-				return IntersectionEdges{}, nil
-			}
-			if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || edgeNum == 0 {
-				// in the case of the first edge, we need to initialize as the least weight
-				// for other edges to compare against it.
-				// For non-first edges, only replace if it has the lowest weight.
-				lowestEdge = edge
-				lowestWeight = weight
-				directEdgesAreLowest = false
-			}
+		}
+	}
+
+	hasDirectEdges := true
+
+	// non-direct edges
+	if lowestWeight == 0 {
+		if edges[0].GetEdgeType() == graph.DirectEdge {
+			// this means that all the direct edges are not connected.
+			// In reality, should not happen because the caller should have trimmed
+			// the parent node already.
+			return IntersectionEdges{}, nil
+		}
+		hasDirectEdges = false
+	}
+	for edgeNum, edge := range nonDirectEdges {
+		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && !hasDirectEdges) {
+			// in the case of the first edge, we need to initialize as the least weight
+			// for other edges to compare against it.
+			// For non-first edges, only replace if it has the lowest weight.
+			lowestEdge = edge
+			lowestWeight = weight
+			directEdgesAreLowest = false
 		}
 	}
 
