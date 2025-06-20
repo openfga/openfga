@@ -7242,8 +7242,7 @@ func TestCheapestEdgeTo(t *testing.T) {
 		type team
 			relations
 				define parent: [group]
-				define ttu: [group#member] or org_member from parent
-				define userset: [user, group#member]
+				define ttu_weight3: [group#member] or org_member from parent
 		`
 
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
@@ -7257,7 +7256,7 @@ func TestCheapestEdgeTo(t *testing.T) {
 		weight, _ := result.GetWeight("user")
 		require.Equal(t, weight, 1)
 
-		ttuNode, ok := wg.GetNodeByID("team#ttu")
+		ttuNode, ok := wg.GetNodeByID("team#ttu_weight3")
 		require.True(t, ok)
 
 		edges, ok := wg.GetEdgesFromNode(ttuNode)
@@ -7273,6 +7272,55 @@ func TestCheapestEdgeTo(t *testing.T) {
 		result = cheapestEdgeTo(edges, "user")
 		weight, _ = result.GetWeight("user")
 		require.Equal(t, weight, 2)
+	})
+
+	t.Run("does_not_depend_on_order", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type org
+			relations
+				define member: [user]
+		type group
+			relations
+				define parent: [org]
+				define member: [user]
+				define org_member: member from parent
+		type team
+			relations
+				define parent: [group]
+				define ttu_weight2: [group#member] or member from parent
+				define ttu_weight3: [group#member] or org_member from parent
+				define ttus_weight_3_first: ttu_weight3 or ttu_weight2
+				define userset: [user, group#member]
+		`
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		wg := typeSystem.authzWeightedGraph
+		srcNode, ok := wg.GetNodeByID("team#ttus_weight_3_first")
+		require.True(t, ok)
+
+		edges, ok := wg.GetEdgesFromNode(srcNode)
+		require.True(t, ok)
+		require.Len(t, edges, 1) // should be only 1 edge to a Union node
+
+		unionNode := edges[0].GetTo()
+		edges, ok = wg.GetEdgesFromNode(unionNode)
+		require.True(t, ok)
+		require.Len(t, edges, 2)
+
+		firstEdgeWeight, _ := edges[0].GetWeight("user")
+		require.Equal(t, 3, firstEdgeWeight)
+
+		secondEdgeWeight, _ := edges[1].GetWeight("user")
+		require.Equal(t, 2, secondEdgeWeight)
+
+		result := cheapestEdgeTo(edges, "user")
+		resultWeight, _ := result.GetWeight("user")
+		require.Equal(t, 2, resultWeight)
 	})
 
 	t.Run("returns_nil_if_type_cant_be_reached", func(t *testing.T) {
