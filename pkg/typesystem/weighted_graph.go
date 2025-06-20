@@ -25,35 +25,6 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 	return ok
 }
 
-// helper function to return 1) all edges from weighted graph for uniqueLabel for sourceType.  2) node for the uniqueLabel.
-func (t *TypeSystem) getNodeAndEdgesFromWeightedGraph(
-	uniqueLabel string,
-	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelNode, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, nil, errNilWeightedGraph
-	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(uniqueLabel)
-	if !ok {
-		return nil, nil, fmt.Errorf("could not find node with label: %s", uniqueLabel)
-	}
-
-	// This means we cannot reach the source type requested, so there are no relevant edges.
-	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil, nil
-	}
-
-	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok {
-		// This should never happen because it would have been filtered because there is no path.
-		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
-	}
-	return edges, currentNode, nil
-}
-
 type IntersectionEdges struct {
 	LowestEdge *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
 	Siblings   []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
@@ -70,13 +41,14 @@ type IntersectionEdges struct {
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
 // If any of the children are not connected, it will return empty IntersectionEdges.
-func (t *TypeSystem) GetEdgesForIntersection(intersectionUniqueLabel string, sourceType string) (IntersectionEdges, error) {
-	edges, _, err := t.getNodeAndEdgesFromWeightedGraph(intersectionUniqueLabel, sourceType)
-	if err != nil {
-		return IntersectionEdges{}, err
+func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAuthorizationModelNode, sourceType string) (IntersectionEdges, error) {
+	if t.authzWeightedGraph == nil {
+		return IntersectionEdges{}, errNilWeightedGraph
 	}
-	if len(edges) == 0 {
-		return IntersectionEdges{}, fmt.Errorf("no outgoing edges from intersection %s source type %s", intersectionUniqueLabel, sourceType)
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+	if !ok || len(edges) < 2 {
+		// Intersection by definition must have at least 2 children
+		return IntersectionEdges{}, fmt.Errorf("invalid from intersection %s source type %s", intersectionNode.GetUniqueLabel(), sourceType)
 	}
 
 	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
@@ -144,15 +116,15 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionUniqueLabel string, sou
 // GetEdgesForExclusion returns the base edges (i.e., edge A in "A but not B") and
 // excluded edge (edge B in "A but not B") based on weighted graph for exclusion.
 func (t *TypeSystem) GetEdgesForExclusion(
-	exclusionUniqueLabel string,
+	exclusionNode *graph.WeightedAuthorizationModelNode,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
-	edges, _, err := t.getNodeAndEdgesFromWeightedGraph(exclusionUniqueLabel, sourceType)
-	if err != nil {
-		return nil, nil, err
+	if t.authzWeightedGraph == nil {
+		return nil, nil, errNilWeightedGraph
 	}
-	if len(edges) < 2 {
-		return nil, nil, fmt.Errorf("invalid edges from exclusion %s source type %s", exclusionUniqueLabel, sourceType)
+	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(exclusionNode)
+	if !ok || len(edges) < 2 {
+		return nil, nil, fmt.Errorf("invalid edges from exclusion %s source type %s", exclusionNode.GetUniqueLabel(), sourceType)
 	}
 
 	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
