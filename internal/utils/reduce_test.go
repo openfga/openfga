@@ -64,7 +64,7 @@ type animal struct {
 
 // TestReduceStructs tests the Reduce function with custom structs.
 func TestReduceStructs(t *testing.T) {
-	people := []animal{
+	animals := []animal{
 		{"Alice", 30},
 		{"Bob", 25},
 		{"Charlie", 35},
@@ -79,14 +79,14 @@ func TestReduceStructs(t *testing.T) {
 	}{
 		{
 			name:        "Sum of ages",
-			input:       people,
+			input:       animals,
 			initializer: 0,
 			reducer:     func(acc int, p animal) int { return acc + p.Age },
 			expected:    90, // 30 + 25 + 35
 		},
 		{
-			name:        "Count people older than 25",
-			input:       people,
+			name:        "Count animals older than 25",
+			input:       animals,
 			initializer: 0,
 			reducer: func(acc int, p animal) int {
 				if p.Age > 25 {
