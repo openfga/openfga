@@ -59,6 +59,10 @@ const (
 	DefaultShadowListObjectsCheckSamplePercentage = 10
 	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
 
+	DefaultShadowListObjectsQueryEnabled          = false
+	DefaultShadowListObjectsQuerySamplePercentage = 10
+	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
+
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
 	DefaultInterruptCheckFrequency    = 100

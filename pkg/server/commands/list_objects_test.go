@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 
@@ -48,6 +50,30 @@ func TestNewListObjectsQuery(t *testing.T) {
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
+}
+
+func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+		WithShadowListObjectsQueryEnabled(true),
+		WithShadowListObjectsQuerySamplePercentage(15),
+		WithShadowListObjectsQueryTimeout(13*time.Second),
+		WithShadowListObjectsQueryLogger(logger.NewNoopLogger()),
+	))
+	require.NoError(t, err)
+	require.NotNil(t, q)
+	sq, isShadowed := q.(*shadowedListObjectsQuery)
+	require.True(t, isShadowed)
+	assert.True(t, sq.checkShadowModeSampleRate())
+}
+
+func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+		WithShadowListObjectsQueryEnabled(false),
+	))
+	require.NoError(t, err)
+	require.NotNil(t, q)
+	_, isStandard := q.(*listObjectsQuery)
+	require.True(t, isStandard)
 }
 
 func TestListObjectsDispatchCount(t *testing.T) {

@@ -192,6 +192,10 @@ type Server struct {
 	shadowListObjectsCheckResolverSamplePercentage int
 	shadowListObjectsCheckResolverTimeout          time.Duration
 
+	shadowListObjectsQueryEnabled          bool
+	shadowListObjectsQuerySamplePercentage int
+	shadowListObjectsQueryTimeout          time.Duration
+
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
 
@@ -810,6 +814,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
 		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
 		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
+
+		shadowListObjectsQueryEnabled:          serverconfig.DefaultShadowListObjectsQueryEnabled,
+		shadowListObjectsQuerySamplePercentage: serverconfig.DefaultShadowListObjectsQuerySamplePercentage,
+		shadowListObjectsQueryTimeout:          serverconfig.DefaultShadowListObjectsQueryTimeout,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},

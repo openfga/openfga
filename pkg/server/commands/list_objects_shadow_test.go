@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"errors"
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/pkg/storage"
 	"testing"
 	"time"
 
@@ -11,6 +13,39 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Mock implementations
+type mockTupleReader struct {
+	storage.RelationshipTupleReader
+}
+type mockCheckResolver struct{ graph.CheckResolver }
+
+func TestNewShadowedListObjectsQuery(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		noopLogger := logger.NewNoopLogger()
+		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
+			WithShadowListObjectsQuerySamplePercentage(13),
+		), WithListObjectsOptimizationEnabled(true))
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		query := result.(*shadowedListObjectsQuery)
+		assert.False(t, query.standard.(*listObjectsQuery).listObjectsOptimizationEnabled)
+		assert.True(t, query.optimized.(*listObjectsQuery).listObjectsOptimizationEnabled)
+		assert.Equal(t, noopLogger, query.logger)
+	})
+
+	t.Run("ds error", func(t *testing.T) {
+		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
+		require.Error(t, err)
+		require.Nil(t, result)
+	})
+
+	t.Run("check resolver error", func(t *testing.T) {
+		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
+		require.Error(t, err)
+		require.Nil(t, result)
+	})
+}
 
 type mockListObjectsQuery struct {
 	executeFunc         func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error)
@@ -73,6 +108,10 @@ func TestShadowedListObjectsQuery_Execute(t *testing.T) {
 					},
 				},
 				logger: logger.NewNoopLogger(),
+				config: NewShadowListObjectsQueryConfig(
+					WithShadowListObjectsQueryEnabled(true),
+					WithShadowListObjectsQuerySamplePercentage(100),
+				),
 			}
 			result, err := q.Execute(ctx, req)
 			if tt.expectErr {
@@ -134,6 +173,10 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 					},
 				},
 				logger: logger.NewNoopLogger(),
+				config: NewShadowListObjectsQueryConfig(
+					WithShadowListObjectsQueryEnabled(true),
+					WithShadowListObjectsQuerySamplePercentage(100),
+				),
 			}
 			result, err := q.ExecuteStreamed(ctx, req, nil)
 			if tt.expectErr {
@@ -147,13 +190,13 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_isShadowModeEnabled(t *testing.T) {
-	q := &shadowedListObjectsQuery{}
-	ctx := context.WithValue(context.Background(), "list-objects-optimization", true)
-	assert.True(t, q.isShadowModeEnabled(ctx))
-	ctx = context.WithValue(context.Background(), "list-objects-optimization", false)
-	assert.False(t, q.isShadowModeEnabled(ctx))
-	ctx = context.Background()
-	assert.False(t, q.isShadowModeEnabled(ctx))
+	q, _ := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(100)))
+	sq := q.(*shadowedListObjectsQuery)
+	assert.True(t, sq.checkShadowModeSampleRate())
+
+	q, _ = newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(0)))
+	sq = q.(*shadowedListObjectsQuery)
+	assert.False(t, sq.checkShadowModeSampleRate())
 }
 
 func TestRunInParallel(t *testing.T) {

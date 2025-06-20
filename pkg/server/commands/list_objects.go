@@ -69,6 +69,8 @@ type listObjectsQuery struct {
 	checkResolver            graph.CheckResolver
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
+
+	listObjectsOptimizationEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsQuery
 }
 
 type ListObjectsQuery interface {
@@ -167,7 +169,21 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
+func WithListObjectsOptimizationEnabled(enabled bool) ListObjectsQueryOption {
+	return func(d *listObjectsQuery) {
+		d.listObjectsOptimizationEnabled = enabled
+	}
+}
+
 func NewListObjectsQuery(
+	ds storage.RelationshipTupleReader,
+	checkResolver graph.CheckResolver,
+	opts ...ListObjectsQueryOption,
+) (ListObjectsQuery, error) {
+	return newListObjectsQuery(ds, checkResolver, opts...)
+}
+
+func newListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	opts ...ListObjectsQueryOption,

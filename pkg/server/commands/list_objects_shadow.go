@@ -18,27 +18,99 @@ type shadowedListObjectsQuery struct {
 	standard  ListObjectsQuery
 	optimized ListObjectsQuery
 	logger    logger.Logger
+	config    *ShadowListObjectsQueryConfig
 }
 
-func NewShadowedListObjectsQuery(
+type ShadowListObjectsQueryOption func(d *ShadowListObjectsQueryConfig)
+
+func WithShadowListObjectsQueryEnabled(enabled bool) ShadowListObjectsQueryOption {
+	return func(c *ShadowListObjectsQueryConfig) {
+		c.enabled = enabled
+	}
+}
+
+func WithShadowListObjectsQuerySamplePercentage(samplePercentage int) ShadowListObjectsQueryOption {
+	return func(c *ShadowListObjectsQueryConfig) {
+		c.percentage = samplePercentage
+	}
+}
+
+func WithShadowListObjectsQueryTimeout(timeout time.Duration) ShadowListObjectsQueryOption {
+	return func(c *ShadowListObjectsQueryConfig) {
+		c.timeout = timeout
+	}
+}
+
+func WithShadowListObjectsQueryLogger(logger logger.Logger) ShadowListObjectsQueryOption {
+	return func(c *ShadowListObjectsQueryConfig) {
+		c.logger = logger
+	}
+}
+
+type ShadowListObjectsQueryConfig struct {
+	enabled    bool          // A boolean flag to globally enable or disable the shadow mode for list_objects queries. When false, the shadow query will not be executed.
+	percentage int           // An integer representing the percentage of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
+	timeout    time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this timeout, it will be cancelled, and its result will be ignored, but the timeout event will be logged.
+	logger     logger.Logger
+}
+
+func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *ShadowListObjectsQueryConfig {
+	result := &ShadowListObjectsQueryConfig{
+		enabled: false,
+		logger:  logger.NewNoopLogger(),
+	}
+	for _, opt := range opts {
+		opt(result)
+	}
+	return result
+}
+
+func NewListObjectsQueryWithShadowConfig(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsQuery, error) {
-	standard, err := NewListObjectsQuery(ds, checkResolver, opts...)
+	if shadowConfig != nil && shadowConfig.enabled {
+		return newShadowedListObjectsQuery(ds, checkResolver, shadowConfig, opts...)
+	}
+
+	return newListObjectsQuery(ds, checkResolver, opts...)
+}
+
+func newShadowedListObjectsQuery(
+	ds storage.RelationshipTupleReader,
+	checkResolver graph.CheckResolver,
+	shadowConfig *ShadowListObjectsQueryConfig,
+	opts ...ListObjectsQueryOption,
+) (ListObjectsQuery, error) {
+	standard, err := newListObjectsQuery(ds, checkResolver,
+		// force disable optimizations
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationEnabled(false)})...,
+	)
 	if err != nil {
 		return nil, err
 	}
-	optimizedOpts := slices.Concat(opts) // TODO : , WithListObjectsOptimizationEnabled(true))
-	optimized, err := NewListObjectsQuery(ds, checkResolver, optimizedOpts...)
+	optimized, err := newListObjectsQuery(ds, checkResolver,
+		// enable optimizations
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationEnabled(true)})...,
+	)
 	if err != nil {
 		return nil, err
 	}
-	return &shadowedListObjectsQuery{
+
+	if shadowConfig == nil {
+		shadowConfig = NewShadowListObjectsQueryConfig()
+	}
+
+	result := &shadowedListObjectsQuery{
 		standard:  standard,
 		optimized: optimized,
-		logger:    standard.(*listObjectsQuery).logger,
-	}, nil
+		logger:    standard.(*listObjectsQuery).logger, // borrow the logger from standard
+		config:    shadowConfig,
+	}
+
+	return result, nil
 }
 
 func (q *shadowedListObjectsQuery) Execute(
@@ -46,13 +118,21 @@ func (q *shadowedListObjectsQuery) Execute(
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
 
-	if !q.isShadowModeEnabled(ctx) {
+	if !q.checkShadowModeSampleRate() {
 		return q.standard.Execute(ctx, req)
 	}
 
+	shadowCtx, shadowCancel := context.WithTimeout(ctx, q.config.timeout)
+	defer shadowCancel()
+
 	latency, latencyOptimized, result, resultOptimized, err, errOptimized := runInParallel(
-		func() (*ListObjectsResponse, error) { return q.standard.Execute(ctx, req) },
-		func() (*ListObjectsResponse, error) { return q.optimized.Execute(ctx, req) },
+		func() (*ListObjectsResponse, error) {
+			defer shadowCancel() // cancel shadow ctx once standard is done
+			return q.standard.Execute(ctx, req)
+		},
+		func() (*ListObjectsResponse, error) {
+			return q.optimized.Execute(shadowCtx, req)
+		},
 	)
 
 	if err != nil {
@@ -76,13 +156,21 @@ func (q *shadowedListObjectsQuery) Execute(
 
 func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 
-	if !q.isShadowModeEnabled(ctx) {
+	if !q.checkShadowModeSampleRate() {
 		return q.standard.ExecuteStreamed(ctx, req, srv)
 	}
 
+	shadowCtx, shadowCancel := context.WithTimeout(ctx, q.config.timeout)
+	defer shadowCancel()
+
 	latency, latencyOptimized, result, resultOptimized, err, errOptimized := runInParallel(
-		func() (*ListObjectsResolutionMetadata, error) { return q.standard.ExecuteStreamed(ctx, req, srv) },
-		func() (*ListObjectsResolutionMetadata, error) { return q.optimized.ExecuteStreamed(ctx, req, srv) },
+		func() (*ListObjectsResolutionMetadata, error) {
+			defer shadowCancel() // cancel shadow ctx once standard is done
+			return q.standard.ExecuteStreamed(ctx, req, srv)
+		},
+		func() (*ListObjectsResolutionMetadata, error) {
+			return q.optimized.ExecuteStreamed(shadowCtx, req, srv)
+		},
 	)
 
 	if err != nil {
@@ -104,9 +192,9 @@ func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *ope
 	return result, nil
 }
 
-func (q *shadowedListObjectsQuery) isShadowModeEnabled(ctx context.Context) bool {
-	enabled, ok := ctx.Value("list-objects-optimization").(bool)
-	return ok && enabled
+func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
+	percentage := q.config.percentage
+	return int(time.Now().UnixNano()%100) < percentage // randomly enable shadow mode
 }
 
 // helper to run two functions in parallel and collect their results and latencies
