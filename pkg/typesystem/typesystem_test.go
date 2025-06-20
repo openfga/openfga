@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -7254,7 +7255,7 @@ func TestCheapestEdgeTo(t *testing.T) {
 		// This node has two edges, one with weight 1 and one with weight 2
 		result := cheapestEdgeTo(allEdges["team#userset"], "user")
 		weight, _ := result.GetWeight("user")
-		require.Equal(t, weight, 1)
+		require.Equal(t, 1, weight)
 
 		ttuNode, ok := wg.GetNodeByID("team#ttu_weight3")
 		require.True(t, ok)
@@ -7271,7 +7272,7 @@ func TestCheapestEdgeTo(t *testing.T) {
 		// There is a weight 2 and a weight 3 from here
 		result = cheapestEdgeTo(edges, "user")
 		weight, _ = result.GetWeight("user")
-		require.Equal(t, weight, 2)
+		require.Equal(t, 2, weight)
 	})
 
 	t.Run("does_not_depend_on_order", func(t *testing.T) {
