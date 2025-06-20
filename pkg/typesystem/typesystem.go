@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -1696,6 +1698,124 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	}
 
 	return false, nil
+}
+
+// GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
+// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
+// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
+// return all relevant edges from an OR.
+// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
+//
+// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
+// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
+// it will return the first edge encountered.
+//
+// For BUT NOT relations, GetEdgesForListObjects first checks if the BUT NOT applies to the source type, and if it
+// does it will mark this result as "requires check".
+// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
+// we do not mark as "requires check".
+// After determining whether this result will require check, GetEdgesForListObjects will prune off the last edge of the
+// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
+//
+// GetEdgesForListObjects returns a list of edges, boolean indicating whether Check is needed, and an error.
+func (t *TypeSystem) GetEdgesForListObjects(
+	targetTypeRelation string,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, false, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
+		return nil, false, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok || len(edges) == 0 {
+		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
+
+	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
+	// to remove Check from that workflow entirely, but until that's complete we need this information.
+	var needsCheck bool
+
+	if currentNode.GetNodeType() == graph.OperatorNode {
+		switch currentNode.GetLabel() {
+		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
+			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
+
+			// if the 'b' in BUT NOT b can reach the source type we're seeking
+			// we need to run check at the end
+			if hasPathTo(butNotEdge, sourceType) {
+				needsCheck = true
+			}
+
+			// prune off the "BUT NOT b" portion of these edges and keep going
+			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
+			edges = edges[:len(edges)-1]
+		case graph.IntersectionOperator:
+			// For AND relations, mark as "needs check" and just pick the lowest weight edge
+			needsCheck = true
+
+			lowestWeightEdge := cheapestEdgeTo(edges, sourceType)
+
+			// return only the lowest weight edge
+			edges = []*graph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+		}
+	}
+
+	// Filter to only return edges which have a path to the sourceType
+	relevantEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+		return hasPathTo(edge, sourceType)
+	}))
+
+	return relevantEdges, needsCheck, nil
+}
+
+type weightedGraphItem interface {
+	GetWeight(destinationType string) (int, bool)
+}
+
+// hasPathTo returns a boolean indicating if a path exists from a node or edge to a terminal type. E.g
+// can we reach "user" from "document".
+func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
+	_, ok := nodeOrEdge.GetWeight(destinationType)
+	return ok
+}
+
+func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
+	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
+		if lowest == nil {
+			_, ok := current.GetWeight(dst)
+			if ok {
+				return current
+			}
+			return nil
+		}
+
+		a, ok := lowest.GetWeight(dst)
+		if !ok {
+			return current
+		}
+
+		b, ok := current.GetWeight(dst)
+		if !ok {
+			return lowest
+		}
+
+		if b < a {
+			return current
+		}
+		return lowest
+	})
 }
 
 func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {
