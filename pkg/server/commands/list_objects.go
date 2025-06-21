@@ -263,7 +263,7 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %w", err))
 	}
 
 	handler := func() {
