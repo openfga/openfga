@@ -122,6 +122,9 @@ type ReverseExpandQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
+
+	// localCheckResolver allows reverse expand to call check locally
+	localCheckResolver *graph.LocalChecker
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -144,6 +147,15 @@ func WithResolveNodeBreadthLimit(limit uint32) ReverseExpandQueryOption {
 	}
 }
 
+func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		localCheckResolver, found := graph.LocalCheckResolver(resolver)
+		if found {
+			d.localCheckResolver = localCheckResolver
+		}
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
@@ -160,6 +172,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		localCheckResolver:  graph.NewLocalChecker(),
 	}
 
 	for _, opt := range opts {

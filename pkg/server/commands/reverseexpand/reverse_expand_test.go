@@ -14,6 +14,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
@@ -24,6 +25,41 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+func TestNewReverseExpandQuery(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+
+		type user
+		type document
+			relations
+				define viewer: [user]`)
+
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
+	t.Run("local_check_resolver_not_initialized", func(t *testing.T) {
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+		require.NotNil(t, reverseExpandQuery.localCheckResolver)
+		testLocalChecker := graph.NewLocalChecker()
+		require.Equal(t, testLocalChecker, reverseExpandQuery.localCheckResolver)
+	})
+	t.Run("local_check_resolver_initialized", func(t *testing.T) {
+		builder := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+			graph.WithDispatchThrottlingCheckResolverOpts(true),
+			graph.WithLocalCheckerOpts(graph.WithOptimizations(true)),
+		}...)
+		checkResolver, _, err := builder.Build()
+		require.NoError(t, err)
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithCheckResolver(checkResolver))
+		require.NotNil(t, reverseExpandQuery.localCheckResolver)
+		testLocalChecker := graph.NewLocalChecker()
+		require.NotEqual(t, testLocalChecker, reverseExpandQuery.localCheckResolver)
+	})
+}
 
 func TestReverseExpandResultChannelClosed(t *testing.T) {
 	defer goleak.VerifyNone(t)
