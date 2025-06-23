@@ -335,10 +335,12 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	// e.g. 'group:eng#member'
+	var isUserset bool
 	if userset, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceUserType = tuple.GetType(userset.ObjectRelation.GetObject())
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
+		isUserset = true
 
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
@@ -358,7 +360,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.listObjectOptimizationsEnabled {
+	if c.listObjectOptimizationsEnabled && !isUserset {
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
