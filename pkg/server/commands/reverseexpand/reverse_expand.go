@@ -43,7 +43,8 @@ type ReverseExpandRequest struct {
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
 
-	edge *graph.RelationshipEdge
+	edge              *graph.RelationshipEdge
+	skipWeightedGraph bool
 
 	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
 	weightedEdgeTypeRel string
@@ -62,6 +63,7 @@ func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 		edge:                r.edge,
 		weightedEdge:        r.weightedEdge,
 		weightedEdgeTypeRel: r.weightedEdgeTypeRel,
+		skipWeightedGraph:   r.skipWeightedGraph,
 		stack:               r.stack.Copy(),
 	}
 }
@@ -335,12 +337,14 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	// e.g. 'group:eng#member'
-	var isUserset bool
 	if userset, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceUserType = tuple.GetType(userset.ObjectRelation.GetObject())
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
-		isUserset = true
+
+		// Queries that come in explicilty looking for userset relations will skip weighted graph for now.
+		// e.g. ListObjects(document, viewer, team:fga#member)
+		req.skipWeightedGraph = true
 
 		if req.edge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
@@ -360,7 +364,24 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.listObjectOptimizationsEnabled && !isUserset {
+	// This if condition can only occur on the initial entry to execute.
+	// After that first call, one of these will be changed from its default value.
+	if !req.skipWeightedGraph && req.weightedEdgeTypeRel == "" {
+		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+		node, ok := c.typesystem.GetNode(typeRel)
+		if !ok { // This could happen if the weighted graph failed to build
+			c.logger.Error("unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
+			req.skipWeightedGraph = true
+		} else {
+			weight, _ := node.GetWeight(sourceUserType)
+			if weight == weightedGraph.Infinite {
+				c.logger.Info("reverse_expand graph may contain cycle, skipping weighted graph", zap.String("storeID", req.StoreID))
+				req.skipWeightedGraph = true
+			}
+		}
+	}
+
+	if c.listObjectOptimizationsEnabled && !req.skipWeightedGraph {
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
@@ -375,6 +396,7 @@ func (c *ReverseExpandQuery) execute(
 			sourceUserType,
 		)
 
+		// TODO: this check might be unnecessary with the new check on 357
 		if err == nil {
 			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
 			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
@@ -669,6 +691,7 @@ LoopOnIterator:
 }
 
 func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
+	//fmt.Printf("Sending Candidate:  %s\n", candidateObject)
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -682,6 +705,7 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 			resultStatus = RequiresFurtherEvalStatus
 		}
 
+		// fmt.Printf("SENDING CANDIDATE: %s, requiresCheck? 1==No %v\n", candidateObject, resultStatus)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
