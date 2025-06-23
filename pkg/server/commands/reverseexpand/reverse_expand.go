@@ -391,7 +391,7 @@ func (c *ReverseExpandQuery) execute(
 			req.stack.Push(typeRelEntry{typeRel: targetTypeRel})
 		}
 
-		edges, needsCheck, err := c.typesystem.GetEdgesFromWeightedGraph(
+		edges, needsCheck, err := c.typesystem.GetEdgesForListObjects(
 			targetTypeRel,
 			sourceUserType,
 		)
