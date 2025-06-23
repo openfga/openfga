@@ -158,6 +158,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	return time.Time{}
 }
 
+// findChangesDescending is a wrapper on ReadChanges. If there are 0 changes to be returned, ReadChanges will actually return an error.
 func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, storeID string) ([]*openfgav1.TupleChange, string, error) {
 	opts := storage.ReadChangesOptions{
 		SortDesc: true,
@@ -172,7 +173,6 @@ func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeI
 	span := trace.SpanFromContext(ctx)
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if present {
-
 		span.SetAttributes(attribute.Bool("cache_controller_invalidation", false))
 		// If invalidation is already in process, abort.
 		return

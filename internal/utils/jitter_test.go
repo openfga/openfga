@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestJitterDuration(t *testing.T) {
