@@ -28,10 +28,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.True(t, comparator.DirectEdgesAreLeastWeight)
 		require.Nil(t, comparator.LowestEdge)
@@ -66,10 +68,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.True(t, comparator.DirectEdgesAreLeastWeight)
 		require.Nil(t, comparator.LowestEdge)
@@ -110,10 +114,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
@@ -154,10 +160,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
@@ -206,10 +214,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
@@ -252,10 +262,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.Equal(t, IntersectionEdges{}, comparator)
 	})
@@ -288,10 +300,12 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.False(t, comparator.DirectEdgesAreLeastWeight)
 		require.NotNil(t, comparator.LowestEdge)
@@ -331,30 +345,16 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
 		require.NoError(t, err)
 		require.Len(t, edges, 1)
-		rootExclusionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootExclusionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		comparator, err := typeSystem.GetEdgesForIntersection(rootExclusionNode, "user")
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.NoError(t, err)
 		require.Equal(t, IntersectionEdges{}, comparator)
 	})
-	t.Run("error_nil_auth_model", func(t *testing.T) {
-		model := `
-		model
-			schema 1.1
-		type user
-		type user2
-		type group
-			relations
-				define banned: [user]
-				define not_relation: [user, user2] and banned
-		`
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-		typeSystem.authzWeightedGraph = nil
-		_, err = typeSystem.GetEdgesForIntersection(nil, "user")
-		require.Error(t, err)
-	})
+
 	t.Run("error_non_intersection_node", func(t *testing.T) {
 		model := `
 		model
@@ -372,7 +372,9 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		currentNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#other")
 		require.True(t, ok)
 
-		_, err = typeSystem.GetEdgesForIntersection(currentNode, "user")
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(currentNode)
+		require.True(t, ok)
+		_, err = GetEdgesForIntersection(actualIntersectionEdges, "user")
 		require.Error(t, err)
 	})
 }
@@ -399,7 +401,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 1)
 		require.Equal(t, "user", baseEdges[0].GetTo().GetUniqueLabel())
@@ -435,7 +439,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 3)
 		require.Equal(t, "user", baseEdges[0].GetTo().GetUniqueLabel())
@@ -474,7 +480,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 1)
 		require.Equal(t, "group#member", baseEdges[0].GetTo().GetUniqueLabel())
@@ -509,7 +517,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 1)
 		require.Equal(t, "group#member", baseEdges[0].GetTo().GetUniqueLabel())
@@ -544,7 +554,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 1)
 		require.Equal(t, "group#member", baseEdges[0].GetTo().GetUniqueLabel())
@@ -576,7 +588,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		rootExclusionNode := edges[0].GetTo()
 		require.Equal(t, graph.ExclusionOperator, rootExclusionNode.GetLabel())
 		require.Equal(t, graph.OperatorNode, rootExclusionNode.GetNodeType())
-		baseEdges, exclusionEdge, err := typeSystem.GetEdgesForExclusion(rootExclusionNode, "user")
+		actualExclusionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootExclusionNode)
+		require.True(t, ok)
+		baseEdges, exclusionEdge, err := GetEdgesForExclusion(actualExclusionEdges, "user")
 		require.NoError(t, err)
 		require.Len(t, baseEdges, 1)
 		require.Equal(t, "group#member", baseEdges[0].GetTo().GetUniqueLabel())
@@ -586,29 +600,6 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		bannedNode := exclusionEdge.GetTo()
 		require.Equal(t, graph.OperatorNode, bannedNode.GetNodeType())
 		require.Equal(t, graph.UnionOperator, bannedNode.GetLabel())
-	})
-	t.Run("error_nil_auth_model", func(t *testing.T) {
-		model := `
-		model
-			schema 1.1
-		type user
-		type user2
-		type team
-			relations
-				define member: [user]
-		type group
-			relations
-				define banned_user: [user]
-				define banned_team: [team]
-				define member: [user]
-				define not_relation: member but not (banned_user or member from banned_team)
-		`
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-		typeSystem.authzWeightedGraph = nil
-
-		_, _, err = typeSystem.GetEdgesForExclusion(nil, "user2")
-		require.Error(t, err)
 	})
 
 	t.Run("error_non_intersection_node", func(t *testing.T) {
@@ -627,7 +618,9 @@ func TestGetEdgesForExclusion(t *testing.T) {
 
 		currentNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#banned")
 		require.True(t, ok)
-		_, _, err = typeSystem.GetEdgesForExclusion(currentNode, "user")
+		dut, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(currentNode)
+		require.True(t, ok)
+		_, _, err = GetEdgesForExclusion(dut, "user")
 		require.Error(t, err)
 	})
 }

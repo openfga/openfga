@@ -1,17 +1,12 @@
 package typesystem
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/utils"
-)
-
-var (
-	errNilWeightedGraph = errors.New("weighted graph is nil")
 )
 
 type weightedGraphItem interface {
@@ -41,14 +36,10 @@ type IntersectionEdges struct {
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
 // If any of the children are not connected, it will return empty IntersectionEdges.
-func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAuthorizationModelNode, sourceType string) (IntersectionEdges, error) {
-	if t.authzWeightedGraph == nil {
-		return IntersectionEdges{}, errNilWeightedGraph
-	}
-	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
-	if !ok || len(edges) < 2 {
+func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sourceType string) (IntersectionEdges, error) {
+	if len(edges) < 2 {
 		// Intersection by definition must have at least 2 children
-		return IntersectionEdges{}, fmt.Errorf("invalid from intersection %s source type %s", intersectionNode.GetUniqueLabel(), sourceType)
+		return IntersectionEdges{}, fmt.Errorf("invalid edges for source type %s", sourceType)
 	}
 
 	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
@@ -127,16 +118,12 @@ func (t *TypeSystem) GetEdgesForIntersection(intersectionNode *graph.WeightedAut
 
 // GetEdgesForExclusion returns the base edges (i.e., edge A in "A but not B") and
 // excluded edge (edge B in "A but not B") based on weighted graph for exclusion.
-func (t *TypeSystem) GetEdgesForExclusion(
-	exclusionNode *graph.WeightedAuthorizationModelNode,
+func GetEdgesForExclusion(
+	edges []*graph.WeightedAuthorizationModelEdge,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, nil, errNilWeightedGraph
-	}
-	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(exclusionNode)
-	if !ok || len(edges) < 2 {
-		return nil, nil, fmt.Errorf("invalid edges from exclusion %s source type %s", exclusionNode.GetUniqueLabel(), sourceType)
+	if len(edges) < 2 {
+		return nil, nil, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
 	}
 
 	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
