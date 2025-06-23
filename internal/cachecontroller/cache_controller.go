@@ -16,6 +16,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -45,9 +47,9 @@ var (
 
 	findChangesAndInvalidateHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace:                       build.ProjectName,
-		Name:                            "cachecontroller_find_changes_and_invalidate_histogram",
+		Name:                            "cachecontroller_invalidation_duration_ms",
 		Help:                            "The duration (in ms) required for cache controller to find changes and invalidate labeled by whether invalidation is required and buckets of changes size.",
-		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		Buckets:                         []float64{5, 10, 25, 50, 100, 200, 500, 1000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
@@ -57,12 +59,12 @@ var (
 type CacheController interface {
 	// DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
 	// Else it returns Zero time and triggers InvalidateIfNeeded().
-	DetermineInvalidationTime(ctx context.Context, storeID string) time.Time
+	DetermineInvalidationTime(context.Context, string) time.Time
 
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress for a store,
 	// and if not it will spawn a goroutine to invalidate cached records conditionally
 	// based on timestamp. It may invalidate all cache records, some, or none.
-	InvalidateIfNeeded(storeID string, parentSpan trace.Span)
+	InvalidateIfNeeded(context.Context, string)
 }
 
 type NoopCacheController struct{}
@@ -71,7 +73,7 @@ func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ str
 	return time.Time{}
 }
 
-func (c *NoopCacheController) InvalidateIfNeeded(_ string, _ trace.Span) {
+func (c *NoopCacheController) InvalidateIfNeeded(_ context.Context, _ string) {
 }
 
 func NewNoopCacheController() CacheController {
@@ -102,6 +104,9 @@ type InMemoryCacheController struct {
 	iteratorCacheTTL      time.Duration
 	inflightInvalidations sync.Map
 	logger                logger.Logger
+
+	// for testing purposes
+	wg sync.WaitGroup
 }
 
 func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache[any], ttl time.Duration, iteratorCacheTTL time.Duration, opts ...InMemoryCacheControllerOpt) CacheController {
@@ -127,7 +132,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
 ) time.Time {
-	_, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
+	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
 	defer span.End()
 	cacheTotalCounter.Inc()
 
@@ -138,13 +143,17 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		zap.Bool("hit", cacheResp != nil),
 	)
 	if cacheResp != nil {
-		entry := cacheResp.(*storage.ChangelogCacheEntry)
-		cacheHitCounter.Inc()
-		span.SetAttributes(attribute.Bool("cached", true))
-		return entry.LastModified
+		if entry, ok := cacheResp.(*storage.ChangelogCacheEntry); ok {
+			// the TTL grace period hasn't been breached
+			if entry.LastModified.Add(c.ttl).Before(time.Now()) {
+				cacheHitCounter.Inc()
+				span.SetAttributes(attribute.Bool("cached", true))
+				return entry.LastModified
+			}
+		}
 	}
 
-	c.InvalidateIfNeeded(storeID, span)
+	c.InvalidateIfNeeded(ctx, storeID)
 
 	return time.Time{}
 }
@@ -159,59 +168,47 @@ func (c *InMemoryCacheController) findChangesDescending(ctx context.Context, sto
 	return c.ds.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, opts)
 }
 
-func (c *InMemoryCacheController) InvalidateIfNeeded(storeID string, span trace.Span) {
+func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeID string) {
+	span := trace.SpanFromContext(ctx)
 	_, present := c.inflightInvalidations.LoadOrStore(storeID, struct{}{})
 	if present {
+
+		span.SetAttributes(attribute.Bool("cache_controller_invalidation", false))
 		// If invalidation is already in process, abort.
 		return
 	}
 
 	span.SetAttributes(attribute.Bool("cache_controller_invalidation", true))
 
+	c.wg.Add(1)
 	go func() {
 		// we do not want to propagate context to avoid early cancellation
 		// and pollute span.
-		c.findChangesAndInvalidateIfNecessary(context.Background(), storeID, span)
+		c.findChangesAndInvalidateIfNecessary(ctx, storeID)
 		c.inflightInvalidations.Delete(storeID)
+		c.wg.Done()
 	}()
+}
+
+type changelogResultMsg struct {
+	err     error
+	changes []*openfgav1.TupleChange
 }
 
 // findChangesAndInvalidateIfNecessary checks the most recent entry in this store's changelog against the most
 // recent cached changelog entry. If the most recent changelog entry is older than the cached changelog timestamp,
 // no invalidation is necessary and we return. If not, we locate changelog records that have been around for longer
 // than the cache's TTL and invalidate them.
-func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx context.Context, storeID string, parentSpan trace.Span) {
+func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(parentCtx context.Context, storeID string) {
 	start := time.Now()
-	ctx, span := tracer.Start(ctx, "cacheController.findChangesAndInvalidateIfNecessary")
+	ctx, span := tracer.Start(context.Background(), "cacheController.findChangesAndInvalidateIfNecessary")
 	defer span.End()
 
 	link := trace.LinkFromContext(ctx)
-	parentSpan.AddLink(link)
-
-	// TODO: this should have a deadline since it will hold up everything if it doesn't return
-	// could also be implemented as a fire and forget mechanism and subsequent requests can grab the result
-	// re-evaluate at a later time.
-	// Note that changes are sorted most-recent first
-	changes, _, err := c.findChangesDescending(ctx, storeID)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		// do not allow any cache read until next refresh
-		c.invalidateIteratorCache(storeID)
-		return
-	}
-
-	lastChangelog := changes[0]
-	entry := &storage.ChangelogCacheEntry{
-		LastModified: lastChangelog.GetTimestamp().AsTime(),
-	}
+	trace.SpanFromContext(parentCtx).AddLink(link)
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
 	lastCacheRecord := c.cache.Get(cacheKey)
-
-	// set changelog entry as soon as possible so that subsequent cache lookups can find the entry
-	c.cache.Set(cacheKey, entry, c.ttl)
-
-	invalidationType := "none"
 	lastInvalidation := time.Time{}
 
 	if lastCacheRecord != nil {
@@ -224,6 +221,41 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 			c.logger.Error("Unable to cast lastCacheRecord properly", zap.String("cacheKey", cacheKey))
 		}
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	done := make(chan changelogResultMsg, 1)
+
+	c.wg.Add(1)
+	go func() {
+		changes, _, err := c.findChangesDescending(ctx, storeID)
+		concurrency.TrySendThroughChannel(ctx, changelogResultMsg{err: err, changes: changes}, done)
+		c.wg.Done()
+	}()
+
+	var changes []*openfgav1.TupleChange
+	select {
+	case <-ctx.Done():
+		// no need to modify cacheKey as a new attempt will be done once the inflight validation is cleared
+		return
+	case msg := <-done:
+		if msg.err != nil {
+			telemetry.TraceError(span, msg.err)
+			// do not allow any cache read until next refresh
+			c.invalidateIteratorCache(storeID)
+			return
+		}
+		changes = msg.changes
+	}
+
+	lastChangelog := changes[0]
+	entry := &storage.ChangelogCacheEntry{
+		LastModified: lastChangelog.GetTimestamp().AsTime(),
+	}
+
+	defer c.cache.Set(cacheKey, entry, utils.JitterDuration(c.ttl, time.Minute)) // add buffer between checks
+
+	invalidationType := "none"
 
 	if !lastChangelog.GetTimestamp().AsTime().After(lastInvalidation) {
 		// no new changes, no need to perform invalidations
@@ -261,8 +293,6 @@ func (c *InMemoryCacheController) findChangesAndInvalidateIfNecessary(ctx contex
 	} else {
 		// only a subset of changes are new, revoke the respective ones.
 		lastModified := time.Now()
-
-		// only increment if we're going to enter the invalidation for loop below
 		if idx >= 0 {
 			invalidationType = "partial"
 		}
