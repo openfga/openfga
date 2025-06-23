@@ -14,7 +14,6 @@ import (
 	reflect "reflect"
 	time "time"
 
-	trace "go.opentelemetry.io/otel/trace"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -22,6 +21,7 @@ import (
 type MockCacheController struct {
 	ctrl     *gomock.Controller
 	recorder *MockCacheControllerMockRecorder
+	isgomock struct{}
 }
 
 // MockCacheControllerMockRecorder is the mock recorder for MockCacheController.
@@ -42,27 +42,27 @@ func (m *MockCacheController) EXPECT() *MockCacheControllerMockRecorder {
 }
 
 // DetermineInvalidationTime mocks base method.
-func (m *MockCacheController) DetermineInvalidationTime(ctx context.Context, storeID string) time.Time {
+func (m *MockCacheController) DetermineInvalidationTime(arg0 context.Context, arg1 string) time.Time {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DetermineInvalidationTime", ctx, storeID)
+	ret := m.ctrl.Call(m, "DetermineInvalidationTime", arg0, arg1)
 	ret0, _ := ret[0].(time.Time)
 	return ret0
 }
 
 // DetermineInvalidationTime indicates an expected call of DetermineInvalidationTime.
-func (mr *MockCacheControllerMockRecorder) DetermineInvalidationTime(ctx, storeID any) *gomock.Call {
+func (mr *MockCacheControllerMockRecorder) DetermineInvalidationTime(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineInvalidationTime", reflect.TypeOf((*MockCacheController)(nil).DetermineInvalidationTime), ctx, storeID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DetermineInvalidationTime", reflect.TypeOf((*MockCacheController)(nil).DetermineInvalidationTime), arg0, arg1)
 }
 
 // InvalidateIfNeeded mocks base method.
-func (m *MockCacheController) InvalidateIfNeeded(storeID string, parentSpan trace.Span) {
+func (m *MockCacheController) InvalidateIfNeeded(arg0 context.Context, arg1 string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "InvalidateIfNeeded", storeID, parentSpan)
+	m.ctrl.Call(m, "InvalidateIfNeeded", arg0, arg1)
 }
 
 // InvalidateIfNeeded indicates an expected call of InvalidateIfNeeded.
-func (mr *MockCacheControllerMockRecorder) InvalidateIfNeeded(storeID, parentSpan any) *gomock.Call {
+func (mr *MockCacheControllerMockRecorder) InvalidateIfNeeded(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateIfNeeded", reflect.TypeOf((*MockCacheController)(nil).InvalidateIfNeeded), storeID, parentSpan)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateIfNeeded", reflect.TypeOf((*MockCacheController)(nil).InvalidateIfNeeded), arg0, arg1)
 }
