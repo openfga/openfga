@@ -48,10 +48,9 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 
 	t.Run("cache_hit_after_ttl", func(t *testing.T) {
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
-
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(&storage.ChangelogCacheEntry{
-				LastModified: time.Now(),
+				LastModified: time.Now().Add(-time.Minute),
 			}),
 			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
 				{
@@ -63,7 +62,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
-			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)
@@ -71,7 +70,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
-			Return(&storage.ChangelogCacheEntry{LastModified: time.Now().Add(-time.Minute)})
+			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
@@ -92,8 +91,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 						User:     "test",
 					}},
 			}, "", nil),
-
-			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes(),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)

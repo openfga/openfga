@@ -145,7 +145,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	if cacheResp != nil {
 		if entry, ok := cacheResp.(*storage.ChangelogCacheEntry); ok {
 			// the TTL grace period hasn't been breached
-			if entry.LastModified.Add(c.ttl).Before(time.Now()) {
+			if entry.LastModified.Add(c.ttl).After(time.Now()) {
 				cacheHitCounter.Inc()
 				span.SetAttributes(attribute.Bool("cached", true))
 				return entry.LastModified
