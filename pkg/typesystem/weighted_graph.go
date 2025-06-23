@@ -57,7 +57,7 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 				// The first step is to establish the largest weight for all the direct edges as they need to be
 				// treated as a group. This weight will serve as the baseline for other siblings to compare against.
 				directEdges = append(directEdges, edge)
-				// note that the weight must be defined because of hasPathTo
+				// hasPathTo already verified the weight exists, so we can safely ignore ok
 				if weight, _ := edge.GetWeight(sourceType); weight > lowestWeight {
 					directEdgesAreLowest = true
 					lowestWeight = weight
