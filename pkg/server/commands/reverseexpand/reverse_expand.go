@@ -238,12 +238,16 @@ type ResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
+	WasWeightedGraphUsed *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		DispatchCounter: new(atomic.Uint32),
-		WasThrottled:    new(atomic.Bool),
+		DispatchCounter:      new(atomic.Uint32),
+		WasThrottled:         new(atomic.Bool),
+		WasWeightedGraphUsed: new(atomic.Bool),
 	}
 }
 
@@ -406,6 +410,8 @@ func (c *ReverseExpandQuery) execute(
 			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
 			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 			// and then fall back to the non-weighted version of reverse_expand
+
+			resolutionMetadata.WasThrottled.Store(true)
 			return c.loopOverWeightedEdges(
 				ctx,
 				edges,
@@ -418,6 +424,8 @@ func (c *ReverseExpandQuery) execute(
 
 		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
 	}
+
+	resolutionMetadata.WasThrottled.Store(false)
 
 	g := graph.New(c.typesystem)
 
