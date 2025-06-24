@@ -69,8 +69,6 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 		}
 	}
 
-	hasDirectEdges := true
-
 	if lowestWeight == 0 {
 		if edges[0].GetEdgeType() == graph.DirectEdge {
 			// this means that all the direct edges are not connected.
@@ -78,10 +76,9 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 			// the parent node already.
 			return IntersectionEdges{}, nil
 		}
-		hasDirectEdges = false
 	}
 	for edgeNum, edge := range nonDirectEdges {
-		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && !hasDirectEdges) {
+		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && len(directEdges) == 0) {
 			// in the case of the first edge, we need to initialize as the least weight
 			// for other edges to compare against it.
 			// For non-first edges, only replace if it has the lowest weight.
