@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/pkg/testutils"
@@ -621,6 +622,505 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		dut, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(currentNode)
 		require.True(t, ok)
 		_, _, err = GetEdgesForExclusion(dut, "user")
+		require.Error(t, err)
+	})
+}
+
+func TestConstructUserset(t *testing.T) {
+	t.Run("rewrite_edge", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type group
+			relations
+				define allowed: [user]
+				define member: [user] and allowed
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 2)
+		dut := intersectionEdges[1]
+		require.Equal(t, "group#allowed", dut.GetTo().GetLabel())
+		require.Equal(t, graph.SpecificTypeAndRelation, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_ComputedUserset{
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Relation: "allowed",
+				},
+			},
+		}, userset)
+	})
+	t.Run("ttu_edge", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define parent: [team]
+				define member: [user] and member from parent
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 2)
+		dut := intersectionEdges[1]
+		require.Equal(t, "team#member", dut.GetTo().GetLabel())
+		require.Equal(t, graph.SpecificTypeAndRelation, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.TTUEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_TupleToUserset{
+				TupleToUserset: &openfgav1.TupleToUserset{
+					Tupleset: &openfgav1.ObjectRelation{
+						Relation: "team",
+					},
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: "member",
+					},
+				},
+			},
+		}, userset)
+	})
+	t.Run("direct_edge", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define member: [user, team#member] and allowed
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 3)
+		dut := intersectionEdges[0]
+		require.Equal(t, "user", dut.GetTo().GetLabel())
+		require.Equal(t, graph.SpecificType, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.DirectEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, This(), userset)
+	})
+	t.Run("direct_edge_public", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define member: [user:*, team#member] and allowed
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 3)
+		dut := intersectionEdges[0]
+		require.Equal(t, "user:*", dut.GetTo().GetLabel())
+		require.Equal(t, graph.SpecificTypeWildcard, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.DirectEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, This(), userset)
+	})
+	t.Run("direct_edge_userset", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define member: [user, team#member] and allowed
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 3)
+		dut := intersectionEdges[1]
+		require.Equal(t, "team#member", dut.GetTo().GetLabel())
+		require.Equal(t, graph.SpecificTypeAndRelation, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.DirectEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_ComputedUserset{
+				ComputedUserset: &openfgav1.ObjectRelation{
+					Object:   "team",
+					Relation: "member",
+				},
+			},
+		}, userset)
+	})
+	t.Run("operator_union", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define granted: [user]
+				define member: [user] and (allowed or granted)
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 2)
+		dut := intersectionEdges[1]
+		require.Equal(t, graph.UnionOperator, dut.GetTo().GetLabel())
+		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Union{
+				Union: &openfgav1.Usersets{
+					Child: []*openfgav1.Userset{
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "allowed",
+								},
+							},
+						},
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "granted",
+								},
+							},
+						},
+					},
+				}}}, userset)
+	})
+	t.Run("operator_intersection", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define granted: [user]
+				define member: [user] and (allowed and granted)
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 2)
+		dut := intersectionEdges[1]
+		require.Equal(t, graph.IntersectionOperator, dut.GetTo().GetLabel())
+		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Intersection{
+				Intersection: &openfgav1.Usersets{
+					Child: []*openfgav1.Userset{
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "allowed",
+								},
+							},
+						},
+						{
+							Userset: &openfgav1.Userset_ComputedUserset{
+								ComputedUserset: &openfgav1.ObjectRelation{
+									Relation: "granted",
+								},
+							},
+						},
+					},
+				}}}, userset)
+	})
+	t.Run("operator_exclusion", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define banned: [user]
+				define member: [user] and (allowed but not banned)
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 2)
+		dut := intersectionEdges[1]
+		require.Equal(t, graph.ExclusionOperator, dut.GetTo().GetLabel())
+		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
+		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
+		userset, err := typeSystem.ConstructUserset(dut)
+		require.NoError(t, err)
+		require.Equal(t, &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Difference{
+				Difference: &openfgav1.Difference{
+					Base: &openfgav1.Userset{
+						Userset: &openfgav1.Userset_ComputedUserset{
+							ComputedUserset: &openfgav1.ObjectRelation{
+								Relation: "allowed",
+							},
+						},
+					},
+					Subtract: &openfgav1.Userset{
+						Userset: &openfgav1.Userset_ComputedUserset{
+							ComputedUserset: &openfgav1.ObjectRelation{
+								Relation: "banned",
+							},
+						},
+					},
+				}}}, userset)
+	})
+	// the following are error cases requiring hand-crafted weighted graph
+	t.Run("unknown_node_type", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", "dut", -1) // unknown node type
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		require.Error(t, err)
+	})
+	t.Run("unknown_edge_type_SpecificTypeAndRelation", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", "dut", graph.SpecificTypeAndRelation)
+		dut.AddEdge("root", "dut", -1, "", nil) // unknown edge type
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		require.Error(t, err)
+	})
+	t.Run("unknown_edge_type_OperatorNode", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", "bad_label", graph.OperatorNode)
+		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
+		dut.AddNode("child2", "child2", graph.SpecificTypeAndRelation)
+
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
+		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", nil)
+
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		require.Error(t, err)
+	})
+	t.Run("bad_exclusion_child", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", graph.ExclusionOperator, graph.OperatorNode)
+		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
+
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
+
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		require.Error(t, err)
+	})
+	t.Run("no_edge_intersection", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", graph.IntersectionOperator, graph.OperatorNode)
+
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		require.Error(t, err)
+	})
+	t.Run("operator_children_error", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type dont_care
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		dut := graph.NewWeightedAuthorizationModelGraph()
+		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
+		dut.AddNode("dut", graph.IntersectionOperator, graph.OperatorNode)
+		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
+		dut.AddNode("child2", "child2", -1) // bad node type
+
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
+		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", nil)
+
+		typeSystem.authzWeightedGraph = dut
+		rootNode, ok := dut.GetNodeByID("root")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		_, err = typeSystem.ConstructUserset(rootEdges[0])
 		require.Error(t, err)
 	})
 }
