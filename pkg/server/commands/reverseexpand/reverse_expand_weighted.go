@@ -25,8 +25,6 @@ type typeRelEntry struct {
 	// Only present for userset relations. Will be the userset relation string itself.
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
-
-	isRecursive bool
 }
 
 // TODO: add these where appropriate, not here
@@ -116,8 +114,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 
 		toNode := edge.GetTo()
 
-		//fmt.Printf("%s --> %s\n\tstack: %+v\n\n", edge.GetFrom().GetUniqueLabel(), toNode.GetUniqueLabel(), req.stack)
-
 		// Going to a userset presents risk of infinite loop. Using from + to ensures
 		// we don't traverse the exact same edge more than once.
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
@@ -125,28 +121,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel()
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
-
-				var objType string
-				if edge.GetTuplesetRelation() != "" {
-					// if there is a tupleset relation, we should use it when we put this in the map
-					objType, _ = tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-				} else {
-					objType, _ = tuple.SplitObjectRelation(toNode.GetUniqueLabel())
-				}
-
-				fmt.Printf("JUSTIN HIT A CYCLE\n")
-				//fmt.Printf("JUSTIN HIT A CYCLE %s, \n%+v\n", key, r.stack)
-				if cycle, alreadyExists := globalCyclesMap.Load(key); alreadyExists {
-					//fmt.Printf("THIS CYCLE ALREADY EXISTED: %s\n", cycle)
-					typeToCycleMap.Store(objType, cycle.(relationStack))
-				} else {
-					stackForStorage := r.stack.Copy()
-					stackForStorage.Pop() // TODO: explain why this is again
-					globalCyclesMap.Store(key, stackForStorage)
-					typeToCycleMap.Store(objType, stackForStorage)
-					//fmt.Printf("STORING CYCLE: for objectType: %s, %+v\n", objType, stackForStorage)
-				}
-
 				continue
 			}
 		}
@@ -163,13 +137,6 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				// so if we find team:fga for this user, we need to know to check for
 				// team:fga#member when we check org#teammate
 				r.stack[len(r.stack)-1].usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
-
-				// We also need to check if this userset is recursive
-				// e.g. `define member: [user] or team#member`
-				wt, _ := edge.GetWeight(req.User.GetObjectType())
-				if wt == weightedGraph.Infinite {
-					r.stack[len(r.stack)-1].isRecursive = true
-				}
 
 				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
@@ -221,13 +188,10 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// any documents as #parent.
 			_ = r.stack.Pop()
 
-			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			weight, _ := edge.GetWeight(req.User.GetObjectType())
-			if weight == weightedGraph.Infinite {
-				tuplesetRel.isRecursive = true
-			}
 			// Push tupleset relation (`document#parent`)
+			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
 			r.stack.Push(tuplesetRel)
+
 			// Push target type#rel (`folder#admin`)
 			r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
@@ -317,12 +281,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		// This is true on every call except the first
 		if foundObject != "" {
-			entry := r.stack.Peek()
-			// For recursive relations, don't actually pop the relation off the stack.
-			if !entry.isRecursive {
-				// If it is *not* recursive (most cases), remove the last element
-				r.stack.Pop()
-			}
+			entry := r.stack.Pop()
 			typeRel = entry.typeRel
 			filter := &openfgav1.ObjectRelation{Object: foundObject}
 			if entry.usersetRelation != "" {
@@ -436,10 +395,11 @@ func (c *ReverseExpandQuery) queryForTuples(
 	wg.Add(1)
 	go queryFunc(ctx, req, "")
 
+	var errs error
+
 	wg.Wait()
 	//fmt.Printf("JUstin ran %d jobs\n", numJobs.Load())
 	close(errChan)
-	var errs error
 	for err := range errChan {
 		errs = errors.Join(errs, err)
 	}
