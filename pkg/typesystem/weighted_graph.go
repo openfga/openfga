@@ -52,19 +52,20 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 
 	// It is assumed that direct edge always appear first.
 	for _, edge := range edges {
-		if hasPathTo(edge, sourceType) {
-			if edge.GetEdgeType() == graph.DirectEdge {
-				// The first step is to establish the largest weight for all the direct edges as they need to be
-				// treated as a group. This weight will serve as the baseline for other siblings to compare against.
-				directEdges = append(directEdges, edge)
-				// hasPathTo already verified the weight exists, so we can safely ignore ok
-				if weight, _ := edge.GetWeight(sourceType); weight > lowestWeight {
-					directEdgesAreLowest = true
-					lowestWeight = weight
-				}
-			} else {
-				nonDirectEdges = append(nonDirectEdges, edge)
+		if !hasPathTo(edge, sourceType) {
+			continue
+		}
+		if edge.GetEdgeType() == graph.DirectEdge {
+			// The first step is to establish the largest weight for all the direct edges as they need to be
+			// treated as a group. This weight will serve as the baseline for other siblings to compare against.
+			directEdges = append(directEdges, edge)
+			// hasPathTo already verified the weight exists, so we can safely ignore ok
+			if weight, _ := edge.GetWeight(sourceType); weight > lowestWeight {
+				directEdgesAreLowest = true
+				lowestWeight = weight
 			}
+		} else {
+			nonDirectEdges = append(nonDirectEdges, edge)
 		}
 	}
 
