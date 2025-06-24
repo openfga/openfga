@@ -948,7 +948,7 @@ func TestShouldCheckPublicAssignable(t *testing.T) {
 	}
 }
 
-func TestReverseExpandNew(t *testing.T) {
+func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
 	tests := []struct {
@@ -1150,57 +1150,6 @@ func TestReverseExpandNew(t *testing.T) {
 			expectedObjects: []string{"org:a_org", "org:b_org"},
 		},
 		{
-			name: "intersection_both_side_infinite_weight_ttu_debug",
-			model: `model
-				    schema 1.1
-		
-					type user
-					type team
-						relations
-							define parent: [team]
-							define member: [user] or member from parent
-					type org
-						relations
-							define member: [team#member]
-		`,
-			tuples: []string{
-				"team:a#member@user:bob",
-				"team:b#parent@team:a",
-				"team:c#parent@team:b",
-				"org:a#member@team:c#member",
-			},
-			objectType:      "org",
-			relation:        "member",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a"},
-		},
-		{
-			name: "intersection_both_side_infinite_weight_ttu_debug2",
-			model: `model
-				    schema 1.1
-		
-					type user
-					type team
-						relations
-							define parent: [team]
-							define member: [user] or member from parent
-					type org
-						relations
-							define team: [team]
-							define member: member from team
-		`,
-			tuples: []string{
-				"team:a#member@user:bob",
-				"team:b#parent@team:a",
-				"team:c#parent@team:b",
-				"org:a#team@team:c",
-			},
-			objectType:      "org",
-			relation:        "member",
-			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-			expectedObjects: []string{"org:a"},
-		},
-		{
 			name: "simple_userset",
 			model: `model
 				  schema 1.1
@@ -1285,6 +1234,8 @@ func TestReverseExpandNew(t *testing.T) {
 				q := NewReverseExpandQuery(
 					ds,
 					typesys,
+
+					// turn on weighted graph functionality
 					WithListObjectOptimizationsEnabled(true),
 				)
 

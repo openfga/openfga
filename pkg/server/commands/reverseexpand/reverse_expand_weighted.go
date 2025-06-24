@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"go.opentelemetry.io/otel/trace"
+	"sync"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -26,10 +26,6 @@ type typeRelEntry struct {
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
 }
-
-// TODO: add these where appropriate, not here
-var typeToCycleMap = new(sync.Map)
-var globalCyclesMap = new(sync.Map)
 
 // relationStack represents the path of queryable relationships encountered on the way to a terminal type.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes to this stack.
@@ -260,21 +256,17 @@ func (c *ReverseExpandQuery) queryForTuples(
 	needsCheck bool,
 	resultChan chan<- *ReverseExpandResult,
 ) error {
-	// TODO: don't forget telemetry
-	var wg sync.WaitGroup
-	errChan := make(chan error, 100) // TODO: random value here, gotta do this another way
+	span := trace.SpanFromContext(ctx)
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	// This map is used for memoization within this query path. It prevents re-running the exact
 	// same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
-	var queryFunc func(context.Context, *ReverseExpandRequest, string)
-	numJobs := atomic.Int32{} // TODO: remove, this is for debugging
-	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, foundObject string) {
-		defer wg.Done()
+	var queryFunc func(context.Context, *ReverseExpandRequest, string) error
+	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, foundObject string) error {
 		if qCtx.Err() != nil {
-			return
+			return qCtx.Err()
 		}
-		numJobs.Add(1)
 
 		var typeRel string
 		var userFilter []*openfgav1.ObjectRelation
@@ -312,7 +304,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		objectType, relation := tuple.SplitObjectRelation(typeRel)
 
-		// TODO: polish this bit
 		// Create a unique key for the current query to avoid duplicate work.
 		key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
 			return current.String() + accumulator
@@ -320,7 +311,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		key += relation + objectType
 		if _, loaded := jobDedupeMap.LoadOrStore(key, struct{}{}); loaded {
 			// If this exact query has been run before in this path, abort.
-			return
+			return nil
 		}
 
 		iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
@@ -333,8 +324,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			},
 		})
 		if err != nil {
-			errChan <- err
-			return
+			return err
 		}
 
 		// filter out invalid tuples yielded by the database iterator
@@ -345,6 +335,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		defer filteredIter.Stop()
 
+		var errs error
+
 	LoopOnIterator:
 		for {
 			tk, err := filteredIter.Next(ctx)
@@ -352,30 +344,31 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
 				}
-				errChan <- err
+				errs = errors.Join(errs, err)
 				break LoopOnIterator
 			}
 
 			condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 			if err != nil {
-				errChan <- err
+				errs = errors.Join(errs, err)
 				continue
 			}
 
 			if !condEvalResult.ConditionMet {
 				if len(condEvalResult.MissingParameters) > 0 {
-					errChan <- condition.NewEvaluationError(
+					errs = errors.Join(errs, condition.NewEvaluationError(
 						tk.GetCondition().GetName(),
 						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
 							tuple.TupleKeyToString(tk),
 							condEvalResult.MissingParameters),
-					)
+					))
 				}
 
 				continue
 			}
 
-			foundObject = tk.GetObject() // This will be a "type:id" e.g. "document:roadmap"
+			// This will be a "type:id" e.g. "document:roadmap"
+			foundObject = tk.GetObject()
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
@@ -386,22 +379,21 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 			// the evaluation one level higher up the tree with the `foundObject`.
-			wg.Add(1)
-			go queryFunc(qCtx, r.clone(), foundObject)
+			pool.Go(func(ctx context.Context) error {
+				return queryFunc(qCtx, r.clone(), foundObject)
+			})
 		}
+		return errs
 	}
 
 	// Now kick off the recursive function defined above.
-	wg.Add(1)
-	go queryFunc(ctx, req, "")
+	err := queryFunc(ctx, req, "")
 
-	var errs error
-
-	wg.Wait()
-	//fmt.Printf("JUstin ran %d jobs\n", numJobs.Load())
-	close(errChan)
-	for err := range errChan {
-		errs = errors.Join(errs, err)
+	// Now wait for all queries to complete
+	err = errors.Join(err, pool.Wait())
+	if err != nil {
+		telemetry.TraceError(span, err)
+		return err
 	}
-	return errs
+	return nil
 }
