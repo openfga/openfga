@@ -257,7 +257,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 	resultChan chan<- *ReverseExpandResult,
 ) error {
 	span := trace.SpanFromContext(ctx)
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	// This map is used for memoization within this query path. It prevents re-running the exact
 	// same database query for a given object type, relation, and user filter.
@@ -268,12 +267,15 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return qCtx.Err()
 		}
 
+		// Ensure we're always working with a copy
+		currentReq := r.clone()
+
 		var typeRel string
 		var userFilter []*openfgav1.ObjectRelation
 
 		// This is true on every call except the first
 		if foundObject != "" {
-			entry := r.stack.Pop()
+			entry := currentReq.stack.Pop()
 			typeRel = entry.typeRel
 			filter := &openfgav1.ObjectRelation{Object: foundObject}
 			if entry.usersetRelation != "" {
@@ -285,7 +287,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			var userID string
 			// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
 			// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
-			if val, ok := req.User.(*UserRefObject); ok {
+			if val, ok := currentReq.User.(*UserRefObject); ok {
 				userID = val.Object.GetId()
 			}
 
@@ -293,11 +295,11 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			switch to.GetNodeType() {
 			case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
-				typeRel = req.stack.Pop().typeRel
+				typeRel = currentReq.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
 
 			case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
-				typeRel = req.stack.Pop().typeRel
+				typeRel = currentReq.stack.Pop().typeRel
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
 			}
 		}
@@ -334,6 +336,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 		)
 
 		defer filteredIter.Stop()
+
+		// TODO: this means EACH query could kick off resolveNodeBreadthLimit goroutines which defeats the purpose
+		// Could manage the limit with select over a channel
+		pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 		var errs error
 
@@ -372,25 +378,26 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
-			if len(r.stack) == 0 {
+			if len(currentReq.stack) == 0 {
 				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				continue
 			}
 
 			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 			// the evaluation one level higher up the tree with the `foundObject`.
-			pool.Go(func(ctx context.Context) error {
-				return queryFunc(qCtx, r.clone(), foundObject)
+			pool.Go(func(qCtx context.Context) error {
+				return queryFunc(qCtx, currentReq, foundObject)
 			})
 		}
+
+		errs = errors.Join(errs, pool.Wait())
+
 		return errs
 	}
 
 	// Now kick off the recursive function defined above.
 	err := queryFunc(ctx, req, "")
 
-	// Now wait for all queries to complete
-	err = errors.Join(err, pool.Wait())
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
