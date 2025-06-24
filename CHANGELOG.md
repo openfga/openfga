@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - SQLite based iterators will load tuples only when needed (lazy loading). [#2511](https://github.com/openfga/openfga/pull/2511)
 
+### Fixed
+- Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
+
 ## [1.8.16] - 2025-06-17
 ### Fixed
 - Context cancelation was preventing database connections from being reused. [#2508](https://github.com/openfga/openfga/pull/2508)

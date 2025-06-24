@@ -10,7 +10,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -454,10 +453,8 @@ func (q *ListObjectsQuery) Execute(
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY && q.cacheSettings.ShouldCacheListObjectsIterators() {
-		span := trace.SpanFromContext(ctx)
-
 		// Kick off background job to check if cache records are stale, inavlidating where needed
-		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(req.GetStoreId(), span)
+		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
 	}
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
