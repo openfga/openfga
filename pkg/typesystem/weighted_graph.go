@@ -97,12 +97,11 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	// be valid.
 	for _, edge := range edges {
 		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
-			if hasPathTo(edge, sourceType) {
-				siblings = append(siblings, edge)
-			} else {
+			if !hasPathTo(edge, sourceType) {
 				// In reality, should never happen because the edge should have been trimmed
 				return IntersectionEdges{}, nil
 			}
+			siblings = append(siblings, edge)
 		}
 	}
 
