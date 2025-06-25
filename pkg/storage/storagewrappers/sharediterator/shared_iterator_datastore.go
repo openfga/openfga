@@ -2,6 +2,7 @@ package sharediterator
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -297,13 +298,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -330,13 +325,12 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	if !created {
-		span.SetAttributes(attribute.Bool("found", true))
+	span.SetAttributes(attribute.Bool("found", !created))
 
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-	}
+	sharedIteratorQueryHistogram.WithLabelValues(
+		storagewrappersutil.OperationReadStartingWithUser, sf.method, strconv.FormatBool(!created),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return it, nil
 }
 
@@ -420,13 +414,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -453,13 +441,11 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	if !created {
-		span.SetAttributes(attribute.Bool("found", true))
+	span.SetAttributes(attribute.Bool("found", !created))
 
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-	}
+	sharedIteratorQueryHistogram.WithLabelValues(
+		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
+	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
 }
@@ -543,13 +529,7 @@ func (sf *IteratorDatastore) Read(
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -576,13 +556,11 @@ func (sf *IteratorDatastore) Read(
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	if !created {
-		span.SetAttributes(attribute.Bool("found", true))
+	span.SetAttributes(attribute.Bool("found", !created))
 
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-	}
+	sharedIteratorQueryHistogram.WithLabelValues(
+		storagewrappersutil.OperationRead, sf.method, strconv.FormatBool(!created),
+	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
 }
