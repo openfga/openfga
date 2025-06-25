@@ -316,25 +316,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return nil
 		}
 
-		iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-			ObjectType: objectType,
-			Relation:   relation,
-			UserFilter: userFilter,
-		}, storage.ReadStartingWithUserOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.Consistency,
-			},
-		})
+		filteredIter, err := c.buildFilteredIterator(ctx, req, objectType, relation, userFilter)
 		if err != nil {
 			return err
 		}
-
-		// filter out invalid tuples yielded by the database iterator
-		filteredIter := storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(c.typesystem),
-		)
-
 		defer filteredIter.Stop()
 
 		// TODO: this means EACH query could kick off resolveNodeBreadthLimit goroutines which defeats the purpose
@@ -403,4 +388,34 @@ func (c *ReverseExpandQuery) queryForTuples(
 		return err
 	}
 	return nil
+}
+
+// buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
+// The returned iterator MUST have .Stop() called on it.
+func (c *ReverseExpandQuery) buildFilteredIterator(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	objectType string,
+	relation string,
+	userFilter []*openfgav1.ObjectRelation,
+) (storage.TupleKeyIterator, error) {
+	iter, err := c.datastore.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
+		ObjectType: objectType,
+		Relation:   relation,
+		UserFilter: userFilter,
+	}, storage.ReadStartingWithUserOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.Consistency,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		validation.FilterInvalidTuples(c.typesystem),
+	)
+	return filteredIter, nil
 }
