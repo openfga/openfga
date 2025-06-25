@@ -223,7 +223,10 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		"sharedIterator.ReadStartingWithUser",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// for now, we will skip shared iterator since there is a possibility that the request
@@ -260,6 +263,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	})
 
 	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
@@ -321,6 +325,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
@@ -347,7 +352,10 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
@@ -376,6 +384,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	})
 
 	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
@@ -437,6 +446,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
@@ -462,7 +472,10 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
@@ -491,6 +504,7 @@ func (sf *IteratorDatastore) Read(
 	})
 
 	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
@@ -552,6 +566,7 @@ func (sf *IteratorDatastore) Read(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
