@@ -34,7 +34,6 @@ type typeRelEntry struct {
 // Each entry is a `typeRelEntry` struct, which contains not only the `type#relation`
 // but also crucial metadata:
 //   - `usersetRelation`: To handle transitions through usersets (e.g. `[team#member]`).
-//   - `isRecursive`: To correctly process recursive relationship definitions (e.g. `define member: [user] or group#member`).
 //
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
 // database queries needed to find the resulting objects.
@@ -289,8 +288,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 ) error {
 	span := trace.SpanFromContext(ctx)
 
-	// This map is used for memoization within this query path. It prevents re-running the exact
-	// same database query for a given object type, relation, and user filter.
+	// This map is used for memoization of database queries for this branch of the reverse expansion.
+	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
