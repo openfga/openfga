@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
+	"go.opentelemetry.io/otel/trace"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/pkg/telemetry"
-	"go.opentelemetry.io/otel/trace"
-	"sync"
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
@@ -16,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -93,20 +95,9 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	var errs error
 
 	for _, edge := range edges {
-		r := &ReverseExpandRequest{
-			Consistency:      req.Consistency,
-			Context:          req.Context,
-			ContextualTuples: req.ContextualTuples,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-			StoreID:          req.StoreID,
-			User:             req.User,
-
-			weightedEdge:        edge,
-			weightedEdgeTypeRel: edge.GetTo().GetUniqueLabel(),
-			edge:                req.edge,
-			stack:               req.stack.Copy(),
-		}
+		newReq := req.clone()
+		newReq.weightedEdge = edge
+		newReq.weightedEdgeTypeRel = edge.GetTo().GetUniqueLabel()
 
 		toNode := edge.GetTo()
 
@@ -132,12 +123,12 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				// A direct edge here is org#teammate --> team#member
 				// so if we find team:fga for this user, we need to know to check for
 				// team:fga#member when we check org#teammate
-				r.stack[len(r.stack)-1].usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+				newReq.stack[len(newReq.stack)-1].usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
-				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
 				// Now continue traversing
-				err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+				err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 				if err != nil {
 					errs = errors.Join(errs, err)
 					return errs
@@ -151,7 +142,7 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			pool.Go(func(ctx context.Context) error {
 				return c.queryForTuples(
 					ctx,
-					r,
+					newReq,
 					needsCheck,
 					resultChan,
 				)
@@ -161,11 +152,11 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_ = r.stack.Pop()
-				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_ = newReq.stack.Pop()
+				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -182,16 +173,16 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
 			// query for folder#admin, then if folders exist we will see if they are related to
 			// any documents as #parent.
-			_ = r.stack.Pop()
+			_ = newReq.stack.Pop()
 
 			// Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			r.stack.Push(tuplesetRel)
+			newReq.stack.Push(tuplesetRel)
 
 			// Push target type#rel (`folder#admin`)
-			r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -201,10 +192,10 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
 			// to the stack.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_ = r.stack.Pop()
-				r.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_ = newReq.stack.Pop()
+				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
-			err := c.dispatch(ctx, r, resultChan, needsCheck, resolutionMetadata)
+			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				return errs
@@ -261,18 +252,25 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// This map is used for memoization within this query path. It prevents re-running the exact
 	// same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
+
 	var queryFunc func(context.Context, *ReverseExpandRequest, string) error
-	queryFunc = func(qCtx context.Context, r *ReverseExpandRequest, foundObject string) error {
-		if qCtx.Err() != nil {
-			return qCtx.Err()
+	queryFunc = func(childCtx context.Context, r *ReverseExpandRequest, foundObject string) error {
+		if childCtx.Err() != nil {
+			return childCtx.Err()
 		}
 
 		// Ensure we're always working with a copy
 		currentReq := r.clone()
 
-		userFilter, typeRel, ok := c.buildFiltersAndDedupe(jobDedupeMap, currentReq, foundObject)
+		userFilter := c.buildUserFilter(currentReq, foundObject)
+
+		// Now pop the top relation off of the stack for querying
+		typeRel := currentReq.stack.Pop().typeRel
+
+		// Ensure that we haven't already run this query
+		ok := c.checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
 		if !ok {
-			// this means we've run this exact query in this tree's path already
+			// this means we've run this exact query in this branch's path already
 			return nil
 		}
 
@@ -284,15 +282,15 @@ func (c *ReverseExpandQuery) queryForTuples(
 		}
 		defer filteredIter.Stop()
 
-		// TODO: this means EACH query could kick off resolveNodeBreadthLimit goroutines which defeats the purpose
+		// TODO: this means EACH query could start resolveNodeBreadthLimit goroutines which defeats the purpose of a limit
 		// Could manage the limit with select over a channel
-		pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+		pool := concurrency.NewPool(childCtx, int(c.resolveNodeBreadthLimit))
 
 		var errs error
 
 	LoopOnIterator:
 		for {
-			tk, err := filteredIter.Next(ctx)
+			tupleKey, err := filteredIter.Next(childCtx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
@@ -301,7 +299,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				break LoopOnIterator
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+			condEvalResult, err := eval.EvaluateTupleCondition(childCtx, tupleKey, c.typesystem, req.Context)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				continue
@@ -310,9 +308,9 @@ func (c *ReverseExpandQuery) queryForTuples(
 			if !condEvalResult.ConditionMet {
 				if len(condEvalResult.MissingParameters) > 0 {
 					errs = errors.Join(errs, condition.NewEvaluationError(
-						tk.GetCondition().GetName(),
+						tupleKey.GetCondition().GetName(),
 						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(tk),
+							tuple.TupleKeyToString(tupleKey),
 							condEvalResult.MissingParameters),
 					))
 				}
@@ -321,19 +319,19 @@ func (c *ReverseExpandQuery) queryForTuples(
 			}
 
 			// This will be a "type:id" e.g. "document:roadmap"
-			foundObject = tk.GetObject()
+			foundObject = tupleKey.GetObject()
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
 			if len(currentReq.stack) == 0 {
-				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+				_ = c.trySendCandidate(childCtx, needsCheck, foundObject, resultChan)
 				continue
 			}
 
 			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 			// the evaluation one level higher up the tree with the `foundObject`.
-			pool.Go(func(qCtx context.Context) error {
-				return queryFunc(qCtx, currentReq, foundObject)
+			pool.Go(func(ctx context.Context) error {
+				return queryFunc(childCtx, currentReq, foundObject)
 			})
 		}
 
@@ -352,19 +350,15 @@ func (c *ReverseExpandQuery) queryForTuples(
 	return nil
 }
 
-func (c *ReverseExpandQuery) buildFiltersAndDedupe(
-	dedupeMap *sync.Map,
+func (c *ReverseExpandQuery) buildUserFilter(
 	req *ReverseExpandRequest,
 	object string,
-) ([]*openfgav1.ObjectRelation, string, bool) {
-
-	var typeRel string
+) []*openfgav1.ObjectRelation {
 	var userFilter []*openfgav1.ObjectRelation
 
-	// This is true on every call except the first
+	// This is true on every call to queryFunc except the first
 	if object != "" {
-		entry := req.stack.Pop()
-		typeRel = entry.typeRel
+		entry := req.stack.Peek()
 		filter := &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
@@ -379,32 +373,18 @@ func (c *ReverseExpandQuery) buildFiltersAndDedupe(
 			userID = val.Object.GetId()
 		}
 
-		to := req.weightedEdge.GetTo()
+		toNode := req.weightedEdge.GetTo()
 
-		switch to.GetNodeType() {
+		switch toNode.GetNodeType() {
 		case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
-			typeRel = req.stack.Pop().typeRel
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)})
 
 		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
-			typeRel = req.stack.Pop().typeRel
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: toNode.GetUniqueLabel()})
 		}
 	}
 
-	objectType, relation := tuple.SplitObjectRelation(typeRel)
-
-	// Create a unique key for the current query to avoid duplicate work.
-	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
-		return current.String() + accumulator
-	})
-	key += relation + objectType
-	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
-		// If this exact query has been run before in this path, abort.
-		return nil, "", false
-	}
-
-	return userFilter, typeRel, true
+	return userFilter
 }
 
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
@@ -435,4 +415,25 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 		validation.FilterInvalidTuples(c.typesystem),
 	)
 	return filteredIter, nil
+}
+
+func (c *ReverseExpandQuery) checkQueryIsUnique(
+	dedupeMap *sync.Map,
+	userFilter []*openfgav1.ObjectRelation,
+	typeRel string,
+) bool {
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	// Create a unique key for the current query to avoid duplicate work.
+	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
+		return current.String() + accumulator
+	})
+
+	key += relation + objectType
+	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
+		// This means this query has been run on this branch of the graph already, don't do it again.
+		return false
+	}
+
+	return true
 }
