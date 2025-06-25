@@ -96,21 +96,22 @@ type storageItem struct {
 }
 
 // unwrap returns a clone of the shared iterator.
+// If a new iterator is created, it will return true to indicate that the iterator was created.
 // If the iterator is not yet created, it will call the producer function to create a new iterator.
 // If the iterator is already created, it will return a clone of the existing iterator.
 // If there is an error while creating the iterator, it will return nil and the error.
-func (s *storageItem) unwrap() (*sharedIterator, error) {
+func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.iter != nil {
-		return s.iter.clone(), nil
+		return s.iter.clone(), false, nil
 	}
 
 	// If the iterator is not yet created, call the producer function to create it.
 	it, err := s.producer()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	s.iter = it
 	clone := it.clone()
@@ -120,7 +121,7 @@ func (s *storageItem) unwrap() (*sharedIterator, error) {
 	// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
 	// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
 	it.Stop()
-	return clone, nil
+	return clone, true, nil
 }
 
 type DatastoreStorageOpt func(*Storage)
@@ -315,7 +316,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -324,13 +325,17 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
-	).Observe(float64(time.Since(start).Milliseconds()))
+	if !created {
+		span.SetAttributes(attribute.Bool("found", true))
 
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
+	}
 	return it, nil
 }
 
@@ -376,7 +381,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	})
 
 	if full {
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
@@ -433,7 +438,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -442,12 +447,17 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
-	).Observe(float64(time.Since(start).Milliseconds()))
+	if !created {
+		span.SetAttributes(attribute.Bool("found", true))
+
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
+	}
 
 	return it, nil
 }
@@ -550,7 +560,7 @@ func (sf *IteratorDatastore) Read(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -559,12 +569,17 @@ func (sf *IteratorDatastore) Read(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, sf.method, "true",
-	).Observe(float64(time.Since(start).Milliseconds()))
+	if !created {
+		span.SetAttributes(attribute.Bool("found", true))
+
+		sharedIteratorQueryHistogram.WithLabelValues(
+			storagewrappersutil.OperationRead, sf.method, "true",
+		).Observe(float64(time.Since(start).Milliseconds()))
+	}
 
 	return it, nil
 }
