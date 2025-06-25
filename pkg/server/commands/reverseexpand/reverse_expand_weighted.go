@@ -270,51 +270,13 @@ func (c *ReverseExpandQuery) queryForTuples(
 		// Ensure we're always working with a copy
 		currentReq := r.clone()
 
-		var typeRel string
-		var userFilter []*openfgav1.ObjectRelation
-
-		// This is true on every call except the first
-		if foundObject != "" {
-			entry := currentReq.stack.Pop()
-			typeRel = entry.typeRel
-			filter := &openfgav1.ObjectRelation{Object: foundObject}
-			if entry.usersetRelation != "" {
-				filter.Relation = entry.usersetRelation
-			}
-			userFilter = append(userFilter, filter)
-		} else {
-			// This else block ONLY hits on the first call to queryFunc.
-			var userID string
-			// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
-			// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
-			if val, ok := currentReq.User.(*UserRefObject); ok {
-				userID = val.Object.GetId()
-			}
-
-			to := req.weightedEdge.GetTo()
-
-			switch to.GetNodeType() {
-			case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
-				typeRel = currentReq.stack.Pop().typeRel
-				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
-
-			case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
-				typeRel = currentReq.stack.Pop().typeRel
-				userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
-			}
+		userFilter, typeRel, ok := c.buildFiltersAndDedupe(jobDedupeMap, currentReq, foundObject)
+		if !ok {
+			// this means we've run this exact query in this tree's path already
+			return nil
 		}
 
 		objectType, relation := tuple.SplitObjectRelation(typeRel)
-
-		// Create a unique key for the current query to avoid duplicate work.
-		key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
-			return current.String() + accumulator
-		})
-		key += relation + objectType
-		if _, loaded := jobDedupeMap.LoadOrStore(key, struct{}{}); loaded {
-			// If this exact query has been run before in this path, abort.
-			return nil
-		}
 
 		filteredIter, err := c.buildFilteredIterator(ctx, req, objectType, relation, userFilter)
 		if err != nil {
@@ -388,6 +350,61 @@ func (c *ReverseExpandQuery) queryForTuples(
 		return err
 	}
 	return nil
+}
+
+func (c *ReverseExpandQuery) buildFiltersAndDedupe(
+	dedupeMap *sync.Map,
+	req *ReverseExpandRequest,
+	object string,
+) ([]*openfgav1.ObjectRelation, string, bool) {
+
+	var typeRel string
+	var userFilter []*openfgav1.ObjectRelation
+
+	// This is true on every call except the first
+	if object != "" {
+		entry := req.stack.Pop()
+		typeRel = entry.typeRel
+		filter := &openfgav1.ObjectRelation{Object: object}
+		if entry.usersetRelation != "" {
+			filter.Relation = entry.usersetRelation
+		}
+		userFilter = append(userFilter, filter)
+	} else {
+		// This else block ONLY hits on the first call to queryFunc.
+		var userID string
+		// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
+		// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
+		if val, ok := req.User.(*UserRefObject); ok {
+			userID = val.Object.GetId()
+		}
+
+		to := req.weightedEdge.GetTo()
+
+		switch to.GetNodeType() {
+		case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
+			typeRel = req.stack.Pop().typeRel
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(to.GetUniqueLabel(), userID)})
+
+		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
+			typeRel = req.stack.Pop().typeRel
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: to.GetUniqueLabel()})
+		}
+	}
+
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	// Create a unique key for the current query to avoid duplicate work.
+	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
+		return current.String() + accumulator
+	})
+	key += relation + objectType
+	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
+		// If this exact query has been run before in this path, abort.
+		return nil, "", false
+	}
+
+	return userFilter, typeRel, true
 }
 
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
