@@ -2,6 +2,7 @@ package sharediterator
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -762,7 +763,7 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 				s.items.Store(&loadedItems)
 
 				if e != nil {
-					if e == context.Canceled || e == context.DeadlineExceeded {
+					if errors.Is(e, context.Canceled) || errors.Is(e, context.DeadlineExceeded) {
 						// If the context is canceled or deadline exceeded, we treat it as an iterator done.
 						e = storage.ErrIteratorDone
 					}
