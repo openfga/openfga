@@ -262,13 +262,13 @@ func (c *ReverseExpandQuery) queryForTuples(
 		// Ensure we're always working with a copy
 		currentReq := r.clone()
 
-		userFilter := c.buildUserFilter(currentReq, foundObject)
+		userFilter := buildUserFilter(currentReq, foundObject)
 
 		// Now pop the top relation off of the stack for querying
 		typeRel := currentReq.stack.Pop().typeRel
 
 		// Ensure that we haven't already run this query
-		ok := c.checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
+		ok := checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
 		if !ok {
 			// this means we've run this exact query in this branch's path already
 			return nil
@@ -350,7 +350,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	return nil
 }
 
-func (c *ReverseExpandQuery) buildUserFilter(
+func buildUserFilter(
 	req *ReverseExpandRequest,
 	object string,
 ) []*openfgav1.ObjectRelation {
@@ -387,6 +387,27 @@ func (c *ReverseExpandQuery) buildUserFilter(
 	return userFilter
 }
 
+func checkQueryIsUnique(
+	dedupeMap *sync.Map,
+	userFilter []*openfgav1.ObjectRelation,
+	typeRel string,
+) bool {
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	// Create a unique key for the current query to avoid duplicate work.
+	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
+		return current.String() + accumulator
+	})
+
+	key += relation + objectType
+	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
+		// This means this query has been run on this branch of the graph already, don't do it again.
+		return false
+	}
+
+	return true
+}
+
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
 // The returned iterator MUST have .Stop() called on it.
 func (c *ReverseExpandQuery) buildFilteredIterator(
@@ -415,25 +436,4 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 		validation.FilterInvalidTuples(c.typesystem),
 	)
 	return filteredIter, nil
-}
-
-func (c *ReverseExpandQuery) checkQueryIsUnique(
-	dedupeMap *sync.Map,
-	userFilter []*openfgav1.ObjectRelation,
-	typeRel string,
-) bool {
-	objectType, relation := tuple.SplitObjectRelation(typeRel)
-
-	// Create a unique key for the current query to avoid duplicate work.
-	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
-		return current.String() + accumulator
-	})
-
-	key += relation + objectType
-	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
-		// This means this query has been run on this branch of the graph already, don't do it again.
-		return false
-	}
-
-	return true
 }
