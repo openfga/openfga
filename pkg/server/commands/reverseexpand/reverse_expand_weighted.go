@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-
+	"github.com/openfga/openfga/pkg/telemetry"
 	"go.opentelemetry.io/otel/trace"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -17,7 +17,6 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -60,6 +59,41 @@ func (r *relationStack) Copy() relationStack {
 	dst := make(relationStack, len(*r)) // Create a new slice with the same length
 	copy(dst, *r)
 	return dst
+}
+
+type jobQueue struct {
+	items []queryJob
+	mu    sync.Mutex
+}
+
+func newJobQueue() *jobQueue {
+	return &jobQueue{
+		items: make([]queryJob, 0),
+	}
+}
+
+func (q *jobQueue) enqueue(value queryJob) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.items = append(q.items, value)
+}
+
+func (q *jobQueue) dequeue() (queryJob, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) == 0 {
+		return queryJob{}, false
+	}
+
+	item := q.items[0]
+	q.items = q.items[1:]
+	return item, true
+}
+
+type queryJob struct {
+	ctx         context.Context
+	foundObject string
+	req         *ReverseExpandRequest
 }
 
 // loopOverWeightedEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
@@ -252,17 +286,18 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// This map is used for memoization within this query path. It prevents re-running the exact
 	// same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
+	queryJobQueue := newJobQueue()
 
-	var queryFunc func(context.Context, *ReverseExpandRequest, string) error
-	queryFunc = func(childCtx context.Context, r *ReverseExpandRequest, foundObject string) error {
-		if childCtx.Err() != nil {
-			return childCtx.Err()
+	var queryFunc func(job queryJob) error
+	queryFunc = func(job queryJob) error {
+		if job.ctx.Err() != nil {
+			return job.ctx.Err()
 		}
 
 		// Ensure we're always working with a copy
-		currentReq := r.clone()
+		currentReq := job.req.clone()
 
-		userFilter := buildUserFilter(currentReq, foundObject)
+		userFilter := buildUserFilter(currentReq, job.foundObject)
 
 		// Now pop the top relation off of the stack for querying
 		typeRel := currentReq.stack.Pop().typeRel
@@ -284,13 +319,13 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		// TODO: this means EACH query could start resolveNodeBreadthLimit goroutines which defeats the purpose of a limit
 		// Could manage the limit with select over a channel
-		pool := concurrency.NewPool(childCtx, int(c.resolveNodeBreadthLimit))
+		//pool := concurrency.NewPool(childCtx, int(c.resolveNodeBreadthLimit))
 
 		var errs error
 
 	LoopOnIterator:
 		for {
-			tupleKey, err := filteredIter.Next(childCtx)
+			tupleKey, err := filteredIter.Next(job.ctx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
@@ -299,7 +334,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				break LoopOnIterator
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(childCtx, tupleKey, c.typesystem, req.Context)
+			condEvalResult, err := eval.EvaluateTupleCondition(job.ctx, tupleKey, c.typesystem, req.Context)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				continue
@@ -319,34 +354,49 @@ func (c *ReverseExpandQuery) queryForTuples(
 			}
 
 			// This will be a "type:id" e.g. "document:roadmap"
-			foundObject = tupleKey.GetObject()
+			foundObject := tupleKey.GetObject()
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
 			if len(currentReq.stack) == 0 {
-				_ = c.trySendCandidate(childCtx, needsCheck, foundObject, resultChan)
+				_ = c.trySendCandidate(job.ctx, needsCheck, foundObject, resultChan)
 				continue
 			}
 
 			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 			// the evaluation one level higher up the tree with the `foundObject`.
-			pool.Go(func(ctx context.Context) error {
-				return queryFunc(childCtx, currentReq, foundObject)
+			queryJobQueue.enqueue(queryJob{
+				ctx:         job.ctx,
+				foundObject: foundObject,
+				req:         currentReq,
 			})
 		}
-
-		errs = errors.Join(errs, pool.Wait())
 
 		return errs
 	}
 
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+
 	// Now kick off the recursive function defined above.
-	err := queryFunc(ctx, req, "")
+	err := queryFunc(queryJob{ctx: ctx, req: req, foundObject: ""})
+
+	// TODO: this for loop will chew through this queue before it has a chance to refill
+	for {
+		job, ok := queryJobQueue.dequeue()
+		if !ok {
+			break
+		}
+
+		pool.Go(func(ctx context.Context) error {
+			return queryFunc(job)
+		})
+	}
 
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
 	}
+
 	return nil
 }
 
