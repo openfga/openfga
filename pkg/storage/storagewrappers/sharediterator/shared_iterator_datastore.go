@@ -291,6 +291,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
@@ -413,6 +414,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
@@ -535,6 +537,7 @@ func (sf *IteratorDatastore) Read(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
