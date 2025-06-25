@@ -729,7 +729,7 @@ func (s *sharedIterator) clone() *sharedIterator {
 		remaining := s.refs.Load()
 
 		// If the reference count is zero, it means that the iterator has been stopped and cleaned up.
-		if remaining == 0 {
+		if remaining <= 0 {
 			return nil
 		}
 
