@@ -244,23 +244,8 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	}
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
 		span.SetAttributes(attribute.String("bypassed", "true"))
@@ -365,23 +350,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
 		span.SetAttributes(attribute.String("bypassed", "true"))
@@ -485,23 +455,8 @@ func (sf *IteratorDatastore) Read(
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
 		span.SetAttributes(attribute.String("bypassed", "true"))
