@@ -7,6 +7,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"go.opentelemetry.io/otel/trace"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -61,6 +62,11 @@ func (r *relationStack) Copy() relationStack {
 	return dst
 }
 
+type queryJob struct {
+	foundObject string
+	req         *ReverseExpandRequest
+}
+
 type jobQueue struct {
 	items []queryJob
 	mu    sync.Mutex
@@ -68,14 +74,20 @@ type jobQueue struct {
 
 func newJobQueue() *jobQueue {
 	return &jobQueue{
-		items: make([]queryJob, 0),
+		items: []queryJob{},
 	}
 }
 
-func (q *jobQueue) enqueue(value queryJob) {
+func (q *jobQueue) hasItems() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.items = append(q.items, value)
+	return len(q.items) > 0
+}
+
+func (q *jobQueue) enqueue(value ...queryJob) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.items = append(q.items, value...)
 }
 
 func (q *jobQueue) dequeue() (queryJob, bool) {
@@ -88,12 +100,6 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	item := q.items[0]
 	q.items = q.items[1:]
 	return item, true
-}
-
-type queryJob struct {
-	ctx         context.Context
-	foundObject string
-	req         *ReverseExpandRequest
 }
 
 // loopOverWeightedEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
@@ -288,10 +294,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
-	var queryFunc func(job queryJob) error
-	queryFunc = func(job queryJob) error {
-		if job.ctx.Err() != nil {
-			return job.ctx.Err()
+	var queryFunc func(ctx context.Context, job queryJob) ([]queryJob, error)
+	queryFunc = func(ctx context.Context, job queryJob) ([]queryJob, error) {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		// Ensure we're always working with a copy
@@ -306,26 +312,23 @@ func (c *ReverseExpandQuery) queryForTuples(
 		ok := checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
 		if !ok {
 			// this means we've run this exact query in this branch's path already
-			return nil
+			return nil, nil
 		}
 
 		objectType, relation := tuple.SplitObjectRelation(typeRel)
 
 		filteredIter, err := c.buildFilteredIterator(ctx, req, objectType, relation, userFilter)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		defer filteredIter.Stop()
 
-		// TODO: this means EACH query could start resolveNodeBreadthLimit goroutines which defeats the purpose of a limit
-		// Could manage the limit with select over a channel
-		//pool := concurrency.NewPool(childCtx, int(c.resolveNodeBreadthLimit))
-
 		var errs error
+		var nextJobs []queryJob
 
 	LoopOnIterator:
 		for {
-			tupleKey, err := filteredIter.Next(job.ctx)
+			tupleKey, err := filteredIter.Next(ctx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
@@ -334,7 +337,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				break LoopOnIterator
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(job.ctx, tupleKey, c.typesystem, req.Context)
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, c.typesystem, req.Context)
 			if err != nil {
 				errs = errors.Join(errs, err)
 				continue
@@ -359,41 +362,63 @@ func (c *ReverseExpandQuery) queryForTuples(
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
 			if len(currentReq.stack) == 0 {
-				_ = c.trySendCandidate(job.ctx, needsCheck, foundObject, resultChan)
+				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				continue
 			}
 
 			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 			// the evaluation one level higher up the tree with the `foundObject`.
-			queryJobQueue.enqueue(queryJob{
-				ctx:         job.ctx,
-				foundObject: foundObject,
-				req:         currentReq,
-			})
+			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
 		}
 
-		return errs
+		return nextJobs, errs
 	}
-
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	// Now kick off the recursive function defined above.
-	err := queryFunc(queryJob{ctx: ctx, req: req, foundObject: ""})
-
-	// TODO: this for loop will chew through this queue before it has a chance to refill
-	for {
-		job, ok := queryJobQueue.dequeue()
-		if !ok {
-			break
-		}
-
-		pool.Go(func(ctx context.Context) error {
-			return queryFunc(job)
-		})
-	}
-
+	items, err := queryFunc(ctx, queryJob{req: req, foundObject: ""})
 	if err != nil {
 		telemetry.TraceError(span, err)
+		return err
+	}
+
+	// Populate the jobQueue with the initial jobs
+	queryJobQueue.enqueue(items...)
+
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	activeJobs := atomic.Int64{}
+
+	initial := true // Needed to enter the first iteration of the for loop below
+
+	// Now loop through all jobs in queue, spawning new goroutines to handle each job.
+	for initial == true || activeJobs.Load() > 0 {
+		initial = false // set to false and rely on our activeJobs count
+
+		for queryJobQueue.hasItems() {
+			job, ok := queryJobQueue.dequeue()
+			if !ok {
+				// This shouldn't be possible if hasItems() just succeeded
+				break
+			}
+			activeJobs.Add(1)
+
+			pool.Go(func(ctx context.Context) error {
+				defer activeJobs.Add(-1)
+				newItems, err := queryFunc(ctx, job)
+				if err != nil {
+					return err
+				}
+
+				// Each job can spawn many new jobs
+				if len(newItems) > 0 {
+					queryJobQueue.enqueue(newItems...)
+				}
+				return nil
+			})
+		}
+	}
+
+	err = pool.Wait()
+	if err != nil {
 		return err
 	}
 
