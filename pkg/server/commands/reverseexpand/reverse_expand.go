@@ -342,7 +342,7 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserObj = userset.ObjectRelation.GetObject()
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, userset.ObjectRelation.GetRelation())
 
-		// Queries that come in explicilty looking for userset relations will skip weighted graph for now.
+		// Queries that come in explicitly looking for userset relations will skip weighted graph for now.
 		// e.g. ListObjects(document, viewer, team:fga#member)
 		req.skipWeightedGraph = true
 
