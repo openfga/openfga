@@ -373,7 +373,7 @@ func (c *ReverseExpandQuery) execute(
 			// The weighted graph is not guaranteed to be present.
 			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 			// and then fall back to the non-weighted version of reverse_expand
-			c.logger.Error("unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
+			c.logger.Info("unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
 			req.skipWeightedGraph = true
 		} else {
 			weight, _ := node.GetWeight(sourceUserType)
