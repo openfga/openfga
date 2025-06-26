@@ -82,9 +82,6 @@ type Storage struct {
 // The unwrap method is used to get a clone of the iterator, and if the iterator is not yet created,
 // it will call the producer function to create a new iterator.
 type storageItem struct {
-	// mu is a mutex to ensure that only one goroutine can access the iterator at a time.
-	mu sync.Mutex
-
 	// iter is the shared iterator that is being wrapped.
 	// It is set to nil when the iterator is not yet created, and will be created by the producer function.
 	iter *sharedIterator
@@ -94,6 +91,9 @@ type storageItem struct {
 	// This allows the storageItem to lazily create the iterator when it is first accessed.
 	// This is useful for cases where the iterator creation is expensive or requires context.
 	producer func() (*sharedIterator, error)
+
+	// once is a sync.Once to ensure that the producer function is only called once.
+	once sync.Once
 }
 
 // unwrap returns a clone of the shared iterator.
@@ -102,27 +102,25 @@ type storageItem struct {
 // If the iterator is already created, it will return a clone of the existing iterator.
 // If there is an error while creating the iterator, it will return nil and the error.
 func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	var err error
+	var created bool
 
-	if s.iter != nil {
-		return s.iter.clone(), false, nil
+	s.once.Do(func() {
+		s.iter, err = s.producer()
+		created = true
+	})
+
+	clone := s.iter.clone()
+
+	if created {
+		// Stop the original iterator since we are returning a clone.
+		// This is important so that the original iterator does not continue to hold a reference count.
+		// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
+		// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
+		s.iter.Stop()
 	}
 
-	// If the iterator is not yet created, call the producer function to create it.
-	it, err := s.producer()
-	if err != nil {
-		return nil, false, err
-	}
-	s.iter = it
-	clone := it.clone()
-
-	// Stop the original iterator since we are returning a clone.
-	// This is important so that the original iterator does not continue to hold a reference count.
-	// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
-	// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
-	it.Stop()
-	return clone, true, nil
+	return clone, created, err
 }
 
 type DatastoreStorageOpt func(*Storage)
