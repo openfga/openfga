@@ -110,6 +110,9 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 		created = true
 	})
 
+	if err != nil {
+		return nil, false, err
+	}
 	clone := s.iter.clone()
 
 	if created {
