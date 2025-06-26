@@ -301,8 +301,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
-	var queryFunc func(ctx context.Context, job queryJob) ([]queryJob, error)
-	queryFunc = func(ctx context.Context, job queryJob) ([]queryJob, error) {
+	var queryFunc = func(ctx context.Context, job queryJob) ([]queryJob, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -318,7 +317,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 		// Ensure that we haven't already run this query
 		ok := checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
 		if !ok {
-			// this means we've run this exact query in this branch's path already
 			return nil, nil
 		}
 
@@ -399,7 +397,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// This loop processes jobs from the queue concurrently.
 	// It continues as long as there are items in the queue OR there are active goroutines processing jobs.
 	// The `initial` flag ensures the loop runs at least once to kick off the first jobs.
-	for initial == true || activeJobs.Load() > 0 {
+	for initial || activeJobs.Load() > 0 {
 		initial = false // set to false and rely on our activeJobs count
 
 		for queryJobQueue.hasItems() {
