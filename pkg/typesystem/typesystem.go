@@ -1781,6 +1781,10 @@ func (t *TypeSystem) GetEdgesForListObjects(
 }
 
 func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {
+	if t.authzWeightedGraph == nil {
+		return nil, false
+	}
+
 	return t.authzWeightedGraph.GetNodeByID(uniqueID)
 }
 

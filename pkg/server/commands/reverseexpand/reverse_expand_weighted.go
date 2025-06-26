@@ -31,8 +31,8 @@ type typeRelEntry struct {
 
 // relationStack represents the path of queryable relationships encountered on the way to a terminal type.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes to this stack.
-// Each entry is a `typeRelEntry` struct, which contains not only the `type#relation`
-// but also crucial metadata:
+// Each entry is a `typeRelEntry` struct, which contains the `type#relation`
+// along with metadata:
 //   - `usersetRelation`: To handle transitions through usersets (e.g. `[team#member]`).
 //
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
@@ -61,11 +61,18 @@ func (r *relationStack) Copy() relationStack {
 	return dst
 }
 
+// queryJob represents a single task in the reverse expansion process.
+// It holds the `foundObject` from a previous step in the traversal
+// and the `ReverseExpandRequest` containing the current state of the request.
 type queryJob struct {
 	foundObject string
 	req         *ReverseExpandRequest
 }
 
+// jobQueue is a thread-safe queue for managing `queryJob` instances.
+// It's used to hold jobs that need to be processed during the recursive
+// `queryForTuples` operation, allowing concurrent processing of branches
+// in the authorization graph.
 type jobQueue struct {
 	items []queryJob
 	mu    sync.Mutex
@@ -388,7 +395,9 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	initial := true // Needed to enter the first iteration of the for loop below
 
-	// Now loop through all jobs in queue, spawning new goroutines to handle each job.
+	// This loop processes jobs from the queue concurrently.
+	// It continues as long as there are items in the queue OR there are active goroutines processing jobs.
+	// The `initial` flag ensures the loop runs at least once to kick off the first jobs.
 	for initial == true || activeJobs.Load() > 0 {
 		initial = false // set to false and rely on our activeJobs count
 
@@ -408,9 +417,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				}
 
 				// Each job can spawn many new jobs
-				if len(newItems) > 0 {
-					queryJobQueue.enqueue(newItems...)
-				}
+				queryJobQueue.enqueue(newItems...)
 				return nil
 			})
 		}
@@ -430,7 +437,8 @@ func buildUserFilter(
 ) []*openfgav1.ObjectRelation {
 	var userFilter []*openfgav1.ObjectRelation
 
-	// This is true on every call to queryFunc except the first
+	// This is true on every call to queryFunc except the first, since we only trigger subsequent
+	// calls if we successfully found an object.
 	if object != "" {
 		entry := req.stack.Peek()
 		filter := &openfgav1.ObjectRelation{Object: object}
@@ -440,17 +448,16 @@ func buildUserFilter(
 		userFilter = append(userFilter, filter)
 	} else {
 		// This else block ONLY hits on the first call to queryFunc.
-		var userID string
-		// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
-		// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
-		if val, ok := req.User.(*UserRefObject); ok {
-			userID = val.Object.GetId()
-		}
-
 		toNode := req.weightedEdge.GetTo()
 
 		switch toNode.GetNodeType() {
 		case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
+			// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
+			// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
+			var userID string
+			if val, ok := req.User.(*UserRefObject); ok {
+				userID = val.Object.GetId()
+			}
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)})
 
 		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"

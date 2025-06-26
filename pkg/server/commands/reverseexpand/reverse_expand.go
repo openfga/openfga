@@ -369,7 +369,10 @@ func (c *ReverseExpandQuery) execute(
 	if !req.skipWeightedGraph && req.weightedEdgeTypeRel == "" {
 		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 		node, ok := c.typesystem.GetNode(typeRel)
-		if !ok { // This could happen if the weighted graph failed to build
+		if !ok {
+			// The weighted graph is not guaranteed to be present.
+			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+			// and then fall back to the non-weighted version of reverse_expand
 			c.logger.Error("unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
 			req.skipWeightedGraph = true
 		} else {
@@ -391,27 +394,21 @@ func (c *ReverseExpandQuery) execute(
 			req.stack.Push(typeRelEntry{typeRel: targetTypeRel})
 		}
 
-		edges, needsCheck, err := c.typesystem.GetEdgesForListObjects(
+		// we can ignore this error, if the weighted graph failed to build req.skipWeightedGraph would have prevented
+		// us from entering this block.
+		edges, needsCheck, _ := c.typesystem.GetEdgesForListObjects(
 			targetTypeRel,
 			sourceUserType,
 		)
 
-		// TODO: this check might be unnecessary with the new check on 357
-		if err == nil {
-			// The weighted graph is not guaranteed to be present, only proceed to weighted graph if there was no error here.
-			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
-			// and then fall back to the non-weighted version of reverse_expand
-			return c.loopOverWeightedEdges(
-				ctx,
-				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges,
-				req,
-				resolutionMetadata,
-				resultChan,
-			)
-		}
-
-		c.logger.Error("failed to get edges from weighted graph, falling back to legacy reverse_expand", zap.Error(err))
+		return c.loopOverWeightedEdges(
+			ctx,
+			edges,
+			needsCheck || intersectionOrExclusionInPreviousEdges,
+			req,
+			resolutionMetadata,
+			resultChan,
+		)
 	}
 
 	g := graph.New(c.typesystem)
@@ -691,7 +688,6 @@ LoopOnIterator:
 }
 
 func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
-	//fmt.Printf("Sending Candidate:  %s\n", candidateObject)
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -705,7 +701,6 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 			resultStatus = RequiresFurtherEvalStatus
 		}
 
-		// fmt.Printf("SENDING CANDIDATE: %s, requiresCheck? 1==No %v\n", candidateObject, resultStatus)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
