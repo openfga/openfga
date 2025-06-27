@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/checkutil"
 	"sync"
 	"sync/atomic"
 
@@ -15,8 +16,6 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -352,25 +351,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 				break LoopOnIterator
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, c.typesystem, req.Context)
-			if err != nil {
-				errs = errors.Join(errs, err)
-				continue
-			}
-
-			if !condEvalResult.ConditionMet {
-				if len(condEvalResult.MissingParameters) > 0 {
-					errs = errors.Join(errs, condition.NewEvaluationError(
-						tupleKey.GetCondition().GetName(),
-						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-							tuple.TupleKeyToString(tupleKey),
-							condEvalResult.MissingParameters),
-					))
-				}
-
-				continue
-			}
-
 			// This will be a "type:id" e.g. "document:roadmap"
 			foundObject := tupleKey.GetObject()
 
@@ -521,9 +501,11 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 	}
 
 	// filter out invalid tuples yielded by the database iterator
-	filteredIter := storage.NewFilteredTupleKeyIterator(
-		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		validation.FilterInvalidTuples(c.typesystem),
-	)
-	return filteredIter, nil
+	return storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(c.typesystem),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, c.typesystem),
+	), nil
 }
