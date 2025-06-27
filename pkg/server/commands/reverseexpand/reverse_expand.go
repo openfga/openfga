@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
@@ -357,9 +357,7 @@ func (c *ReverseExpandQuery) execute(
 
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
 		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
-			if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
-				return err
-			}
+			c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan)
 		}
 	}
 
@@ -685,7 +683,7 @@ LoopOnIterator:
 	return nil
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
+func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -699,18 +697,14 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 			resultStatus = RequiresFurtherEvalStatus
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case candidateChan <- &ReverseExpandResult{
-			Object:       candidateObject,
-			ResultStatus: resultStatus,
-		}:
+		result := &ReverseExpandResult{Object: candidateObject, ResultStatus: resultStatus}
+		ok = concurrency.TrySendThroughChannel(ctx, result, candidateChan)
+		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
+		} else {
+			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
 		}
 	}
-
-	return nil
 }
 
 func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {

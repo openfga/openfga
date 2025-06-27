@@ -353,7 +353,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
 			if currentReq.relationStack.Empty() {
-				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+				c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				continue
 			}
 
