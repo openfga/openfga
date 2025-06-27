@@ -128,8 +128,6 @@ func (c *ReverseExpandQuery) loopOverEdges(
 ) error {
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
-	var errs error
-
 	for _, edge := range edges {
 		newReq := req.clone()
 		newReq.weightedEdge = edge
@@ -161,11 +159,13 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				// team:fga#member when we check org#teammate
 				el, ok := newReq.relationStack.Pop()
 				if !ok {
-					// bad
+					// shouldn't be possible
+					return fmt.Errorf("unexpected empty stack while processing direct edge to userset")
 				}
 				entry, ok := el.(typeRelEntry)
 				if !ok {
-					// bad
+					// shouldn't be possible
+					return fmt.Errorf("unexpected type in stack: expected typeRelEntry, got %T", el)
 				}
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 				newReq.relationStack.Push(entry)
@@ -175,8 +175,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				// Now continue traversing
 				err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 				if err != nil {
-					errs = errors.Join(errs, err)
-					return errs
+					return err
 				}
 				continue
 			}
@@ -203,8 +202,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
-				errs = errors.Join(errs, err)
-				return errs
+				return err
 			}
 		case weightedGraph.TTUEdge:
 			// Replace the existing type#rel on the stack with the tuple-to-userset relation:
@@ -229,8 +227,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
-				errs = errors.Join(errs, err)
-				return errs
+				return err
 			}
 		case weightedGraph.RewriteEdge:
 			// Behaves just like ComputedEdge above
@@ -242,15 +239,14 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			}
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
-				errs = errors.Join(errs, err)
-				return errs
+				return err
 			}
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
 	}
 
-	return errors.Join(errs, pool.Wait())
+	return pool.Wait()
 }
 
 // queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverEdges,
