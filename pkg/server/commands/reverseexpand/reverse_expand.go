@@ -403,7 +403,7 @@ func (c *ReverseExpandQuery) execute(
 			sourceUserType,
 		)
 
-		return c.loopOverWeightedEdges(
+		return c.loopOverEdges(
 			ctx,
 			edges,
 			needsCheck || intersectionOrExclusionInPreviousEdges,

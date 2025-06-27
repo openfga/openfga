@@ -94,12 +94,12 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	return item, true
 }
 
-// loopOverWeightedEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
+// loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
 // processing each edge according to its type to continue the reverse expansion process.
 //
-// While traversing, loopOverWeightedEdges appends relation entries to a stack for use in querying after traversal is complete.
+// While traversing, loopOverEdges appends relation entries to a stack for use in querying after traversal is complete.
 // It will continue to dispatch and traverse the graph until it reaches a DirectEdge, which
-// leads to a leaf node in the authorization graph. Once a DirectEdge is found, loopOverWeightedEdges invokes
+// leads to a leaf node in the authorization graph. Once a DirectEdge is found, loopOverEdges invokes
 // queryForTuples, passing it the stack of relations it constructed on the way to that particular leaf.
 //
 // For each edge, it creates a new ReverseExpandRequest, preserving the context of the overall query
@@ -114,7 +114,7 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 //   - ComputedEdge, RewriteEdge, and TTUEdge: These represent indirections in the authorization model.
 //     The function modifies the traversal 'stack' to reflect the next relationship that needs to be resolved.
 //     It then calls `dispatch` to continue traversing the graph with this new state until it reaches a DirectEdge.
-func (c *ReverseExpandQuery) loopOverWeightedEdges(
+func (c *ReverseExpandQuery) loopOverEdges(
 	ctx context.Context,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	needsCheck bool,
@@ -249,8 +249,8 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 	return errors.Join(errs, pool.Wait())
 }
 
-// queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverWeightedEdges,
-// this function works backwards from a specified user (using the stack created in loopOverWeightedEdges)
+// queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverEdges,
+// this function works backwards from a specified user (using the stack created in loopOverEdges)
 // and an initial relationship edge to find all the objects that the given user has the given relationship with.
 // The function defines a recursive inner function, `queryFunc`, which is executed concurrently for different
 // branches of the relationship graph.
