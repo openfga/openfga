@@ -5,16 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 
+	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 

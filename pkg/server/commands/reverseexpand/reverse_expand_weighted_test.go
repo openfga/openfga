@@ -2,9 +2,9 @@ package reverseexpand
 
 import (
 	"context"
-	"github.com/emirpasic/gods/stacks/arraystack"
 	"testing"
 
+	"github.com/emirpasic/gods/stacks/arraystack"
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -387,17 +387,17 @@ func TestCloneStack(t *testing.T) {
 	// their results in the correct LIFO order
 	val, ok := original.Pop()
 	require.True(t, ok)
-	require.Equal(t, val, 2)
+	require.Equal(t, 2, val)
 
 	val, ok = clone.Pop()
 	require.True(t, ok)
-	require.Equal(t, val, 2)
+	require.Equal(t, 2, val)
 
 	val, ok = original.Pop()
 	require.True(t, ok)
-	require.Equal(t, val, 1)
+	require.Equal(t, 1, val)
 
 	val, ok = clone.Pop()
 	require.True(t, ok)
-	require.Equal(t, val, 1)
+	require.Equal(t, 1, val)
 }
