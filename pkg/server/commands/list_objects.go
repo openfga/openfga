@@ -69,7 +69,7 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	listObjectOptimizationsEnabled bool `default:"false"`
+	listObjectOptimizationsEnabled bool
 }
 
 type ListObjectsResolutionMetadata struct {

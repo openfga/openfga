@@ -312,6 +312,11 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 		// Now pop the top relation off of the stack for querying
 		val, ok := currentReq.relationStack.Pop()
+		if !ok {
+			// should never happen, if there's no stack we shouldn't be in here
+			return nil, fmt.Errorf("unexpected empty stack in queryFunc")
+		}
+
 		entry, ok := val.(typeRelEntry)
 		if !ok {
 			// should never happen, we're only pushing typeRelEntry to this stack
@@ -332,7 +337,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return nil, err
 		}
 		defer filteredIter.Stop()
-		fmt.Printf("Running with filters: %+v, object: %s, relation: %s\n\tstack: %+v\n", userFilter, objectType, relation, currentReq.relationStack.Values())
 
 		var errs error
 		var nextJobs []queryJob
@@ -369,7 +373,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			// This will be a "type:id" e.g. "document:roadmap"
 			foundObject := tupleKey.GetObject()
-			fmt.Printf("Found: %s\n\tStack: %+v\n", tupleKey.String(), currentReq.relationStack.Values())
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
@@ -441,8 +444,7 @@ func buildUserFilter(
 	req *ReverseExpandRequest,
 	object string,
 ) []*openfgav1.ObjectRelation {
-	var userFilter []*openfgav1.ObjectRelation
-
+	var filter *openfgav1.ObjectRelation
 	// This is true on every call to queryFunc except the first, since we only trigger subsequent
 	// calls if we successfully found an object.
 	if object != "" {
@@ -452,11 +454,10 @@ func buildUserFilter(
 			return nil
 		}
 		entry, ok := val.(typeRelEntry)
-		filter := &openfgav1.ObjectRelation{Object: object}
+		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
 		}
-		userFilter = append(userFilter, filter)
 	} else {
 		// This else block ONLY hits on the first call to queryFunc.
 		toNode := req.weightedEdge.GetTo()
@@ -469,14 +470,14 @@ func buildUserFilter(
 			if val, ok := req.User.(*UserRefObject); ok {
 				userID = val.Object.GetId()
 			}
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)})
+			filter = &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)}
 
 		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
-			userFilter = append(userFilter, &openfgav1.ObjectRelation{Object: toNode.GetUniqueLabel()})
+			filter = &openfgav1.ObjectRelation{Object: toNode.GetUniqueLabel()}
 		}
 	}
 
-	return userFilter
+	return []*openfgav1.ObjectRelation{filter}
 }
 
 func checkQueryIsUnique(
@@ -492,12 +493,9 @@ func checkQueryIsUnique(
 	})
 
 	key += relation + objectType
-	if _, loaded := dedupeMap.LoadOrStore(key, struct{}{}); loaded {
-		// This means this query has been run on this branch of the graph already, don't do it again.
-		return false
-	}
+	_, loaded := dedupeMap.LoadOrStore(key, struct{}{})
 
-	return true
+	return !loaded
 }
 
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
