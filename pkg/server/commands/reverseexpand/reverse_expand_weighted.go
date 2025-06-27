@@ -252,36 +252,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 // queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverEdges,
 // this function works backwards from a specified user (using the stack created in loopOverEdges)
 // and an initial relationship edge to find all the objects that the given user has the given relationship with.
-// The function defines a recursive inner function, `queryFunc`, which is executed concurrently for different
-// branches of the relationship graph.
 //
-// On its initial execution, it constructs a database query filter based on the starting user and the "To"
-// part of the initial DirectEdge, which can be a direct user, a wildcard user, or a userset.
-// In subsequent recursive calls, it takes a `foundObject`—the object found in the previous step—and
-// that foundObject becomes the 'user' in the next query in the stack. Take this model for example:
-//
-//		type user
-//		type organization
-//		  relations
-//			define member: [user]
-//			define repo_admin: [organization#member]
-//		type repo
-//		  relations
-//	        define admin: repo_admin from owner
-//	        define owner: [organization]
-//
-// When searching for repos which user:bob has #admin relation to, queryFunc behaves like so:
-//
-//  1. Search for organizations where user:bob is a member. We find this tuple: organization:fga#member@user:bob
-//  2. Take that foundObject, `organization:fga` and pass it to the next call of queryFunc.
-//  3. Query for tuples matching `organization#repo_admin@organization:fga#member` (because this is a userset relation).
-//  4. If we found another object in step 3, pass that into the next queryFunc call to be evaluated against the next element in the stack.
-//
-// We continue doing this recursively until we hit one of the two cases below:
-//
-//  1. We cannot locate a tuple for a query—this means this branch of the tree yielded no results.
-//  2. The stack is empty—this means there are no more queries to run, and this object is a candidate to be returned
-//     to ListObjects through resultChan.
+// This function orchestrates the concurrent execution of individual query jobs. It initializes a memoization
+// map (`jobDedupeMap`) to prevent redundant database queries and a job queue to manage pending tasks.
+// It kicks off the initial query and then continuously processes jobs from the queue using a concurrency pool
+// until all branches of the relationship graph have been explored. Jobs will con
 func (c *ReverseExpandQuery) queryForTuples(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -295,78 +270,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
-	var queryFunc = func(ctx context.Context, job queryJob) ([]queryJob, error) {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
-		// Ensure we're always working with a copy
-		currentReq := job.req.clone()
-
-		userFilter := buildUserFilter(currentReq, job.foundObject)
-
-		// Now pop the top relation off of the stack for querying
-		val, ok := currentReq.relationStack.Pop()
-		if !ok {
-			// should never happen, if there's no stack we shouldn't be in here
-			return nil, fmt.Errorf("unexpected empty stack in queryFunc")
-		}
-
-		entry, ok := val.(typeRelEntry)
-		if !ok {
-			// should never happen, we're only pushing typeRelEntry to this stack
-			return nil, fmt.Errorf("unexpected type encountered in query stack %T", val)
-		}
-		typeRel := entry.typeRel
-
-		// Ensure that we haven't already run this query
-		ok = checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
-		if !ok {
-			return nil, nil
-		}
-
-		objectType, relation := tuple.SplitObjectRelation(typeRel)
-
-		filteredIter, err := c.buildFilteredIterator(ctx, req, objectType, relation, userFilter)
-		if err != nil {
-			return nil, err
-		}
-		defer filteredIter.Stop()
-
-		var errs error
-		var nextJobs []queryJob
-
-	LoopOnIterator:
-		for {
-			tupleKey, err := filteredIter.Next(ctx)
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
-				errs = errors.Join(errs, err)
-				break LoopOnIterator
-			}
-
-			// This will be a "type:id" e.g. "document:roadmap"
-			foundObject := tupleKey.GetObject()
-
-			// If there are no more type#rel to look for in the stack that means we have hit the base case
-			// and this object is a candidate for return to the user.
-			if currentReq.relationStack.Empty() {
-				c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
-				continue
-			}
-
-			// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
-			// the evaluation one level higher up the tree with the `foundObject`.
-			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
-		}
-
-		return nextJobs, errs
-	}
-
-	// Now kick off the recursive function defined above.
-	items, err := queryFunc(ctx, queryJob{req: req, foundObject: ""})
+	// Now kick off the chain of queries
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: ""}, resultChan, needsCheck, jobDedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -378,14 +283,9 @@ func (c *ReverseExpandQuery) queryForTuples(
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 	activeJobs := atomic.Int64{}
 
-	initial := true // Needed to enter the first iteration of the for loop below
-
 	// This loop processes jobs from the queue concurrently.
 	// It continues as long as there are items in the queue OR there are active goroutines processing jobs.
-	// The `initial` flag ensures the loop runs at least once to kick off the first jobs.
-	for initial || activeJobs.Load() > 0 {
-		initial = false // set to false and rely on our activeJobs count
-
+	for !queryJobQueue.Empty() || activeJobs.Load() > 0 {
 		for !queryJobQueue.Empty() {
 			job, ok := queryJobQueue.dequeue()
 			if !ok {
@@ -396,7 +296,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			pool.Go(func(ctx context.Context) error {
 				defer activeJobs.Add(-1)
-				newItems, err := queryFunc(ctx, job)
+				newItems, err := c.executeQueryJob(ctx, job, resultChan, needsCheck, jobDedupeMap)
 				if err != nil {
 					return err
 				}
@@ -414,6 +314,88 @@ func (c *ReverseExpandQuery) queryForTuples(
 	}
 
 	return nil
+}
+
+// executeQueryJob represents a single recursive step in the reverse expansion query process.
+// It takes a `queryJob`, which encapsulates the current state of the traversal (found object,
+// and the reverse expand request with its relation stack).
+// The method constructs a database query based on the current relation at the top of the stack
+// and the `foundObject` from the previous step. It queries the datastore, and for each result:
+//   - If the relation stack is empty, it means a candidate object has been found, which is then sent to `resultChan`.
+//   - If matching tuples are found, it prepares new `queryJob` instances to continue the traversal further up the graph,
+//     using the newly found object as the `foundObject` for the next step.
+//   - If no matching objects are found in the datastore, this branch of reverse expand is a dead end, and no more jobs are needed.
+func (c *ReverseExpandQuery) executeQueryJob(
+	ctx context.Context,
+	job queryJob,
+	resultChan chan<- *ReverseExpandResult,
+	needsCheck bool,
+	jobDedupeMap *sync.Map,
+) ([]queryJob, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	// Ensure we're always working with a copy
+	currentReq := job.req.clone()
+
+	userFilter := buildUserFilter(currentReq, job.foundObject)
+
+	// Now pop the top relation off of the stack for querying
+	val, ok := currentReq.relationStack.Pop()
+	if !ok {
+		// should never happen, if there's no stack we shouldn't be in here
+		return nil, fmt.Errorf("unexpected empty stack in queryFunc")
+	}
+
+	entry, ok := val.(typeRelEntry)
+	if !ok {
+		// should never happen, we're only pushing typeRelEntry to this stack
+		return nil, fmt.Errorf("unexpected type encountered in query stack %T", val)
+	}
+	typeRel := entry.typeRel
+
+	// Ensure that we haven't already run this query
+	ok = checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
+	if !ok {
+		return nil, nil
+	}
+
+	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	filteredIter, err := c.buildFilteredIterator(ctx, currentReq, objectType, relation, userFilter)
+	if err != nil {
+		return nil, err
+	}
+	defer filteredIter.Stop()
+
+	var nextJobs []queryJob
+
+	for {
+		tupleKey, err := filteredIter.Next(ctx)
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+			return nil, err
+		}
+
+		// This will be a "type:id" e.g. "document:roadmap"
+		foundObject := tupleKey.GetObject()
+
+		// If there are no more type#rel to look for in the stack that means we have hit the base case
+		// and this object is a candidate for return to the user.
+		if currentReq.relationStack.Empty() {
+			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+			continue
+		}
+
+		// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
+		// the evaluation one level higher up the tree with the `foundObject`.
+		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
+	}
+
+	return nextJobs, err
 }
 
 func buildUserFilter(
