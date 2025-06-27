@@ -365,52 +365,48 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	// This if condition can only occur on the initial entry to execute.
-	// After that first call, one of these will be changed from its default value.
-	if !req.skipWeightedGraph && req.weightedEdgeTypeRel == "" {
-		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
-		node, ok := c.typesystem.GetNode(typeRel)
-		if !ok {
-			// The weighted graph is not guaranteed to be present.
-			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
-			// and then fall back to the non-weighted version of reverse_expand
-			c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
-			req.skipWeightedGraph = true
-		} else {
-			weight, _ := node.GetWeight(sourceUserType)
-			if weight == weightedGraph.Infinite {
-				c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("storeID", req.StoreID))
+	if c.optimizationsEnabled && !req.skipWeightedGraph {
+		typeRel := req.weightedEdgeTypeRel
+		if typeRel == "" { // true on first call to ReverseExpand
+			typeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+			node, ok := c.typesystem.GetNode(typeRel)
+			if !ok {
+				// The weighted graph is not guaranteed to be present.
+				// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+				// and then fall back to the non-weighted version of reverse_expand
+				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
 				req.skipWeightedGraph = true
+			} else {
+				weight, _ := node.GetWeight(sourceUserType)
+				if weight == weightedGraph.Infinite {
+					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("storeID", req.StoreID))
+					req.skipWeightedGraph = true
+				}
 			}
 		}
-	}
 
-	if c.optimizationsEnabled && !req.skipWeightedGraph {
-		targetTypeRel := req.weightedEdgeTypeRel
+		if !req.skipWeightedGraph {
+			if req.weightedEdgeTypeRel == "" { // true on the first invocation only
+				req.relationStack = *arrayStack.New()
+				req.relationStack.Push(typeRelEntry{typeRel: typeRel})
+			}
 
-		if targetTypeRel == "" { // This is true on the first call of reverse expand
-			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
+			// have prevented us from entering this block.
+			edges, needsCheck, _ := c.typesystem.GetEdgesForListObjects(
+				typeRel,
+				sourceUserType,
+			)
 
-			// The relation stack has to be initialized on the first request
-			req.relationStack = *arrayStack.New()
-			req.relationStack.Push(typeRelEntry{typeRel: targetTypeRel})
+			return c.loopOverEdges(
+				ctx,
+				edges,
+				needsCheck || intersectionOrExclusionInPreviousEdges,
+				req,
+				resolutionMetadata,
+				resultChan,
+			)
 		}
-
-		// we can ignore this error, if the weighted graph failed to build req.skipWeightedGraph would have prevented
-		// us from entering this block.
-		edges, needsCheck, _ := c.typesystem.GetEdgesForListObjects(
-			targetTypeRel,
-			sourceUserType,
-		)
-
-		return c.loopOverEdges(
-			ctx,
-			edges,
-			needsCheck || intersectionOrExclusionInPreviousEdges,
-			req,
-			resolutionMetadata,
-			resultChan,
-		)
 	}
 
 	g := graph.New(c.typesystem)
