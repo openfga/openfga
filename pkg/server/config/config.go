@@ -48,6 +48,8 @@ const (
 	DefaultListObjectsIteratorCacheMaxResults = 10000
 	DefaultListObjectsIteratorCacheTTL        = 10 * time.Second
 
+	DefaultListObjectsOptimizationsEnabled = false
+
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
