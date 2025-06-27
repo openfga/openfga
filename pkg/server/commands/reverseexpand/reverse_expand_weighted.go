@@ -256,7 +256,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 // This function orchestrates the concurrent execution of individual query jobs. It initializes a memoization
 // map (`jobDedupeMap`) to prevent redundant database queries and a job queue to manage pending tasks.
 // It kicks off the initial query and then continuously processes jobs from the queue using a concurrency pool
-// until all branches of the relationship graph have been explored. Jobs will con
+// until all branches leading up from the leaf have been explored.
 func (c *ReverseExpandQuery) queryForTuples(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -339,7 +339,10 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	// Ensure we're always working with a copy
 	currentReq := job.req.clone()
 
-	userFilter := buildUserFilter(currentReq, job.foundObject)
+	userFilter, err := buildUserFilter(currentReq, job.foundObject)
+	if err != nil {
+		return nil, err
+	}
 
 	// Now pop the top relation off of the stack for querying
 	val, ok := currentReq.relationStack.Pop()
@@ -401,17 +404,21 @@ func (c *ReverseExpandQuery) executeQueryJob(
 func buildUserFilter(
 	req *ReverseExpandRequest,
 	object string,
-) []*openfgav1.ObjectRelation {
+) ([]*openfgav1.ObjectRelation, error) {
 	var filter *openfgav1.ObjectRelation
 	// This is true on every call to queryFunc except the first, since we only trigger subsequent
 	// calls if we successfully found an object.
 	if object != "" {
 		val, ok := req.relationStack.Peek()
 		if !ok {
-			// some error here, you shouldn't be able to get to here without this
-			return nil
+			// Should never happen, we shouldn't be in here if the stack is empty
+			return nil, fmt.Errorf("unexpected empty stack in queryFunc")
 		}
 		entry, ok := val.(typeRelEntry)
+		if !ok {
+			// Should never happen, we only push `typeRelEntry` to this stack
+			return nil, fmt.Errorf("unexpected type in stack: expected typeRelEntry, got %T", val)
+		}
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
@@ -435,7 +442,7 @@ func buildUserFilter(
 		}
 	}
 
-	return []*openfgav1.ObjectRelation{filter}
+	return []*openfgav1.ObjectRelation{filter}, nil
 }
 
 func checkQueryIsUnique(
