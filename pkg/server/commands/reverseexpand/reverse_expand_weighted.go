@@ -247,7 +247,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				return errs
 			}
 		default:
-			panic("unsupported edge type")
+			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
 	}
 

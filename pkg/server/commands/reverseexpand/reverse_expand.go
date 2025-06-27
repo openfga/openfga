@@ -149,8 +149,8 @@ type ReverseExpandQuery struct {
 	candidateObjectsMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver             *graph.LocalChecker
-	listObjectOptimizationsEnabled bool
+	localCheckResolver   *graph.LocalChecker
+	optimizationsEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -184,7 +184,7 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 
 func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
-		d.listObjectOptimizationsEnabled = enabled
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -374,18 +374,18 @@ func (c *ReverseExpandQuery) execute(
 			// The weighted graph is not guaranteed to be present.
 			// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 			// and then fall back to the non-weighted version of reverse_expand
-			c.logger.Info("unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
+			c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("nodeID", typeRel), zap.String("storeID", req.StoreID))
 			req.skipWeightedGraph = true
 		} else {
 			weight, _ := node.GetWeight(sourceUserType)
 			if weight == weightedGraph.Infinite {
-				c.logger.Info("reverse_expand graph may contain cycle, skipping weighted graph", zap.String("storeID", req.StoreID))
+				c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("storeID", req.StoreID))
 				req.skipWeightedGraph = true
 			}
 		}
 	}
 
-	if c.listObjectOptimizationsEnabled && !req.skipWeightedGraph {
+	if c.optimizationsEnabled && !req.skipWeightedGraph {
 		targetTypeRel := req.weightedEdgeTypeRel
 
 		if targetTypeRel == "" { // This is true on the first call of reverse expand
@@ -461,7 +461,7 @@ LoopOnEdges:
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			})
 		default:
-			panic("unsupported edge type")
+			return fmt.Errorf("unsupported edge type: %v", innerLoopEdge.Type)
 		}
 	}
 
