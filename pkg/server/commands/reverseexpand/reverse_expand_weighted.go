@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
 	"go.opentelemetry.io/otel/trace"
 
@@ -60,38 +61,42 @@ type queryJob struct {
 // `queryForTuples` operation, allowing concurrent processing of branches
 // in the authorization graph.
 type jobQueue struct {
-	items []queryJob
+	queue aq.Queue
 	mu    sync.Mutex
 }
 
 func newJobQueue() *jobQueue {
-	return &jobQueue{
-		items: []queryJob{},
-	}
+	return &jobQueue{queue: *aq.New()}
 }
 
-func (q *jobQueue) hasItems() bool {
+func (q *jobQueue) Empty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return len(q.items) > 0
+	return q.queue.Empty()
 }
 
 func (q *jobQueue) enqueue(value ...queryJob) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.items = append(q.items, value...)
+	for _, item := range value {
+		q.queue.Enqueue(item)
+	}
 }
 
 func (q *jobQueue) dequeue() (queryJob, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if len(q.items) == 0 {
+
+	val, ok := q.queue.Dequeue()
+	if !ok {
+		return queryJob{}, false
+	}
+	job, ok := val.(queryJob)
+	if !ok {
 		return queryJob{}, false
 	}
 
-	item := q.items[0]
-	q.items = q.items[1:]
-	return item, true
+	return job, true
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
@@ -402,10 +407,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 	for initial || activeJobs.Load() > 0 {
 		initial = false // set to false and rely on our activeJobs count
 
-		for queryJobQueue.hasItems() {
+		for !queryJobQueue.Empty() {
 			job, ok := queryJobQueue.dequeue()
 			if !ok {
-				// This shouldn't be possible if hasItems() just succeeded
+				// This shouldn't be possible if !Empty() just succeeded
 				break
 			}
 			activeJobs.Add(1)
