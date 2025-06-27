@@ -2,6 +2,7 @@ package reverseexpand
 
 import (
 	"context"
+	"github.com/emirpasic/gods/stacks/arraystack"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -282,6 +283,41 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expectedObjects: []string{"team:fga", "team:cncf", "team:lnf"},
 		},
+		{
+			name: "userset_ttu_mix",
+			model: `model
+				  schema 1.1
+					type user
+				  type group
+					relations
+					  define member: [user, user:*]
+				  type folder
+					relations
+					  define viewer: [user,group#member]
+				  type document
+					relations
+					  define parent: [folder]
+					  define viewer: viewer from parent
+		`,
+			tuples: []string{
+				"group:1#member@user:anne",
+				"group:1#member@user:charlie",
+				"group:2#member@user:anne",
+				"group:2#member@user:bob",
+				"group:3#member@user:elle",
+				"group:public#member@user:*",
+				"document:a#parent@folder:a",
+				"document:public#parent@folder:public",
+				"folder:a#viewer@group:1#member",
+				"folder:a#viewer@group:2#member",
+				"folder:a#viewer@user:daemon",
+				"folder:public#viewer@group:public#member",
+			},
+			objectType:      "document",
+			relation:        "viewer",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+			expectedObjects: []string{"document:a", "document:public"},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -336,4 +372,32 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			require.ElementsMatch(t, test.expectedObjects, results)
 		})
 	}
+}
+
+func TestCloneStack(t *testing.T) {
+	// Create stack and push two elements
+	original := arraystack.New()
+	original.Push(1)
+	original.Push(2)
+
+	// Clone
+	clone := cloneStack(*original)
+
+	// Now pop from original and clone, both should return
+	// their results in the correct LIFO order
+	val, ok := original.Pop()
+	require.True(t, ok)
+	require.Equal(t, val, 2)
+
+	val, ok = clone.Pop()
+	require.True(t, ok)
+	require.Equal(t, val, 2)
+
+	val, ok = original.Pop()
+	require.True(t, ok)
+	require.Equal(t, val, 1)
+
+	val, ok = clone.Pop()
+	require.True(t, ok)
+	require.Equal(t, val, 1)
 }

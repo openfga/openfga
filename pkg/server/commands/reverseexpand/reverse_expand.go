@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -48,7 +49,7 @@ type ReverseExpandRequest struct {
 
 	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
 	weightedEdgeTypeRel string
-	stack               relationStack
+	relationStack       arrayStack.Stack
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -64,7 +65,7 @@ func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 		weightedEdge:        r.weightedEdge,
 		weightedEdgeTypeRel: r.weightedEdgeTypeRel,
 		skipWeightedGraph:   r.skipWeightedGraph,
-		stack:               r.stack.Copy(),
+		relationStack:       cloneStack(r.relationStack),
 	}
 }
 
@@ -391,7 +392,8 @@ func (c *ReverseExpandQuery) execute(
 			targetTypeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 
 			// The relation stack has to be initialized on the first request
-			req.stack.Push(typeRelEntry{typeRel: targetTypeRel})
+			req.relationStack = *arrayStack.New()
+			req.relationStack.Push(typeRelEntry{typeRel: targetTypeRel})
 		}
 
 		// we can ignore this error, if the weighted graph failed to build req.skipWeightedGraph would have prevented

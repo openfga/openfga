@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
 	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -22,6 +23,11 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+// As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
+// Each `typeRelEntry` represents a step in the path taken to reach a leaf.
+// After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
+// database queries needed to find the resulting objects.
+// To avoid races, every leaf node receives its own copy of the stack.
 type typeRelEntry struct {
 	typeRel string // e.g. "organization#admin"
 
@@ -30,36 +36,15 @@ type typeRelEntry struct {
 	usersetRelation string
 }
 
-// relationStack represents the path of queryable relationships encountered on the way to a terminal type.
-// As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes to this stack.
-// Each entry is a `typeRelEntry` struct, which contains the `type#relation`
-// along with metadata:
-//   - `usersetRelation`: To handle transitions through usersets (e.g. `[team#member]`).
-//
-// After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
-// database queries needed to find the resulting objects.
-// To avoid races, every leaf node receives its own copy of the stack.
-type relationStack []typeRelEntry
+// This creates a shallow clone of the relation stack.
+func cloneStack(original arrayStack.Stack) arrayStack.Stack {
+	newStack := arrayStack.New()
 
-func (r *relationStack) Push(value typeRelEntry) {
-	*r = append(*r, value)
-}
-
-func (r *relationStack) Pop() typeRelEntry {
-	element := (*r)[len(*r)-1]
-	*r = (*r)[0 : len(*r)-1]
-	return element
-}
-
-func (r *relationStack) Peek() typeRelEntry {
-	element := (*r)[len(*r)-1]
-	return element
-}
-
-func (r *relationStack) Copy() relationStack {
-	dst := make(relationStack, len(*r)) // Create a new slice with the same length
-	copy(dst, *r)
-	return dst
+	vals := original.Values()
+	for i := len(vals) - 1; i >= 0; i-- {
+		newStack.Push(vals[i])
+	}
+	return *newStack
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -170,9 +155,18 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 				// A direct edge here is org#teammate --> team#member
 				// so if we find team:fga for this user, we need to know to check for
 				// team:fga#member when we check org#teammate
-				newReq.stack[len(newReq.stack)-1].usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+				el, ok := newReq.relationStack.Pop()
+				if !ok {
+					// bad
+				}
+				entry, ok := el.(typeRelEntry)
+				if !ok {
+					// bad
+				}
+				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+				newReq.relationStack.Push(entry)
 
-				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
 				// Now continue traversing
 				err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -199,8 +193,8 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_ = newReq.stack.Pop()
-				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack.Pop()
+				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -220,14 +214,14 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
 			// query for folder#admin, then if folders exist we will see if they are related to
 			// any documents as #parent.
-			_ = newReq.stack.Pop()
+			newReq.relationStack.Pop()
 
 			// Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			newReq.stack.Push(tuplesetRel)
+			newReq.relationStack.Push(tuplesetRel)
 
 			// Push target type#rel (`folder#admin`)
-			newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
@@ -239,8 +233,8 @@ func (c *ReverseExpandQuery) loopOverWeightedEdges(
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
 			// to the stack.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_ = newReq.stack.Pop()
-				newReq.stack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack.Pop()
+				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			if err != nil {
@@ -312,10 +306,16 @@ func (c *ReverseExpandQuery) queryForTuples(
 		userFilter := buildUserFilter(currentReq, job.foundObject)
 
 		// Now pop the top relation off of the stack for querying
-		typeRel := currentReq.stack.Pop().typeRel
+		val, ok := currentReq.relationStack.Pop()
+		entry, ok := val.(typeRelEntry)
+		if !ok {
+			// should never happen, we're only pushing typeRelEntry to this stack
+			return nil, fmt.Errorf("unexpected type encountered in query stack %T", val)
+		}
+		typeRel := entry.typeRel
 
 		// Ensure that we haven't already run this query
-		ok := checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
+		ok = checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
 		if !ok {
 			return nil, nil
 		}
@@ -327,6 +327,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 			return nil, err
 		}
 		defer filteredIter.Stop()
+		fmt.Printf("Running with filters: %+v, object: %s, relation: %s\n\tstack: %+v\n", userFilter, objectType, relation, currentReq.relationStack.Values())
 
 		var errs error
 		var nextJobs []queryJob
@@ -363,10 +364,11 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 			// This will be a "type:id" e.g. "document:roadmap"
 			foundObject := tupleKey.GetObject()
+			fmt.Printf("Found: %s\n\tStack: %+v\n", tupleKey.String(), currentReq.relationStack.Values())
 
 			// If there are no more type#rel to look for in the stack that means we have hit the base case
 			// and this object is a candidate for return to the user.
-			if len(currentReq.stack) == 0 {
+			if currentReq.relationStack.Empty() {
 				_ = c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 				continue
 			}
@@ -439,7 +441,12 @@ func buildUserFilter(
 	// This is true on every call to queryFunc except the first, since we only trigger subsequent
 	// calls if we successfully found an object.
 	if object != "" {
-		entry := req.stack.Peek()
+		val, ok := req.relationStack.Peek()
+		if !ok {
+			// some error here, you shouldn't be able to get to here without this
+			return nil
+		}
+		entry, ok := val.(typeRelEntry)
 		filter := &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
