@@ -54,8 +54,9 @@ linters:
       checks:
         - all
     revive:
-      disable:
-        - var-naming
+      rules:
+        - name: var-naming
+          disabled: true
   exclusions:
     generated: lax
     rules:
