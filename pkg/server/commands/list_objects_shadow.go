@@ -27,7 +27,6 @@ type shadowedListObjectsQuery struct {
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	maxDeltaItems int           // The maximum number of items to log in the delta between the main and shadow results. This prevents excessive logging in case of large differences.
 	logger        logger.Logger
-	random        *rand.Rand
 	// only used for testing signals
 	wg *sync.WaitGroup
 }
@@ -134,7 +133,6 @@ func newShadowedListObjectsQuery(
 		shadowPct:     shadowConfig.shadowPct,
 		shadowTimeout: shadowConfig.shadowTimeout,
 		logger:        shadowConfig.logger,
-		random:        rand.New(rand.NewSource(time.Now().UnixNano())),
 		maxDeltaItems: shadowConfig.maxDeltaItems,
 		wg:            &sync.WaitGroup{}, // only used for testing signals
 	}
@@ -180,7 +178,7 @@ func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *ope
 }
 
 func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
-	return q.random.Intn(100) < q.shadowPct // randomly enable shadow mode
+	return rand.Intn(100) < q.shadowPct // randomly enable shadow mode
 }
 
 // executeShadowMode executes the main and shadow functions in parallel, returning the result of the main function if shadow mode is not shadowEnabled or if the shadow function fails.

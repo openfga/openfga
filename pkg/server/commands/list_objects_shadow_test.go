@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -135,7 +134,6 @@ func TestShadowedListObjectsQuery_Execute(t *testing.T) {
 				},
 				logger:    logger.NewNoopLogger(),
 				shadowPct: tt.percentage,
-				random:    rand.New(rand.NewSource(time.Now().UnixNano())),
 				wg:        &sync.WaitGroup{},
 			}
 			result, err := q.Execute(ctx, req)
@@ -192,7 +190,6 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 				shadow:    &mockListObjectsQuery{executeFunc: tt.shadowFunc},
 				logger:    logger.NewNoopLogger(),
 				shadowPct: tt.percentage,
-				random:    rand.New(rand.NewSource(time.Now().UnixNano())),
 				wg:        &sync.WaitGroup{},
 			}
 			func() {
@@ -265,7 +262,7 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 				},
 				logger:    logger.NewNoopLogger(),
 				shadowPct: 100, // Always run in shadow mode for testing
-				random:    rand.New(rand.NewSource(time.Now().UnixNano())),
+
 			}
 			result, err := q.ExecuteStreamed(ctx, req, nil)
 			if tt.expectErr {
@@ -369,7 +366,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		shadowTimeout time.Duration
 		maxDeltaItems int
 		loggerFn      func(t *testing.T, ctrl *gomock.Controller) logger.Logger
-		random        *rand.Rand
 		wg            *sync.WaitGroup
 	}
 	type args struct {
@@ -409,8 +405,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -443,8 +438,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -482,8 +476,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -518,8 +511,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -552,8 +544,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -585,8 +576,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -618,8 +608,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				random: rand.New(rand.NewSource(time.Now().UnixNano())),
-				wg:     &sync.WaitGroup{},
+				wg: &sync.WaitGroup{},
 			},
 			args: args{
 				parentCtx: context.TODO(),
@@ -638,7 +627,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				shadowTimeout: tt.fields.shadowTimeout,
 				maxDeltaItems: tt.fields.maxDeltaItems,
 				logger:        tt.fields.loggerFn(t, mockCtrl),
-				random:        tt.fields.random,
 				wg:            tt.fields.wg,
 			}
 			t.Cleanup(q.wg.Wait)
