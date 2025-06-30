@@ -107,27 +107,6 @@ type ListObjectsResponse struct {
 	ResolutionMetadata ListObjectsResolutionMetadata
 }
 
-func (r *ListObjectsResponse) Clone() ListObjectsResponse {
-	// Create a new instance of ListObjectsResponse
-	clone := ListObjectsResponse{
-		Objects:            make([]string, len(r.Objects)),
-		ResolutionMetadata: NewListObjectsResolutionMetadata(),
-	}
-
-	// Copy the objects slice
-	copy(clone.Objects, r.Objects)
-
-	return clone
-}
-
-func (m ListObjectsResolutionMetadata) Clone() ListObjectsResolutionMetadata {
-	metadata := NewListObjectsResolutionMetadata()
-	metadata.DatastoreQueryCount.Store(m.DatastoreQueryCount.Load())
-	metadata.DispatchCounter.Store(m.DispatchCounter.Load())
-	metadata.WasThrottled.Store(m.WasThrottled.Load())
-	return metadata
-}
-
 type ListObjectsQueryOption func(d *ListObjectsQuery)
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {

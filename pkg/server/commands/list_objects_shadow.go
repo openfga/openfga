@@ -168,8 +168,7 @@ func (q *shadowedListObjectsQuery) Execute(
 			}()
 			defer q.wg.Done() // only used for testing signals
 
-			cloneRes := res.Clone()
-			q.executeShadowModeAndCompareResults(cloneCtx, req, &cloneRes)
+			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects)
 		}()
 	}
 	return res, err
@@ -187,7 +186,7 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // It compares the results of the main and shadow functions, logging any differences.
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
-func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, res *ListObjectsResponse) {
+func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string) {
 	var commonFields = []zap.Field{
 		zap.String("func", ListObjectsShadowExecute),
 		zap.Any("request", req),
@@ -202,15 +201,11 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		}
 	}()
 
-	if res == nil { // should never happen, but to protect against nil dereference
-		return
-	}
-
 	// don't run if the main result reaches max result size q.main.listObjectsMaxResults
 	// that means there are more results than the shadow query can return,
 	// so it is impossible to compare the results
 	if loq, ok := q.main.(*ListObjectsQuery); ok {
-		if len(res.Objects) == int(loq.listObjectsMaxResults) {
+		if len(mainResult) == int(loq.listObjectsMaxResults) {
 			q.logger.DebugWithContext(parentCtx, "shadowed list objects query skipped due to max results reached",
 				// common args
 				commonFields...,
@@ -231,7 +226,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		return
 	}
 
-	objects := copyAndSortArr(res.Objects)
+	objects := copyAndSortArr(mainResult)
 	var shadowObj []string
 	if shadowRes != nil {
 		shadowObj = copyAndSortArr(shadowRes.Objects)
