@@ -68,6 +68,19 @@ type ListObjectsQuery struct {
 	checkResolver            graph.CheckResolver
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
+
+	listObjectsOptimizationEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+}
+
+type ListObjectsResolver interface {
+	// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
+	// or until q.listObjectsDeadline is hit, whichever happens first.
+	Execute(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error)
+
+	// ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
+	// It ignores the value of q.listObjectsMaxResults and returns all available results
+	// until q.listObjectsDeadline is hit.
+	ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error)
 }
 
 type ListObjectsResolutionMetadata struct {
@@ -81,8 +94,8 @@ type ListObjectsResolutionMetadata struct {
 	WasThrottled *atomic.Bool
 }
 
-func NewListObjectsResolutionMetadata() *ListObjectsResolutionMetadata {
-	return &ListObjectsResolutionMetadata{
+func NewListObjectsResolutionMetadata() ListObjectsResolutionMetadata {
+	return ListObjectsResolutionMetadata{
 		DatastoreQueryCount: new(atomic.Uint32),
 		DispatchCounter:     new(atomic.Uint32),
 		WasThrottled:        new(atomic.Bool),
@@ -152,6 +165,12 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	return func(d *ListObjectsQuery) {
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
+	}
+}
+
+func WithListObjectsOptimizationEnabled(enabled bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.listObjectsOptimizationEnabled = enabled
 	}
 }
 
@@ -456,7 +475,7 @@ func (q *ListObjectsQuery) Execute(
 		// Kick off background job to check if cache records are stale, inavlidating where needed
 		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
 	}
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +507,7 @@ func (q *ListObjectsQuery) Execute(
 
 	return &ListObjectsResponse{
 		Objects:            objects,
-		ResolutionMetadata: *resolutionMetadata,
+		ResolutionMetadata: resolutionMetadata,
 	}, nil
 }
 
@@ -509,7 +528,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -534,5 +553,5 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 	}
 
-	return resolutionMetadata, nil
+	return &resolutionMetadata, nil
 }
