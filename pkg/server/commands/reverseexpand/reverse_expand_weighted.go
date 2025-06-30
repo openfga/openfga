@@ -285,15 +285,15 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	// This loop processes jobs from the queue concurrently.
 	// It continues as long as there are items in the queue OR there are active goroutines processing jobs.
-	for !queryJobQueue.Empty() || activeJobs.Load() > 0 {
+	for activeJobs.Load() > 0 || !queryJobQueue.Empty() {
 		for !queryJobQueue.Empty() {
 			job, ok := queryJobQueue.dequeue()
 			if !ok {
 				// This shouldn't be possible if !Empty() just succeeded
 				break
 			}
-			activeJobs.Add(1)
 
+			activeJobs.Add(1)
 			pool.Go(func(ctx context.Context) error {
 				defer activeJobs.Add(-1)
 				newItems, err := c.executeQueryJob(ctx, job, resultChan, needsCheck, jobDedupeMap)
@@ -310,6 +310,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	err = pool.Wait()
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return err
 	}
 
