@@ -2,6 +2,7 @@ package sharediterator
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,21 +97,22 @@ type storageItem struct {
 }
 
 // unwrap returns a clone of the shared iterator.
+// If a new iterator is created, it will return true to indicate that the iterator was created.
 // If the iterator is not yet created, it will call the producer function to create a new iterator.
 // If the iterator is already created, it will return a clone of the existing iterator.
 // If there is an error while creating the iterator, it will return nil and the error.
-func (s *storageItem) unwrap() (*sharedIterator, error) {
+func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.iter != nil {
-		return s.iter.clone(), nil
+		return s.iter.clone(), false, nil
 	}
 
 	// If the iterator is not yet created, call the producer function to create it.
 	it, err := s.producer()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	s.iter = it
 	clone := it.clone()
@@ -120,7 +122,7 @@ func (s *storageItem) unwrap() (*sharedIterator, error) {
 	// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
 	// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
 	it.Stop()
-	return clone, nil
+	return clone, true, nil
 }
 
 type DatastoreStorageOpt func(*Storage)
@@ -221,7 +223,10 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		"sharedIterator.ReadStartingWithUser",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// for now, we will skip shared iterator since there is a possibility that the request
@@ -239,25 +244,11 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	}
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
@@ -290,18 +281,13 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -315,7 +301,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -324,11 +310,15 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
+	span.SetAttributes(attribute.Bool("found", !created))
+
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
+		storagewrappersutil.OperationReadStartingWithUser, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
@@ -347,7 +337,10 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
@@ -357,26 +350,12 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
@@ -408,18 +387,13 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -433,7 +407,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -442,11 +416,15 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
+	span.SetAttributes(attribute.Bool("found", !created))
+
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
+		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
@@ -464,7 +442,10 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
@@ -474,25 +455,11 @@ func (sf *IteratorDatastore) Read(
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// Check if the internal storage has reached its limit.
-	// If it has, we will bypass the shared iterator and use the inner reader directly.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	var count int
-
 	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0
-
-	// Iterate over the internal storage to count the number of items.
-	// This call will short-circuit if the count exceeds the limit.
-	// The outcome of this operation is not guaranteed to be accurate, but it is sufficient for our use case.
-	// The number of items admitted may be able to exceed the limit.
-	sf.internalStorage.iters.Range(func(_, _ any) bool {
-		count++
-		full = count >= int(sf.internalStorage.limit)
-		return !full
-	})
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
@@ -525,18 +492,13 @@ func (sf *IteratorDatastore) Read(
 			timer.Stop()
 			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
 		sharedIteratorCount.Inc()
 
-		span.SetAttributes(attribute.Bool("found", false))
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, sf.method, "false",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return newIterator, err
+		return newIterator, nil
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -550,7 +512,7 @@ func (sf *IteratorDatastore) Read(
 	// Unwrap the storage item to get the shared iterator.
 	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, err := item.unwrap()
+	it, created, err := item.unwrap()
 	if err != nil {
 		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
@@ -559,11 +521,15 @@ func (sf *IteratorDatastore) Read(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
+	span.SetAttributes(attribute.Bool("found", !created))
+
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, sf.method, "true",
+		storagewrappersutil.OperationRead, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
@@ -718,7 +684,7 @@ func (s *sharedIterator) clone() *sharedIterator {
 		remaining := s.refs.Load()
 
 		// If the reference count is zero, it means that the iterator has been stopped and cleaned up.
-		if remaining == 0 {
+		if remaining <= 0 {
 			return nil
 		}
 

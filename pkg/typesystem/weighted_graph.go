@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"slices"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 type weightedGraphItem interface {
@@ -136,4 +138,104 @@ func GetEdgesForExclusion(
 		return relevantEdges, nil, nil
 	}
 	return relevantEdges, butNotEdge, nil
+}
+
+// ConstructUserset returns the openfgav1.Userset to run CheckRewrite against list objects candidate when
+// model has intersection / exclusion.
+func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationModelEdge) (*openfgav1.Userset, error) {
+	currentNode := currentEdge.GetTo()
+	edgeType := currentEdge.GetEdgeType()
+	uniqueLabel := currentNode.GetUniqueLabel()
+
+	switch currentNode.GetNodeType() {
+	case graph.SpecificType, graph.SpecificTypeWildcard:
+		return This(), nil
+	case graph.SpecificTypeAndRelation:
+		switch edgeType {
+		case graph.DirectEdge:
+			// userset use case
+			object, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_ComputedUserset{
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Object:   object,
+						Relation: relation,
+					},
+				},
+			}, nil
+		case graph.RewriteEdge, graph.ComputedEdge:
+			_, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_ComputedUserset{
+					ComputedUserset: &openfgav1.ObjectRelation{
+						Relation: relation,
+					},
+				},
+			}, nil
+		case graph.TTUEdge:
+			parent, relation := tuple.SplitObjectRelation(uniqueLabel)
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_TupleToUserset{
+					TupleToUserset: &openfgav1.TupleToUserset{
+						Tupleset: &openfgav1.ObjectRelation{
+							Relation: parent,
+						},
+						ComputedUserset: &openfgav1.ObjectRelation{
+							Relation: relation,
+						},
+					},
+				},
+			}, nil
+		default:
+			// This should never happen.
+			return nil, fmt.Errorf("unknown edge type: %v for node: %s", edgeType, currentNode.GetUniqueLabel())
+		}
+
+	case graph.OperatorNode:
+		edges, ok := t.authzWeightedGraph.GetEdgesFromNode(currentNode)
+		if !ok {
+			// This should never happen.
+			return nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+		}
+		var usersets []*openfgav1.Userset
+		for _, edge := range edges {
+			currentUserset, err := t.ConstructUserset(edge)
+			if err != nil {
+				return nil, fmt.Errorf("failed to construct userset for edge %s: %w", edge.GetTo().GetUniqueLabel(), err)
+			}
+			usersets = append(usersets, currentUserset)
+		}
+		switch currentNode.GetLabel() {
+		case graph.ExclusionOperator:
+			if len(usersets) != 2 {
+				// This should never happen.
+				return nil, fmt.Errorf("node %s: exclusion operator requires exactly two usersets, got %d",
+					currentNode.GetUniqueLabel(), len(usersets))
+			}
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Difference{
+					Difference: &openfgav1.Difference{
+						Base:     usersets[0],
+						Subtract: usersets[1],
+					}}}, nil
+		case graph.IntersectionOperator:
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Intersection{
+					Intersection: &openfgav1.Usersets{
+						Child: usersets,
+					}}}, nil
+		case graph.UnionOperator:
+			return &openfgav1.Userset{
+				Userset: &openfgav1.Userset_Union{
+					Union: &openfgav1.Usersets{
+						Child: usersets,
+					}}}, nil
+		default:
+			// This should never happen.
+			return nil, fmt.Errorf("unknown operator node label %s for node %s", currentNode.GetLabel(), currentNode.GetUniqueLabel())
+		}
+	default:
+		// This should never happen.
+		return nil, fmt.Errorf("unknown node type %v for node %s", currentNode.GetNodeType(), currentNode.GetUniqueLabel())
+	}
 }
