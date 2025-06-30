@@ -805,12 +805,6 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.Head",
-	)
-	defer span.End()
-
 	return s.current(ctx)
 }
 
@@ -821,12 +815,6 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.Next",
-	)
-	defer span.End()
 
 	result, err := s.current(ctx)
 	if err != nil {
