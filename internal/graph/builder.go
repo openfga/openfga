@@ -121,6 +121,10 @@ func LocalCheckResolver(resolver CheckResolver) (*LocalChecker, bool) {
 	if ok {
 		return localChecker, true
 	}
+	shadowChecker, ok := resolver.(*ShadowResolver)
+	if ok {
+		return LocalCheckResolver(shadowChecker.main)
+	}
 	delegate := resolver.GetDelegate()
 	if delegate != nil {
 		if delegate == resolver {
