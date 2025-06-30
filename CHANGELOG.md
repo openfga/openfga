@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - SQLite based iterators will load tuples only when needed (lazy loading). [#2511](https://github.com/openfga/openfga/pull/2511)
+- Shared iterator improvement to reduce lock contention when creating and cloning. [#2530](https://github.com/openfga/openfga/pull/2530)
 
 ### Fixed
 - Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
