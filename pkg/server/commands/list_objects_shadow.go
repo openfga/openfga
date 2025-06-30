@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"maps"
 	"math/rand"
 	"slices"
 	"sync"
@@ -218,7 +219,6 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	defer shadowCancel()
 
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
-
 	if errShadow != nil {
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
 			append(commonFields, zap.Any("error", errShadow))...,
@@ -226,69 +226,64 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		return
 	}
 
-	objects := copyAndSortArr(mainResult)
-	var shadowObj []string
+	var resultShadowed []string
 	if shadowRes != nil {
-		shadowObj = copyAndSortArr(shadowRes.Objects)
+		resultShadowed = shadowRes.Objects
 	}
+
+	mapResultMain := keyMapFromSlice(mainResult)
+	mapResultShadow := keyMapFromSlice(resultShadowed)
+
 	// compare sorted string arrays - sufficient for equality check
-	if !slices.Equal(objects, shadowObj) {
-		delta := calculateDelta(objects, shadowObj)
-		if len(delta) > q.maxDeltaItems {
-			delta = delta[:q.maxDeltaItems] // limit the delta to maxDeltaItems
+	if !maps.Equal(mapResultMain, mapResultShadow) {
+		delta := calculateDelta(mapResultMain, mapResultShadow)
+		totalDelta := len(delta)
+		// Limit the delta to maxDeltaItems
+		if totalDelta > q.maxDeltaItems {
+			delta = delta[:q.maxDeltaItems]
 		}
 		// log the differences if the shadow query failed or if the results are not equal
 		q.logger.InfoWithContext(parentCtx, "shadowed list objects result difference",
 			append(commonFields,
-				zap.Int("main_result_count", len(objects)),
-				zap.Int("shadow_result_count", len(shadowObj)),
+				zap.Int("main_result_count", len(mainResult)),
+				zap.Int("shadow_result_count", len(resultShadowed)),
+				zap.Int("total_delta", totalDelta),
 				zap.Any("delta", delta),
 			)...,
 		)
 	} else {
 		q.logger.DebugWithContext(parentCtx, "shadowed list objects result matches",
 			append(commonFields,
-				zap.Int("result_count", len(objects)),
+				zap.Int("result_count", len(mainResult)),
 			)...,
 		)
 	}
 }
 
-// calculateDelta compares two slices of strings and returns a slice of strings representing the delta.
-// Each string in the delta is prefixed with "+" if it exists in the shadow but not in the main,
-// or "-" if it exists in the main but not in the shadow.
-// Used for logging differences between the main and shadow results in the shadowed list objects query.
-func calculateDelta(inputMain []string, inputShadow []string) []string {
-	mainObjects := make(map[string]struct{}, len(inputMain))
-	shadowObjects := make(map[string]struct{}, len(inputShadow))
-
-	delta := make([]string, 0, len(inputMain)+len(inputShadow))
-	// Create maps to track objects in main and shadow
-	for _, obj := range inputMain {
-		mainObjects[obj] = struct{}{}
+// keyMapFromSlice creates a map from a slice of strings, where each string is a key in the map.
+func keyMapFromSlice(slice []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(slice))
+	for _, item := range slice {
+		result[item] = struct{}{}
 	}
-	for _, obj := range inputShadow {
-		shadowObjects[obj] = struct{}{}
-	}
-	// Find objects in shadow but not in main
-	for _, obj := range inputMain {
-		if _, exists := shadowObjects[obj]; !exists {
-			delta = append(delta, "-"+obj) // object in main but not in shadow
-		}
-	}
-	for _, obj := range inputShadow {
-		if _, exists := mainObjects[obj]; !exists {
-			delta = append(delta, "+"+obj) // object in shadow but not in main
-		}
-	}
-
-	return delta
+	return result
 }
 
-// copyAndSortArr creates a copy of the input slice, sorts it, and returns the sorted slice.
-func copyAndSortArr(input []string) []string {
-	result := make([]string, len(input))
-	copy(result, input)
-	slices.Sort(result)
-	return result
+// calculateDelta calculates the delta between two maps of string keys.
+func calculateDelta(mapResultMain map[string]struct{}, mapResultShadow map[string]struct{}) []string {
+	delta := make([]string, 0, len(mapResultMain)+len(mapResultShadow))
+	// Find objects in shadow but not in main
+	for key := range mapResultMain {
+		if _, exists := mapResultShadow[key]; !exists {
+			delta = append(delta, "-"+key) // object in main but not in shadow
+		}
+	}
+	for key := range mapResultShadow {
+		if _, exists := mapResultMain[key]; !exists {
+			delta = append(delta, "+"+key) // object in shadow but not in main
+		}
+	}
+	// Sort the delta for consistent result
+	slices.Sort(delta)
+	return delta
 }

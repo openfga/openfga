@@ -335,7 +335,7 @@ func Test_calculateDelta(t *testing.T) {
 				inputMain:   []string{"a", "b", "c"},
 				inputShadow: []string{"b", "c", "d"},
 			},
-			want: []string{"-a", "+d"},
+			want: []string{"+d", "-a"},
 		},
 		{
 			name: "only_different",
@@ -343,7 +343,7 @@ func Test_calculateDelta(t *testing.T) {
 				inputMain:   []string{"a", "b", "c"},
 				inputShadow: []string{"x", "y", "z"},
 			},
-			want: []string{"-a", "-b", "-c", "+x", "+y", "+z"},
+			want: []string{"+x", "+y", "+z", "-a", "-b", "-c"},
 		},
 		{
 			name: "mixed_order",
@@ -356,7 +356,7 @@ func Test_calculateDelta(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equalf(t, tt.want, calculateDelta(tt.args.inputMain, tt.args.inputShadow), "calculateDelta(%v, %v)", tt.args.inputMain, tt.args.inputShadow)
+			assert.Equalf(t, tt.want, calculateDelta(keyMapFromSlice(tt.args.inputMain), keyMapFromSlice(tt.args.inputShadow)), "calculateDelta(%v, %v)", tt.args.inputMain, tt.args.inputShadow)
 		})
 	}
 }
@@ -477,7 +477,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.String("model_id", "")),
 						gomock.Eq(zap.Int("main_result_count", 3)),
 						gomock.Eq(zap.Int("shadow_result_count", 2)),
-						gomock.Eq(zap.Any("delta", []string{"-a", "-b", "+d"})),
+						gomock.Eq(zap.Int("total_delta", 3)),
+						gomock.Eq(zap.Any("delta", []string{"+d", "-a", "-b"})),
 					)
 					return mockLogger
 				},
@@ -512,7 +513,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.String("model_id", "")),
 						gomock.Eq(zap.Int("main_result_count", 10)),
 						gomock.Eq(zap.Int("shadow_result_count", 5)),
-						gomock.Eq(zap.Any("delta", []string{"-a", "-b", "-e"})),
+						gomock.Eq(zap.Int("total_delta", 11)),
+						gomock.Eq(zap.Any("delta", []string{"+x", "+y", "+z"})),
 					)
 					return mockLogger
 				},
