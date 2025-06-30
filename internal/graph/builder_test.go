@@ -12,6 +12,7 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 		name                                   string
 		CachedCheckResolverEnabled             bool
 		DispatchThrottlingCheckResolverEnabled bool
+		ShadowResolverEnabled                  bool
 		expectedResolverOrder                  []CheckResolver
 	}
 
@@ -36,6 +37,13 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 			DispatchThrottlingCheckResolverEnabled: true,
 			expectedResolverOrder:                  []CheckResolver{&CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &LocalChecker{}},
 		},
+		{
+			name:                                   "when_all_are_enabled_with_shadow",
+			CachedCheckResolverEnabled:             true,
+			DispatchThrottlingCheckResolverEnabled: true,
+			ShadowResolverEnabled:                  true,
+			expectedResolverOrder:                  []CheckResolver{&CachedCheckResolver{}, &DispatchThrottlingCheckResolver{}, &ShadowResolver{main: &LocalChecker{}, shadow: &LocalChecker{}}},
+		},
 	}
 
 	for _, test := range tests {
@@ -43,6 +51,7 @@ func TestNewOrderedCheckResolverBuilder(t *testing.T) {
 			builder := NewOrderedCheckResolvers([]CheckResolverOrderedBuilderOpt{
 				WithCachedCheckResolverOpts(test.CachedCheckResolverEnabled),
 				WithDispatchThrottlingCheckResolverOpts(test.DispatchThrottlingCheckResolverEnabled),
+				WithShadowResolverEnabled(test.ShadowResolverEnabled),
 			}...)
 			checkResolver, checkResolverCloser, err := builder.Build()
 			require.NoError(t, err)
@@ -87,5 +96,18 @@ func TestLocalCheckResolver(t *testing.T) {
 		dut, found := LocalCheckResolver(localResolver)
 		require.True(t, found)
 		require.Equal(t, localResolver, dut)
+	})
+	t.Run("shadow_resolver", func(t *testing.T) {
+		cachedCheckResolver, err := NewCachedCheckResolver()
+		require.NoError(t, err)
+		defer cachedCheckResolver.Close()
+		mainResolver := NewLocalChecker()
+		shadowResolver := NewLocalChecker()
+		shadow := NewShadowChecker(mainResolver, shadowResolver)
+		cachedCheckResolver.SetDelegate(shadow)
+		dut, found := LocalCheckResolver(cachedCheckResolver)
+
+		require.True(t, found)
+		require.Equal(t, mainResolver, dut)
 	})
 }
