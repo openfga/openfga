@@ -65,6 +65,10 @@ func ExampleNewServerWithOpts() {
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
 		WithCheckQueryCacheEnabled(true),
 		// more options available
+		WithShadowListObjectsQueryEnabled(true),
+		WithShadowListObjectsQueryTimeout(17*time.Millisecond),
+		WithShadowListObjectsQuerySamplePercentage(50),
+		WithShadowListObjectsQueryMaxDeltaItems(20),
 	)
 	if err != nil {
 		panic(err)
@@ -240,6 +244,39 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	t.Run("invalid_dialect", func(t *testing.T) {
 		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
 			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
+		})
+	})
+
+	t.Run("invalid_shadow_list_objects_query_sample_percentage", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver sample percentage must be between 0 and 100, got -1", func() {
+			mockController := gomock.NewController(t)
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithShadowListObjectsQueryEnabled(true),
+				WithShadowListObjectsQuerySamplePercentage(-1),
+			)
+		})
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver sample percentage must be between 0 and 100, got 101", func() {
+			mockController := gomock.NewController(t)
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithShadowListObjectsQueryEnabled(true),
+				WithShadowListObjectsQuerySamplePercentage(101),
+			)
+		})
+	})
+
+	t.Run("invalid_shadow_list_objects_query_timeout", func(t *testing.T) {
+		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver timeout must be greater than 0, got -1s", func() {
+			mockController := gomock.NewController(t)
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			_ = MustNewServerWithOpts(
+				WithDatastore(mockDatastore),
+				WithShadowListObjectsQueryEnabled(true),
+				WithShadowListObjectsQueryTimeout(-1*time.Second),
+			)
 		})
 	})
 }
