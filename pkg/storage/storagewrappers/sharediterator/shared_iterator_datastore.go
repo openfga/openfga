@@ -86,6 +86,9 @@ type storageItem struct {
 	// It is set to nil when the iterator is not yet created, and will be created by the producer function.
 	iter *sharedIterator
 
+	// err is an error that is set when the iterator creation fails.
+	err error
+
 	// producer is a function that creates a new shared iterator.
 	// It is called when the iterator is not yet created, and it should return a new shared iterator or an error.
 	// This allows the storageItem to lazily create the iterator when it is first accessed.
@@ -102,16 +105,15 @@ type storageItem struct {
 // If the iterator is already created, it will return a clone of the existing iterator.
 // If there is an error while creating the iterator, it will return nil and the error.
 func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
-	var err error
 	var created bool
 
 	s.once.Do(func() {
-		s.iter, err = s.producer()
+		s.iter, s.err = s.producer()
 		created = true
 	})
 
-	if err != nil {
-		return nil, false, err
+	if s.err != nil {
+		return nil, false, s.err
 	}
 	clone := s.iter.clone()
 
@@ -123,7 +125,7 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 		s.iter.Stop()
 	}
 
-	return clone, created, err
+	return clone, created, s.err
 }
 
 type DatastoreStorageOpt func(*Storage)
