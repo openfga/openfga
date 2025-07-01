@@ -289,7 +289,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
 
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 2)
 	activeJobs := atomic.Int64{}
 
 	// This loop processes jobs from the queue concurrently.
