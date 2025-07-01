@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/emirpasic/gods/stacks/arraystack"
+	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -376,7 +376,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 
 func TestCloneStack(t *testing.T) {
 	// Create stack and push two elements
-	original := arraystack.New()
+	original := lls.New()
 	original.Push(1)
 	original.Push(2)
 

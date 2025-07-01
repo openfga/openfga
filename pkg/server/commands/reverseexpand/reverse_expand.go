@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
+	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -48,7 +48,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack arrayStack.Stack
+	relationStack lls.Stack
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -385,7 +385,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = *arrayStack.New()
+				req.relationStack = *lls.New()
 				req.relationStack.Push(typeRelEntry{typeRel: typeRel})
 			}
 

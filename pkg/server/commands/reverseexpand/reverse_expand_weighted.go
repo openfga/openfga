@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
-	arrayStack "github.com/emirpasic/gods/stacks/arraystack"
+	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -39,8 +39,8 @@ type typeRelEntry struct {
 }
 
 // This creates a shallow clone of the relation stack.
-func cloneStack(original arrayStack.Stack) arrayStack.Stack {
-	newStack := arrayStack.New()
+func cloneStack(original lls.Stack) lls.Stack {
+	newStack := lls.New()
 
 	vals := original.Values()
 	for i := len(vals) - 1; i >= 0; i-- {
