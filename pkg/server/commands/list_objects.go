@@ -168,7 +168,7 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
+func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.listObjectOptimizationsEnabled = enabled
 	}
