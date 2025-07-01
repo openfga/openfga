@@ -38,7 +38,8 @@ type typeRelEntry struct {
 	usersetRelation string
 }
 
-// This creates a shallow clone of the relation stack.
+// When cloning requests to pass into separate goroutines, we need to create a copy of that
+// request's stack as well to avoid races.
 func cloneStack(original lls.Stack) lls.Stack {
 	newStack := lls.New()
 
