@@ -398,9 +398,9 @@ func (c *ReverseExpandQuery) execute(
 
 			return c.loopOverEdges(
 				ctx,
+				req,
 				edges,
 				needsCheck || intersectionOrExclusionInPreviousEdges,
-				req,
 				resolutionMetadata,
 				resultChan,
 			)

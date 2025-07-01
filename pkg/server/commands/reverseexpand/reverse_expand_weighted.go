@@ -23,6 +23,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
+var ErrEmptyStack = errors.New("unexpected empty stack")
+
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
 // Each `typeRelEntry` represents a step in the path taken to reach a leaf.
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
@@ -120,9 +122,9 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 //     It then calls `dispatch` to continue traversing the graph with this new state until it reaches a DirectEdge.
 func (c *ReverseExpandQuery) loopOverEdges(
 	ctx context.Context,
+	req *ReverseExpandRequest,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	needsCheck bool,
-	req *ReverseExpandRequest,
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
 ) error {
@@ -160,7 +162,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				el, ok := newReq.relationStack.Pop()
 				if !ok {
 					// shouldn't be possible
-					return fmt.Errorf("unexpected empty stack while processing direct edge to userset")
+					return ErrEmptyStack
 				}
 				entry, ok := el.(typeRelEntry)
 				if !ok {
@@ -196,7 +198,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				newReq.relationStack.Pop()
+				_, ok := newReq.relationStack.Pop()
+				if !ok {
+					// Should never happen
+					return ErrEmptyStack
+				}
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 
@@ -216,7 +222,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
 			// query for folder#admin, then if folders exist we will see if they are related to
 			// any documents as #parent.
-			newReq.relationStack.Pop()
+			_, ok := newReq.relationStack.Pop()
+			if !ok {
+				// Should never happen
+				return ErrEmptyStack
+			}
 
 			// Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
@@ -234,7 +244,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
 			// to the stack.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				newReq.relationStack.Pop()
+				_, ok := newReq.relationStack.Pop()
+				if !ok {
+					// Should never happen
+					return ErrEmptyStack
+				}
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -349,7 +363,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	val, ok := currentReq.relationStack.Pop()
 	if !ok {
 		// should never happen, if there's no stack we shouldn't be in here
-		return nil, fmt.Errorf("unexpected empty stack in queryFunc")
+		return nil, ErrEmptyStack
 	}
 
 	entry, ok := val.(typeRelEntry)
