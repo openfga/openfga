@@ -391,7 +391,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				maxDeltaItems: 100,
 				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 					mockLogger := mocks.NewMockLogger(ctrl)
-					mockLogger.EXPECT().DebugWithContext(
+					mockLogger.EXPECT().InfoWithContext(
 						gomock.Any(),
 						gomock.Eq("shadowed list objects result matches"),
 						gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
@@ -402,39 +402,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.String("store_id", "req.GetStoreId()")),
 						gomock.Eq(zap.String("model_id", "req.GetAuthorizationModelId()")),
 						gomock.Eq(zap.Int("result_count", 3)),
-					)
-					return mockLogger
-				},
-				wg: &sync.WaitGroup{},
-			},
-			args: args{
-				parentCtx: context.TODO(),
-				req: &openfgav1.ListObjectsRequest{
-					StoreId:              "req.GetStoreId()",
-					AuthorizationModelId: "req.GetAuthorizationModelId()",
-				},
-				result: []string{"a", "b", "c"},
-			},
-		},
-		{
-			name: "main_returned_max_results",
-			fields: fields{
-				main:          &ListObjectsQuery{listObjectsMaxResults: 3},
-				shadowPct:     100,
-				shadowTimeout: 1 * time.Minute,
-				maxDeltaItems: 100,
-				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-					mockLogger := mocks.NewMockLogger(ctrl)
-					mockLogger.EXPECT().DebugWithContext(
-						gomock.Any(),
-						gomock.Eq("shadowed list objects query skipped due to max results reached"),
-						gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
-						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{
-							StoreId:              "req.GetStoreId()",
-							AuthorizationModelId: "req.GetAuthorizationModelId()",
-						})),
-						gomock.Eq(zap.String("store_id", "req.GetStoreId()")),
-						gomock.Eq(zap.String("model_id", "req.GetAuthorizationModelId()")),
 					)
 					return mockLogger
 				},
@@ -462,7 +429,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				maxDeltaItems: 100,
 				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 					mockLogger := mocks.NewMockLogger(ctrl)
-					mockLogger.EXPECT().InfoWithContext(
+					mockLogger.EXPECT().WarnWithContext(
 						gomock.Any(),
 						gomock.Eq("shadowed list objects result difference"),
 						gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
@@ -497,7 +464,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				maxDeltaItems: 3,
 				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 					mockLogger := mocks.NewMockLogger(ctrl)
-					mockLogger.EXPECT().InfoWithContext(
+					mockLogger.EXPECT().WarnWithContext(
 						gomock.Any(),
 						gomock.Eq("shadowed list objects result difference"),
 						gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
@@ -632,6 +599,118 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			t.Cleanup(q.wg.Wait)
 			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result)
 			q.wg.Wait()
+		})
+	}
+}
+
+func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
+	type args struct {
+		mainResult *ListObjectsResponse
+		latency    time.Duration
+		pct        int
+		maxResults uint32
+		deadline   time.Duration
+	}
+	tests := []struct {
+		name           string
+		args           args
+		expectedReturn bool
+		loggerFn       func(t *testing.T, ctrl *gomock.Controller) logger.Logger
+		wg             *sync.WaitGroup
+	}{
+		{
+			name: "main result reaches max result size",
+			args: args{
+				mainResult: &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
+				latency:    10 * time.Millisecond,
+				pct:        100,
+				maxResults: 3,
+				deadline:   1 * time.Second,
+			},
+			expectedReturn: false,
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				mockLogger := mocks.NewMockLogger(ctrl)
+				mockLogger.EXPECT().WarnWithContext(
+					gomock.Any(),
+					gomock.Eq("shadowed list objects query skipped due to max results reached"),
+					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
+					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
+					gomock.Eq(zap.String("store_id", "")),
+					gomock.Eq(zap.String("model_id", "")),
+				)
+				return mockLogger
+			},
+		},
+		{
+			name: "main query latency too high",
+			args: args{
+				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				latency:    950 * time.Millisecond,
+				pct:        100,
+				maxResults: 10,
+				deadline:   1 * time.Second,
+			},
+			expectedReturn: false,
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				mockLogger := mocks.NewMockLogger(ctrl)
+				mockLogger.EXPECT().WarnWithContext(
+					gomock.Any(),
+					gomock.Eq("shadowed list objects query skipped due to high latency of the main query"),
+					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
+					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
+					gomock.Eq(zap.String("store_id", "")),
+					gomock.Eq(zap.String("model_id", "")),
+					gomock.Eq(zap.Duration("latency", 950*time.Millisecond)),
+				)
+				return mockLogger
+			},
+		},
+		{
+			name: "sample rate not met",
+			args: args{
+				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				latency:    10 * time.Millisecond,
+				pct:        0,
+				maxResults: 10,
+				deadline:   1 * time.Second,
+			},
+			expectedReturn: false,
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				return mocks.NewMockLogger(ctrl)
+			},
+		},
+		{
+			name: "all preconditions met",
+			args: args{
+				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				latency:    10 * time.Millisecond,
+				pct:        100,
+				maxResults: 10,
+				deadline:   1 * time.Second,
+			},
+			expectedReturn: true,
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				return mocks.NewMockLogger(ctrl)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockLogger := tt.loggerFn(t, ctrl)
+			mainQuery := &ListObjectsQuery{
+				listObjectsMaxResults: tt.args.maxResults,
+				listObjectsDeadline:   tt.args.deadline,
+			}
+			q := &shadowedListObjectsQuery{
+				main:      mainQuery,
+				shadowPct: tt.args.pct,
+				logger:    mockLogger,
+			}
+
+			ret := q.checkShadowModePreconditions(context.TODO(), &openfgav1.ListObjectsRequest{}, tt.args.mainResult, tt.args.latency)
+			assert.Equal(t, tt.expectedReturn, ret)
 		})
 	}
 }
