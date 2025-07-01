@@ -538,9 +538,16 @@ func (sf *IteratorDatastore) Read(
 	return it, nil
 }
 
-// BufferSize is the number of items to fetch at a time when reading from the shared iterator.
-// This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
-var BufferSize = 100
+var (
+	// BufferSize is the number of items to fetch at a time when reading from the shared iterator.
+	// This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
+	BufferSize = 100
+
+	// PrefetchThreshold is the threshold for prefetching items from the iterator.
+	// If the number of items in the iterator is below this threshold, it will trigger a prefetch operation.
+	// This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
+	PrefetchThreshold = 0.75
+)
 
 // reader is an interface that defines a method to read items from a source iterator.
 type reader[T any] interface {
@@ -707,6 +714,41 @@ func (s *sharedIterator) clone() *sharedIterator {
 	}
 }
 
+// fetchMore fetches more items from the underlying storage.TupleIterator.
+// It reads a batch of items into a buffer and appends them to the shared items slice.
+// If an error occurs during the read operation, it updates the error pointer and signals that the iterator is done.
+// It also manages the fetching state and signals waiting consumers that new items are available.
+func (s *sharedIterator) fetchMore() {
+	buf := make([]*openfgav1.Tuple, BufferSize)
+	read, e := s.ir.Read(s.ctx, buf)
+
+	// Load the current items from the shared items pointer and append the newly fetched items to it.
+	ptrItems := s.items.Load()
+	loadedItems := *ptrItems
+	loadedItems = append(loadedItems, buf[:read]...)
+	s.items.Store(&loadedItems)
+
+	if e != nil {
+		if e == context.Canceled || e == context.DeadlineExceeded {
+			// If the context is canceled or deadline exceeded, we treat it as an iterator done.
+			e = storage.ErrIteratorDone
+		}
+		s.err.Store(&e)
+	}
+
+	// Initialize a new channel to signal that new items are available on the next fetch.
+	newCh := make(chan struct{})
+	currentCh := s.ch.Swap(&newCh)
+
+	// Important! The fetching state must be set to false before closing the old channel.
+	// This avoids a race condition in which a goroutine waiting on the channel close might
+	// enter this function again and try to fetch items before the fetching state is reset.
+	s.fetching.Store(false)
+
+	// Close the old channel to signal waiting consumers to wake up.
+	close(*currentCh)
+}
+
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
@@ -714,42 +756,18 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 	*items = *s.items.Load()
 	*err = *s.err.Load()
 
+	prefetchThreshold := int(float64(len(*items)) * PrefetchThreshold)
+
+	if s.head >= prefetchThreshold && *err == nil && !s.fetching.Swap(true) {
+		go s.fetchMore()
+	}
+
 	// Iterate until we have items available or an error occurs.
 	for ; s.head >= len(*items) && *err == nil; *items, *err = *s.items.Load(), *s.err.Load() {
 		ch := *s.ch.Load()
 
 		if !s.fetching.Swap(true) {
-			// If we are not already fetching, we start a new goroutine to fetch items.
-			go func() {
-				buf := make([]*openfgav1.Tuple, BufferSize)
-				read, e := s.ir.Read(s.ctx, buf)
-
-				// Load the current items from the shared items pointer and append the newly fetched items to it.
-				ptrItems := s.items.Load()
-				loadedItems := *ptrItems
-				loadedItems = append(loadedItems, buf[:read]...)
-				s.items.Store(&loadedItems)
-
-				if e != nil {
-					if e == context.Canceled || e == context.DeadlineExceeded {
-						// If the context is canceled or deadline exceeded, we treat it as an iterator done.
-						e = storage.ErrIteratorDone
-					}
-					s.err.Store(&e)
-				}
-
-				// Initialize a new channel to signal that new items are available on the next fetch.
-				newCh := make(chan struct{})
-				currentCh := s.ch.Swap(&newCh)
-
-				// Important! The fetching state must be set to false before closing the old channel.
-				// This avoids a race condition in which a goroutine waiting on the channel close might
-				// enter this function again and try to fetch items before the fetching state is reset.
-				s.fetching.Store(false)
-
-				// Close the old channel to signal waiting consumers to wake up.
-				close(*currentCh)
-			}()
+			go s.fetchMore()
 		}
 
 		// Wait for new items to be available or for the context to be done.
