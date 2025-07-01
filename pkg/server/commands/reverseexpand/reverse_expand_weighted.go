@@ -133,7 +133,6 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	for _, edge := range edges {
 		newReq := req.clone()
 		newReq.weightedEdge = edge
-		newReq.weightedEdgeTypeRel = edge.GetTo().GetUniqueLabel()
 
 		toNode := edge.GetTo()
 

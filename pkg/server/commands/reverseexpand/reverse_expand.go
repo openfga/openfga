@@ -47,25 +47,23 @@ type ReverseExpandRequest struct {
 	edge              *graph.RelationshipEdge
 	skipWeightedGraph bool
 
-	weightedEdge        *weightedGraph.WeightedAuthorizationModelEdge
-	weightedEdgeTypeRel string
-	relationStack       arrayStack.Stack
+	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
+	relationStack arrayStack.Stack
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 	return &ReverseExpandRequest{
-		StoreID:             r.StoreID,
-		ObjectType:          r.ObjectType,
-		Relation:            r.Relation,
-		User:                r.User,
-		ContextualTuples:    r.ContextualTuples,
-		Context:             r.Context,
-		Consistency:         r.Consistency,
-		edge:                r.edge,
-		weightedEdge:        r.weightedEdge,
-		weightedEdgeTypeRel: r.weightedEdgeTypeRel,
-		skipWeightedGraph:   r.skipWeightedGraph,
-		relationStack:       cloneStack(r.relationStack),
+		StoreID:           r.StoreID,
+		ObjectType:        r.ObjectType,
+		Relation:          r.Relation,
+		User:              r.User,
+		ContextualTuples:  r.ContextualTuples,
+		Context:           r.Context,
+		Consistency:       r.Consistency,
+		edge:              r.edge,
+		weightedEdge:      r.weightedEdge,
+		skipWeightedGraph: r.skipWeightedGraph,
+		relationStack:     cloneStack(r.relationStack),
 	}
 }
 
@@ -364,8 +362,10 @@ func (c *ReverseExpandQuery) execute(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	if c.optimizationsEnabled && !req.skipWeightedGraph {
-		typeRel := req.weightedEdgeTypeRel
-		if typeRel == "" { // true on first call to ReverseExpand
+		var typeRel string
+		if req.weightedEdge != nil {
+			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()
+		} else { // true on first call to ReverseExpand
 			typeRel = tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 			node, ok := c.typesystem.GetNode(typeRel)
 			if !ok {
@@ -384,7 +384,7 @@ func (c *ReverseExpandQuery) execute(
 		}
 
 		if !req.skipWeightedGraph {
-			if req.weightedEdgeTypeRel == "" { // true on the first invocation only
+			if req.weightedEdge == nil { // true on the first invocation only
 				req.relationStack = *arrayStack.New()
 				req.relationStack.Push(typeRelEntry{typeRel: typeRel})
 			}
