@@ -174,10 +174,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
 				// Now continue traversing
-				err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-				if err != nil {
-					return err
-				}
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
 				continue
 			}
 
@@ -205,10 +204,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
 
-			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			if err != nil {
-				return err
-			}
+			pool.Go(func(ctx context.Context) error {
+				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+			})
 		case weightedGraph.TTUEdge:
 			// Replace the existing type#rel on the stack with the tuple-to-userset relation:
 			//
@@ -234,10 +232,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// Push target type#rel (`folder#admin`)
 			newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 
-			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			if err != nil {
-				return err
-			}
+			pool.Go(func(ctx context.Context) error {
+				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+			})
 		case weightedGraph.RewriteEdge:
 			// Behaves just like ComputedEdge above
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
@@ -250,10 +247,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				}
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			}
-			err := c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			if err != nil {
-				return err
-			}
+			pool.Go(func(ctx context.Context) error {
+				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+			})
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
