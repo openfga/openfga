@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -17,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -48,6 +50,34 @@ func TestNewListObjectsQuery(t *testing.T) {
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
 		require.ErrorContains(t, err, "typesystem missing in context")
 	})
+}
+
+func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
+	testLogger := logger.NewNoopLogger()
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+		WithShadowListObjectsQueryEnabled(true),
+		WithShadowListObjectsQuerySamplePercentage(100),
+		WithShadowListObjectsQueryTimeout(13*time.Second),
+		WithShadowListObjectsQueryLogger(testLogger),
+	))
+	require.NoError(t, err)
+	require.NotNil(t, q)
+	sq, isShadowed := q.(*shadowedListObjectsQuery)
+	require.True(t, isShadowed)
+	assert.True(t, sq.checkShadowModeSampleRate())
+	assert.Equal(t, 100, sq.shadowPct)
+	assert.Equal(t, 13*time.Second, sq.shadowTimeout)
+	assert.Equal(t, testLogger, sq.logger)
+}
+
+func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+		WithShadowListObjectsQueryEnabled(false),
+	))
+	require.NoError(t, err)
+	require.NotNil(t, q)
+	_, isStandard := q.(*ListObjectsQuery)
+	require.True(t, isStandard)
 }
 
 func TestListObjectsDispatchCount(t *testing.T) {
