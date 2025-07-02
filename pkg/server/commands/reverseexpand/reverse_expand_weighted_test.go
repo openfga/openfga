@@ -2,6 +2,7 @@ package reverseexpand
 
 import (
 	"context"
+	"go.uber.org/goleak"
 	"testing"
 
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
@@ -321,6 +322,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
 			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
 			errChan := make(chan error, 1)
 			typesys, err := typesystem.NewAndValidate(
@@ -330,7 +332,6 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			require.NoError(t, err)
 			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-			resolutionMetadata := NewResolutionMetadata()
 
 			// Once with optimization enabled
 			optimizedResultsChan := make(chan *ReverseExpandResult)
@@ -343,15 +344,15 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					WithListObjectOptimizationsEnabled(true),
 				)
 
-				err = q.Execute(ctx, &ReverseExpandRequest{
+				newErr := q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
 					ObjectType: test.objectType,
 					Relation:   test.relation,
 					User:       test.user,
-				}, optimizedResultsChan, resolutionMetadata)
+				}, optimizedResultsChan, NewResolutionMetadata())
 
-				if err != nil {
-					errChan <- err
+				if newErr != nil {
+					errChan <- newErr
 				}
 			}()
 
@@ -360,15 +361,15 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			go func() {
 				q := NewReverseExpandQuery(ds, typesys)
 
-				err = q.Execute(ctx, &ReverseExpandRequest{
+				newErr := q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
 					ObjectType: test.objectType,
 					Relation:   test.relation,
 					User:       test.user,
-				}, unoptimizedResultsChan, resolutionMetadata)
+				}, unoptimizedResultsChan, NewResolutionMetadata())
 
-				if err != nil {
-					errChan <- err
+				if newErr != nil {
+					errChan <- newErr
 				}
 			}()
 
