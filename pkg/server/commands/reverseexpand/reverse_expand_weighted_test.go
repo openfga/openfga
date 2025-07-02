@@ -2,11 +2,11 @@ package reverseexpand
 
 import (
 	"context"
-	"go.uber.org/goleak"
 	"testing"
 
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
