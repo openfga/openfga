@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
-	"sync/atomic"
-
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel/trace"
+	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -293,31 +291,35 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
 	// Limit querying routines to 2 to avoid explosion of routines.
 	pool := concurrency.NewPool(ctx, 2)
-	activeJobs := atomic.Int64{}
 
-	// This loop processes jobs from the queue concurrently.
-	// It continues as long as there are items in the queue OR there are active goroutines processing jobs.
-	for activeJobs.Load() > 0 || !queryJobQueue.Empty() {
-		for !queryJobQueue.Empty() {
-			job, ok := queryJobQueue.dequeue()
-			if !ok {
-				// This shouldn't be possible if !Empty() just succeeded
-				break
-			}
+	for !queryJobQueue.Empty() {
+		job, ok := queryJobQueue.dequeue()
+		if !ok {
+			// this shouldn't be possible
+			return nil
+		}
 
-			activeJobs.Add(1)
-			pool.Go(func(ctx context.Context) error {
-				defer activeJobs.Add(-1)
-				newItems, err := c.executeQueryJob(ctx, job, resultChan, needsCheck, jobDedupeMap)
+		// Each goroutine will take its first job from the original queue above
+		// and then continue generating and processing jobs until there are no more.
+		pool.Go(func(ctx context.Context) error {
+			localQueue := newJobQueue()
+			localQueue.enqueue(job)
+
+			// While this goroutine's queue has items, keep looking for more
+			for !localQueue.Empty() {
+				nextJob, ok := localQueue.dequeue()
+				if !ok {
+					break
+				}
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, jobDedupeMap)
 				if err != nil {
 					return err
 				}
+				localQueue.enqueue(newItems...)
+			}
 
-				// Each job can spawn many new jobs
-				queryJobQueue.enqueue(newItems...)
-				return nil
-			})
-		}
+			return nil
+		})
 	}
 
 	err = pool.Wait()
