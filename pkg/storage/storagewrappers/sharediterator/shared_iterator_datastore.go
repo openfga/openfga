@@ -597,6 +597,10 @@ type iteratorState struct {
 // It uses a mutex to ensure that only one goroutine can access an individual iterator instance at a time.
 // Atomic variables are used to manage data shared between clones.
 type sharedIterator struct {
+	// ptrmu is a pointer to a mutex that is used to ensure that only one goroutine can access the fetch routine at a time.
+	// ptrmu is a pointer type because it is shared between iterator instances, allowing for efficient
+	ptrmu *sync.Mutex
+
 	// mu is a mutex to ensure that only one goroutine can access the current iterator instance at a time.
 	// mu is a value type because it is not shared between iterator instances.
 	mu sync.Mutex
@@ -616,9 +620,6 @@ type sharedIterator struct {
 	// ir is the underlying iterator reader that provides the actual implementation of reading tuples.
 	ir readStopper[*openfgav1.Tuple]
 
-	// fetching is a shared atomic boolean that indicates whether any shared iterator instance is currently fetching items.
-	fetching *atomic.Bool
-
 	// state is a shared atomic pointer to the iterator state, which contains the items and any error encountered during iteration.
 	state *atomic.Pointer[iteratorState]
 
@@ -632,8 +633,6 @@ type sharedIterator struct {
 // newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
-	var fetching atomic.Bool
-
 	// Initialize the channel that will be used to signal when new items are available.
 	ch := make(chan struct{})
 	var pch atomic.Pointer[chan struct{}]
@@ -664,13 +663,15 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	var pstate atomic.Pointer[iteratorState]
 	pstate.Store(&state)
 
+	var mu sync.Mutex
+
 	newIter := sharedIterator{
-		cleanup:  cleanup,
-		ir:       ir,
-		fetching: &fetching,
-		state:    &pstate,
-		refs:     &refs,
-		ch:       &pch,
+		ptrmu:   &mu,
+		cleanup: cleanup,
+		ir:      ir,
+		state:   &pstate,
+		refs:    &refs,
+		ch:      &pch,
 	}
 
 	return &newIter
@@ -692,12 +693,12 @@ func (s *sharedIterator) clone() *sharedIterator {
 
 		if s.refs.CompareAndSwap(remaining, remaining+1) {
 			return &sharedIterator{
-				cleanup:  s.cleanup,
-				ir:       s.ir,
-				fetching: s.fetching,
-				state:    s.state,
-				refs:     s.refs,
-				ch:       s.ch,
+				ptrmu:   s.ptrmu,
+				cleanup: s.cleanup,
+				ir:      s.ir,
+				state:   s.state,
+				refs:    s.refs,
+				ch:      s.ch,
 			}
 		}
 	}
@@ -706,56 +707,35 @@ func (s *sharedIterator) clone() *sharedIterator {
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
-func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.Tuple, err *error) {
+func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
 	// Iterate until we have items available or an error occurs.
-	for {
+	state := *s.state.Load()
+	*items = state.items
+	*err = state.err
+
+	if s.head >= len(*items) && *err == nil {
+		s.ptrmu.Lock()
+		defer s.ptrmu.Unlock()
+
 		state := *s.state.Load()
 		*items = state.items
 		*err = state.err
 
-		if s.head < len(*items) || *err != nil {
-			break
-		}
+		if s.head >= len(*items) && *err == nil {
+			buf := make([]*openfgav1.Tuple, BufferSize)
+			read, e := s.ir.Read(context.Background(), buf)
 
-		ch := *s.ch.Load()
+			// Load the current items from the shared items pointer and append the newly fetched items to it.
+			ptrState := s.state.Load()
+			loadedState := *ptrState
+			loadedState.items = append(loadedState.items, buf[:read]...)
 
-		if !s.fetching.Swap(true) {
-			// If we are not already fetching, we start a new goroutine to fetch items.
-			go func() {
-				buf := make([]*openfgav1.Tuple, BufferSize)
-				read, e := s.ir.Read(context.Background(), buf)
-
-				// Load the current items from the shared items pointer and append the newly fetched items to it.
-				ptrState := s.state.Load()
-				loadedState := *ptrState
-				loadedState.items = append(loadedState.items, buf[:read]...)
-
-				if e != nil {
-					loadedState.err = e
-				}
-				s.state.Store(&loadedState)
-
-				// Initialize a new channel to signal that new items are available on the next fetch.
-				newCh := make(chan struct{})
-				currentCh := s.ch.Swap(&newCh)
-
-				// Important! The fetching state must be set to false before closing the old channel.
-				// This avoids a race condition in which a goroutine waiting on the channel close might
-				// enter this function again and try to fetch items before the fetching state is reset.
-				s.fetching.Store(false)
-
-				// Close the old channel to signal waiting consumers to wake up.
-				close(*currentCh)
-			}()
-		}
-
-		// Wait for new items to be available or for the context to be done.
-		// This allows the iterator to block until new items are fetched or the context is canceled.
-		// This is important to ensure that we do not return stale data or block indefinitely.
-		select {
-		case <-ch:
-		case <-ctx.Done():
-			return
+			if e != nil {
+				loadedState.err = e
+			}
+			s.state.Store(&loadedState)
+			*items = loadedState.items
+			*err = loadedState.err
 		}
 	}
 }
@@ -776,7 +756,7 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 	var items []*openfgav1.Tuple
 	var err error
 
-	s.fetchAndWait(ctx, &items, &err)
+	s.fetchAndWait(&items, &err)
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
