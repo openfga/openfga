@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
+- Shared iterator contained a race condition and deadlock. [#2538](https://github.com/openfga/openfga/pull/2538)
 
 ## [1.8.16] - 2025-06-17
 ### Fixed
