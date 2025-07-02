@@ -451,7 +451,7 @@ func buildUserFilter(
 			if !ok {
 				return nil, fmt.Errorf("unexpected user type when building User filter: %T", val)
 			}
-		
+
 			userID = val.Object.GetId()
 			filter = &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)}
 
