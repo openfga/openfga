@@ -60,7 +60,7 @@ type InMemoryCache[T any] interface {
 	Get(key string) T
 	Set(key string, value T, ttl time.Duration)
 
-	Delete(prefix string)
+	Delete(key string)
 
 	// Stop cleans resources.
 	Stop()
