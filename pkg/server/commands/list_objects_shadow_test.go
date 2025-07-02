@@ -630,7 +630,7 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			expectedReturn: false,
 			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 				mockLogger := mocks.NewMockLogger(ctrl)
-				mockLogger.EXPECT().WarnWithContext(
+				mockLogger.EXPECT().DebugWithContext(
 					gomock.Any(),
 					gomock.Eq("shadowed list objects query skipped due to max results reached"),
 					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
@@ -653,7 +653,7 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			expectedReturn: false,
 			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 				mockLogger := mocks.NewMockLogger(ctrl)
-				mockLogger.EXPECT().WarnWithContext(
+				mockLogger.EXPECT().DebugWithContext(
 					gomock.Any(),
 					gomock.Eq("shadowed list objects query skipped due to high latency of the main query"),
 					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
