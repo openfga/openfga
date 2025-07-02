@@ -444,15 +444,20 @@ func buildUserFilter(
 
 		switch toNode.GetNodeType() {
 		case weightedGraph.SpecificType: // Direct User Reference. To() -> "user"
-			// We will always have a UserRefObject here. Queries that come in for pure usersets do not take this code path.
-			// e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
+			// req.User will always be either a UserRefObject or UserRefTypedWildcard here. Queries that come in for
+			// pure usersets do not take this code path. e.g. ListObjects(team:fga#member, document, viewer) will not make it here.
 			var userID string
 			val, ok := req.User.(*UserRefObject)
-			if !ok {
-				return nil, fmt.Errorf("unexpected user type when building User filter: %T", val)
+			if ok {
+				userID = val.Object.GetId()
+			} else {
+				// It might be a wildcard user, which is ok
+				_, ok = req.User.(*UserRefTypedWildcard)
+				if !ok {
+					return nil, fmt.Errorf("unexpected user type when building User filter: %T", val)
+				}
 			}
 
-			userID = val.Object.GetId()
 			filter = &openfgav1.ObjectRelation{Object: tuple.BuildObject(toNode.GetUniqueLabel(), userID)}
 
 		case weightedGraph.SpecificTypeWildcard: // Wildcard Referece To() -> "user:*"
