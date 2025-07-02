@@ -625,19 +625,11 @@ type sharedIterator struct {
 
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
-
-	// ch is a shared atomic pointer to a channel that is used to signal when new items are available.
-	ch *atomic.Pointer[chan struct{}]
 }
 
 // newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
-	// Initialize the channel that will be used to signal when new items are available.
-	ch := make(chan struct{})
-	var pch atomic.Pointer[chan struct{}]
-	pch.Store(&ch)
-
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
 	refs.Store(1)
@@ -671,7 +663,6 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 		ir:      ir,
 		state:   &pstate,
 		refs:    &refs,
-		ch:      &pch,
 	}
 
 	return &newIter
@@ -698,7 +689,6 @@ func (s *sharedIterator) clone() *sharedIterator {
 				ir:      s.ir,
 				state:   s.state,
 				refs:    s.refs,
-				ch:      s.ch,
 			}
 		}
 	}
