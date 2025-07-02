@@ -244,10 +244,15 @@ func (c *CachedDatastore) Read(
 }
 
 func isInvalidAt(cache storage.InMemoryCache[any], ts time.Time, invalidStore string, invalidEntityKeys []string) bool {
-	keys := make([]string, 1, len(invalidEntityKeys)+1) // micro optimization, start 1 to append
-	keys[0] = invalidStore                              // set the first value directly
-	keys = append(keys, invalidEntityKeys...)
-	for _, invalidEntityKey := range keys {
+	if res := cache.Get(invalidStore); res != nil {
+		invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
+		// if the invalid entity is not valid, do not discard
+		if ok && ts.Before(invalidEntry.LastModified) {
+			return true
+		}
+	}
+
+	for _, invalidEntityKey := range invalidEntityKeys {
 		if res := cache.Get(invalidEntityKey); res != nil {
 			invalidEntry, ok := res.(*storage.InvalidEntityCacheEntry)
 			// if the invalid entity is not valid, do not discard
