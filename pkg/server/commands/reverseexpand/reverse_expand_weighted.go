@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel/trace"
-	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"

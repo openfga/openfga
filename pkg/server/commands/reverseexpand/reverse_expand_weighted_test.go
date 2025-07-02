@@ -5,9 +5,8 @@ import (
 	"testing"
 
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
-	"github.com/stretchr/testify/require"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/stretchr/testify/require"
 
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
@@ -322,7 +321,6 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
-			resultChan := make(chan *ReverseExpandResult)
 			errChan := make(chan error, 1)
 			typesys, err := typesystem.NewAndValidate(
 				context.Background(),
@@ -332,6 +330,9 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 			resolutionMetadata := NewResolutionMetadata()
+
+			// Once with optimization enabled
+			optimizedResultsChan := make(chan *ReverseExpandResult)
 			go func() {
 				q := NewReverseExpandQuery(
 					ds,
@@ -346,30 +347,61 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					ObjectType: test.objectType,
 					Relation:   test.relation,
 					User:       test.user,
-				}, resultChan, resolutionMetadata)
+				}, optimizedResultsChan, resolutionMetadata)
 
 				if err != nil {
 					errChan <- err
 				}
 			}()
 
-			var results []string
+			// once without optimization enabled
+			unoptimizedResultsChan := make(chan *ReverseExpandResult)
+			go func() {
+				q := NewReverseExpandQuery(ds, typesys)
+
+				err = q.Execute(ctx, &ReverseExpandRequest{
+					StoreID:    storeID,
+					ObjectType: test.objectType,
+					Relation:   test.relation,
+					User:       test.user,
+				}, unoptimizedResultsChan, resolutionMetadata)
+
+				if err != nil {
+					errChan <- err
+				}
+			}()
+
+			var optimizedResults []string
+			var unoptimizedResults []string
 		ConsumerLoop:
 			for {
 				select {
-				case result, open := <-resultChan:
+				case result, open := <-unoptimizedResultsChan:
 					if !open {
-						break ConsumerLoop
+						unoptimizedResultsChan = nil
+						break
 					}
-					results = append(results, result.Object)
+					unoptimizedResults = append(unoptimizedResults, result.Object)
+				case result, open := <-optimizedResultsChan:
+					if !open {
+						optimizedResultsChan = nil
+						break
+					}
+					optimizedResults = append(optimizedResults, result.Object)
 				case err := <-errChan:
 					require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
 					break ConsumerLoop
 				case <-ctx.Done():
 					break ConsumerLoop
 				}
+
+				// When both channels have completed, break the loop
+				if unoptimizedResultsChan == nil && optimizedResultsChan == nil {
+					break ConsumerLoop
+				}
 			}
-			require.ElementsMatch(t, test.expectedObjects, results)
+			require.ElementsMatch(t, test.expectedObjects, optimizedResults)
+			require.ElementsMatch(t, unoptimizedResults, optimizedResults)
 		})
 	}
 }
