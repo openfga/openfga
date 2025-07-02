@@ -687,7 +687,8 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 					defer iter.Stop()
 
 					// Simulate different reading patterns
-					if id%3 == 0 {
+					switch id % 3 {
+					case 0:
 						// Full read
 						var count int
 						for {
@@ -701,7 +702,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 							}
 							count++
 						}
-					} else if id%3 == 1 {
+					case 1:
 						// Partial read with random stop
 						readCount := id%10 + 1
 						for k := 0; k < readCount; k++ {
@@ -714,7 +715,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 								return
 							}
 						}
-					} else {
+					default:
 						// Head operations
 						for k := 0; k < 5; k++ {
 							_, err := iter.Head(ctx)
