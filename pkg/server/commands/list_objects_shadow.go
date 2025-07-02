@@ -145,23 +145,22 @@ func (q *shadowedListObjectsQuery) Execute(
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
 	cloneCtx := context.WithoutCancel(ctx) // needs typesystem and datastore etc
+
+	startTime := time.Now()
 	res, err := q.main.Execute(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	latency := time.Since(startTime)
 
 	// If shadow mode is not shadowEnabled, just execute the main query
-	if q.checkShadowModeSampleRate() {
+	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
 		q.wg.Add(1) // only used for testing signals
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					q.logger.ErrorWithContext(cloneCtx, "panic recovered",
-						zap.String("func", ListObjectsShadowExecute),
-						zap.Any("request", req),
-						zap.String("store_id", req.GetStoreId()),
-						zap.String("model_id", req.GetAuthorizationModelId()),
-						zap.Any("error", r),
+						loShadowLogFields(req, zap.Any("error", r))...,
 					)
 				}
 			}()
@@ -186,32 +185,13 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
 func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string) {
-	var commonFields = []zap.Field{
-		zap.String("func", ListObjectsShadowExecute),
-		zap.Any("request", req),
-		zap.String("store_id", req.GetStoreId()),
-		zap.String("model_id", req.GetAuthorizationModelId()),
-	}
 	defer func() {
 		if r := recover(); r != nil {
 			q.logger.ErrorWithContext(parentCtx, "panic recovered",
-				append(commonFields, zap.Any("error", r))...,
+				loShadowLogFields(req, zap.Any("error", r))...,
 			)
 		}
 	}()
-
-	// don't run if the main result reaches max result size q.main.listObjectsMaxResults
-	// that means there are more results than the shadow query can return,
-	// so it is impossible to compare the results
-	if loq, ok := q.main.(*ListObjectsQuery); ok {
-		if len(mainResult) == int(loq.listObjectsMaxResults) {
-			q.logger.DebugWithContext(parentCtx, "shadowed list objects query skipped due to max results reached",
-				// common args
-				commonFields...,
-			)
-			return
-		}
-	}
 
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
@@ -219,7 +199,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
 	if errShadow != nil {
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
-			append(commonFields, zap.Any("error", errShadow))...,
+			loShadowLogFields(req, zap.Any("error", errShadow))...,
 		)
 		return
 	}
@@ -241,8 +221,8 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 			delta = delta[:q.maxDeltaItems]
 		}
 		// log the differences if the shadow query failed or if the results are not equal
-		q.logger.InfoWithContext(parentCtx, "shadowed list objects result difference",
-			append(commonFields,
+		q.logger.WarnWithContext(parentCtx, "shadowed list objects result difference",
+			loShadowLogFields(req,
 				zap.Int("main_result_count", len(mainResult)),
 				zap.Int("shadow_result_count", len(resultShadowed)),
 				zap.Int("total_delta", totalDelta),
@@ -250,12 +230,53 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 			)...,
 		)
 	} else {
-		q.logger.DebugWithContext(parentCtx, "shadowed list objects result matches",
-			append(commonFields,
+		q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
+			loShadowLogFields(req,
 				zap.Int("result_count", len(mainResult)),
 			)...,
 		)
 	}
+}
+
+// checkShadowModePreconditions checks if the shadow mode preconditions are met:
+//   - If the main result reaches the max result size, skip the shadow query.
+//   - If the main query takes too long, skip the shadow query.
+//   - If the shadow mode sample rate is not met, skip the shadow query.
+func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Context, req *openfgav1.ListObjectsRequest, res *ListObjectsResponse, latency time.Duration) bool {
+	if loq, ok := q.main.(*ListObjectsQuery); ok {
+		// don't run if the main result reaches max result size q.main.listObjectsMaxResults
+		// that means there are more results than the shadow query can return,
+		// so it is impossible to compare the results
+		if len(res.Objects) == int(loq.listObjectsMaxResults) {
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to max results reached",
+				loShadowLogFields(req)...,
+			)
+			return false
+		}
+
+		// When a list_objects query takes a significant amount of time to complete (approaching its overall timeout),
+		// it often indicates an exhaustive traversal or that it's processing a large dataset.
+		// In such cases, running a parallel shadow query and comparing its results (which do not guarantee order)
+		// against a potentially slow or truncated main query result is often meaningless and can lead to false negatives in correctness comparisons.
+		// Therefore, we skip the shadow query if the main query is already close to its deadline.
+		if latency > (loq.listObjectsDeadline - 100*time.Millisecond) {
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to high latency of the main query",
+				loShadowLogFields(req, zap.Duration("latency", latency))...,
+			)
+			return false
+		}
+	}
+
+	return q.checkShadowModeSampleRate()
+}
+
+func loShadowLogFields(req *openfgav1.ListObjectsRequest, fields ...zap.Field) []zap.Field {
+	return append([]zap.Field{
+		zap.String("func", ListObjectsShadowExecute),
+		zap.Any("request", req),
+		zap.String("store_id", req.GetStoreId()),
+		zap.String("model_id", req.GetAuthorizationModelId()),
+	}, fields...)
 }
 
 // keyMapFromSlice creates a map from a slice of strings, where each string is a key in the map.
