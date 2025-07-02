@@ -375,8 +375,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	typeRel := entry.typeRel
 
 	// Ensure that we haven't already run this query
-	ok = checkQueryIsUnique(jobDedupeMap, userFilter, typeRel)
-	if !ok {
+	if isDuplicateQuery(jobDedupeMap, userFilter, typeRel) {
 		return nil, nil
 	}
 
@@ -461,7 +460,7 @@ func buildUserFilter(
 	return []*openfgav1.ObjectRelation{filter}, nil
 }
 
-func checkQueryIsUnique(
+func isDuplicateQuery(
 	dedupeMap *sync.Map,
 	userFilter []*openfgav1.ObjectRelation,
 	typeRel string,
@@ -476,7 +475,7 @@ func checkQueryIsUnique(
 	key += relation + objectType
 	_, loaded := dedupeMap.LoadOrStore(key, struct{}{})
 
-	return !loaded
+	return loaded
 }
 
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
