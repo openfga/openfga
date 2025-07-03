@@ -33,6 +33,8 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
 		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
 			WithShadowListObjectsQuerySamplePercentage(13),
+			WithShadowListObjectsQueryMaxDeltaItems(99),
+			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
 		), WithListObjectsOptimizationsEnabled(true))
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -40,6 +42,9 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
 		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
 		assert.Equal(t, noopLogger, query.logger)
+		assert.Equal(t, 13, query.shadowPct)
+		assert.Equal(t, 99, query.maxDeltaItems)
+		assert.Equal(t, 66*time.Millisecond, query.shadowTimeout)
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
@@ -162,6 +167,7 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 		mainFunc    func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error)
 		shadowFunc  func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error)
 		expectedErr error
+		loggerFn    func(t *testing.T, ctrl *gomock.Controller) logger.Logger
 	}{
 		{
 			name:       "stardard_panics",
@@ -169,15 +175,36 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 			mainFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 				panic("this is a panic in main query")
 			},
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				return mocks.NewMockLogger(ctrl)
+			},
 		},
 		{
 			name:       "shadow_panics",
 			percentage: 100,
 			mainFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-				return &ListObjectsResponse{}, nil
+				return &ListObjectsResponse{
+					Objects: []string{"a", "b", "c"},
+				}, nil
 			},
 			shadowFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 				panic("this is a panic in shadow query")
+			},
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				mockLogger := mocks.NewMockLogger(ctrl)
+				mockLogger.EXPECT().ErrorWithContext(
+					gomock.Any(),
+					gomock.Eq("panic recovered"),
+					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
+					gomock.Eq(zap.Any("request", req)),
+					gomock.Eq(zap.String("store_id", "")),
+					gomock.Eq(zap.String("model_id", "")),
+					gomock.Any(), // main_latency - can't be determined here
+					gomock.Any(), // shadow_latency - can't be determined here
+					gomock.Eq(zap.Int("main_result_count", 3)),
+					gomock.Eq(zap.String("error", "this is a panic in shadow query")),
+				).Times(1)
+				return mockLogger
 			},
 		},
 	}
@@ -185,26 +212,29 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			mockCtl := gomock.NewController(t)
 			q := &shadowedListObjectsQuery{
 				main:      &mockListObjectsQuery{executeFunc: tt.mainFunc},
 				shadow:    &mockListObjectsQuery{executeFunc: tt.shadowFunc},
-				logger:    logger.NewNoopLogger(),
+				logger:    tt.loggerFn(t, mockCtl),
 				shadowPct: tt.percentage,
 				wg:        &sync.WaitGroup{},
 			}
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// should only panic in main mode
-						panicMsg := fmt.Sprintf("%v", r)
-						assert.Contains(t, panicMsg, "this is a panic in main query")
-					}
-				}()
-				_, err := q.Execute(ctx, req)
-
-				q.wg.Wait()
-				assert.NoError(t, err)
+			defer func() {
+				if r := recover(); r != nil {
+					// add extra wait to ensure the goroutine has finished
+					defer q.wg.Wait()
+					// should only panic in main mode
+					panicMsg := fmt.Sprintf("%v", r)
+					assert.Contains(t, panicMsg, "this is a panic in main query")
+				}
 			}()
+
+			_, err := q.Execute(ctx, req)
+
+			// this will never be reached if the main query panics
+			q.wg.Wait()
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -372,6 +402,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		parentCtx context.Context
 		req       *openfgav1.ListObjectsRequest
 		result    []string
+		latency   time.Duration
 	}
 	tests := []struct {
 		name   string
@@ -401,7 +432,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						})),
 						gomock.Eq(zap.String("store_id", "req.GetStoreId()")),
 						gomock.Eq(zap.String("model_id", "req.GetAuthorizationModelId()")),
-						gomock.Eq(zap.Int("result_count", 3)),
+						gomock.Eq(zap.Bool("is_match", true)),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
+						zap.Int("main_result_count", 3),
 					)
 					return mockLogger
 				},
@@ -413,7 +447,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					StoreId:              "req.GetStoreId()",
 					AuthorizationModelId: "req.GetAuthorizationModelId()",
 				},
-				result: []string{"a", "b", "c"},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
 			},
 		},
 		{
@@ -436,6 +471,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
 						gomock.Eq(zap.String("store_id", "")),
 						gomock.Eq(zap.String("model_id", "")),
+						gomock.Eq(zap.Bool("is_match", false)),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
 						gomock.Eq(zap.Int("main_result_count", 3)),
 						gomock.Eq(zap.Int("shadow_result_count", 2)),
 						gomock.Eq(zap.Int("total_delta", 3)),
@@ -449,6 +487,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				parentCtx: context.TODO(),
 				req:       &openfgav1.ListObjectsRequest{},
 				result:    []string{"a", "b", "c"},
+				latency:   77 * time.Millisecond,
 			},
 		},
 		{
@@ -471,6 +510,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
 						gomock.Eq(zap.String("store_id", "")),
 						gomock.Eq(zap.String("model_id", "")),
+						gomock.Eq(zap.Bool("is_match", false)),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
 						gomock.Eq(zap.Int("main_result_count", 10)),
 						gomock.Eq(zap.Int("shadow_result_count", 5)),
 						gomock.Eq(zap.Int("total_delta", 11)),
@@ -484,6 +526,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				parentCtx: context.TODO(),
 				req:       &openfgav1.ListObjectsRequest{},
 				result:    []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+				latency:   77 * time.Millisecond,
 			},
 		},
 		{
@@ -507,6 +550,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
 						gomock.Eq(zap.String("store_id", "")),
 						gomock.Eq(zap.String("model_id", "")),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
+						gomock.Eq(zap.Int("main_result_count", 3)),
 						gomock.Eq(zap.Any("error", context.DeadlineExceeded)),
 					)
 					return mockLogger
@@ -517,6 +563,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				parentCtx: context.TODO(),
 				req:       &openfgav1.ListObjectsRequest{},
 				result:    []string{"a", "b", "c"},
+				latency:   77 * time.Millisecond,
 			},
 		},
 		{
@@ -539,6 +586,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
 						gomock.Eq(zap.String("store_id", "")),
 						gomock.Eq(zap.String("model_id", "")),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
+						gomock.Eq(zap.Int("main_result_count", 3)),
 						gomock.Eq(zap.Any("error", errors.New("shadow query error"))),
 					)
 					return mockLogger
@@ -549,38 +599,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				parentCtx: context.TODO(),
 				req:       &openfgav1.ListObjectsRequest{},
 				result:    []string{"a", "b", "c"},
-			},
-		},
-		{
-			name: "recover_from_panic",
-			fields: fields{
-				shadow: &mockListObjectsQuery{
-					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						panic("this is a panic in shadow query")
-					},
-				},
-				shadowPct:     100,
-				shadowTimeout: 1 * time.Nanosecond,
-				maxDeltaItems: 100,
-				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-					mockLogger := mocks.NewMockLogger(ctrl)
-					mockLogger.EXPECT().ErrorWithContext(
-						gomock.Any(),
-						gomock.Eq("panic recovered"),
-						gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
-						gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
-						gomock.Eq(zap.String("store_id", "")),
-						gomock.Eq(zap.String("model_id", "")),
-						gomock.Eq(zap.String("error", "this is a panic in shadow query")),
-					)
-					return mockLogger
-				},
-				wg: &sync.WaitGroup{},
-			},
-			args: args{
-				parentCtx: context.TODO(),
-				req:       &openfgav1.ListObjectsRequest{},
-				result:    []string{"a", "b", "c"},
+				latency:   77 * time.Millisecond,
 			},
 		},
 	}
@@ -597,7 +616,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				wg:            tt.fields.wg,
 			}
 			t.Cleanup(q.wg.Wait)
-			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result)
+			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result, tt.args.latency)
 			q.wg.Wait()
 		})
 	}
