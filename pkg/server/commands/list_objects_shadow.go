@@ -114,14 +114,14 @@ func newShadowedListObjectsQuery(
 	}
 	standard, err := NewListObjectsQuery(ds, checkResolver,
 		// force disable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationEnabled(false)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(false)})...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(true)})...,
 	)
 	if err != nil {
 		return nil, err

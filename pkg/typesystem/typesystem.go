@@ -1780,6 +1780,14 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	return relevantEdges, needsCheck, nil
 }
 
+func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {
+	if t.authzWeightedGraph == nil {
+		return nil, false
+	}
+
+	return t.authzWeightedGraph.GetNodeByID(uniqueID)
+}
+
 func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
 	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
 		if lowest == nil {

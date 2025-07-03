@@ -69,7 +69,7 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	listObjectsOptimizationEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 }
 
 type ListObjectsResolver interface {
@@ -168,9 +168,9 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectsOptimizationEnabled(enabled bool) ListObjectsQueryOption {
+func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.listObjectsOptimizationEnabled = enabled
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -206,6 +206,7 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
+		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
 	}
 
 	for _, opt := range opts {
@@ -333,6 +334,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
+			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

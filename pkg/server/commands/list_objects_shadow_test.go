@@ -33,12 +33,12 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
 		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
 			WithShadowListObjectsQuerySamplePercentage(13),
-		), WithListObjectsOptimizationEnabled(true))
+		), WithListObjectsOptimizationsEnabled(true))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
-		assert.False(t, query.main.(*ListObjectsQuery).listObjectsOptimizationEnabled)
-		assert.True(t, query.shadow.(*ListObjectsQuery).listObjectsOptimizationEnabled)
+		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
+		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
 		assert.Equal(t, noopLogger, query.logger)
 	})
 
