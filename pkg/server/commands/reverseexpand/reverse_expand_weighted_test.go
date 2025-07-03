@@ -443,13 +443,9 @@ func TestStack(t *testing.T) {
 		require.False(t, IsEmpty(firstStack))
 	})
 
-	t.Run("test_pop_on_nil_stack", func(t *testing.T) {
+	t.Run("test_pop_on_empty_stack", func(t *testing.T) {
 		firstStack := &Stack{}
-		_, secondStack, err := Pop(firstStack)
-		require.NoError(t, err)
-
-		_, thirdStack, err := Pop(secondStack)
+		_, _, err := Pop(firstStack)
 		require.EqualError(t, err, ErrEmptyStack.Error())
-		require.Nil(t, thirdStack)
 	})
 }
