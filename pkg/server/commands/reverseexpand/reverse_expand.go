@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -48,7 +47,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack lls.Stack
+	relationStack *Stack
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -63,7 +62,7 @@ func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 		edge:              r.edge,
 		weightedEdge:      r.weightedEdge,
 		skipWeightedGraph: r.skipWeightedGraph,
-		relationStack:     cloneStack(r.relationStack),
+		relationStack:     r.relationStack,
 	}
 }
 
@@ -385,8 +384,9 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = *lls.New()
-				req.relationStack.Push(typeRelEntry{typeRel: typeRel})
+				stack := &Stack{}
+				stack = Push(stack, TypeRelEntry{typeRel: typeRel})
+				req.relationStack = stack
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
