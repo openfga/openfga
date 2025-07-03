@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
@@ -408,30 +407,49 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	}
 }
 
-func TestCloneStack(t *testing.T) {
-	// Create stack and push two elements
-	original := lls.New()
-	original.Push(1)
-	original.Push(2)
+func TestStack(t *testing.T) {
+	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
+		firstStack := &Stack{}
+		secondStack := Push(firstStack, TypeRelEntry{typeRel: "hi"})
 
-	// Clone
-	clone := cloneStack(*original)
+		require.NotEqual(t, Peek(firstStack).typeRel, Peek(secondStack).typeRel)
+	})
 
-	// Now pop from original and clone, both should return
-	// their results in the correct LIFO order
-	val, ok := original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
+	t.Run("test_is_empty", func(t *testing.T) {
+		firstStack := &Stack{}
+		require.True(t, IsEmpty(firstStack))
 
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
+		second := Push(firstStack, TypeRelEntry{typeRel: "hi"})
+		require.True(t, IsEmpty(firstStack))
+		require.False(t, IsEmpty(second))
+	})
 
-	val, ok = original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
+	t.Run("test_pop_does_not_affect_original", func(t *testing.T) {
+		firstStack := &Stack{}
+		firstStack = Push(firstStack, TypeRelEntry{typeRel: "hi"})
 
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
+		require.Equal(t, "hi", Peek(firstStack).typeRel)
+
+		val, secondStack, err := Pop(firstStack)
+		require.NoError(t, err)
+		require.Equal(t, "hi", val.typeRel)
+
+		// The second  stack should be empty
+		// bc we moved the pointer to the original nil entry
+		require.True(t, IsEmpty(secondStack))
+
+		// The first stack itself should remain unmodified
+		// since its pointer has not moved
+		require.False(t, IsEmpty(firstStack))
+	})
+
+	t.Run("test_pop_on_nil_stack", func(t *testing.T) {
+		firstStack := &Stack{}
+		_, secondStack, err := Pop(firstStack)
+		require.NoError(t, err)
+
+		_, thirdStack, err := Pop(secondStack)
+		require.EqualError(t, err, ErrEmptyStack.Error())
+		require.Nil(t, thirdStack)
+	})
 }
