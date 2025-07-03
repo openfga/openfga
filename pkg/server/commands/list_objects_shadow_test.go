@@ -372,6 +372,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		parentCtx context.Context
 		req       *openfgav1.ListObjectsRequest
 		result    []string
+		latency   time.Duration
 	}
 	tests := []struct {
 		name   string
@@ -402,6 +403,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.String("store_id", "req.GetStoreId()")),
 						gomock.Eq(zap.String("model_id", "req.GetAuthorizationModelId()")),
 						gomock.Eq(zap.Int("result_count", 3)),
+						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
+						gomock.Any(),
 					)
 					return mockLogger
 				},
@@ -413,7 +416,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					StoreId:              "req.GetStoreId()",
 					AuthorizationModelId: "req.GetAuthorizationModelId()",
 				},
-				result: []string{"a", "b", "c"},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
 			},
 		},
 		{
@@ -597,7 +601,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				wg:            tt.fields.wg,
 			}
 			t.Cleanup(q.wg.Wait)
-			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result)
+			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result, tt.args.latency)
 			q.wg.Wait()
 		})
 	}

@@ -166,7 +166,7 @@ func (q *shadowedListObjectsQuery) Execute(
 			}()
 			defer q.wg.Done() // only used for testing signals
 
-			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects)
+			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects, latency)
 		}()
 	}
 	return res, err
@@ -184,7 +184,7 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // It compares the results of the main and shadow functions, logging any differences.
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
-func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string) {
+func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string, latency time.Duration) {
 	defer func() {
 		if r := recover(); r != nil {
 			q.logger.ErrorWithContext(parentCtx, "panic recovered",
@@ -196,6 +196,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
 
+	startTime := time.Now()
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
 	if errShadow != nil {
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
@@ -203,6 +204,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		)
 		return
 	}
+	shadowLatency := time.Since(startTime)
 
 	var resultShadowed []string
 	if shadowRes != nil {
@@ -233,6 +235,8 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
 			loShadowLogFields(req,
 				zap.Int("result_count", len(mainResult)),
+				zap.Duration("main_latency", latency),
+				zap.Duration("shadow_latency", shadowLatency),
 			)...,
 		)
 	}
