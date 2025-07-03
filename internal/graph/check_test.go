@@ -118,25 +118,12 @@ func TestResolver(t *testing.T) {
 		}
 		resultChan := make(chan checkOutcome, 1)
 
-		drain := resolver(ctx, 1, resultChan, panicHandler)
-		err := drain()
+		go resolver(ctx, 1, resultChan, panicHandler)
 
-		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
-	})
+		output := <-resultChan
 
-	t.Run("should_return_error_if_checker_panics", func(t *testing.T) {
-		handler := func(context.Context) (*ResolveCheckResponse, error) {
-			return nil, nil
-		}
-		resultChan := make(chan checkOutcome, 1)
-		close(resultChan)
-
-		drain := resolver(ctx, 1, resultChan, handler)
-		err := drain()
-
-		require.ErrorContains(t, err, "send on closed channel")
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorContains(t, output.err, panicErr)
+		require.ErrorIs(t, output.err, concurrency.ErrPanic)
 	})
 }
 
@@ -521,7 +508,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		resp, err := exclusion(ctx, concurrencyLimit, panicHandler, falseHandler)
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Nil(t, resp)
 	})
 
@@ -532,7 +519,7 @@ func TestExclusionCheckFuncReducer(t *testing.T) {
 
 		resp, err := exclusion(ctx, concurrencyLimit, trueHandler, panicHandler)
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -839,7 +826,7 @@ func TestIntersectionCheckFuncReducer(t *testing.T) {
 
 		resp, err := intersection(ctx, concurrencyLimit, panicHandler)
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -1731,7 +1718,7 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 
 		resp, err := union(ctx, concurrencyLimit, panicHandler)
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Nil(t, resp)
 	})
 }
@@ -3358,7 +3345,7 @@ func TestProcessDispatch(t *testing.T) {
 
 		outcome := <-outcomeChan
 		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
-		require.ErrorIs(t, outcome.err, ErrPanic)
+		require.ErrorIs(t, outcome.err, concurrency.ErrPanic)
 	})
 }
 
@@ -3562,7 +3549,7 @@ func TestConsumeDispatch(t *testing.T) {
 		_, err := checker.consumeDispatches(ctx, 1, dispatchChan)
 
 		require.ErrorContains(t, err, "invalid memory address or nil pointer")
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 	})
 }
 
@@ -3660,7 +3647,7 @@ func TestCheckUsersetSlowPath(t *testing.T) {
 		}
 		resp, err := checker.checkUsersetSlowPath(ctx, req, iter)
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
 	})
 }
@@ -3685,7 +3672,7 @@ func TestCheckMembership(t *testing.T) {
 			return "", "", nil
 		})
 		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
+		require.ErrorIs(t, err, concurrency.ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
 	})
 }
@@ -3718,7 +3705,7 @@ func TestProcessUsersets(t *testing.T) {
 
 		outcome := <-outcomes
 		require.ErrorContains(t, outcome.err, "invalid memory address or nil pointer")
-		require.ErrorIs(t, outcome.err, ErrPanic)
+		require.ErrorIs(t, outcome.err, concurrency.ErrPanic)
 	})
 }
 
@@ -4030,7 +4017,7 @@ func TestStreamedLookupUsersetFromIterator(t *testing.T) {
 
 		for userToUsersetMessage := range userToUsersetMessageChan {
 			require.ErrorContains(t, userToUsersetMessage.err, panicErr)
-			require.ErrorIs(t, userToUsersetMessage.err, ErrPanic)
+			require.ErrorIs(t, userToUsersetMessage.err, concurrency.ErrPanic)
 			require.Empty(t, userToUsersetMessage.userset)
 		}
 	})

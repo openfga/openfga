@@ -2890,7 +2890,7 @@ func TestFastPathOperationSetup(t *testing.T) {
 
 		outcome := <-outChan
 		require.ErrorContains(t, outcome.Err, errMessage)
-		require.ErrorIs(t, outcome.Err, ErrPanic)
+		require.ErrorIs(t, outcome.Err, concurrency.ErrPanic)
 	})
 }
 
