@@ -697,37 +697,30 @@ func (s *sharedIterator) clone() *sharedIterator {
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
-func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
+func (s *sharedIterator) fetchAndWait() ([]*openfgav1.Tuple, error) {
 	// Iterate until we have items available or an error occurs.
 	state := *s.state.Load()
-	*items = state.items
-	*err = state.err
 
-	if s.head >= len(*items) && *err == nil {
+	if s.head >= len(state.items) && state.err == nil {
 		s.ptrmu.Lock()
 		defer s.ptrmu.Unlock()
 
-		state := *s.state.Load()
-		*items = state.items
-		*err = state.err
+		state = *s.state.Load()
 
-		if s.head >= len(*items) && *err == nil {
+		if s.head >= len(state.items) && state.err == nil {
 			buf := make([]*openfgav1.Tuple, BufferSize)
 			read, e := s.ir.Read(context.Background(), buf)
 
-			// Load the current items from the shared items pointer and append the newly fetched items to it.
-			ptrState := s.state.Load()
-			loadedState := *ptrState
-			loadedState.items = append(loadedState.items, buf[:read]...)
+			state = *s.state.Load()
+			state.items = append(state.items, buf[:read]...)
 
 			if e != nil {
-				loadedState.err = e
+				state.err = e
 			}
-			s.state.Store(&loadedState)
-			*items = loadedState.items
-			*err = loadedState.err
+			s.state.Store(&state)
 		}
 	}
+	return state.items, state.err
 }
 
 // Current returns the current item in the shared iterator without advancing the iterator.
@@ -743,10 +736,7 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 		return nil, storage.ErrIteratorDone
 	}
 
-	var items []*openfgav1.Tuple
-	var err error
-
-	s.fetchAndWait(&items, &err)
+	items, err := s.fetchAndWait()
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
