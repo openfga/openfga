@@ -56,7 +56,7 @@ func cloneStack(original lls.Stack) lls.Stack {
 	return *newStack
 }
 
-// When cloning requests for intersection/exclusion subqueries
+// When cloning requests for intersection/exclusion subqueries.
 func createStackCloneAndStackWithTopItem(original lls.Stack) (lls.Stack, lls.Stack, error) {
 	newStack := cloneStack(original)
 	secondStack := lls.New()
