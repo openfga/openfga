@@ -245,6 +245,24 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 	}
 }
 
+// shallowClone creates an identical copy of reverseExpandQuery except
+// candidateObjectsMap as list object candidates need to be validated
+// via check.
+func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
+	return &ReverseExpandQuery{
+		logger:                  c.logger,
+		datastore:               c.datastore,
+		typesystem:              c.typesystem,
+		resolveNodeLimit:        c.resolveNodeLimit,
+		resolveNodeBreadthLimit: c.resolveNodeBreadthLimit,
+		dispatchThrottlerConfig: c.dispatchThrottlerConfig,
+		candidateObjectsMap:     new(sync.Map),
+		visitedUsersetsMap:      c.visitedUsersetsMap,
+		localCheckResolver:      c.localCheckResolver,
+		optimizationsEnabled:    c.optimizationsEnabled,
+	}
+}
+
 // Execute yields all the objects of the provided objectType that the
 // given user possibly has, a specific relation with and sends those
 // objects to resultChan. It MUST guarantee no duplicate objects sent.
@@ -263,6 +281,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastore)
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
@@ -403,6 +422,7 @@ func (c *ReverseExpandQuery) execute(
 				needsCheck || intersectionOrExclusionInPreviousEdges,
 				resolutionMetadata,
 				resultChan,
+				sourceUserType,
 			)
 		}
 	}
