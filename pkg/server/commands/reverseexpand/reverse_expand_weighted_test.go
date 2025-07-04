@@ -1483,6 +1483,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"document:1#parent@folder:X",
 				"folder:X#viewer@user:a",
 				"document:1#writer@user:a",
+				// negative cases
 				"folder:X#viewer@user:b",
 				"document:2#writer@user:c",
 			},
@@ -1491,6 +1492,114 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
 			expectedOptimizedObjects:   []string{"document:1"},
 			expectedUnoptimizedObjects: []string{"document:1"},
+		},
+		{
+			name: "intersection_with_high_weights",
+			model: `model
+				schema 1.1
+			  type user
+	
+			  type folder
+				relations
+				  define viewer: [user]
+	
+			  type document
+				relations
+				  define other_parent: [folder]
+				  define parent: [folder]
+				  define viewer: viewer from parent and viewer from other_parent
+		`,
+			tuples: []string{
+				"document:1#parent@folder:X",
+				"folder:X#viewer@user:a",
+				"document:1#other_parent@folder:X",
+				"document:3#parent@folder:A",
+				"folder:A#viewer@user:a",
+				"document:3#other_parent@folder:B",
+				"folder:B#viewer@user:a",
+				// negative cases
+				"folder:X#viewer@user:b",
+				"document:2#parent@folder:Y",
+				"folder:Y#viewer@user:a",
+				"document:2#other_parent@folder:Z",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:1", "document:3"},
+			expectedUnoptimizedObjects: []string{"document:1", "document:2", "document:3"},
+		},
+		{
+			name: "exclusion_with_TTU",
+			model: `model
+				schema 1.1
+			  type user
+	
+			  type folder
+				relations
+				  define viewer: [user]
+	
+			  type document
+				relations
+				  define parent: [folder]
+				  define writer: [user]
+				  define viewer: writer but not viewer from parent
+		`,
+			tuples: []string{
+				"document:2#writer@user:a",
+				"document:3#writer@user:a",
+				"document:3#parent@folder:Z",
+				// negative cases
+				"document:1#parent@folder:X",
+				"folder:X#viewer@user:a",
+				"document:1#writer@user:a",
+				"folder:Y#viewer@user:a",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:2", "document:3"},
+			expectedUnoptimizedObjects: []string{"document:1", "document:2", "document:3"},
+		},
+		{
+			name: "exclusion_with_high_weights",
+			model: `model
+				schema 1.1
+			  type user
+	
+			  type folder
+				relations
+				  define viewer: [user]
+	
+			  type document
+				relations
+				  define other_parent: [folder]
+				  define parent: [folder]
+				  define viewer: viewer from parent but not viewer from other_parent
+		`,
+			tuples: []string{
+				"document:2#parent@folder:Y",
+				"folder:Y#viewer@user:a",
+				"document:4#parent@folder:D",
+				"folder:D#viewer@user:a",
+				"document:4#other_parent@folder:E",
+				// negative cases
+				"document:1#parent@folder:X",
+				"folder:X#viewer@user:a",
+				"document:1#other_parent@folder:X",
+				"document:3#parent@folder:A",
+				"folder:A#viewer@user:a",
+				"document:3#other_parent@folder:B",
+				"folder:B#viewer@user:a",
+				"document:2#other_parent@folder:Z",
+				"document:5#other_parent@folder:F",
+				"folder:F#viewer@user:a",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:2", "document:4"},
+			expectedUnoptimizedObjects: []string{"document:1", "document:2", "document:3", "document:4"},
 		},
 		// TODO: add these when optimization supports infinite weight
 		// intersection with ttu recursive
