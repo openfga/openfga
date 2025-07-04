@@ -9,17 +9,24 @@ import (
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
+)
+
+const (
+	listObjectsResultChannelLength = 100
 )
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
@@ -47,6 +54,19 @@ func cloneStack(original lls.Stack) lls.Stack {
 		newStack.Push(vals[i])
 	}
 	return *newStack
+}
+
+// When cloning requests for intersection/exclusion subqueries.
+func createStackCloneAndStackWithTopItem(original lls.Stack) (lls.Stack, lls.Stack, error) {
+	newStack := cloneStack(original)
+	secondStack := lls.New()
+	topItem, ok := newStack.Pop()
+	if !ok {
+		return newStack, *secondStack, fmt.Errorf("unexpected stack empty")
+	}
+	secondStack.Push(topItem)
+
+	return newStack, *secondStack, nil
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -127,6 +147,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	needsCheck bool,
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
+	sourceUserType string,
 ) error {
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
@@ -246,10 +267,36 @@ func (c *ReverseExpandQuery) loopOverEdges(
 					return ErrEmptyStack
 				}
 				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
+			} else {
+				switch toNode.GetLabel() {
+				case weightedGraph.IntersectionOperator:
+					intersectionEdges, _, err := c.typesystem.GetEdgesFromWeightedGraph(toNode.GetUniqueLabel(), sourceUserType)
+					if err != nil {
+						return err
+					}
+					err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+					if err != nil {
+						return err
+					}
+				case weightedGraph.ExclusionOperator:
+					exclusionEdges, _, err := c.typesystem.GetEdgesFromWeightedGraph(toNode.GetUniqueLabel(), sourceUserType)
+					if err != nil {
+						return err
+					}
+					err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+					if err != nil {
+						return err
+					}
+				default:
+					pool.Go(func(ctx context.Context) error {
+						return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+					})
+				}
 			}
-			pool.Go(func(ctx context.Context) error {
-				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			})
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
@@ -277,14 +324,24 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// This map is used for memoization of database queries for this branch of the reverse expansion.
 	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
-	queryJobQueue := newJobQueue()
 
-	// Now kick off the chain of queries
 	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: ""}, resultChan, needsCheck, jobDedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
 	}
+	return c.queryForTuplesWithItems(ctx, needsCheck, resultChan, items, jobDedupeMap)
+}
+
+func (c *ReverseExpandQuery) queryForTuplesWithItems(
+	ctx context.Context,
+	needsCheck bool,
+	resultChan chan<- *ReverseExpandResult,
+	items []queryJob,
+	jobDedupeMap *sync.Map,
+) error {
+	span := trace.SpanFromContext(ctx)
+	queryJobQueue := newJobQueue()
 
 	// Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
@@ -323,7 +380,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		})
 	}
 
-	err = pool.Wait()
+	err := pool.Wait()
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -517,4 +574,245 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, c.typesystem),
 	), nil
+}
+
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the non-lowest weight edges against these
+// list objects candidates. If check returns true, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns false, then these list object candidates
+// are invalid because it does not satisfy all paths for intersection.
+func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata) error {
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
+
+	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
+	if err != nil {
+		c.logger.Error("Failed to get edges from weighted graph",
+			zap.Error(err),
+			zap.Any("edges", &edges),
+			zap.String("sourceUserType", sourceUserType))
+		return err
+	}
+
+	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
+	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
+	} else {
+		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+	}
+	if len(lowestWeightEdges) == 0 {
+		// no need to go further because list objects must return empty
+		return nil
+	}
+
+	newStack, topItemStack, err := createStackCloneAndStackWithTopItem(req.relationStack)
+	if err != nil {
+		return err
+	}
+	pool := concurrency.NewPool(ctx, 2)
+	// getting list object candidates from the lowest weight edge and have its result
+	// pass through tmpResultChan.
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		// stack with only the top item in it
+		newReq := req.cloneWithStack(topItemStack)
+		err := c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			lowestWeightEdges,
+			false,
+			resolutionMetadata,
+			tmpResultChan,
+			sourceUserType,
+		)
+		return err
+	})
+
+	siblings := intersectionEdgeComparison.Siblings
+	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
+
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
+		// direct weight is not the lowest edge. Therefore, need to call check against directly assigned types.
+		usersets = append(usersets, typesystem.This())
+	}
+
+	for _, sibling := range siblings {
+		userset, err := c.typesystem.ConstructUserset(sibling)
+		if err != nil {
+			c.logger.Error("Failed to construct userset",
+				zap.String("function", "intersectionHandler"),
+				zap.Any("edge", &sibling),
+				zap.Error(err))
+			return err
+		}
+		usersets = append(usersets, userset)
+	}
+	userset := &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Intersection{
+			Intersection: &openfgav1.Usersets{
+				Child: usersets,
+			}}}
+
+	// Calling check on list objects candidates against non lowest weight edges
+	pool.Go(func(ctx context.Context) error {
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
+				}, userset)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", "intersectionHandler"),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
+			}
+
+			if tmpCheckResult.GetAllowed() {
+				// Check returns true. Hence, we have candidates
+				if newStack.Size() == 0 {
+					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				} else {
+					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
+					// If the original stack had more than 1 value, we need to query the parent values
+					// new stack with top item in stack
+					newReq := req.cloneWithStack(newStack)
+					jobDedupeMap := new(sync.Map)
+					err = c.queryForTuplesWithItems(ctx, false, resultChan, []queryJob{{foundObject: tmpResult.Object, req: newReq}}, jobDedupeMap)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			// otherwise, candidates are not true candidate and no need to pass back to its parents.
+		}
+		return nil
+	})
+
+	return pool.Wait()
+}
+
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the excluded edge against these
+// list objects candidates. If check returns false, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns true, then these list object candidates
+// are invalid because it does not satisfy all paths for exclusion.
+func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata) error {
+	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
+	if err != nil {
+		c.logger.Error("Failed to get lowest weight edge for exclusionHandler", zap.Error(err),
+			zap.Any("edges", &edges),
+			zap.String("sourceUserType", sourceUserType))
+		return err
+	}
+	if excludedEdge == nil {
+		newReq := req.clone()
+
+		return c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			baseEdges,
+			false,
+			resolutionMetadata,
+			resultChan,
+			sourceUserType,
+		)
+	}
+
+	newStack, topItemStack, err := createStackCloneAndStackWithTopItem(req.relationStack)
+	if err != nil {
+		return err
+	}
+
+	// We do not have to check whether baseEdges have length 0 because it would have been
+	// thrown out by GetEdgesFromWeightedGraph and this function will not be executed.
+	// In any case, if the baseEdges have 0 length, the loopOverWeightedEdges will be noop
+	// and return quickly.
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
+	pool := concurrency.NewPool(ctx, 2)
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		// stack with only the top item in it
+		newReq := req.cloneWithStack(topItemStack)
+		return c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			baseEdges,
+			false,
+			resolutionMetadata,
+			tmpResultChan,
+			sourceUserType,
+		)
+	})
+
+	userset, err := c.typesystem.ConstructUserset(excludedEdge)
+	if err != nil {
+		c.logger.Error("Failed to construct userset",
+			zap.String("function", "intersectionHandler"),
+			zap.Any("edge", &excludedEdge),
+			zap.Error(err))
+		return err
+	}
+	pool.Go(func(ctx context.Context) error {
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
+				}, userset)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", "exclusionHandler"),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
+			}
+			if !tmpCheckResult.GetAllowed() {
+				if newStack.Size() == 0 {
+					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				} else {
+					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
+					// If the original stack had more than 1 value, we need to query the parent values
+					// new stack with top item in stack
+					newReq := req.cloneWithStack(newStack)
+					jobDedupeMap := new(sync.Map)
+					err = c.queryForTuplesWithItems(ctx, false, resultChan, []queryJob{{foundObject: tmpResult.Object, req: newReq}}, jobDedupeMap)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	return pool.Wait()
 }

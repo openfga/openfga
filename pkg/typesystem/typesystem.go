@@ -1700,6 +1700,34 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
+// helper function to return all edges from weighted graph.
+func (t *TypeSystem) GetEdgesFromWeightedGraph(
+	targetTypeRelation string,
+	sourceType string,
+) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelNode, error) {
+	if t.authzWeightedGraph == nil {
+		return nil, nil, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	// This means we cannot reach the source type requested, so there are no relevant edges.
+	if !hasPathTo(currentNode, sourceType) {
+		return nil, nil, nil
+	}
+
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok {
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
+	return edges, currentNode, nil
+}
+
 // GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
 // Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
 // are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
@@ -1722,24 +1750,14 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, false, fmt.Errorf("weighted graph is nil")
+	edges, currentNode, err := t.GetEdgesFromWeightedGraph(targetTypeRelation, sourceType)
+	if err != nil {
+		return nil, false, err
 	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
+	if currentNode == nil {
 		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
-
-	// This means we cannot reach the source type requested, so there are no relevant edges.
-	if !hasPathTo(currentNode, sourceType) {
-		return nil, false, nil
-	}
-
-	edges, ok := wg.GetEdgesFromNode(currentNode)
-	if !ok || len(edges) == 0 {
+	if len(edges) == 0 {
 		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
 	}
 
