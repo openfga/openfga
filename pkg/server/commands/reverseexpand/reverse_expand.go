@@ -67,6 +67,22 @@ func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
 	}
 }
 
+func (r *ReverseExpandRequest) cloneWithStack(stack lls.Stack) *ReverseExpandRequest {
+	return &ReverseExpandRequest{
+		StoreID:           r.StoreID,
+		ObjectType:        r.ObjectType,
+		Relation:          r.Relation,
+		User:              r.User,
+		ContextualTuples:  r.ContextualTuples,
+		Context:           r.Context,
+		Consistency:       r.Consistency,
+		edge:              r.edge,
+		weightedEdge:      r.weightedEdge,
+		skipWeightedGraph: r.skipWeightedGraph,
+		relationStack:     stack,
+	}
+}
+
 type IsUserRef interface {
 	isUserRef()
 	GetObjectType() string

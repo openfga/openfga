@@ -56,6 +56,19 @@ func cloneStack(original lls.Stack) lls.Stack {
 	return *newStack
 }
 
+// When cloning requests for intersection/exclusion subqueries
+func createStackCloneAndStackWithTopItem(original lls.Stack) (lls.Stack, lls.Stack, error) {
+	newStack := cloneStack(original)
+	secondStack := lls.New()
+	topItem, ok := newStack.Pop()
+	if !ok {
+		return newStack, *secondStack, fmt.Errorf("unexpected stack empty")
+	}
+	secondStack.Push(topItem)
+
+	return newStack, *secondStack, nil
+}
+
 // queryJob represents a single task in the reverse expansion process.
 // It holds the `foundObject` from a previous step in the traversal
 // and the `ReverseExpandRequest` containing the current state of the request.
@@ -311,14 +324,24 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// This map is used for memoization of database queries for this branch of the reverse expansion.
 	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
-	queryJobQueue := newJobQueue()
 
-	// Now kick off the chain of queries
 	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: ""}, resultChan, needsCheck, jobDedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
 	}
+	return c.queryForTuplesWithItems(ctx, needsCheck, resultChan, items, jobDedupeMap)
+}
+
+func (c *ReverseExpandQuery) queryForTuplesWithItems(
+	ctx context.Context,
+	needsCheck bool,
+	resultChan chan<- *ReverseExpandResult,
+	items []queryJob,
+	jobDedupeMap *sync.Map,
+) error {
+	span := trace.SpanFromContext(ctx)
+	queryJobQueue := newJobQueue()
 
 	// Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
@@ -357,7 +380,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		})
 	}
 
-	err = pool.Wait()
+	err := pool.Wait()
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -587,23 +610,18 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		return nil
 	}
 
+	newStack, topItemStack, err := createStackCloneAndStackWithTopItem(req.relationStack)
+	if err != nil {
+		return err
+	}
 	pool := concurrency.NewPool(ctx, 2)
 	// getting list object candidates from the lowest weight edge and have its result
 	// pass through tmpResultChan.
 	pool.Go(func(ctx context.Context) error {
 		defer close(tmpResultChan)
-		newReq := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			Consistency:      req.Consistency,
-			Context:          req.Context,
-			ContextualTuples: req.ContextualTuples,
-			User:             req.User,
-			relationStack:    cloneStack(req.relationStack),
-			weightedEdge:     req.weightedEdge,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-		}
-		return c.shallowClone().loopOverEdges(
+		// stack with only the top item in it
+		newReq := req.cloneWithStack(topItemStack)
+		err := c.shallowClone().loopOverEdges(
 			ctx,
 			newReq,
 			lowestWeightEdges,
@@ -612,6 +630,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			tmpResultChan,
 			sourceUserType,
 		)
+		return err
 	})
 
 	siblings := intersectionEdgeComparison.Siblings
@@ -663,8 +682,21 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			}
 
 			if tmpCheckResult.GetAllowed() {
-				// check returns true. Hence, candidates are true candidate and can be passed back to its parents.
-				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				// Check returns true. Hence, we have candidates
+				if newStack.Size() == 0 {
+					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				} else {
+					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
+					// If the original stack had more than 1 value, we need to query the parent values
+					// new stack with top item in stack
+					newReq := req.cloneWithStack(newStack)
+					jobDedupeMap := new(sync.Map)
+					err = c.queryForTuplesWithItems(ctx, false, resultChan, []queryJob{{foundObject: tmpResult.Object, req: newReq}}, jobDedupeMap)
+					if err != nil {
+						return err
+					}
+				}
 			}
 			// otherwise, candidates are not true candidate and no need to pass back to its parents.
 		}
@@ -694,17 +726,7 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 		return err
 	}
 	if excludedEdge == nil {
-		newReq := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			Consistency:      req.Consistency,
-			Context:          req.Context,
-			ContextualTuples: req.ContextualTuples,
-			User:             req.User,
-			relationStack:    cloneStack(req.relationStack),
-			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-		}
+		newReq := req.clone()
 
 		return c.shallowClone().loopOverEdges(
 			ctx,
@@ -717,6 +739,11 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 		)
 	}
 
+	newStack, topItemStack, err := createStackCloneAndStackWithTopItem(req.relationStack)
+	if err != nil {
+		return err
+	}
+
 	// We do not have to check whether baseEdges have length 0 because it would have been
 	// thrown out by GetEdgesFromWeightedGraph and this function will not be executed.
 	// In any case, if the baseEdges have 0 length, the loopOverWeightedEdges will be noop
@@ -725,17 +752,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 	pool := concurrency.NewPool(ctx, 2)
 	pool.Go(func(ctx context.Context) error {
 		defer close(tmpResultChan)
-		newReq := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			Consistency:      req.Consistency,
-			Context:          req.Context,
-			ContextualTuples: req.ContextualTuples,
-			User:             req.User,
-			relationStack:    cloneStack(req.relationStack),
-			weightedEdge:     req.weightedEdge, // Inherited but not used by the override path
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-		}
+		// stack with only the top item in it
+		newReq := req.cloneWithStack(topItemStack)
 		return c.shallowClone().loopOverEdges(
 			ctx,
 			newReq,
@@ -777,7 +795,20 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 				return err
 			}
 			if !tmpCheckResult.GetAllowed() {
-				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				if newStack.Size() == 0 {
+					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				} else {
+					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
+					// If the original stack had more than 1 value, we need to query the parent values
+					// new stack with top item in stack
+					newReq := req.cloneWithStack(newStack)
+					jobDedupeMap := new(sync.Map)
+					err = c.queryForTuplesWithItems(ctx, false, resultChan, []queryJob{{foundObject: tmpResult.Object, req: newReq}}, jobDedupeMap)
+					if err != nil {
+						return err
+					}
+				}
 			}
 		}
 		return nil

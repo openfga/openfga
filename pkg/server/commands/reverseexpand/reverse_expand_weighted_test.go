@@ -1463,6 +1463,35 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"org:a", "org:b"},
 			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
 		},
+		{
+			name: "intersection_with_TTU",
+			model: `model
+				schema 1.1
+			  type user
+	
+			  type folder
+				relations
+				  define viewer: [user]
+	
+			  type document
+				relations
+				  define parent: [folder]
+				  define writer: [user]
+				  define viewer: writer and viewer from parent
+		`,
+			tuples: []string{
+				"document:1#parent@folder:X",
+				"folder:X#viewer@user:a",
+				"document:1#writer@user:a",
+				"folder:X#viewer@user:b",
+				"document:2#writer@user:c",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:1"},
+			expectedUnoptimizedObjects: []string{"document:1"},
+		},
 		// TODO: add these when optimization supports infinite weight
 		// intersection with ttu recursive
 		// intersection with userset recursive
@@ -1538,7 +1567,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					}
 					optimizedResults = append(optimizedResults, result.Object)
 				case err := <-errChan:
-					require.FailNowf(t, "unexpected error received on error channel :%v", err.Error())
+					require.FailNow(t, "unexpected error received on error channel:"+err.Error())
 					break ConsumerLoop
 				case <-ctx.Done():
 					break ConsumerLoop
