@@ -735,14 +735,14 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 				}
 				s.state.Store(&loadedState)
 
-				// Initialize a new channel to signal that new items are available on the next fetch.
-				newCh := make(chan struct{})
-				currentCh := s.ch.Swap(&newCh)
-
 				// Important! The fetching state must be set to false before closing the old channel.
 				// This avoids a race condition in which a goroutine waiting on the channel close might
 				// enter this function again and try to fetch items before the fetching state is reset.
 				s.fetching.Store(false)
+
+				// Initialize a new channel to signal that new items are available on the next fetch.
+				newCh := make(chan struct{})
+				currentCh := s.ch.Swap(&newCh)
 
 				// Close the old channel to signal waiting consumers to wake up.
 				close(*currentCh)
