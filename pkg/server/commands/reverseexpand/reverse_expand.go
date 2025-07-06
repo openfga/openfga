@@ -385,9 +385,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				stack := &utils.LinkedListStack[TypeRelEntry]{}
-				stack = stack.Push(TypeRelEntry{typeRel: typeRel})
-				req.relationStack = stack
+				req.relationStack = utils.NewLinkedListStack[TypeRelEntry](TypeRelEntry{typeRel: typeRel})
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would

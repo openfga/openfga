@@ -7,6 +7,10 @@ type LinkedListStack[T any] struct {
 	next  *LinkedListStack[T]
 }
 
+func NewLinkedListStack[T any](val T) *LinkedListStack[T] {
+	return &LinkedListStack[T]{value: val}
+}
+
 func (stack *LinkedListStack[T]) Push(value T) *LinkedListStack[T] {
 	newStack := LinkedListStack[T]{value: value, next: nil}
 	newStack.next = stack

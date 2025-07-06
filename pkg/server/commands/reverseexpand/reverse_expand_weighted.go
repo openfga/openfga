@@ -21,7 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var ErrEmptyStack = errors.New("pop called on empty stack")
+var ErrEmptyStack = errors.New("unexpected empty stack")
 
 // TypeRelEntry represents a step in the path taken to reach a leaf node.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
@@ -144,6 +144,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				// A direct edge here is org#teammate --> team#member
 				// so if we find team:fga for this user, we need to know to check for
 				// team:fga#member when we check org#teammate
+				if newReq.relationStack == nil {
+					return ErrEmptyStack
+				}
 				entry, stack := newReq.relationStack.Pop()
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
@@ -174,6 +177,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
+				if newReq.relationStack == nil {
+					return ErrEmptyStack
+				}
 				_, stack := newReq.relationStack.Pop()
 				stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
@@ -194,6 +200,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
 			// query for folder#admin, then if folders exist we will see if they are related to
 			// any documents as #parent.
+			if newReq.relationStack == nil {
+				return ErrEmptyStack
+			}
 			_, stack := newReq.relationStack.Pop()
 
 			// Push tupleset relation (`document#parent`)
@@ -212,6 +221,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
 			// to the stack.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
+				if newReq.relationStack == nil {
+					return ErrEmptyStack
+				}
 				_, stack := newReq.relationStack.Pop()
 				stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
@@ -329,6 +341,10 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		return nil, err
 	}
 
+	if currentReq.relationStack == nil {
+		return nil, ErrEmptyStack
+	}
+
 	// Now pop the top relation off of the stack for querying
 	entry, stack := currentReq.relationStack.Pop()
 	typeRel := entry.typeRel
@@ -364,11 +380,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 		// If there are no more type#rel to look for in the stack that means we have hit the base case
 		// and this object is a candidate for return to the user.
-		//if IsEmpty(currentReq.relationStack) {
-
-		// TODO: how do we handle the empty check with the new thing?
-		val := currentReq.relationStack.Peek()
-		if val.typeRel == "" {
+		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 			continue
 		}
@@ -389,6 +401,10 @@ func buildUserFilter(
 	// This is true on every call to queryFunc except the first, since we only trigger subsequent
 	// calls if we successfully found an object.
 	if object != "" {
+		if req.relationStack == nil {
+			return nil, ErrEmptyStack
+		}
+
 		entry := req.relationStack.Peek()
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
