@@ -542,6 +542,58 @@ func (sf *IteratorDatastore) Read(
 // This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
 var BufferSize = 100
 
+// await is an object that executes an action exactly once at a time.
+type await struct {
+	executing *atomic.Bool
+	ch        *atomic.Pointer[chan struct{}]
+}
+
+// Do executes the provided function fn if it is not already being executed.
+// All goroutines will wait for the current execution to complete before proceeding.
+func (a *await) Do(ctx context.Context, fn func()) {
+	ch := *a.ch.Load()
+
+	if !a.executing.Swap(true) {
+		// If we are not already executing, we start a new goroutine to execute.
+		go func() {
+			fn()
+
+			// Important! The executing state must be set to false before closing the old channel.
+			// This avoids a race condition in which a goroutine waiting on the channel close might
+			// enter this function again and try to execute before the execution state is reset.
+			a.executing.Store(false)
+
+			newCh := make(chan struct{})
+			currentCh := a.ch.Swap(&newCh)
+
+			// Close the old channel to signal waiting goroutines to wake up.
+			close(*currentCh)
+		}()
+	}
+
+	// Wait for current execution to finish or for the context to be done.
+	select {
+	case <-ch:
+	case <-ctx.Done():
+	}
+}
+
+// newAwait creates a new await object that manages the execution of functions.
+func newAwait() *await {
+	// Initialize the channel that will be used to signal when new items are available.
+	ch := make(chan struct{})
+	var pch atomic.Pointer[chan struct{}]
+	pch.Store(&ch)
+
+	// Initialize the fetching state to false, indicating that we are not currently fetching items.
+	var fetching atomic.Bool
+
+	return &await{
+		executing: &fetching,
+		ch:        &pch,
+	}
+}
+
 // reader is an interface that defines a method to read items from a source iterator.
 type reader[T any] interface {
 	// Read reads items from the source iterator into the provided buffer.
@@ -613,26 +665,24 @@ type sharedIterator struct {
 	// stopped is a value type because it is not shared between iterator instances.
 	stopped atomic.Bool
 
+	// await ensures that only one goroutine can fetch items at a time.
+	// It is used to block until new items are available or the context is done.
+	await *await
+
 	// ir is the underlying iterator reader that provides the actual implementation of reading tuples.
 	ir readStopper[*openfgav1.Tuple]
-
-	// fetching is a shared atomic boolean that indicates whether any shared iterator instance is currently fetching items.
-	fetching *atomic.Bool
 
 	// state is a shared atomic pointer to the iterator state, which contains the items and any error encountered during iteration.
 	state *atomic.Pointer[iteratorState]
 
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
-
-	// ch is a shared atomic pointer to a channel that is used to signal when new items are available.
-	ch *atomic.Pointer[chan struct{}]
 }
 
 // newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
-	var fetching atomic.Bool
+	await := newAwait()
 
 	// Initialize the channel that will be used to signal when new items are available.
 	ch := make(chan struct{})
@@ -665,12 +715,11 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	pstate.Store(&state)
 
 	newIter := sharedIterator{
-		cleanup:  cleanup,
-		ir:       ir,
-		fetching: &fetching,
-		state:    &pstate,
-		refs:     &refs,
-		ch:       &pch,
+		await:   await,
+		cleanup: cleanup,
+		ir:      ir,
+		state:   &pstate,
+		refs:    &refs,
 	}
 
 	return &newIter
@@ -692,12 +741,11 @@ func (s *sharedIterator) clone() *sharedIterator {
 
 		if s.refs.CompareAndSwap(remaining, remaining+1) {
 			return &sharedIterator{
-				cleanup:  s.cleanup,
-				ir:       s.ir,
-				fetching: s.fetching,
-				state:    s.state,
-				refs:     s.refs,
-				ch:       s.ch,
+				await:   s.await,
+				cleanup: s.cleanup,
+				ir:      s.ir,
+				state:   s.state,
+				refs:    s.refs,
 			}
 		}
 	}
@@ -717,46 +765,20 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 			break
 		}
 
-		ch := *s.ch.Load()
+		s.await.Do(ctx, func() {
+			buf := make([]*openfgav1.Tuple, BufferSize)
+			read, e := s.ir.Read(context.Background(), buf)
 
-		if !s.fetching.Swap(true) {
-			// If we are not already fetching, we start a new goroutine to fetch items.
-			go func() {
-				buf := make([]*openfgav1.Tuple, BufferSize)
-				read, e := s.ir.Read(context.Background(), buf)
+			// Load the current items from the shared items pointer and append the newly fetched items to it.
+			ptrState := s.state.Load()
+			loadedState := *ptrState
+			loadedState.items = append(loadedState.items, buf[:read]...)
 
-				// Load the current items from the shared items pointer and append the newly fetched items to it.
-				ptrState := s.state.Load()
-				loadedState := *ptrState
-				loadedState.items = append(loadedState.items, buf[:read]...)
-
-				if e != nil {
-					loadedState.err = e
-				}
-				s.state.Store(&loadedState)
-
-				// Important! The fetching state must be set to false before closing the old channel.
-				// This avoids a race condition in which a goroutine waiting on the channel close might
-				// enter this function again and try to fetch items before the fetching state is reset.
-				s.fetching.Store(false)
-
-				// Initialize a new channel to signal that new items are available on the next fetch.
-				newCh := make(chan struct{})
-				currentCh := s.ch.Swap(&newCh)
-
-				// Close the old channel to signal waiting consumers to wake up.
-				close(*currentCh)
-			}()
-		}
-
-		// Wait for new items to be available or for the context to be done.
-		// This allows the iterator to block until new items are fetched or the context is canceled.
-		// This is important to ensure that we do not return stale data or block indefinitely.
-		select {
-		case <-ch:
-		case <-ctx.Done():
-			return
-		}
+			if e != nil {
+				loadedState.err = e
+			}
+			s.state.Store(&loadedState)
+		})
 	}
 }
 
