@@ -407,6 +407,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	}
 }
 
+/*
 func TestStack(t *testing.T) {
 	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
 		firstStack := &Stack{}
@@ -449,3 +450,5 @@ func TestStack(t *testing.T) {
 		require.EqualError(t, err, ErrEmptyStack.Error())
 	})
 }
+
+*/

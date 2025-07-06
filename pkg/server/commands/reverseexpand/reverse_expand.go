@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/utils"
 	"sync"
 	"sync/atomic"
 
@@ -47,7 +48,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack *Stack
+	relationStack *utils.LinkedListStack[TypeRelEntry]
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -384,8 +385,8 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				stack := &Stack{}
-				stack = Push(stack, TypeRelEntry{typeRel: typeRel})
+				stack := &utils.LinkedListStack[TypeRelEntry]{}
+				stack = stack.Push(TypeRelEntry{typeRel: typeRel})
 				req.relationStack = stack
 			}
 
