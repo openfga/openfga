@@ -10,11 +10,6 @@ import (
 	"go.uber.org/goleak"
 )
 
-func mockThrottlerTest(ctx context.Context, throttler Throttler, counter *int) {
-	throttler.Throttle(ctx)
-	*counter++
-}
-
 func TestConstantRateThrottler(t *testing.T) {
 	testThrottler := newConstantRateThrottler(1*time.Hour, "test")
 	t.Cleanup(func() {
@@ -24,24 +19,22 @@ func TestConstantRateThrottler(t *testing.T) {
 
 	t.Run("throttler_will_release_only_when_ticked", func(t *testing.T) {
 		counter := 0
-		var goFuncDone sync.WaitGroup
-		goFuncDone.Add(1)
-		var goFuncInitiated sync.WaitGroup
-		goFuncInitiated.Add(1)
 
 		ctx := context.Background()
 
-		go func() {
-			goFuncInitiated.Done()
-			mockThrottlerTest(ctx, testThrottler, &counter)
-			goFuncDone.Done()
-		}()
+		var wg sync.WaitGroup
 
-		goFuncInitiated.Wait()
+		wg.Add(1)
+		go func(counter *int) {
+			defer wg.Done()
+			testThrottler.Throttle(ctx)
+			*counter++
+		}(&counter)
+
+		time.Sleep(100 * time.Millisecond) // Wait for the goroutine to attempt to throttle
 		require.Equal(t, 0, counter)
-
-		testThrottler.nonBlockingSend(testThrottler.throttlingQueue)
-		goFuncDone.Wait()
+		testThrottler.throttlingQueue <- struct{}{}
+		wg.Wait()
 		require.Equal(t, 1, counter)
 	})
 }
