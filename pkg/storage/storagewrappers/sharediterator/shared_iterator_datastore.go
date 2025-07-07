@@ -547,13 +547,15 @@ const bufferSize = 100
 // The singleflight.Group type was used as a comparison to the await type, but was found to be ~59% slower than await
 // in concurrent stress test benchmarks.
 type await struct {
-	executing *atomic.Bool
-	ch        *atomic.Pointer[chan struct{}]
+	executing atomic.Bool
+	ch        atomic.Pointer[chan struct{}]
 }
 
 // Do executes the provided function fn if it is not already being executed.
-// All goroutines will wait for the current execution to complete before proceeding.
-func (a *await) Do(ctx context.Context, fn func()) {
+// The channel returned will be closed once the execution has completed.
+func (a *await) Do(fn func()) chan struct{} {
+	i := make(chan struct{})
+	a.ch.CompareAndSwap(nil, &i)
 	ch := *a.ch.Load()
 
 	if !a.executing.Swap(true) {
@@ -573,28 +575,7 @@ func (a *await) Do(ctx context.Context, fn func()) {
 			close(*currentCh)
 		}()
 	}
-
-	// Wait for current execution to finish or for the context to be done.
-	select {
-	case <-ch:
-	case <-ctx.Done():
-	}
-}
-
-// newAwait creates a new await object that manages the execution of functions.
-func newAwait() *await {
-	// Initialize the channel that will be used to signal when new items are available.
-	ch := make(chan struct{})
-	var pch atomic.Pointer[chan struct{}]
-	pch.Store(&ch)
-
-	// Initialize the fetching state to false, indicating that we are not currently fetching items.
-	var fetching atomic.Bool
-
-	return &await{
-		executing: &fetching,
-		ch:        &pch,
-	}
+	return ch
 }
 
 // iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
@@ -667,7 +648,7 @@ type sharedIterator struct {
 // newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
-	await := newAwait()
+	var aw await
 
 	// Initialize the channel that will be used to signal when new items are available.
 	ch := make(chan struct{})
@@ -700,7 +681,7 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	pstate.Store(&state)
 
 	newIter := sharedIterator{
-		await:   await,
+		await:   &aw,
 		cleanup: cleanup,
 		ir:      ir,
 		state:   &pstate,
@@ -754,7 +735,7 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 			break
 		}
 
-		s.await.Do(ctx, func() {
+		ch := s.await.Do(func() {
 			defer func() {
 				if r := recover(); r != nil {
 					var err error
@@ -781,6 +762,11 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 			}
 			s.state.Store(&state)
 		})
+
+		select {
+		case <-ctx.Done():
+		case <-ch:
+		}
 	}
 }
 
