@@ -1468,11 +1468,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			model: `model
 				schema 1.1
 			  type user
-	
+
 			  type folder
 				relations
 				  define viewer: [user]
-	
+
 			  type document
 				relations
 				  define parent: [folder]
@@ -1498,11 +1498,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			model: `model
 				schema 1.1
 			  type user
-	
+
 			  type folder
 				relations
 				  define viewer: [user]
-	
+
 			  type document
 				relations
 				  define other_parent: [folder]
@@ -1534,11 +1534,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			model: `model
 				schema 1.1
 			  type user
-	
+
 			  type folder
 				relations
 				  define viewer: [user]
-	
+
 			  type document
 				relations
 				  define parent: [folder]
@@ -1566,11 +1566,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			model: `model
 				schema 1.1
 			  type user
-	
+
 			  type folder
 				relations
 				  define viewer: [user]
-	
+
 			  type document
 				relations
 				  define other_parent: [folder]
@@ -1719,4 +1719,35 @@ func TestCloneStack(t *testing.T) {
 	val, ok = clone.Pop()
 	require.True(t, ok)
 	require.Equal(t, 1, val)
+}
+
+func TestCreateStackCloneAndStackWithTopItem(t *testing.T) {
+	// Create stack and push two elements
+	original := lls.New()
+	original.Push(1)
+	original.Push(2)
+	original.Push(3)
+
+	// Clone
+	clone, topItemStack, err := createStackCloneAndStackWithTopItem(*original)
+	require.NoError(t, err)
+
+	require.Equal(t, original.Size()-1, clone.Size())
+	require.Equal(t, 1, topItemStack.Size())
+
+	values := original.Values()
+	cloneValues := clone.Values()
+	for i, v := range cloneValues {
+		require.Equal(t, values[i+1], v) // clone should have all but the top item
+	}
+
+	val, ok := topItemStack.Peek()
+	require.True(t, ok)
+	require.Equal(t, values[0], val)
+
+	// Error case
+	original2 := lls.New()
+	_, _, err = createStackCloneAndStackWithTopItem(*original2)
+	require.Error(t, err)
+	require.Errorf(t, err, "cannot create stack clone and stack with top item from an empty stack")
 }

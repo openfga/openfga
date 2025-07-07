@@ -62,7 +62,7 @@ func createStackCloneAndStackWithTopItem(original lls.Stack) (lls.Stack, lls.Sta
 	secondStack := lls.New()
 	topItem, ok := newStack.Pop()
 	if !ok {
-		return newStack, *secondStack, fmt.Errorf("unexpected stack empty")
+		return newStack, *secondStack, fmt.Errorf("cannot create stack clone and stack with top item from an empty stack")
 	}
 	secondStack.Push(topItem)
 

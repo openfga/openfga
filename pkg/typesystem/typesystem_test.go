@@ -7061,6 +7061,41 @@ func TestPathExists(t *testing.T) {
 	}
 }
 
+func TestGetEdgesFromWeightedGraph(t *testing.T) {
+	t.Run("returns_error_when_weighted_graph_is_nil", func(t *testing.T) {
+		typeSystem := &TypeSystem{
+			authzWeightedGraph: nil,
+		}
+
+		edges, node, err := typeSystem.GetEdgesFromWeightedGraph("type#relation", "user")
+		require.Error(t, err)
+		require.Errorf(t, err, "weighted graph is nil")
+		require.Nil(t, edges)
+		require.Nil(t, node)
+	})
+
+	t.Run("returns_error_when_node_not_found", func(t *testing.T) {
+		model := `
+		model
+		schema 1.1
+		type user
+		type other
+		type group
+			relations
+				define banned: [other]
+				define allowed: [user, other] but not banned
+		`
+
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, node, err := typeSystem.GetEdgesFromWeightedGraph("type#relation", "user")
+		require.Error(t, err)
+		require.Nil(t, edges)
+		require.Nil(t, node)
+	})
+}
+
 func TestGetEdgesForListObjects(t *testing.T) {
 	t.Run("exclusion_prunes_last_edge_and_marks_check_correctly", func(t *testing.T) {
 		model := `
