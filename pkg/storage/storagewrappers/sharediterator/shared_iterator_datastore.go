@@ -738,6 +738,10 @@ func (s *sharedIterator) clone() *sharedIterator {
 func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.Tuple, err *error) {
 	// Iterate until we have items available or an error occurs.
 	for {
+		if ctx.Err() != nil {
+			return
+		}
+
 		state := *s.state.Load()
 		*items = state.items
 		*err = state.err
