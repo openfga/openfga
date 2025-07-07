@@ -538,9 +538,8 @@ func (sf *IteratorDatastore) Read(
 	return it, nil
 }
 
-// BufferSize is the number of items to fetch at a time when reading from the shared iterator.
-// This is primarily adjusted at runtime for testing purposes, but can be set to a different value if needed.
-var BufferSize = 100
+// bufferSize is the number of items to fetch at a time when reading from the shared iterator.
+const bufferSize = 100
 
 // await is an object that executes an action exactly once at a time.
 type await struct {
@@ -766,8 +765,8 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 		}
 
 		s.await.Do(ctx, func() {
-			buf := make([]*openfgav1.Tuple, BufferSize)
-			read, e := s.ir.Read(context.Background(), buf)
+			var buf [bufferSize]*openfgav1.Tuple
+			read, e := s.ir.Read(context.Background(), buf[:])
 
 			// Load the current items from the shared items pointer and append the newly fetched items to it.
 			ptrState := s.state.Load()
