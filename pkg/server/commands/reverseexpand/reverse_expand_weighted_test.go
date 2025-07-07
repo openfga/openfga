@@ -407,7 +407,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	}
 }
 
-func TestLinkedListStack(t *testing.T) {
+func TestTypeRelStack(t *testing.T) {
 	firstEntry := typeRelEntry{typeRel: "hello"}
 	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
 		firstStack := newTypeRelStack(firstEntry)
