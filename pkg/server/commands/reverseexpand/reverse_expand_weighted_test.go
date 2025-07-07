@@ -410,25 +410,23 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 func TestTypeRelStack(t *testing.T) {
 	firstEntry := typeRelEntry{typeRel: "hello"}
 	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
-		firstStack := newTypeRelStack(firstEntry)
-		secondStack := firstStack.push(typeRelEntry{typeRel: "world"})
+		firstStack := &typeRelStack{value: firstEntry}
+		secondStack := push(firstStack, typeRelEntry{typeRel: "world"})
 
-		require.NotEqual(t, firstStack.peek().typeRel, secondStack.peek().typeRel)
+		require.NotEqual(t, firstStack.value.typeRel, secondStack.value.typeRel)
 	})
 
 	t.Run("test_pop_does_not_affect_original", func(t *testing.T) {
-		firstStack := newTypeRelStack(firstEntry)
+		firstStack := &typeRelStack{value: firstEntry}
 
-		require.Equal(t, firstEntry.typeRel, firstStack.peek().typeRel)
-
-		val, secondStack := firstStack.pop()
+		val, secondStack := pop(firstStack)
 		require.Equal(t, firstEntry.typeRel, val.typeRel)
 
 		// the second stack should be Nil, since we .popped our only element
 		require.Nil(t, secondStack)
 
 		// But the first stack should not have been modified
-		require.Equal(t, firstEntry.typeRel, firstStack.peek().typeRel)
+		require.Equal(t, firstEntry.typeRel, firstStack.value.typeRel)
 	})
 
 	t.Run("test_pop_on_empty_stack", func(t *testing.T) {
@@ -438,10 +436,10 @@ func TestTypeRelStack(t *testing.T) {
 			}
 		}()
 
-		firstStack := newTypeRelStack(firstEntry)
-		_, secondStack := firstStack.pop()
+		firstStack := &typeRelStack{value: firstEntry}
+		_, secondStack := pop(firstStack)
 
 		require.Nil(t, secondStack)
-		secondStack.pop() // this line should cause a panic
+		pop(secondStack) // this line should cause a panic
 	})
 }
