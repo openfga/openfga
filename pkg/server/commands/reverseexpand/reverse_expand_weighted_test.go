@@ -407,48 +407,41 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	}
 }
 
-/*
-func TestStack(t *testing.T) {
+func TestLinkedListStack(t *testing.T) {
+	firstEntry := TypeRelEntry{typeRel: "hello"}
 	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
-		firstStack := &Stack{}
-		secondStack := Push(firstStack, TypeRelEntry{typeRel: "hi"})
+		firstStack := newLinkedListStack(firstEntry)
+		secondStack := firstStack.push(TypeRelEntry{typeRel: "world"})
 
-		require.NotEqual(t, Peek(firstStack).typeRel, Peek(secondStack).typeRel)
-	})
-
-	t.Run("test_is_empty", func(t *testing.T) {
-		firstStack := &Stack{}
-		require.True(t, IsEmpty(firstStack))
-
-		second := Push(firstStack, TypeRelEntry{typeRel: "hi"})
-		require.True(t, IsEmpty(firstStack))
-		require.False(t, IsEmpty(second))
+		require.NotEqual(t, firstStack.peek().typeRel, secondStack.peek().typeRel)
 	})
 
 	t.Run("test_pop_does_not_affect_original", func(t *testing.T) {
-		firstStack := &Stack{}
-		firstStack = Push(firstStack, TypeRelEntry{typeRel: "hi"})
+		firstStack := newLinkedListStack(firstEntry)
 
-		require.Equal(t, "hi", Peek(firstStack).typeRel)
+		require.Equal(t, firstEntry.typeRel, firstStack.peek().typeRel)
 
-		val, secondStack, err := Pop(firstStack)
-		require.NoError(t, err)
-		require.Equal(t, "hi", val.typeRel)
+		val, secondStack := firstStack.pop()
+		require.Equal(t, firstEntry.typeRel, val.typeRel)
 
-		// The second  stack should be empty
-		// bc we moved the pointer to the original nil entry
-		require.True(t, IsEmpty(secondStack))
+		// the second stack should be Nil, since we .popped our only element
+		require.Nil(t, secondStack)
 
-		// The first stack itself should remain unmodified
-		// since its pointer has not moved
-		require.False(t, IsEmpty(firstStack))
+		// But the first stack should not have been modified
+		require.Equal(t, firstEntry.typeRel, firstStack.peek().typeRel)
 	})
 
 	t.Run("test_pop_on_empty_stack", func(t *testing.T) {
-		firstStack := &Stack{}
-		_, _, err := Pop(firstStack)
-		require.EqualError(t, err, ErrEmptyStack.Error())
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("expected test to panic and it did not")
+			}
+		}()
+
+		firstStack := newLinkedListStack(firstEntry)
+		_, secondStack := firstStack.pop()
+
+		require.Nil(t, secondStack)
+		secondStack.pop() // this line should cause a panic
 	})
 }
-
-*/
