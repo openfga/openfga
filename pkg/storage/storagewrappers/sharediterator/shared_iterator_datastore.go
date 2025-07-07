@@ -593,24 +593,6 @@ func newAwait() *await {
 	}
 }
 
-// reader is an interface that defines a method to read items from a source iterator.
-type reader[T any] interface {
-	// Read reads items from the source iterator into the provided buffer.
-	Read(context.Context, []T) (int, error)
-}
-
-// stopper is an interface that defines a method to stop the iterator.
-type stopper interface {
-	// Stop stops the iterator and releases any resources associated with it.
-	Stop()
-}
-
-// readStopper is an interface that combines the reader and stopper interfaces.
-type readStopper[T any] interface {
-	reader[T]
-	stopper
-}
-
 // iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
 type iteratorReader[T any] struct {
 	storage.Iterator[T]
@@ -669,7 +651,7 @@ type sharedIterator struct {
 	await *await
 
 	// ir is the underlying iterator reader that provides the actual implementation of reading tuples.
-	ir readStopper[*openfgav1.Tuple]
+	ir *iteratorReader[*openfgav1.Tuple]
 
 	// state is a shared atomic pointer to the iterator state, which contains the items and any error encountered during iteration.
 	state *atomic.Pointer[iteratorState]
