@@ -1,26 +1,27 @@
 package reverseexpand
 
 // linkedListStack is a stack implementation on top of a linked list, specific to reverse_expand.
-// Each
-type linkedListStack[T any] struct {
-	value T
-	next  *linkedListStack[T]
+// Each push() or pop() operation creates and returns a pointer to a new stack entirely to
+// ensure thread safety, since ReverseExpand kicks off many routines all relying on their own stacks.
+type linkedListStack struct {
+	value TypeRelEntry
+	next  *linkedListStack
 }
 
-func newLinkedListStack[T any](val T) *linkedListStack[T] {
-	return &linkedListStack[T]{value: val}
+func newLinkedListStack(val TypeRelEntry) *linkedListStack {
+	return &linkedListStack{value: val}
 }
 
-func (stack *linkedListStack[T]) push(value T) *linkedListStack[T] {
-	newStack := linkedListStack[T]{value: value, next: nil}
+func (stack *linkedListStack) push(value TypeRelEntry) *linkedListStack {
+	newStack := linkedListStack{value: value, next: nil}
 	newStack.next = stack
 	return &newStack
 }
 
-func (stack *linkedListStack[T]) pop() (T, *linkedListStack[T]) {
+func (stack *linkedListStack) pop() (TypeRelEntry, *linkedListStack) {
 	return stack.value, stack.next
 }
 
-func (stack *linkedListStack[T]) peek() T {
+func (stack *linkedListStack) peek() TypeRelEntry {
 	return stack.value
 }
