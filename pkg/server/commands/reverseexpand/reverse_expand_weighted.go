@@ -23,11 +23,11 @@ import (
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
 
-// TypeRelEntry represents a step in the path taken to reach a leaf node.
+// typeRelEntry represents a step in the path taken to reach a leaf node.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
 // database queries needed to find the resulting objects.
-type TypeRelEntry struct {
+type typeRelEntry struct {
 	typeRel string // e.g. "organization#admin"
 
 	// Only present for userset relations. Will be the userset relation string itself.
@@ -151,7 +151,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
 				stack = stack.push(entry)
-				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				stack = stack.push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 
 				// Now continue traversing
@@ -181,7 +181,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 					return ErrEmptyStack
 				}
 				_, stack := newReq.relationStack.pop()
-				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				stack = stack.push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 			}
 
@@ -206,11 +206,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			_, stack := newReq.relationStack.pop()
 
 			// Push tupleset relation (`document#parent`)
-			tuplesetRel := TypeRelEntry{typeRel: edge.GetTuplesetRelation()}
+			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
 			stack = stack.push(tuplesetRel)
 
 			// Push target type#rel (`folder#admin`)
-			stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			stack = stack.push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			newReq.relationStack = stack
 
 			pool.Go(func(ctx context.Context) error {
@@ -225,7 +225,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 					return ErrEmptyStack
 				}
 				_, stack := newReq.relationStack.pop()
-				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				stack = stack.push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 			}
 			pool.Go(func(ctx context.Context) error {
