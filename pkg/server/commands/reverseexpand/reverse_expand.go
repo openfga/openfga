@@ -47,7 +47,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack *linkedListStack
+	relationStack *typeRelStack
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -384,7 +384,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = newLinkedListStack(typeRelEntry{typeRel: typeRel})
+				req.relationStack = newTypeRelStack(typeRelEntry{typeRel: typeRel})
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would

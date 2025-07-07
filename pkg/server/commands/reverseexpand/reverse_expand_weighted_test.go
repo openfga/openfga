@@ -408,16 +408,16 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 }
 
 func TestLinkedListStack(t *testing.T) {
-	firstEntry := TypeRelEntry{typeRel: "hello"}
+	firstEntry := typeRelEntry{typeRel: "hello"}
 	t.Run("test_push_adds_entry_and_creates_new_stack", func(t *testing.T) {
-		firstStack := newLinkedListStack(firstEntry)
-		secondStack := firstStack.push(TypeRelEntry{typeRel: "world"})
+		firstStack := newTypeRelStack(firstEntry)
+		secondStack := firstStack.push(typeRelEntry{typeRel: "world"})
 
 		require.NotEqual(t, firstStack.peek().typeRel, secondStack.peek().typeRel)
 	})
 
 	t.Run("test_pop_does_not_affect_original", func(t *testing.T) {
-		firstStack := newLinkedListStack(firstEntry)
+		firstStack := newTypeRelStack(firstEntry)
 
 		require.Equal(t, firstEntry.typeRel, firstStack.peek().typeRel)
 
@@ -438,7 +438,7 @@ func TestLinkedListStack(t *testing.T) {
 			}
 		}()
 
-		firstStack := newLinkedListStack(firstEntry)
+		firstStack := newTypeRelStack(firstEntry)
 		_, secondStack := firstStack.pop()
 
 		require.Nil(t, secondStack)
