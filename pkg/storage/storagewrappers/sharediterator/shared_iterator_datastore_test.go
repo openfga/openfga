@@ -1611,8 +1611,6 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		goleak.VerifyNone(t)
 	})
 
-	BufferSize = 1
-
 	tk := tuple.NewTupleKey("license:1", "owner", "")
 
 	t.Run("stopped_iterator", func(t *testing.T) {
@@ -1863,6 +1861,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleTwo, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleThree, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -2007,6 +2006,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
 		gomock.InOrder(
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
