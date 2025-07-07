@@ -157,16 +157,22 @@ func (q *shadowedListObjectsQuery) Execute(
 	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
 		q.wg.Add(1) // only used for testing signals
 		go func() {
+			startTime = time.Now()
 			defer func() {
+				defer q.wg.Done() // only used for testing signals
 				if r := recover(); r != nil {
 					q.logger.ErrorWithContext(cloneCtx, "panic recovered",
-						loShadowLogFields(req, zap.Any("error", r))...,
+						loShadowLogFields(req,
+							zap.Duration("main_latency", latency),
+							zap.Duration("shadow_latency", time.Since(startTime)),
+							zap.Int("main_result_count", len(res.Objects)),
+							zap.Any("error", r),
+						)...,
 					)
 				}
 			}()
-			defer q.wg.Done() // only used for testing signals
 
-			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects)
+			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects, latency)
 		}()
 	}
 	return res, err
@@ -184,22 +190,21 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // It compares the results of the main and shadow functions, logging any differences.
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
-func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string) {
-	defer func() {
-		if r := recover(); r != nil {
-			q.logger.ErrorWithContext(parentCtx, "panic recovered",
-				loShadowLogFields(req, zap.Any("error", r))...,
-			)
-		}
-	}()
-
+func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string, latency time.Duration) {
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
 
+	startTime := time.Now()
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
+	shadowLatency := time.Since(startTime)
 	if errShadow != nil {
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
-			loShadowLogFields(req, zap.Any("error", errShadow))...,
+			loShadowLogFields(req,
+				zap.Duration("main_latency", latency),
+				zap.Duration("shadow_latency", shadowLatency),
+				zap.Int("main_result_count", len(mainResult)),
+				zap.Any("error", errShadow),
+			)...,
 		)
 		return
 	}
@@ -223,6 +228,9 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		// log the differences if the shadow query failed or if the results are not equal
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects result difference",
 			loShadowLogFields(req,
+				zap.Bool("is_match", false),
+				zap.Duration("main_latency", latency),
+				zap.Duration("shadow_latency", shadowLatency),
 				zap.Int("main_result_count", len(mainResult)),
 				zap.Int("shadow_result_count", len(resultShadowed)),
 				zap.Int("total_delta", totalDelta),
@@ -232,7 +240,10 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	} else {
 		q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
 			loShadowLogFields(req,
-				zap.Int("result_count", len(mainResult)),
+				zap.Bool("is_match", true),
+				zap.Duration("main_latency", latency),
+				zap.Duration("shadow_latency", shadowLatency),
+				zap.Int("main_result_count", len(mainResult)),
 			)...,
 		)
 	}
