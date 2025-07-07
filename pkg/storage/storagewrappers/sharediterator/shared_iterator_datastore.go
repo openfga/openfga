@@ -2,6 +2,7 @@ package sharediterator
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -751,6 +752,20 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 		}
 
 		s.await.Do(ctx, func() {
+			defer func() {
+				if r := recover(); r != nil {
+					var err error
+					if e, ok := r.(error); ok {
+						err = fmt.Errorf("recovered from panic: %w", e)
+					} else {
+						err = fmt.Errorf("recovered from panic: %v", r)
+					}
+					state := *s.state.Load()
+					state.err = err
+					s.state.Store(&state)
+				}
+			}()
+
 			var buf [bufferSize]*openfgav1.Tuple
 			read, e := s.ir.Read(context.Background(), buf[:])
 
