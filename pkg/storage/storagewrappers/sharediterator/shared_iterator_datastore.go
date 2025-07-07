@@ -543,6 +543,9 @@ func (sf *IteratorDatastore) Read(
 const bufferSize = 100
 
 // await is an object that executes an action exactly once at a time.
+//
+// The singleflight.Group type was used as a comparison to the await type, but was found to be ~59% slower than await
+// in concurrent stress test benchmarks.
 type await struct {
 	executing *atomic.Bool
 	ch        *atomic.Pointer[chan struct{}]
