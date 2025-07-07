@@ -1728,7 +1728,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		require.Contains(t, err.Error(), "custom panic error")
 
 		// Verify it's wrapped properly
-		require.True(t, errors.Is(err, panicErr))
+		require.ErrorIs(t, err, panicErr)
 	})
 
 	t.Run("panic_after_successful_items", func(t *testing.T) {
