@@ -147,11 +147,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				entry, stack := newReq.relationStack.Pop()
+				entry, stack := newReq.relationStack.pop()
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
-				stack = stack.Push(entry)
-				stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				stack = stack.push(entry)
+				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 
 				// Now continue traversing
@@ -180,8 +180,8 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				_, stack := newReq.relationStack.Pop()
-				stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_, stack := newReq.relationStack.pop()
+				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 			}
 
@@ -203,14 +203,14 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			if newReq.relationStack == nil {
 				return ErrEmptyStack
 			}
-			_, stack := newReq.relationStack.Pop()
+			_, stack := newReq.relationStack.pop()
 
 			// Push tupleset relation (`document#parent`)
 			tuplesetRel := TypeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			stack = stack.Push(tuplesetRel)
+			stack = stack.push(tuplesetRel)
 
 			// Push target type#rel (`folder#admin`)
-			stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			newReq.relationStack = stack
 
 			pool.Go(func(ctx context.Context) error {
@@ -224,8 +224,8 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				_, stack := newReq.relationStack.Pop()
-				stack = stack.Push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_, stack := newReq.relationStack.pop()
+				stack = stack.push(TypeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = stack
 			}
 			pool.Go(func(ctx context.Context) error {
@@ -346,7 +346,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	}
 
 	// Now pop the top relation off of the stack for querying
-	entry, stack := currentReq.relationStack.Pop()
+	entry, stack := currentReq.relationStack.pop()
 	typeRel := entry.typeRel
 
 	currentReq.relationStack = stack
@@ -405,7 +405,7 @@ func buildUserFilter(
 			return nil, ErrEmptyStack
 		}
 
-		entry := req.relationStack.Peek()
+		entry := req.relationStack.peek()
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
