@@ -769,14 +769,13 @@ func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.T
 			read, e := s.ir.Read(context.Background(), buf[:])
 
 			// Load the current items from the shared items pointer and append the newly fetched items to it.
-			ptrState := s.state.Load()
-			loadedState := *ptrState
-			loadedState.items = append(loadedState.items, buf[:read]...)
+			state := *s.state.Load()
+			state.items = append(state.items, buf[:read]...)
 
 			if e != nil {
-				loadedState.err = e
+				state.err = e
 			}
-			s.state.Store(&loadedState)
+			s.state.Store(&state)
 		})
 	}
 }
