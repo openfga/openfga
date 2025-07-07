@@ -9,22 +9,10 @@ type typeRelStack struct {
 	next  *typeRelStack
 }
 
-func newTypeRelStack(val typeRelEntry) *typeRelStack {
-	return &typeRelStack{value: val}
-}
-
-// push does not modify the stack in place. Instead, it creates a new stack assigning it the passed value and pointing
-// at the previously-existing stack as .next.
-func (stack *typeRelStack) push(value typeRelEntry) *typeRelStack {
+func push(stack *typeRelStack, value typeRelEntry) *typeRelStack {
 	return &typeRelStack{value: value, next: stack}
 }
 
-// pop does not modify the stack in place. Instead, it returns the current value of the stack and a pointer to the
-// next stack starting at the current stack.next.
-func (stack *typeRelStack) pop() (typeRelEntry, *typeRelStack) {
+func pop(stack *typeRelStack) (typeRelEntry, *typeRelStack) {
 	return stack.value, stack.next
-}
-
-func (stack *typeRelStack) peek() typeRelEntry {
-	return stack.value
 }
