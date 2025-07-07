@@ -14,9 +14,7 @@ func newTypeRelStack(val typeRelEntry) *typeRelStack {
 }
 
 func (stack *typeRelStack) push(value typeRelEntry) *typeRelStack {
-	newStack := newTypeRelStack(value)
-	newStack.next = stack
-	return newStack
+	return &typeRelStack{value: value, next: stack}
 }
 
 func (stack *typeRelStack) pop() (typeRelEntry, *typeRelStack) {
