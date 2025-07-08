@@ -1721,7 +1721,11 @@ func (t *TypeSystem) GetEdgesFromWeightedGraph(
 		return nil, nil, nil
 	}
 
-	edges, _ := wg.GetEdgesFromNode(currentNode)
+	edges, ok := wg.GetEdgesFromNode(currentNode)
+	if !ok {
+		// Note: this should not happen, but adding the guard nonetheless
+		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+	}
 	return edges, currentNode, nil
 }
 

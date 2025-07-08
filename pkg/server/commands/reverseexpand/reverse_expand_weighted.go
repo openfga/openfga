@@ -587,7 +587,8 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	sourceUserType string,
-	resolutionMetadata *ResolutionMetadata) error {
+	resolutionMetadata *ResolutionMetadata,
+) error {
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
@@ -599,15 +600,16 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		return err
 	}
 
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
+		// no need to go further because list objects must return empty
+		return nil
+	}
+
 	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
 		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
 	} else {
 		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
-	}
-	if len(lowestWeightEdges) == 0 {
-		// no need to go further because list objects must return empty
-		return nil
 	}
 
 	newStack, topItemStack, err := createStackCloneAndStackWithTopItem(req.relationStack)
@@ -644,6 +646,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 	for _, sibling := range siblings {
 		userset, err := c.typesystem.ConstructUserset(sibling)
 		if err != nil {
+			// This should never happen.
 			c.logger.Error("Failed to construct userset",
 				zap.String("function", "intersectionHandler"),
 				zap.Any("edge", &sibling),
@@ -717,7 +720,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	sourceUserType string,
-	resolutionMetadata *ResolutionMetadata) error {
+	resolutionMetadata *ResolutionMetadata,
+) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
 		c.logger.Error("Failed to get lowest weight edge for exclusionHandler", zap.Error(err),
@@ -767,6 +771,7 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
+		// This should never happen.
 		c.logger.Error("Failed to construct userset",
 			zap.String("function", "intersectionHandler"),
 			zap.Any("edge", &excludedEdge),

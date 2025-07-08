@@ -163,7 +163,7 @@ type ReverseExpandQuery struct {
 	candidateObjectsMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver   *graph.LocalChecker
+	localCheckResolver   graph.CheckRewriteResolver
 	optimizationsEnabled bool
 }
 

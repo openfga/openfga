@@ -2,17 +2,24 @@ package reverseexpand
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
+	"gotest.tools/v3/assert"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -1691,6 +1698,605 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			require.ElementsMatch(t, test.expectedUnoptimizedObjects, unoptimizedResults)
 		})
 	}
+}
+
+func TestLoopOverEdges(t *testing.T) {
+	t.Run("returns_error_when_cannot_get_edges_from_intersection", func(t *testing.T) {
+		broken_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user2]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		working_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		typesys2, err := typesystem.New(
+			testutils.MustTransformDSLToProtoWithID(working_model),
+		)
+		require.NoError(t, err)
+
+		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
+
+		require.Error(t, newErr)
+		assert.ErrorContains(t, newErr, "weighted graph is nil")
+	})
+
+	t.Run("returns_error_when_cannot_get_edges_from_exclusion", func(t *testing.T) {
+		broken_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user2]
+				  define editor: [user]
+				  define admin: viewer but not editor
+		`
+		working_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer but not editor
+		`
+		tuples := []string{}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		typesys2, err := typesystem.New(
+			testutils.MustTransformDSLToProtoWithID(working_model),
+		)
+		require.NoError(t, err)
+
+		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
+
+		require.Error(t, newErr)
+		assert.ErrorContains(t, newErr, "could not find node with label")
+	})
+}
+
+func TestIntersectionHandler(t *testing.T) {
+	t.Run("return_error_when_GetEdgesForIntersection_errors", func(t *testing.T) {
+		broken_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user2]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		working_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		typesys2, err := typesystem.New(
+			testutils.MustTransformDSLToProtoWithID(working_model),
+		)
+		require.NoError(t, err)
+
+		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		require.Error(t, newErr)
+		assert.ErrorContains(t, newErr, "invalid edges for source type")
+	})
+
+	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			type user
+			type user2
+			type subteam
+				relations
+					define member: [user]
+			type adhoc
+				relations
+					define member: [user]
+			type team
+				relations
+					define member: [subteam#member]
+			type group
+				relations
+					define team: [team]
+					define subteam: [subteam]
+					define adhoc_member: [adhoc#member]
+					define member: [user2] and member from team and adhoc_member and member from subteam
+		`
+		tuples := []string{}
+		objectType := "group"
+		relation := "member"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		resultChan := make(chan *ReverseExpandResult)
+		go func() {
+
+			q := NewReverseExpandQuery(
+				ds,
+				typesys,
+
+				// turn on weighted graph functionality
+				WithListObjectOptimizationsEnabled(true),
+			)
+
+			edges, _, err := typesys.GetEdgesFromWeightedGraph("group#member", "user")
+			require.NoError(t, err)
+			edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+			require.NoError(t, err)
+
+			newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+				StoreID:       storeID,
+				ObjectType:    objectType,
+				Relation:      relation,
+				User:          user,
+				relationStack: *lls.New(),
+			}, resultChan, edges, "", NewResolutionMetadata())
+			require.NoError(t, newErr)
+		}()
+
+		select {
+		case res := <-resultChan:
+			require.Fail(t, "expected no result, but got one", "received: %+v", res)
+		case <-time.After(300 * time.Millisecond):
+			// Success: no result received within timeout
+		}
+	})
+
+	t.Run("return_error_when_check_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeId, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		errorRet := errors.New("test")
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
+		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
+			return nil, errorRet
+		})
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+		q.localCheckResolver = mockCheckResolver
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeId,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *stack,
+		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		require.ErrorIs(t, newErr, errorRet)
+	})
+
+	t.Run("return_error_when_queryForTuplesWithItems_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		errorRet := errors.New("test")
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any())
+		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
+		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)
+		storeId, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), mockDatastore)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
+		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		q := NewReverseExpandQuery(
+			mockDatastore,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+		q.localCheckResolver = mockCheckResolver
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeId,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *stack,
+		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		require.ErrorIs(t, newErr, errorRet)
+	})
+}
+
+func TestExclusionHandler(t *testing.T) {
+	t.Run("return_error_when_GetEdgesForExclusion_errors", func(t *testing.T) {
+		broken_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user2]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		working_model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		typesys2, err := typesystem.New(
+			testutils.MustTransformDSLToProtoWithID(working_model),
+		)
+		require.NoError(t, err)
+
+		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		require.Error(t, newErr)
+		assert.ErrorContains(t, newErr, "invalid exclusion edges for source type")
+	})
+
+	t.Run("return_error_when_check_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer but not editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeId, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		errorRet := errors.New("test")
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
+		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
+			return nil, errorRet
+		})
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+		q.localCheckResolver = mockCheckResolver
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeId,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *stack,
+		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		require.ErrorIs(t, newErr, errorRet)
+	})
+
+	t.Run("return_error_when_queryForTuplesWithItems_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer but not editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		errorRet := errors.New("test")
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any())
+		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
+		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)
+		storeId, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), mockDatastore)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
+		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		q := NewReverseExpandQuery(
+			mockDatastore,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+		q.localCheckResolver = mockCheckResolver
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+			StoreID:       storeId,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *stack,
+		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		require.ErrorIs(t, newErr, errorRet)
+	})
 }
 
 func TestCloneStack(t *testing.T) {
