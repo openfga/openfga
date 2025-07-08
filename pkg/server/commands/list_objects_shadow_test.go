@@ -125,21 +125,24 @@ func TestShadowedListObjectsQuery_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx, cancel := context.WithCancel(context.Background())
 			q := &shadowedListObjectsQuery{
 				main: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
+						defer cancel() // ensure context is cancelled after execution
 						return tt.mainResult, tt.mainErr
 					},
 				},
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
+						require.NoError(t, ctx.Err())
 						return tt.shadowResult, tt.shadowErr
 					},
 				},
-				logger:    logger.NewNoopLogger(),
-				shadowPct: tt.percentage,
-				wg:        &sync.WaitGroup{},
+				logger:        logger.NewNoopLogger(),
+				shadowPct:     tt.percentage,
+				shadowTimeout: 1 * time.Second, // set a long timeout for testing
+				wg:            &sync.WaitGroup{},
 			}
 			result, err := q.Execute(ctx, req)
 
@@ -396,13 +399,11 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		shadowTimeout time.Duration
 		maxDeltaItems int
 		loggerFn      func(t *testing.T, ctrl *gomock.Controller) logger.Logger
-		wg            *sync.WaitGroup
 	}
 	type args struct {
-		parentCtx context.Context
-		req       *openfgav1.ListObjectsRequest
-		result    []string
-		latency   time.Duration
+		req     *openfgav1.ListObjectsRequest
+		result  []string
+		latency time.Duration
 	}
 	tests := []struct {
 		name   string
@@ -439,10 +440,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				wg: &sync.WaitGroup{},
 			},
 			args: args{
-				parentCtx: context.TODO(),
 				req: &openfgav1.ListObjectsRequest{
 					StoreId:              "req.GetStoreId()",
 					AuthorizationModelId: "req.GetAuthorizationModelId()",
@@ -481,13 +480,11 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				wg: &sync.WaitGroup{},
 			},
 			args: args{
-				parentCtx: context.TODO(),
-				req:       &openfgav1.ListObjectsRequest{},
-				result:    []string{"a", "b", "c"},
-				latency:   77 * time.Millisecond,
+				req:     &openfgav1.ListObjectsRequest{},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
 			},
 		},
 		{
@@ -520,13 +517,11 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				wg: &sync.WaitGroup{},
 			},
 			args: args{
-				parentCtx: context.TODO(),
-				req:       &openfgav1.ListObjectsRequest{},
-				result:    []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
-				latency:   77 * time.Millisecond,
+				req:     &openfgav1.ListObjectsRequest{},
+				result:  []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+				latency: 77 * time.Millisecond,
 			},
 		},
 		{
@@ -557,13 +552,11 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				wg: &sync.WaitGroup{},
 			},
 			args: args{
-				parentCtx: context.TODO(),
-				req:       &openfgav1.ListObjectsRequest{},
-				result:    []string{"a", "b", "c"},
-				latency:   77 * time.Millisecond,
+				req:     &openfgav1.ListObjectsRequest{},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
 			},
 		},
 		{
@@ -593,18 +586,49 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					)
 					return mockLogger
 				},
-				wg: &sync.WaitGroup{},
 			},
 			args: args{
-				parentCtx: context.TODO(),
-				req:       &openfgav1.ListObjectsRequest{},
-				result:    []string{"a", "b", "c"},
-				latency:   77 * time.Millisecond,
+				req:     &openfgav1.ListObjectsRequest{},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
+			},
+		},
+		{
+			name: "verify_context_cancelled",
+			fields: fields{
+				main: &mockListObjectsQuery{
+					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
+						require.Error(t, ctx.Err()) // ensure main context is cancelled
+						return &ListObjectsResponse{}, nil
+					},
+				},
+				shadow: &mockListObjectsQuery{
+					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
+						require.NoError(t, ctx.Err()) // context must not be cancelled
+						return &ListObjectsResponse{}, nil
+					},
+				},
+				shadowPct:     100,
+				shadowTimeout: 1 * time.Second,
+				maxDeltaItems: 0,
+				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+					mockLogger := mocks.NewMockLogger(ctrl)
+					mockLogger.EXPECT().InfoWithContext(gomock.Any(), gomock.Any(), gomock.Any())
+					return mockLogger
+				},
+			},
+			args: args{
+				req:     nil,
+				result:  nil,
+				latency: 0,
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel) // ensure context is cancelled after test
+
 			mockCtrl := gomock.NewController(t)
 			q := &shadowedListObjectsQuery{
 				main:          tt.fields.main,
@@ -613,11 +637,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				shadowTimeout: tt.fields.shadowTimeout,
 				maxDeltaItems: tt.fields.maxDeltaItems,
 				logger:        tt.fields.loggerFn(t, mockCtrl),
-				wg:            tt.fields.wg,
 			}
-			t.Cleanup(q.wg.Wait)
-			q.executeShadowModeAndCompareResults(tt.args.parentCtx, tt.args.req, tt.args.result, tt.args.latency)
-			q.wg.Wait()
+			q.executeShadowModeAndCompareResults(ctx, tt.args.req, tt.args.result, tt.args.latency)
 		})
 	}
 }
