@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
 
+### Fixed
+- Shared iterator race condition and deadlock. [#2544](https://github.com/openfga/openfga/pull/2544)
+
 ## [1.9.0] - 2025-07-03
 ### Added
 - Add separate reverse_expand path utilizing the weighted graph. Gated behind `enable-list-objects-optimizations` flag. [#2529](https://github.com/openfga/openfga/pull/2529)
