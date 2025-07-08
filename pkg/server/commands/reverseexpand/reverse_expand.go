@@ -702,7 +702,10 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		} else {
-			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
+			c.logger.ErrorWithContext(ctx, "failed to send candidate object",
+				zap.String("object", candidateObject),
+				zap.Error(ctx.Err()),
+			)
 		}
 	}
 }

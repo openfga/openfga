@@ -85,6 +85,7 @@ func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *Shad
 	for _, opt := range opts {
 		opt(result)
 	}
+
 	return result
 }
 
@@ -156,6 +157,10 @@ func (q *shadowedListObjectsQuery) Execute(
 	// If shadow mode is not shadowEnabled, just execute the main query
 	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
 		q.wg.Add(1) // only used for testing signals
+		q.logger.InfoWithContext(cloneCtx, "shadow config",
+			zap.Duration("timeout", q.shadowTimeout),
+			zap.Int("percentage", q.shadowPct),
+		)
 		go func() {
 			startTime = time.Now()
 			defer func() {
@@ -259,7 +264,7 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 		// that means there are more results than the shadow query can return,
 		// so it is impossible to compare the results
 		if len(res.Objects) == int(loq.listObjectsMaxResults) {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to max results reached",
+			q.logger.InfoWithContext(ctx, "shadowed list objects query skipped due to max results reached",
 				loShadowLogFields(req)...,
 			)
 			return false
@@ -271,7 +276,7 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 		// against a potentially slow or truncated main query result is often meaningless and can lead to false negatives in correctness comparisons.
 		// Therefore, we skip the shadow query if the main query is already close to its deadline.
 		if latency > (loq.listObjectsDeadline - 100*time.Millisecond) {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to high latency of the main query",
+			q.logger.InfoWithContext(ctx, "shadowed list objects query skipped due to high latency of the main query",
 				loShadowLogFields(req, zap.Duration("latency", latency))...,
 			)
 			return false
