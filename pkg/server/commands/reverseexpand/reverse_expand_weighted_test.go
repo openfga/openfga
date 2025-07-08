@@ -1702,7 +1702,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 
 func TestLoopOverEdges(t *testing.T) {
 	t.Run("returns_error_when_cannot_get_edges_from_intersection", func(t *testing.T) {
-		broken_model := `
+		brokenModel := `
 			model
 				schema 1.1
 			  type user
@@ -1713,7 +1713,7 @@ func TestLoopOverEdges(t *testing.T) {
 				  define editor: [user]
 				  define admin: viewer and editor
 		`
-		working_model := `
+		workingModel := `
 			model
 				schema 1.1
 			  type user
@@ -1731,7 +1731,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -1748,7 +1748,7 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 
 		typesys2, err := typesystem.New(
-			testutils.MustTransformDSLToProtoWithID(working_model),
+			testutils.MustTransformDSLToProtoWithID(workingModel),
 		)
 		require.NoError(t, err)
 
@@ -1768,7 +1768,7 @@ func TestLoopOverEdges(t *testing.T) {
 	})
 
 	t.Run("returns_error_when_cannot_get_edges_from_exclusion", func(t *testing.T) {
-		broken_model := `
+		brokenModel := `
 			model
 				schema 1.1
 			  type user
@@ -1779,7 +1779,7 @@ func TestLoopOverEdges(t *testing.T) {
 				  define editor: [user]
 				  define admin: viewer but not editor
 		`
-		working_model := `
+		workingModel := `
 			model
 				schema 1.1
 			  type user
@@ -1797,7 +1797,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -1814,7 +1814,7 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 
 		typesys2, err := typesystem.New(
-			testutils.MustTransformDSLToProtoWithID(working_model),
+			testutils.MustTransformDSLToProtoWithID(workingModel),
 		)
 		require.NoError(t, err)
 
@@ -1836,7 +1836,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 func TestIntersectionHandler(t *testing.T) {
 	t.Run("return_error_when_GetEdgesForIntersection_errors", func(t *testing.T) {
-		broken_model := `
+		brokenModel := `
 			model
 				schema 1.1
 			  type user
@@ -1847,7 +1847,7 @@ func TestIntersectionHandler(t *testing.T) {
 				  define editor: [user]
 				  define admin: viewer and editor
 		`
-		working_model := `
+		workingModel := `
 			model
 				schema 1.1
 			  type user
@@ -1865,7 +1865,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -1882,7 +1882,7 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 
 		typesys2, err := typesystem.New(
-			testutils.MustTransformDSLToProtoWithID(working_model),
+			testutils.MustTransformDSLToProtoWithID(workingModel),
 		)
 		require.NoError(t, err)
 
@@ -1938,21 +1938,21 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 		resultChan := make(chan *ReverseExpandResult)
+		errChan := make(chan error, 1)
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("group#member", "user")
+		require.NoError(t, err)
+		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		require.NoError(t, err)
+
 		go func() {
-
-			q := NewReverseExpandQuery(
-				ds,
-				typesys,
-
-				// turn on weighted graph functionality
-				WithListObjectOptimizationsEnabled(true),
-			)
-
-			edges, _, err := typesys.GetEdgesFromWeightedGraph("group#member", "user")
-			require.NoError(t, err)
-			edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
-			require.NoError(t, err)
-
 			newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
 				StoreID:       storeID,
 				ObjectType:    objectType,
@@ -1960,7 +1960,10 @@ func TestIntersectionHandler(t *testing.T) {
 				User:          user,
 				relationStack: *lls.New(),
 			}, resultChan, edges, "", NewResolutionMetadata())
-			require.NoError(t, newErr)
+
+			if newErr != nil {
+				errChan <- newErr
+			}
 		}()
 
 		select {
@@ -1968,6 +1971,8 @@ func TestIntersectionHandler(t *testing.T) {
 			require.Fail(t, "expected no result, but got one", "received: %+v", res)
 		case <-time.After(300 * time.Millisecond):
 			// Success: no result received within timeout
+		case err := <-errChan:
+			require.Fail(t, "unexpected error received on error channel: "+err.Error())
 		}
 	})
 
@@ -1993,7 +1998,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeId, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -2027,7 +2032,7 @@ func TestIntersectionHandler(t *testing.T) {
 		stack.Push("document#admin")
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
-			StoreID:       storeId,
+			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
@@ -2064,7 +2069,7 @@ func TestIntersectionHandler(t *testing.T) {
 		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
 		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)
-		storeId, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -2092,7 +2097,7 @@ func TestIntersectionHandler(t *testing.T) {
 		stack.Push("document#admin")
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
-			StoreID:       storeId,
+			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
@@ -2104,7 +2109,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 func TestExclusionHandler(t *testing.T) {
 	t.Run("return_error_when_GetEdgesForExclusion_errors", func(t *testing.T) {
-		broken_model := `
+		brokenModel := `
 			model
 				schema 1.1
 			  type user
@@ -2115,7 +2120,7 @@ func TestExclusionHandler(t *testing.T) {
 				  define editor: [user]
 				  define admin: viewer and editor
 		`
-		working_model := `
+		workingModel := `
 			model
 				schema 1.1
 			  type user
@@ -2133,7 +2138,7 @@ func TestExclusionHandler(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, broken_model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -2150,7 +2155,7 @@ func TestExclusionHandler(t *testing.T) {
 		)
 
 		typesys2, err := typesystem.New(
-			testutils.MustTransformDSLToProtoWithID(working_model),
+			testutils.MustTransformDSLToProtoWithID(workingModel),
 		)
 		require.NoError(t, err)
 
@@ -2190,7 +2195,7 @@ func TestExclusionHandler(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		storeId, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -2224,7 +2229,7 @@ func TestExclusionHandler(t *testing.T) {
 		stack.Push("document#admin")
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
-			StoreID:       storeId,
+			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
@@ -2261,7 +2266,7 @@ func TestExclusionHandler(t *testing.T) {
 		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
 		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)
-		storeId, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
 		typesys, err := typesystem.New(
 			authModel,
 		)
@@ -2289,7 +2294,7 @@ func TestExclusionHandler(t *testing.T) {
 		stack.Push("document#admin")
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
-			StoreID:       storeId,
+			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
