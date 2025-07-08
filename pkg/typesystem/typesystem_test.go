@@ -7069,7 +7069,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 
 		edges, node, err := typeSystem.GetEdgesFromWeightedGraph("type#relation", "user")
 		require.Error(t, err)
-		require.Errorf(t, err, "weighted graph is nil")
+		require.ErrorContains(t, err, "weighted graph is nil")
 		require.Nil(t, edges)
 		require.Nil(t, node)
 	})

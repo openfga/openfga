@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"gotest.tools/v3/assert"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -1764,7 +1763,7 @@ func TestLoopOverEdges(t *testing.T) {
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
-		assert.ErrorContains(t, newErr, "weighted graph is nil")
+		require.ErrorContains(t, newErr, "weighted graph is nil")
 	})
 
 	t.Run("returns_error_when_cannot_get_edges_from_exclusion", func(t *testing.T) {
@@ -1830,7 +1829,7 @@ func TestLoopOverEdges(t *testing.T) {
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
-		assert.ErrorContains(t, newErr, "could not find node with label")
+		require.ErrorContains(t, newErr, "could not find node with label")
 	})
 }
 
@@ -1897,7 +1896,7 @@ func TestIntersectionHandler(t *testing.T) {
 			relationStack: *lls.New(),
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
 		require.Error(t, newErr)
-		assert.ErrorContains(t, newErr, "invalid edges for source type")
+		require.ErrorContains(t, newErr, "invalid edges for source type")
 	})
 
 	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
@@ -2170,7 +2169,7 @@ func TestExclusionHandler(t *testing.T) {
 			relationStack: *lls.New(),
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
 		require.Error(t, newErr)
-		assert.ErrorContains(t, newErr, "invalid exclusion edges for source type")
+		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
 	})
 
 	t.Run("return_error_when_check_errors", func(t *testing.T) {
@@ -2360,5 +2359,5 @@ func TestCreateStackCloneAndStackWithTopItem(t *testing.T) {
 	original2 := lls.New()
 	_, _, err = createStackCloneAndStackWithTopItem(*original2)
 	require.Error(t, err)
-	require.Errorf(t, err, "cannot create stack clone and stack with top item from an empty stack")
+	require.ErrorContains(t, err, "cannot create stack clone and stack with top item from an empty stack")
 }
