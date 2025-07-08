@@ -643,12 +643,19 @@ type sharedIterator struct {
 
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
+
+	// closed indicates whether the shared iterator's internal iterator has been stopped.
+	// It is used to prevent future clones from being created if the iterator has already been closed.
+	// This is a pointer value because it is shared between all clones of the iterator.
+	closed *atomic.Bool
 }
 
 // newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
 	var aw await
+
+	var closed atomic.Bool
 
 	// Initialize the channel that will be used to signal when new items are available.
 	ch := make(chan struct{})
@@ -686,6 +693,7 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 		ir:      ir,
 		state:   &pstate,
 		refs:    &refs,
+		closed:  &closed,
 	}
 
 	return &newIter
@@ -697,23 +705,22 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 // This allows multiple goroutines to share the same iterator instance without interfering with each other.
 // The clone method is thread-safe and ensures that the reference count is incremented atomically.
 func (s *sharedIterator) clone() *sharedIterator {
-	for {
-		remaining := s.refs.Load()
+	s.refs.Add(1)
 
-		// If the reference count is zero, it means that the iterator has been stopped and cleaned up.
-		if remaining <= 0 {
-			return nil
-		}
+	if s.closed.Load() {
+		// if the shared iterator's internal iterator has been stopped,
+		// we return nil to indicate that the iterator is no longer available.
+		s.refs.Add(-1)
+		return nil
+	}
 
-		if s.refs.CompareAndSwap(remaining, remaining+1) {
-			return &sharedIterator{
-				await:   s.await,
-				cleanup: s.cleanup,
-				ir:      s.ir,
-				state:   s.state,
-				refs:    s.refs,
-			}
-		}
+	return &sharedIterator{
+		await:   s.await,
+		cleanup: s.cleanup,
+		ir:      s.ir,
+		state:   s.state,
+		refs:    s.refs,
+		closed:  s.closed,
 	}
 }
 
@@ -835,7 +842,7 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // It decrements the reference count and checks if it should clean up the iterator.
 // If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
 func (s *sharedIterator) Stop() {
-	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 {
+	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
 		s.cleanup()
 		s.ir.Stop()
 	}
