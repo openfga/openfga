@@ -19,6 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Shared iterator improvement to reduce lock contention when creating and cloning. [#2530](https://github.com/openfga/openfga/pull/2530)
 - Enable experimental list object optimizations in shadow mode using flag `enable-list-objects-optimizations`. [#2509](https://github.com/openfga/openfga/pull/2509)
 - Invalidated iterators will be removed from cache if an invalid entity entry is found allowing for less time to refresh. [#2536](https://github.com/openfga/openfga/pull/2536)
+- Shared Iterator cloning performance improvement. [#2551](https://github.com/openfga/openfga/pull/2551)
 
 ### Fixed
 - Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
