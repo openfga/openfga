@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/stack"
 	"sync"
 	"sync/atomic"
 
@@ -47,7 +48,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack *typeRelStack
+	relationStack *stack.Stack[typeRelEntry]
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
@@ -384,7 +385,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = &typeRelStack{value: typeRelEntry{typeRel: typeRel}}
+				req.relationStack = &stack.Stack[typeRelEntry]{Value: typeRelEntry{typeRel: typeRel}}
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would

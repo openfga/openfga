@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/stack"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -24,7 +25,7 @@ import (
 var ErrEmptyStack = errors.New("unexpected empty stack")
 
 // typeRelEntry represents a step in the path taken to reach a leaf node.
-// As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
+// As reverseExpand traverses from a requested type#rel to its leaf nodes, it stack.Pushes typeRelEntry structs to a stack.
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
 // database queries needed to find the resulting objects.
 type typeRelEntry struct {
@@ -147,12 +148,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				entry, stack := pop(newReq.relationStack)
+				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
-				stack = push(stack, entry)
-				stack = push(stack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				newReq.relationStack = stack
+				newStack = stack.Push(newStack, entry)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 
 				// Now continue traversing
 				pool.Go(func(ctx context.Context) error {
@@ -180,9 +181,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				_, stack := pop(newReq.relationStack)
-				stack = push(stack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				newReq.relationStack = stack
+				_, newStack := stack.Pop(newReq.relationStack)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 			}
 
 			pool.Go(func(ctx context.Context) error {
@@ -203,15 +204,15 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			if newReq.relationStack == nil {
 				return ErrEmptyStack
 			}
-			_, stack := pop(newReq.relationStack)
+			_, newStack := stack.Pop(newReq.relationStack)
 
-			// Push tupleset relation (`document#parent`)
+			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			stack = push(stack, tuplesetRel)
+			newStack = stack.Push(newStack, tuplesetRel)
 
-			// Push target type#rel (`folder#admin`)
-			stack = push(stack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-			newReq.relationStack = stack
+			// stack.Push target type#rel (`folder#admin`)
+			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			newReq.relationStack = newStack
 
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -224,9 +225,9 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				_, stack := pop(newReq.relationStack)
-				stack = push(stack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				newReq.relationStack = stack
+				_, newStack := stack.Pop(newReq.relationStack)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 			}
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -267,7 +268,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		return err
 	}
 
-	// Populate the jobQueue with the initial jobs
+	// stack.Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
 
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
@@ -346,10 +347,10 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	}
 
 	// Now pop the top relation off of the stack for querying
-	entry, stack := pop(currentReq.relationStack)
+	entry, newStack := stack.Pop(currentReq.relationStack)
 	typeRel := entry.typeRel
 
-	currentReq.relationStack = stack
+	currentReq.relationStack = newStack
 
 	// Ensure that we haven't already run this query
 	if isDuplicateQuery(jobDedupeMap, userFilter, typeRel) {
@@ -405,7 +406,7 @@ func buildUserFilter(
 			return nil, ErrEmptyStack
 		}
 
-		entry := req.relationStack.value
+		entry := req.relationStack.Value
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
