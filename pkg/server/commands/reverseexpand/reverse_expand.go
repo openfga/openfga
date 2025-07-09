@@ -52,35 +52,13 @@ type ReverseExpandRequest struct {
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
-	return &ReverseExpandRequest{
-		StoreID:           r.StoreID,
-		ObjectType:        r.ObjectType,
-		Relation:          r.Relation,
-		User:              r.User,
-		ContextualTuples:  r.ContextualTuples,
-		Context:           r.Context,
-		Consistency:       r.Consistency,
-		edge:              r.edge,
-		weightedEdge:      r.weightedEdge,
-		skipWeightedGraph: r.skipWeightedGraph,
-		relationStack:     cloneStack(r.relationStack),
-	}
+	return r.cloneWithStack(cloneStack(r.relationStack))
 }
 
 func (r *ReverseExpandRequest) cloneWithStack(stack lls.Stack) *ReverseExpandRequest {
-	return &ReverseExpandRequest{
-		StoreID:           r.StoreID,
-		ObjectType:        r.ObjectType,
-		Relation:          r.Relation,
-		User:              r.User,
-		ContextualTuples:  r.ContextualTuples,
-		Context:           r.Context,
-		Consistency:       r.Consistency,
-		edge:              r.edge,
-		weightedEdge:      r.weightedEdge,
-		skipWeightedGraph: r.skipWeightedGraph,
-		relationStack:     stack,
-	}
+	copy := *r
+	copy.relationStack = stack
+	return &copy
 }
 
 type IsUserRef interface {
@@ -265,18 +243,9 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // candidateObjectsMap as list object candidates need to be validated
 // via check.
 func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
-	return &ReverseExpandQuery{
-		logger:                  c.logger,
-		datastore:               c.datastore,
-		typesystem:              c.typesystem,
-		resolveNodeLimit:        c.resolveNodeLimit,
-		resolveNodeBreadthLimit: c.resolveNodeBreadthLimit,
-		dispatchThrottlerConfig: c.dispatchThrottlerConfig,
-		candidateObjectsMap:     new(sync.Map),
-		visitedUsersetsMap:      c.visitedUsersetsMap,
-		localCheckResolver:      c.localCheckResolver,
-		optimizationsEnabled:    c.optimizationsEnabled,
-	}
+	copy := *c
+	copy.candidateObjectsMap = new(sync.Map)
+	return &copy
 }
 
 // Execute yields all the objects of the provided objectType that the
