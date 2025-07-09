@@ -1607,6 +1607,83 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"document:2", "document:4"},
 			expectedUnoptimizedObjects: []string{"document:1", "document:2", "document:3", "document:4"},
 		},
+		{
+			name: "tuple_to_userset_intersection",
+			model: `model
+				schema 1.1
+			  type user
+
+			  type and_folder
+				relations
+				  define writer: [user]
+				  define editor: [user]
+				  define viewer: writer and editor
+
+			  type but_not_folder
+				relations
+				  define writer: [user]
+				  define editor: [user]
+				  define viewer: writer but not editor
+
+			  type document
+				relations
+				  define but_not_parent: [but_not_folder]
+				  define and_parent: [and_folder]
+				  define viewer: viewer from and_parent
+		`,
+			tuples: []string{
+				"document:a#and_parent@and_folder:a",
+				"and_folder:a#writer@user:a",
+				"and_folder:a#editor@user:a",
+				// negative cases
+				"document:b#and_parent@and_folder:b",
+				"and_folder:b#writer@user:b",
+				"document:c#and_parent@and_folder:c",
+				"and_folder:c#editor@user:c",
+				"document:d#and_parent@and_folder:d",
+				"and_folder:e#editor@user:e",
+				"and_folder:e#editor@user:e",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:a"},
+			expectedUnoptimizedObjects: []string{"document:a"},
+		},
+		{
+			name: "tuple_to_userset_exclusion",
+			model: `model
+				schema 1.1
+			  type user
+
+			  type but_not_folder
+				relations
+				  define writer: [user]
+				  define editor: [user]
+				  define viewer: writer but not editor
+
+			  type document
+				relations
+				  define but_not_parent: [but_not_folder]
+				  define viewer: viewer from but_not_parent
+		`,
+			tuples: []string{
+				"document:a#but_not_parent@but_not_folder:a",
+				"but_not_folder:a#writer@user:a",
+				// negative cases
+				"document:b#but_not_parent@but_not_folder:b",
+				"but_not_folder:b#writer@user:b",
+				"but_not_folder:b#editor@user:b",
+				"document:c#but_not_parent@but_not_folder:c",
+				"but_not_folder:c#editor@user:c",
+				"but_not_folder:d#writer@user:d",
+			},
+			objectType:                 "document",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+			expectedOptimizedObjects:   []string{"document:a"},
+			expectedUnoptimizedObjects: []string{"document:a"},
+		},
 		// TODO: add these when optimization supports infinite weight
 		// intersection with ttu recursive
 		// intersection with userset recursive
