@@ -406,7 +406,7 @@ func buildUserFilter(
 			return nil, ErrEmptyStack
 		}
 
-		entry := req.relationStack.Value
+		entry := stack.Peek(req.relationStack)
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation
