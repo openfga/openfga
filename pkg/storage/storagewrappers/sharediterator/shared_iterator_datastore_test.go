@@ -341,8 +341,6 @@ func BenchmarkIteratorDatastoreReadConcurrentStress(b *testing.B) {
 			return storage.NewStaticTupleIterator(tuples), nil
 		}).AnyTimes()
 
-	const numGoroutines = 100
-
 	b.ResetTimer()
 
 	b.SetParallelism(100)
@@ -407,8 +405,6 @@ func BenchmarkIteratorDatastoreConcurrentMixedOperations(b *testing.B) {
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator(tuples), nil
 		}).AnyTimes()
-
-	const numGoroutines = 50
 
 	b.ResetTimer()
 
@@ -488,7 +484,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 
 			iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 			if err != nil {
-				b.Errorf("Goroutine %d: Failed to create iterator: %v", id, err)
+				b.Errorf("Failed to create iterator: %v", err)
 				return
 			}
 			defer iter.Stop()
@@ -504,7 +500,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 						if errors.Is(err, storage.ErrIteratorDone) {
 							break
 						}
-						b.Errorf("Goroutine %d: Unexpected error: %v", id, err)
+						b.Errorf("Unexpected error: %v", err)
 						return
 					}
 					count++
@@ -518,7 +514,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 						if errors.Is(err, storage.ErrIteratorDone) {
 							break
 						}
-						b.Errorf("Goroutine %d: Unexpected error: %v", id, err)
+						b.Errorf("Unexpected error: %v", err)
 						return
 					}
 				}
@@ -527,7 +523,7 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 				for k := 0; k < 5; k++ {
 					_, err := iter.Head(ctx)
 					if err != nil && !errors.Is(err, storage.ErrIteratorDone) {
-						b.Errorf("Goroutine %d: Unexpected error on Head: %v", id, err)
+						b.Errorf("Unexpected error on Head: %v", err)
 						return
 					}
 				}
@@ -571,8 +567,6 @@ func BenchmarkIteratorDatastoreReadRapidCreateDestroy(b *testing.B) {
 		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator(tuples), nil
 		}).AnyTimes()
-
-	const numGoroutines = 100
 
 	b.ResetTimer()
 
@@ -625,8 +619,6 @@ func BenchmarkIteratorDatastoreReadWithContextCancellation(b *testing.B) {
 		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator(tuples), nil
 		}).AnyTimes()
-
-	const numGoroutines = 50
 
 	b.ResetTimer()
 
