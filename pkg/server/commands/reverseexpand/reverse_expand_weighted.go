@@ -325,11 +325,13 @@ func (c *ReverseExpandQuery) queryForTuples(
 	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
 	jobDedupeMap := new(sync.Map)
 
+	// Now kick off the chain of queries
 	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: ""}, resultChan, needsCheck, jobDedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
 	}
+
 	return c.queryForTuplesWithItems(ctx, needsCheck, resultChan, items, jobDedupeMap)
 }
 
@@ -593,9 +595,10 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get edges from weighted graph",
+		c.logger.Error("Failed to get lowest weight edge",
+			zap.String("function", "intersectionHandler"),
 			zap.Error(err),
-			zap.Any("edges", &edges),
+			zap.Any("edges", edges),
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
@@ -649,7 +652,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			// This should never happen.
 			c.logger.Error("Failed to construct userset",
 				zap.String("function", "intersectionHandler"),
-				zap.Any("edge", &sibling),
+				zap.Any("edge", sibling),
 				zap.Error(err))
 			return err
 		}
@@ -724,8 +727,10 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 ) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get lowest weight edge for exclusionHandler", zap.Error(err),
-			zap.Any("edges", &edges),
+		c.logger.Error("Failed to get lowest weight edge",
+			zap.String("function", "exclusionHandler"),
+			zap.Error(err),
+			zap.Any("edges", edges),
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
@@ -774,7 +779,7 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 		// This should never happen.
 		c.logger.Error("Failed to construct userset",
 			zap.String("function", "intersectionHandler"),
-			zap.Any("edge", &excludedEdge),
+			zap.Any("edge", excludedEdge),
 			zap.Error(err))
 		return err
 	}
