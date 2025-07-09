@@ -2,7 +2,6 @@ package sharediterator
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -547,35 +546,23 @@ const bufferSize = 100
 // The singleflight.Group type was used as a comparison to the await type, but was found to be ~59% slower than await
 // in concurrent stress test benchmarks.
 type await struct {
-	executing atomic.Bool
-	ch        atomic.Pointer[chan struct{}]
+	active atomic.Bool
+	mu     sync.Mutex
 }
 
 // Do executes the provided function fn if it is not already being executed.
 // The channel returned will be closed once the execution has completed.
-func (a *await) Do(fn func()) chan struct{} {
-	i := make(chan struct{})
-	a.ch.CompareAndSwap(nil, &i)
-	ch := *a.ch.Load()
+func (a *await) Do(fn func()) {
+	ex := a.active.Swap(true)
+	a.mu.Lock()
 
-	if !a.executing.Swap(true) {
-		// If we are not already executing, we start a new goroutine to execute.
-		go func() {
-			fn()
-
-			// Important! The executing state must be set to false before closing the old channel.
-			// This avoids a race condition in which a goroutine waiting on the channel close might
-			// enter this function again and try to execute before the execution state is reset.
-			a.executing.Store(false)
-
-			newCh := make(chan struct{})
-			currentCh := a.ch.Swap(&newCh)
-
-			// Close the old channel to signal waiting goroutines to wake up.
-			close(*currentCh)
-		}()
+	if !ex {
+		fn()
+		a.mu.Unlock()
+		a.active.Store(false)
+	} else {
+		a.mu.Unlock()
 	}
-	return ch
 }
 
 // iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
@@ -650,26 +637,9 @@ type sharedIterator struct {
 func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
 	var aw await
 
-	// Initialize the channel that will be used to signal when new items are available.
-	ch := make(chan struct{})
-	var pch atomic.Pointer[chan struct{}]
-	pch.Store(&ch)
-
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
 	refs.Store(1)
-
-	// Initialize the error pointer to nil, indicating that there are no errors at the start.
-	// This will be used to store any errors that occur during the iteration.
-	var err atomic.Pointer[error]
-	terr := new(error)
-	err.Store(terr)
-
-	// Initialize the items pointer to an empty slice of tuples.
-	// This will be used to store the items fetched by the iterator.
-	var items atomic.Pointer[[]*openfgav1.Tuple]
-	titems := make([]*openfgav1.Tuple, 0)
-	items.Store(&titems)
 
 	ir := &iteratorReader[*openfgav1.Tuple]{
 		Iterator: it,
@@ -680,15 +650,13 @@ func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator
 	var pstate atomic.Pointer[iteratorState]
 	pstate.Store(&state)
 
-	newIter := sharedIterator{
+	return &sharedIterator{
 		await:   &aw,
 		cleanup: cleanup,
 		ir:      ir,
 		state:   &pstate,
 		refs:    &refs,
 	}
-
-	return &newIter
 }
 
 // clone creates a new shared iterator that shares the same context, cancellation function, and other fields.
@@ -720,54 +688,32 @@ func (s *sharedIterator) clone() *sharedIterator {
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
-func (s *sharedIterator) fetchAndWait(ctx context.Context, items *[]*openfgav1.Tuple, err *error) {
-	// Iterate until we have items available or an error occurs.
-	for {
-		if ctx.Err() != nil {
-			return
-		}
+func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
+	state := *s.state.Load()
+	*items = state.items
+	*err = state.err
 
-		state := *s.state.Load()
-		*items = state.items
-		*err = state.err
-
-		if s.head < len(*items) || *err != nil {
-			break
-		}
-
-		ch := s.await.Do(func() {
-			defer func() {
-				if r := recover(); r != nil {
-					var err error
-					if e, ok := r.(error); ok {
-						err = fmt.Errorf("recovered from panic: %w", e)
-					} else {
-						err = fmt.Errorf("recovered from panic: %v", r)
-					}
-					state := *s.state.Load()
-					state.err = err
-					s.state.Store(&state)
-				}
-			}()
-
-			var buf [bufferSize]*openfgav1.Tuple
-			read, e := s.ir.Read(context.Background(), buf[:])
-
-			// Load the current items from the shared items pointer and append the newly fetched items to it.
-			state := *s.state.Load()
-			state.items = append(state.items, buf[:read]...)
-
-			if e != nil {
-				state.err = e
-			}
-			s.state.Store(&state)
-		})
-
-		select {
-		case <-ctx.Done():
-		case <-ch:
-		}
+	if s.head < len(*items) || *err != nil {
+		return
 	}
+
+	s.await.Do(func() {
+		var buf [bufferSize]*openfgav1.Tuple
+		read, e := s.ir.Read(context.Background(), buf[:])
+
+		// Load the current items from the shared items pointer and append the newly fetched items to it.
+		state := *s.state.Load()
+		state.items = append(state.items, buf[:read]...)
+
+		if e != nil {
+			state.err = e
+		}
+		s.state.Store(&state)
+	})
+
+	state = *s.state.Load()
+	*items = state.items
+	*err = state.err
 }
 
 // Current returns the current item in the shared iterator without advancing the iterator.
@@ -786,7 +732,7 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 	var items []*openfgav1.Tuple
 	var err error
 
-	s.fetchAndWait(ctx, &items, &err)
+	s.fetchAndWait(&items, &err)
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
