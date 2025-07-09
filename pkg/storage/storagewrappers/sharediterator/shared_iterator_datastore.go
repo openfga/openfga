@@ -61,10 +61,14 @@ const (
 // The limit is set to defaultSharedIteratorLimit, which can be overridden by the user.
 // The storage is used to share iterators across multiple requests, allowing for efficient reuse of iterators.
 type Storage struct {
-	// iters is a map of iterators that are shared across requests.
-	// The key is a string that uniquely identifies the iterator, and the value is a storageItem that contains
-	// the iterator and its producer function.
-	iters sync.Map
+	// read stores shared iterators for the Read operation.
+	read sync.Map
+
+	// rswu stores shared iterators for the ReadWithUser operation.
+	rswu sync.Map
+
+	// rut stores shared iterators for the ReadUserTuples operation.
+	rut sync.Map
 
 	// limit is the maximum number of items that can be stored in the storage.
 	// If the number of items exceeds this limit, new iterators will not be created and the request will be bypassed.
@@ -270,7 +274,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
 		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 			}
 		})
@@ -282,7 +286,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage immediately.
 		newIterator := newSharedIterator(it, func() {
 			timer.Stop()
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 				sharedIteratorCount.Dec()
 			}
@@ -295,7 +299,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 	// Load or store the new storage item in the internal storage map.
 	// If the item is not already present, it will be added to the map and the counter will be incremented.
-	value, loaded := sf.internalStorage.iters.LoadOrStore(cacheKey, newStorageItem)
+	value, loaded := sf.internalStorage.rswu.LoadOrStore(cacheKey, newStorageItem)
 	if !loaded {
 		sf.internalStorage.ctr.Add(1)
 	}
@@ -306,7 +310,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
 	it, created, err := item.unwrap()
 	if err != nil {
-		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
+		sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
@@ -376,7 +380,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
 		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 			}
 		})
@@ -388,7 +392,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
 		newIterator := newSharedIterator(it, func() {
 			timer.Stop()
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 				sharedIteratorCount.Dec()
 			}
@@ -401,7 +405,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 
 	// Load or store the new storage item in the internal storage map.
 	// If the item is not already present, it will be added to the map and the counter will be incremented.
-	value, loaded := sf.internalStorage.iters.LoadOrStore(cacheKey, newStorageItem)
+	value, loaded := sf.internalStorage.rut.LoadOrStore(cacheKey, newStorageItem)
 	if !loaded {
 		sf.internalStorage.ctr.Add(1)
 	}
@@ -412,7 +416,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
 	it, created, err := item.unwrap()
 	if err != nil {
-		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
+		sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
@@ -481,7 +485,7 @@ func (sf *IteratorDatastore) Read(
 		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
 		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 			}
 		})
@@ -493,7 +497,7 @@ func (sf *IteratorDatastore) Read(
 		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
 		newIterator := newSharedIterator(it, func() {
 			timer.Stop()
-			if sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem) {
+			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 				sharedIteratorCount.Dec()
 			}
@@ -506,7 +510,7 @@ func (sf *IteratorDatastore) Read(
 
 	// Load or store the new storage item in the internal storage map.
 	// If the item is not already present, it will be added to the map and the counter will be incremented.
-	value, loaded := sf.internalStorage.iters.LoadOrStore(cacheKey, newStorageItem)
+	value, loaded := sf.internalStorage.read.LoadOrStore(cacheKey, newStorageItem)
 	if !loaded {
 		sf.internalStorage.ctr.Add(1)
 	}
@@ -517,7 +521,7 @@ func (sf *IteratorDatastore) Read(
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
 	it, created, err := item.unwrap()
 	if err != nil {
-		sf.internalStorage.iters.CompareAndDelete(cacheKey, newStorageItem)
+		sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
