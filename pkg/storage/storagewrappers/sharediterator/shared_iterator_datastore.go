@@ -685,6 +685,24 @@ func (s *sharedIterator) clone() *sharedIterator {
 	}
 }
 
+// fetchMore is a method that fetches more items from the underlying storage.TupleIterator.
+// It reads a fixed number of items (bufferSize) from the iterator and appends them
+// to the shared items slice in the iterator state.
+// If an error occurs during the read operation, it updates the error in the iterator state.
+func (s *sharedIterator) fetchMore() {
+	var buf [bufferSize]*openfgav1.Tuple
+	read, e := s.ir.Read(context.Background(), buf[:])
+
+	// Load the current items from the shared items pointer and append the newly fetched items to it.
+	state := *s.state.Load()
+	state.items = append(state.items, buf[:read]...)
+
+	if e != nil {
+		state.err = e
+	}
+	s.state.Store(&state)
+}
+
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
@@ -697,19 +715,7 @@ func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
 		return
 	}
 
-	s.await.Do(func() {
-		var buf [bufferSize]*openfgav1.Tuple
-		read, e := s.ir.Read(context.Background(), buf[:])
-
-		// Load the current items from the shared items pointer and append the newly fetched items to it.
-		state := *s.state.Load()
-		state.items = append(state.items, buf[:read]...)
-
-		if e != nil {
-			state.err = e
-		}
-		s.state.Store(&state)
-	})
+	s.await.Do(s.fetchMore)
 
 	state = *s.state.Load()
 	*items = state.items
