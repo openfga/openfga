@@ -574,20 +574,14 @@ type iteratorReader[T any] struct {
 // The method will read up to the length of the buffer, and if there are fewer items available,
 // it will return the number of items read and an error if any occurred.
 func (ir *iteratorReader[T]) Read(ctx context.Context, buf []T) (int, error) {
-	var i int
-	var e error
-
-	buflen := len(buf)
-
-	for ; i < buflen; i++ {
-		t, ierr := ir.Next(ctx)
-		if ierr != nil {
-			e = ierr
-			break
+	for i := range buf {
+		t, err := ir.Next(ctx)
+		if err != nil {
+			return i, err
 		}
 		buf[i] = t
 	}
-	return i, e
+	return len(buf), nil
 }
 
 // iteratorState holds the state of the shared iterator.
@@ -694,30 +688,38 @@ func (s *sharedIterator) fetchMore() {
 	read, e := s.ir.Read(context.Background(), buf[:])
 
 	// Load the current items from the shared items pointer and append the newly fetched items to it.
-	state := *s.state.Load()
-	state.items = append(state.items, buf[:read]...)
+	state := s.state.Load()
+
+	newState := &iteratorState{
+		items: make([]*openfgav1.Tuple, len(state.items)+read),
+		err:   state.err,
+	}
+
+	copy(newState.items, state.items)
+	copy(newState.items[len(state.items):], buf[:read])
 
 	if e != nil {
-		state.err = e
+		newState.err = e
 	}
-	s.state.Store(&state)
+
+	s.state.Store(newState)
 }
 
 // fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
 func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
-	state := *s.state.Load()
-	*items = state.items
-	*err = state.err
+	state := s.state.Load()
 
-	if s.head < len(*items) || *err != nil {
+	if s.head < len(state.items) || state.err != nil {
+		*items = state.items
+		*err = state.err
 		return
 	}
 
 	s.await.Do(s.fetchMore)
 
-	state = *s.state.Load()
+	state = s.state.Load()
 	*items = state.items
 	*err = state.err
 }
