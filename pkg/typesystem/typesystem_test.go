@@ -7067,7 +7067,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 			authzWeightedGraph: nil,
 		}
 
-		edges, node, err := typeSystem.GetEdgesFromWeightedGraph("type#relation", "user")
+		edges, node, err := typeSystem.GetEdgesFromNodeToType("type#relation", "user")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "weighted graph is nil")
 		require.Nil(t, edges)
@@ -7089,7 +7089,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, node, err := typeSystem.GetEdgesFromWeightedGraph("type#relation", "user")
+		edges, node, err := typeSystem.GetEdgesFromNodeToType("type#relation", "user")
 		require.Error(t, err)
 		require.Nil(t, edges)
 		require.Nil(t, node)

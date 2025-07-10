@@ -1701,7 +1701,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 }
 
 // helper function to return all edges from weighted graph.
-func (t *TypeSystem) GetEdgesFromWeightedGraph(
+func (t *TypeSystem) GetEdgesFromNodeToType(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelNode, error) {
@@ -1751,7 +1751,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	edges, currentNode, err := t.GetEdgesFromWeightedGraph(targetTypeRelation, sourceType)
+	edges, currentNode, err := t.GetEdgesFromNodeToType(targetTypeRelation, sourceType)
 	if err != nil {
 		return nil, false, err
 	}

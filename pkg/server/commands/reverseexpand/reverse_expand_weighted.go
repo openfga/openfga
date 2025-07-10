@@ -262,7 +262,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			} else {
 				switch toNode.GetLabel() {
 				case weightedGraph.IntersectionOperator:
-					intersectionEdges, _, err := c.typesystem.GetEdgesFromWeightedGraph(toNode.GetUniqueLabel(), sourceUserType)
+					intersectionEdges, _, err := c.typesystem.GetEdgesFromNodeToType(toNode.GetUniqueLabel(), sourceUserType)
 					if err != nil {
 						return err
 					}
@@ -271,7 +271,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 						return err
 					}
 				case weightedGraph.ExclusionOperator:
-					exclusionEdges, _, err := c.typesystem.GetEdgesFromWeightedGraph(toNode.GetUniqueLabel(), sourceUserType)
+					exclusionEdges, _, err := c.typesystem.GetEdgesFromNodeToType(toNode.GetUniqueLabel(), sourceUserType)
 					if err != nil {
 						return err
 					}
@@ -592,6 +592,10 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 	}
 
+	// We need to create a new stack with the top item from the original request's stack
+	// and use it to get the candidates for the lowest weight edge.
+	// If the edge is a tuple to userset edge, we need to later check the candidates against the
+	// original relationStack with the top item removed.
 	topItemStack := lls.New()
 	topItem, ok := req.relationStack.Pop()
 	if !ok {
@@ -674,7 +678,6 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
 					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
 				} else {
-					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
 					// If the original stack had more than 1 value, we need to query the parent values
 					// new stack with top item in stack
 					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
@@ -713,6 +716,9 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			zap.String("sourceUserType", sourceUserType))
 		return err
 	}
+
+	// This means the exclusion edge does not have a path to the terminal type.
+	// e.g. `B` in `A but not B` is not relevant to this query.
 	if excludedEdge == nil {
 		newReq := req.clone()
 
@@ -727,6 +733,10 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 		)
 	}
 
+	// We need to create a new stack with the top item from the original request's stack
+	// and use it to get the candidates for the lowest weight edge.
+	// If the edge is a tuple to userset edge, we need to later check the candidates against the
+	// original relationStack with the top item removed.
 	topItemStack := lls.New()
 	topItem, ok := req.relationStack.Pop()
 	if !ok {
@@ -790,7 +800,6 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
 					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
 				} else {
-					// TODO: should we be doing these items all at once or is it okay to do it one at a time?
 					// If the original stack had more than 1 value, we need to query the parent values
 					// new stack with top item in stack
 					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)

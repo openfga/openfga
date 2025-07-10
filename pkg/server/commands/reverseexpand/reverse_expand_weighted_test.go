@@ -1619,15 +1619,8 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				  define editor: [user]
 				  define viewer: writer and editor
 
-			  type but_not_folder
-				relations
-				  define writer: [user]
-				  define editor: [user]
-				  define viewer: writer but not editor
-
 			  type document
 				relations
-				  define but_not_parent: [but_not_folder]
 				  define and_parent: [and_folder]
 				  define viewer: viewer from and_parent
 		`,
@@ -1828,7 +1821,7 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -1880,7 +1873,7 @@ func TestLoopOverEdges(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
@@ -1948,7 +1941,7 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -2000,7 +1993,7 @@ func TestLoopOverEdges(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
@@ -2071,7 +2064,7 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
@@ -2132,9 +2125,9 @@ func TestIntersectionHandler(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("group#member", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("group#member", "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
 		go func() {
@@ -2208,9 +2201,9 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
@@ -2273,9 +2266,9 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
@@ -2344,7 +2337,7 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
@@ -2405,9 +2398,9 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
@@ -2470,9 +2463,9 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromWeightedGraph(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
 		stack := lls.New()
