@@ -1762,13 +1762,22 @@ func (t *TypeSystem) GetEdgesForListObjects(
 			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
 			edges = edges[:len(edges)-1]
 		case graph.IntersectionOperator:
-			// For AND relations, mark as "needs check" and just pick the lowest weight edge
+			// For now, all intersections will require check
 			needsCheck = true
 
-			lowestWeightEdge := cheapestEdgeTo(edges, sourceType)
+			// Find all direct edges which can reach the sourceType
+			directEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
+				return edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType)
+			}))
 
-			// return only the lowest weight edge
-			edges = []*graph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+			// If there are any direct edges which reach destination, we have to take them all
+			if len(directEdges) > 0 {
+				edges = directEdges
+			} else {
+				// Otherwise take the lowest weight edge
+				lowestWeightEdge := cheapestEdgeTo(edges, sourceType)
+				edges = []*graph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+			}
 		}
 	}
 
