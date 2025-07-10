@@ -493,8 +493,6 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 			// Simulate different reading patterns
 			switch v % 3 {
 			case 0:
-				// Full read
-				var count int
 				for {
 					_, err := iter.Next(ctx)
 					if err != nil {
@@ -504,7 +502,6 @@ func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
 						b.Errorf("Unexpected error: %v", err)
 						return
 					}
-					count++
 				}
 			case 1:
 				// Partial read with random stop
