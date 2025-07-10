@@ -558,7 +558,8 @@ type await struct {
 }
 
 // Do executes the provided function fn if it is not already being executed.
-// The channel returned will be closed once the execution has completed.
+// The first goroutine to call Do will execute the function, while subsequent calls will block until the function has completed.
+// This ensures that only one goroutine can execute the function at a time, preventing concurrent execution of the function.
 func (a *await) Do(fn func()) {
 	ex := a.active.Swap(true)
 	a.mu.Lock()
