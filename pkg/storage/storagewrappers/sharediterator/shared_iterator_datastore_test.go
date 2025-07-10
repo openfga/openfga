@@ -2207,6 +2207,71 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 	})
 }
 
+func TestSharedIterator_ManyTuples(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Create 150 test tuples
+	const numTuples = bufferSize + 1
+	var tks []*openfgav1.TupleKey
+	for i := 0; i < numTuples; i++ {
+		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
+	}
+
+	var tuples []*openfgav1.Tuple
+	ts := timestamppb.New(time.Now())
+	for _, tk := range tks {
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	tk := tuple.NewTupleKey("document:*", "viewer", "")
+
+	t.Run("single_client", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		// Verify we can read all tuples
+		var receivedTuples []*openfgav1.Tuple
+		for {
+			tup, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "unexpected error: %v", err)
+			}
+			receivedTuples = append(receivedTuples, tup)
+		}
+
+		// Assert we received all tuples
+		require.Len(t, receivedTuples, numTuples, "should receive all tuples")
+
+		// Verify the tuples match (order should be preserved)
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+		if diff := cmp.Diff(tuples, receivedTuples, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
 func TestSharedIteratorCountMetric(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
