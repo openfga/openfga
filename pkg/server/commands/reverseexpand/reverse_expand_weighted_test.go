@@ -1842,7 +1842,61 @@ func TestLoopOverEdges(t *testing.T) {
 		require.Error(t, newErr)
 		require.ErrorContains(t, newErr, "weighted graph is nil")
 	})
+	t.Run("returns_error_when_intersectionHandler_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
 
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
+
+		require.Error(t, newErr)
+		require.ErrorContains(t, newErr, "cannot create stack clone and stack with top item from an empty stack")
+	})
 	t.Run("returns_error_when_cannot_get_edges_from_exclusion", func(t *testing.T) {
 		brokenModel := `
 			model
@@ -1907,6 +1961,61 @@ func TestLoopOverEdges(t *testing.T) {
 
 		require.Error(t, newErr)
 		require.ErrorContains(t, newErr, "could not find node with label")
+	})
+	t.Run("returns_error_when_exclusionHandler_errors", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer but not editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+
+		edges, _, err := typesys.GetEdgesFromWeightedGraph("document#admin", "user")
+		require.NoError(t, err)
+
+		stack := lls.New()
+		stack.Push("document#admin")
+
+		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: *lls.New(),
+		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
+
+		require.Error(t, newErr)
+		require.ErrorContains(t, newErr, "cannot create stack clone and stack with top item from an empty stack")
 	})
 }
 
