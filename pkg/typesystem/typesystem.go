@@ -1775,8 +1775,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 				edges = directEdges
 			} else {
 				// Otherwise take the lowest weight edge
-				lowestWeightEdge := cheapestEdgeTo(edges, sourceType)
-				edges = []*graph.WeightedAuthorizationModelEdge{lowestWeightEdge}
+				edges = []*graph.WeightedAuthorizationModelEdge{cheapestEdgeTo(edges, sourceType)}
 			}
 		}
 	}

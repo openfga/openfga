@@ -222,7 +222,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				  schema 1.1
 		
 				type user
-				type zap
+				type doc
 				  relations
 					define can_view: owner or viewer from parent
 					define owner: [user]
@@ -232,18 +232,18 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					define member: [user]
 				type project
 				  relations
-    				define viewer: [user, team#member] and _user_in_context
-					define _user_in_context: [user]
+    				define viewer: [user, team#member] and contributor
+					define contributor: [user]
 		`,
 			tuples: []string{
 				"team:fga#member@user:justin",
 				"project:fga#viewer@team:fga#member",
-				"zap:one#parent@project:fga",
+				"doc:one#parent@project:fga",
 			},
-			objectType:      "zap",
+			objectType:      "doc",
 			relation:        "can_view",
 			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedObjects: []string{"zap:one"},
+			expectedObjects: []string{"doc:one"},
 		},
 		{
 			name: "simple_userset",
