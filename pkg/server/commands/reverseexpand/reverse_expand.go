@@ -48,7 +48,7 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack *stack.Stack[typeRelEntry]
+	relationStack stack.Stack[typeRelEntry]
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
