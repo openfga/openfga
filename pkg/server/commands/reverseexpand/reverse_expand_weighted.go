@@ -528,21 +528,119 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 	), nil
 }
 
+// findCandidatesForLowestWeightEdge finds the candidate objects for the lowest weight edge for intersection or exclusion.
+func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	tmpResultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata,
+) *concurrency.Pool {
+	// We need to create a new stack with the top item from the original request's stack
+	// and use it to get the candidates for the lowest weight edge.
+	// If the edge is a tuple to userset edge, we need to later check the candidates against the
+	// original relationStack with the top item removed.
+	var topItemStack stack.Stack[typeRelEntry]
+	if req.relationStack != nil {
+		topItem, newStack := stack.Pop(req.relationStack)
+		req.relationStack = newStack
+		topItemStack = stack.Push(nil, topItem)
+	}
+
+	pool := concurrency.NewPool(ctx, 2)
+	// getting list object candidates from the lowest weight edge and have its result
+	// pass through tmpResultChan.
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		// stack with only the top item in it
+		newReq := req.cloneWithStack(topItemStack)
+		err := c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			edges,
+			false,
+			resolutionMetadata,
+			tmpResultChan,
+			sourceUserType,
+		)
+		return err
+	})
+
+	return pool
+}
+
+// callCheckForCandidates calls check on the list objects candidates against non lowest weight edges.
+func (c *ReverseExpandQuery) callCheckForCandidates(
+	req *ReverseExpandRequest,
+	userset *openfgav1.Userset,
+	isAllowed bool,
+	pool *concurrency.Pool,
+	tmpResultChan <-chan *ReverseExpandResult,
+	resultChan chan<- *ReverseExpandResult,
+) {
+	pool.Go(func(ctx context.Context) error {
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
+				}, userset)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				functionName := "intersectionHandler"
+				if !isAllowed {
+					functionName = "exclusionHandler"
+				}
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", functionName),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
+			}
+
+			// Check if the check result matches the expect isAllowed value
+			// eg, for intersection we expect the check result to be true
+			// and for exclusion we expect the check result to be false.
+			if tmpCheckResult.GetAllowed() == isAllowed {
+				if stack.Len(req.relationStack) == 0 {
+					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				} else {
+					// If the original stack had more than 1 value, we need to query the parent values
+					// new stack with top item in stack
+					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			// otherwise, candidates are not true candidate and no need to pass back to its parents.
+		}
+		return nil
+	})
+}
+
 // invoke loopOverWeightedEdges to get list objects candidate. Check
 // will then be invoked on the non-lowest weight edges against these
 // list objects candidates. If check returns true, then the list
 // object candidates are true candidates and will be returned via
 // resultChan. If check returns false, then these list object candidates
 // are invalid because it does not satisfy all paths for intersection.
-func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
+func (c *ReverseExpandQuery) intersectionHandler(
+	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
-
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
 		c.logger.Error("Failed to get lowest weight edge",
@@ -565,35 +663,8 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 	}
 
-	// We need to create a new stack with the top item from the original request's stack
-	// and use it to get the candidates for the lowest weight edge.
-	// If the edge is a tuple to userset edge, we need to later check the candidates against the
-	// original relationStack with the top item removed.
-	var topItemStack stack.Stack[typeRelEntry]
-	if req.relationStack != nil {
-		topItem, newStack := stack.Pop(req.relationStack)
-		req.relationStack = newStack
-		topItemStack = stack.Push(nil, topItem)
-	}
-
-	pool := concurrency.NewPool(ctx, 2)
-	// getting list object candidates from the lowest weight edge and have its result
-	// pass through tmpResultChan.
-	pool.Go(func(ctx context.Context) error {
-		defer close(tmpResultChan)
-		// stack with only the top item in it
-		newReq := req.cloneWithStack(topItemStack)
-		err := c.shallowClone().loopOverEdges(
-			ctx,
-			newReq,
-			lowestWeightEdges,
-			false,
-			resolutionMetadata,
-			tmpResultChan,
-			sourceUserType,
-		)
-		return err
-	})
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
+	pool := c.findCandidatesForLowestWeightEdge(ctx, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
 
 	siblings := intersectionEdgeComparison.Siblings
 	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
@@ -622,46 +693,7 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 			}}}
 
 	// Calling check on list objects candidates against non lowest weight edges
-	pool.Go(func(ctx context.Context) error {
-		for tmpResult := range tmpResultChan {
-			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-				&graph.ResolveCheckRequest{
-					StoreID:              req.StoreID,
-					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-					ContextualTuples:     req.ContextualTuples,
-					Context:              req.Context,
-					Consistency:          req.Consistency,
-					RequestMetadata:      graph.NewCheckRequestMetadata(),
-				}, userset)
-			tmpCheckResult, err := handlerFunc(ctx)
-			if err != nil {
-				c.logger.Error("Failed to execute", zap.Error(err),
-					zap.String("function", "intersectionHandler"),
-					zap.String("object", tmpResult.Object),
-					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()))
-				return err
-			}
-
-			if tmpCheckResult.GetAllowed() {
-				// Check returns true. Hence, we have candidates
-				if stack.Len(req.relationStack) == 0 {
-					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
-				} else {
-					// If the original stack had more than 1 value, we need to query the parent values
-					// new stack with top item in stack
-					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
-					if err != nil {
-						return err
-					}
-				}
-			}
-			// otherwise, candidates are not true candidate and no need to pass back to its parents.
-		}
-		return nil
-	})
+	c.callCheckForCandidates(req, userset, true, pool, tmpResultChan, resultChan)
 
 	return pool.Wait()
 }
@@ -672,7 +704,8 @@ func (c *ReverseExpandQuery) intersectionHandler(ctx context.Context,
 // object candidates are true candidates and will be returned via
 // resultChan. If check returns true, then these list object candidates
 // are invalid because it does not satisfy all paths for exclusion.
-func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
+func (c *ReverseExpandQuery) exclusionHandler(
+	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -705,37 +738,8 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 		)
 	}
 
-	// We need to create a new stack with the top item from the original request's stack
-	// and use it to get the candidates for the lowest weight edge.
-	// If the edge is a tuple to userset edge, we need to later check the candidates against the
-	// original relationStack with the top item removed.
-	var topItemStack stack.Stack[typeRelEntry]
-	if req.relationStack != nil {
-		topItem, newStack := stack.Pop(req.relationStack)
-		req.relationStack = newStack
-		topItemStack = stack.Push(nil, topItem)
-	}
-
-	// We do not have to check whether baseEdges have length 0 because it would have been
-	// thrown out by GetEdgesFromWeightedGraph and this function will not be executed.
-	// In any case, if the baseEdges have 0 length, the loopOverWeightedEdges will be noop
-	// and return quickly.
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
-	pool := concurrency.NewPool(ctx, 2)
-	pool.Go(func(ctx context.Context) error {
-		defer close(tmpResultChan)
-		// stack with only the top item in it
-		newReq := req.cloneWithStack(topItemStack)
-		return c.shallowClone().loopOverEdges(
-			ctx,
-			newReq,
-			baseEdges,
-			false,
-			resolutionMetadata,
-			tmpResultChan,
-			sourceUserType,
-		)
-	})
+	pool := c.findCandidatesForLowestWeightEdge(ctx, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
 
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
@@ -746,43 +750,9 @@ func (c *ReverseExpandQuery) exclusionHandler(ctx context.Context,
 			zap.Error(err))
 		return err
 	}
-	pool.Go(func(ctx context.Context) error {
-		for tmpResult := range tmpResultChan {
-			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-				&graph.ResolveCheckRequest{
-					StoreID:              req.StoreID,
-					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-					ContextualTuples:     req.ContextualTuples,
-					Context:              req.Context,
-					Consistency:          req.Consistency,
-					RequestMetadata:      graph.NewCheckRequestMetadata(),
-				}, userset)
-			tmpCheckResult, err := handlerFunc(ctx)
-			if err != nil {
-				c.logger.Error("Failed to execute", zap.Error(err),
-					zap.String("function", "exclusionHandler"),
-					zap.String("object", tmpResult.Object),
-					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()))
-				return err
-			}
-			if !tmpCheckResult.GetAllowed() {
-				if stack.Len(req.relationStack) == 0 {
-					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
-				} else {
-					// If the original stack had more than 1 value, we need to query the parent values
-					// new stack with top item in stack
-					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-		return nil
-	})
+
+	// Calling check on list objects candidates against non lowest weight edges
+	c.callCheckForCandidates(req, userset, false, pool, tmpResultChan, resultChan)
 
 	return pool.Wait()
 }
