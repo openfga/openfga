@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -24,29 +24,16 @@ import (
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
 
-// As reverseExpand traverses from a requested type#rel to its leaf nodes, it pushes typeRelEntry structs to a stack.
-// Each `typeRelEntry` represents a step in the path taken to reach a leaf.
+// typeRelEntry represents a step in the path taken to reach a leaf node.
+// As reverseExpand traverses from a requested type#rel to its leaf nodes, it stack.Pushes typeRelEntry structs to a stack.
 // After reaching a leaf, this stack is consumed by the `queryForTuples` function to build the precise chain of
 // database queries needed to find the resulting objects.
-// To avoid races, every leaf node receives its own copy of the stack.
 type typeRelEntry struct {
 	typeRel string // e.g. "organization#admin"
 
 	// Only present for userset relations. Will be the userset relation string itself.
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
-}
-
-// When cloning requests to pass into separate goroutines, we need to create a copy of that
-// request's stack as well to avoid races.
-func cloneStack(original lls.Stack) lls.Stack {
-	newStack := lls.New()
-
-	vals := original.Values()
-	for i := len(vals) - 1; i >= 0; i-- {
-		newStack.Push(vals[i])
-	}
-	return *newStack
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -158,20 +145,15 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				// A direct edge here is org#teammate --> team#member
 				// so if we find team:fga for this user, we need to know to check for
 				// team:fga#member when we check org#teammate
-				el, ok := newReq.relationStack.Pop()
-				if !ok {
-					// shouldn't be possible
+				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				entry, ok := el.(typeRelEntry)
-				if !ok {
-					// shouldn't be possible
-					return fmt.Errorf("unexpected type in stack: expected typeRelEntry, got %T", el)
-				}
+				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
-				newReq.relationStack.Push(entry)
 
-				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newStack = stack.Push(newStack, entry)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 
 				// Now continue traversing
 				pool.Go(func(ctx context.Context) error {
@@ -196,12 +178,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_, ok := newReq.relationStack.Pop()
-				if !ok {
-					// Should never happen
+				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_, newStack := stack.Pop(newReq.relationStack)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 			}
 
 			pool.Go(func(ctx context.Context) error {
@@ -219,18 +201,18 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
 			// query for folder#admin, then if folders exist we will see if they are related to
 			// any documents as #parent.
-			_, ok := newReq.relationStack.Pop()
-			if !ok {
-				// Should never happen
+			if newReq.relationStack == nil {
 				return ErrEmptyStack
 			}
+			_, newStack := stack.Pop(newReq.relationStack)
 
-			// Push tupleset relation (`document#parent`)
+			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			newReq.relationStack.Push(tuplesetRel)
+			newStack = stack.Push(newStack, tuplesetRel)
 
-			// Push target type#rel (`folder#admin`)
-			newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			// stack.Push target type#rel (`folder#admin`)
+			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+			newReq.relationStack = newStack
 
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -240,12 +222,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
 			// to the stack.
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				_, ok := newReq.relationStack.Pop()
-				if !ok {
-					// Should never happen
+				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
-				newReq.relationStack.Push(typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				_, newStack := stack.Pop(newReq.relationStack)
+				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+				newReq.relationStack = newStack
 			}
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
@@ -286,7 +268,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 		return err
 	}
 
-	// Populate the jobQueue with the initial jobs
+	// stack.Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
 
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
@@ -360,19 +342,15 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		return nil, err
 	}
 
-	// Now pop the top relation off of the stack for querying
-	val, ok := currentReq.relationStack.Pop()
-	if !ok {
-		// should never happen, if there's no stack we shouldn't be in here
+	if currentReq.relationStack == nil {
 		return nil, ErrEmptyStack
 	}
 
-	entry, ok := val.(typeRelEntry)
-	if !ok {
-		// should never happen, we're only pushing typeRelEntry to this stack
-		return nil, fmt.Errorf("unexpected type encountered in query stack %T", val)
-	}
+	// Now pop the top relation off of the stack for querying
+	entry, newStack := stack.Pop(currentReq.relationStack)
 	typeRel := entry.typeRel
+
+	currentReq.relationStack = newStack
 
 	// Ensure that we haven't already run this query
 	if isDuplicateQuery(jobDedupeMap, userFilter, typeRel) {
@@ -403,7 +381,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 		// If there are no more type#rel to look for in the stack that means we have hit the base case
 		// and this object is a candidate for return to the user.
-		if currentReq.relationStack.Empty() {
+		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 			continue
 		}
@@ -424,16 +402,11 @@ func buildUserFilter(
 	// This is true on every call to queryFunc except the first, since we only trigger subsequent
 	// calls if we successfully found an object.
 	if object != "" {
-		val, ok := req.relationStack.Peek()
-		if !ok {
-			// Should never happen, we shouldn't be in here if the stack is empty
-			return nil, fmt.Errorf("unexpected empty stack in queryFunc")
+		if req.relationStack == nil {
+			return nil, ErrEmptyStack
 		}
-		entry, ok := val.(typeRelEntry)
-		if !ok {
-			// Should never happen, we only push `typeRelEntry` to this stack
-			return nil, fmt.Errorf("unexpected type in stack: expected typeRelEntry, got %T", val)
-		}
+
+		entry := stack.Peek(req.relationStack)
 		filter = &openfgav1.ObjectRelation{Object: object}
 		if entry.usersetRelation != "" {
 			filter.Relation = entry.usersetRelation

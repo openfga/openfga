@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
@@ -406,32 +405,4 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			require.ElementsMatch(t, unoptimizedResults, optimizedResults)
 		})
 	}
-}
-
-func TestCloneStack(t *testing.T) {
-	// Create stack and push two elements
-	original := lls.New()
-	original.Push(1)
-	original.Push(2)
-
-	// Clone
-	clone := cloneStack(*original)
-
-	// Now pop from original and clone, both should return
-	// their results in the correct LIFO order
-	val, ok := original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
-
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
-
-	val, ok = original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
-
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
 }
