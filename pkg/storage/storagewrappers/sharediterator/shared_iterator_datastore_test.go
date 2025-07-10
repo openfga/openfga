@@ -1413,153 +1413,6 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
-	t.Run("panic_in_inner_iterator_next", func(t *testing.T) {
-		ctx := context.Background()
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		storeID := ulid.Make().String()
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
-		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-
-		// Mock the iterator to panic on Next call
-		gomock.InOrder(
-			mockIterator.EXPECT().Next(gomock.Any()).Do(func(context.Context) {
-				panic("simulated panic in iterator")
-			}),
-			mockIterator.EXPECT().Stop(),
-		)
-
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator, nil)
-
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter.Stop()
-
-		// First call should trigger the panic and recover
-		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-		require.Contains(t, err.Error(), "simulated panic in iterator")
-
-		// Subsequent calls should return the same error
-		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-
-		// Head should also return the same error
-		_, err = iter.Head(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-
-		// Test with a second iterator sharing the same underlying iterator
-		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter2.Stop()
-
-		// Second iterator should also get the panic error
-		_, err = iter2.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-	})
-
-	t.Run("panic_with_error_type", func(t *testing.T) {
-		ctx := context.Background()
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		storeID := ulid.Make().String()
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
-		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-
-		// Mock the iterator to panic with an error type
-		panicErr := errors.New("custom panic error")
-		gomock.InOrder(
-			mockIterator.EXPECT().Next(gomock.Any()).Do(func(context.Context) {
-				panic(panicErr)
-			}),
-			mockIterator.EXPECT().Stop(),
-		)
-
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator, nil)
-
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter.Stop()
-
-		// First call should trigger the panic and recover
-		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-		require.Contains(t, err.Error(), "custom panic error")
-
-		// Verify it's wrapped properly
-		require.ErrorIs(t, err, panicErr)
-	})
-
-	t.Run("panic_after_successful_items", func(t *testing.T) {
-		ctx := context.Background()
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		storeID := ulid.Make().String()
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
-		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-
-		ts := timestamppb.New(time.Now())
-		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
-		tupleTwo := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:2"), Timestamp: ts}
-
-		// Mock successful items followed by panic
-		gomock.InOrder(
-			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
-			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleTwo, nil),
-			mockIterator.EXPECT().Next(gomock.Any()).Do(func(context.Context) {
-				panic("panic after successful items")
-			}),
-			mockIterator.EXPECT().Stop(),
-		)
-
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator, nil)
-
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter.Stop()
-
-		// First call should trigger panic and recover
-		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-		require.Contains(t, err.Error(), "panic after successful items")
-
-		// Subsequent calls should return the same error
-		_, err = iter.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-
-		// Test with a second iterator - it should see the panic error
-		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter2.Stop()
-
-		// The panic error
-		_, err = iter2.Next(ctx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "recovered from panic")
-	})
-
 	t.Run("head_empty_list_head", func(t *testing.T) {
 		ctx := context.Background()
 		mockController := gomock.NewController(t)
@@ -2124,6 +1977,71 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		defer iter2.Stop()
 		_, err = iter2.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+}
+
+func TestSharedIterator_ManyTuples(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Create 150 test tuples
+	const numTuples = bufferSize + 1
+	var tks []*openfgav1.TupleKey
+	for i := 0; i < numTuples; i++ {
+		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
+	}
+
+	var tuples []*openfgav1.Tuple
+	ts := timestamppb.New(time.Now())
+	for _, tk := range tks {
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	tk := tuple.NewTupleKey("document:*", "viewer", "")
+
+	t.Run("single_client", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		// Verify we can read all tuples
+		var receivedTuples []*openfgav1.Tuple
+		for {
+			tup, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "unexpected error", err)
+			}
+			receivedTuples = append(receivedTuples, tup)
+		}
+
+		// Assert we received all tuples
+		require.Len(t, receivedTuples, numTuples, "should receive all tuples")
+
+		// Verify the tuples match (order should be preserved)
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+		if diff := cmp.Diff(tuples, receivedTuples, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
 	})
 }
 

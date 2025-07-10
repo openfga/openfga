@@ -25,6 +25,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Invalidated iterators will be removed from cache if an invalid entity entry is found allowing for less time to refresh. [#2536](https://github.com/openfga/openfga/pull/2536)
 - Shared iterator cache map split into a single map per datastore operation. [#2549](https://github.com/openfga/openfga/pull/2549)
 - Shared Iterator cloning performance improvement. [#2551](https://github.com/openfga/openfga/pull/2551)
+- Shared iterator performance enhancements. [#2553](https://github.com/openfga/openfga/pull/2553)
 
 ### Fixed
 - Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
