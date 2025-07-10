@@ -11,6 +11,8 @@ func TestStack(t *testing.T) {
 		firstStack := Push(nil, "hello")
 		secondStack := Push(firstStack, "world")
 		require.NotEqual(t, Peek(firstStack), Peek(secondStack))
+		require.Equal(t, 1, Len(firstStack))
+		require.Equal(t, 2, Len(secondStack))
 	})
 
 	t.Run("test_pop_does_not_affect_original", func(t *testing.T) {
@@ -20,6 +22,7 @@ func TestStack(t *testing.T) {
 
 		// the second stack should be Nil, since we .popped our only element
 		require.Nil(t, secondStack)
+		require.Equal(t, 0, Len(secondStack))
 
 		// But the first stack should not have been modified
 		require.Equal(t, "hello", Peek(firstStack))
