@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -1829,7 +1829,7 @@ func TestLoopOverEdges(t *testing.T) {
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
@@ -1876,19 +1876,16 @@ func TestLoopOverEdges(t *testing.T) {
 		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
-
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
 
 		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "cannot create stack clone and stack with top item from an empty stack")
+		require.ErrorContains(t, newErr, "unexpected empty stack")
 	})
 	t.Run("returns_error_when_cannot_get_edges_from_exclusion", func(t *testing.T) {
 		brokenModel := `
@@ -1949,7 +1946,7 @@ func TestLoopOverEdges(t *testing.T) {
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
@@ -1996,19 +1993,16 @@ func TestLoopOverEdges(t *testing.T) {
 		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
-
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
 
 		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "cannot create stack clone and stack with top item from an empty stack")
+		require.ErrorContains(t, newErr, "unexpected empty stack")
 	})
 }
 
@@ -2072,7 +2066,7 @@ func TestIntersectionHandler(t *testing.T) {
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
 		require.Error(t, newErr)
 		require.ErrorContains(t, newErr, "invalid edges for source type")
@@ -2136,7 +2130,7 @@ func TestIntersectionHandler(t *testing.T) {
 				ObjectType:    objectType,
 				Relation:      relation,
 				User:          user,
-				relationStack: *lls.New(),
+				relationStack: nil,
 			}, resultChan, edges, "", NewResolutionMetadata())
 
 			if newErr != nil {
@@ -2206,15 +2200,14 @@ func TestIntersectionHandler(t *testing.T) {
 		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
+		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *stack,
+			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.ErrorIs(t, newErr, errorRet)
 	})
@@ -2271,15 +2264,14 @@ func TestIntersectionHandler(t *testing.T) {
 		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
+		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *stack,
+			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.ErrorIs(t, newErr, errorRet)
 	})
@@ -2345,7 +2337,7 @@ func TestExclusionHandler(t *testing.T) {
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *lls.New(),
+			relationStack: nil,
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
 		require.Error(t, newErr)
 		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
@@ -2403,15 +2395,14 @@ func TestExclusionHandler(t *testing.T) {
 		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
+		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *stack,
+			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.ErrorIs(t, newErr, errorRet)
 	})
@@ -2468,44 +2459,15 @@ func TestExclusionHandler(t *testing.T) {
 		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
 		require.NoError(t, err)
 
-		stack := lls.New()
-		stack.Push("document#admin")
+		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
-			relationStack: *stack,
+			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.ErrorIs(t, newErr, errorRet)
 	})
-}
-
-func TestCloneStack(t *testing.T) {
-	// Create stack and push two elements
-	original := lls.New()
-	original.Push(1)
-	original.Push(2)
-
-	// Clone
-	clone := cloneStack(*original)
-
-	// Now pop from original and clone, both should return
-	// their results in the correct LIFO order
-	val, ok := original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
-
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 2, val)
-
-	val, ok = original.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
-
-	val, ok = clone.Pop()
-	require.True(t, ok)
-	require.Equal(t, 1, val)
 }

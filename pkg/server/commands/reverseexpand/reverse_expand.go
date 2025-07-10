@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	lls "github.com/emirpasic/gods/stacks/linkedliststack"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,6 +21,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
@@ -48,14 +48,14 @@ type ReverseExpandRequest struct {
 	skipWeightedGraph bool
 
 	weightedEdge  *weightedGraph.WeightedAuthorizationModelEdge
-	relationStack lls.Stack
+	relationStack stack.Stack[typeRelEntry]
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
-	return r.cloneWithStack(cloneStack(r.relationStack))
+	return r.cloneWithStack(r.relationStack)
 }
 
-func (r *ReverseExpandRequest) cloneWithStack(stack lls.Stack) *ReverseExpandRequest {
+func (r *ReverseExpandRequest) cloneWithStack(stack stack.Stack[typeRelEntry]) *ReverseExpandRequest {
 	copy := *r
 	copy.relationStack = stack
 	return &copy
@@ -389,8 +389,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = *lls.New()
-				req.relationStack.Push(typeRelEntry{typeRel: typeRel})
+				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel})
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
