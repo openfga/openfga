@@ -2253,7 +2253,7 @@ func TestSharedIterator_ManyTuples(t *testing.T) {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
 				}
-				require.Fail(t, "unexpected error: %v", err)
+				require.Fail(t, "unexpected error", err)
 			}
 			receivedTuples = append(receivedTuples, tup)
 		}
