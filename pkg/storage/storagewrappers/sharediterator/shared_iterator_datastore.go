@@ -724,19 +724,17 @@ func (s *sharedIterator) fetchMore() {
 // It blocks until new items are fetched or an error occurs.
 // The items and err pointers are updated with the fetched items and any error encountered.
 func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
-	state := s.state.Load()
+	for {
+		state := s.state.Load()
 
-	if s.head < len(state.items) || state.err != nil {
-		*items = state.items
-		*err = state.err
-		return
+		if s.head < len(state.items) || state.err != nil {
+			*items = state.items
+			*err = state.err
+			return
+		}
+
+		s.await.Do(s.fetchMore)
 	}
-
-	s.await.Do(s.fetchMore)
-
-	state = s.state.Load()
-	*items = state.items
-	*err = state.err
 }
 
 // Current returns the current item in the shared iterator without advancing the iterator.
