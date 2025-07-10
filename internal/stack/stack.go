@@ -9,10 +9,6 @@ type Stack[T any] struct {
 	next  *Stack[T]
 }
 
-func New[T any](value T) *Stack[T] {
-	return &Stack[T]{value: value}
-}
-
 func Push[T any](stack *Stack[T], value T) *Stack[T] {
 	return &Stack[T]{value: value, next: stack}
 }
