@@ -276,6 +276,7 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
 			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
@@ -382,6 +383,7 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
 			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
@@ -487,6 +489,7 @@ func (sf *IteratorDatastore) Read(
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
 			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
 			}
 		})
 
