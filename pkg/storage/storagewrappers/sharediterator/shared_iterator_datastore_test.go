@@ -2392,11 +2392,11 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		// Create iterator - should increment count
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Stop iterator - should decrement count
 		iter.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("readstartingwithuser_increment_decrement", func(t *testing.T) {
@@ -2423,11 +2423,11 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		// Create iterator - should increment count
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{})
 		require.NoError(t, err)
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Stop iterator - should decrement count
 		iter.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("readusersettuples_increment_decrement", func(t *testing.T) {
@@ -2456,11 +2456,11 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		// Create iterator - should increment count
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{})
 		require.NoError(t, err)
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Stop iterator - should decrement count
 		iter.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("multiple_clones_single_increment", func(t *testing.T) {
@@ -2482,20 +2482,20 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		// Create first iterator - should increment count
 		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Create second iterator (clone) - should NOT increment count again
 		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Stop first iterator - count should remain the same (second clone exists)
 		iter1.Stop()
-		require.Equal(t, initialCount+1, getSharedIteratorCount())
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
 
 		// Stop last iterator - should decrement count
 		iter2.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("bypassed_higher_consistency_no_increment", func(t *testing.T) {
@@ -2526,10 +2526,10 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify count was not incremented (bypassed)
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 
 		iter.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("bypassed_storage_limit_no_increment", func(t *testing.T) {
@@ -2555,10 +2555,10 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify count was not incremented (bypassed)
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 
 		iter.Stop()
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 
 	t.Run("error_during_creation_no_increment", func(t *testing.T) {
@@ -2582,6 +2582,6 @@ func TestSharedIteratorCountMetric(t *testing.T) {
 		require.Error(t, err)
 
 		// Verify count was not incremented
-		require.Equal(t, initialCount, getSharedIteratorCount())
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
 	})
 }
