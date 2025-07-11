@@ -466,6 +466,13 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	return nil, storage.ErrNotFound
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (s *MemoryBackend) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	panic("unimplemented")
+}
+
 // ReadUsersetTuples see [storage.RelationshipTupleReader].ReadUsersetTuples.
 func (s *MemoryBackend) ReadUsersetTuples(
 	ctx context.Context,

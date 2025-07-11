@@ -211,6 +211,25 @@ type RelationshipTupleReader interface {
 		filter ReadStartingWithUserFilter,
 		options ReadStartingWithUserOptions,
 	) (TupleIterator, error)
+
+	// ReadRecursive performs a reverse read of relationship tuples starting at one or
+	// more user(s) or userset(s) and filtered by object type and relation and possibly a list of object IDs.
+	//
+	// For example, given the following relationship tuples:
+	//   document:doc1, viewer, user:jon
+	//   document:doc2, viewer, group:eng#member
+	//   document:doc3, editor, user:jon
+	//   document:doc4, viewer, group:eng#member
+	//
+	// ReadRecursive for ['user:jon', 'group:eng#member'] filtered by 'document#viewer'
+	// and 'document:doc1, document:doc2' would
+	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
+	// If ReadRecursive.WithResultsSortedAscending bool is enabled, the tuples returned must be sorted by one or more fields in them.
+	ReadRecursive(
+		ctx context.Context,
+		store string,
+		tupleKey *openfgav1.TupleKey,
+	) (TupleIterator, error)
 }
 
 // RelationshipTupleWriter is an interface that defines the set of methods

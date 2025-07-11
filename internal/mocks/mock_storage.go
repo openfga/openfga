@@ -170,6 +170,18 @@ func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockR
 	return m.recorder
 }
 
+// ReadRecursive implements storage.OpenFGADatastore.
+func (m *MockRelationshipTupleReader) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: 0,
+		},
+	}
+	return m.Read(ctx, store, tupleKey, opts)
+}
+
 // Read mocks base method.
 func (m *MockRelationshipTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -723,6 +735,18 @@ func (m *MockOpenFGADatastore) EXPECT() *MockOpenFGADatastoreMockRecorder {
 func (m *MockOpenFGADatastore) Close() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Close")
+}
+
+// ReadRecursive implements storage.OpenFGADatastore.
+func (m *MockOpenFGADatastore) ReadRecursive(ctx context.Context,
+	store string,
+	tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: 0,
+		},
+	}
+	return m.Read(ctx, store, tupleKey, opts)
 }
 
 // Close indicates an expected call of Close.

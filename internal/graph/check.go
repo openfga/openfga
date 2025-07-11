@@ -48,12 +48,13 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	usersetBatchSize     int
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate                     CheckResolver
+	concurrencyLimit             int
+	usersetBatchSize             int
+	logger                       logger.Logger
+	optimizationsEnabled         bool
+	maxResolutionDepth           uint32
+	recursiveOptimizationEnabled bool
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -62,6 +63,12 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = int(limit)
+	}
+}
+
+func WithRecursiveOptimizations(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.recursiveOptimizationEnabled = enabled
 	}
 }
 
@@ -1274,6 +1281,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
+			// get
 			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      reqTupleKey.GetObject(),
 				Relation:                    reqTupleKey.GetRelation(),
@@ -1461,19 +1469,59 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			attribute.String("computed_relation", computedRelation),
 		)
 
-		opts := storage.ReadOptions{
-			Consistency: storage.ConsistencyOptions{
-				Preference: req.GetConsistency(),
-			},
+		storeID := req.GetStoreID()
+
+		resolver := c.checkTTUSlowPath
+
+		// TODO: optimize the case where user is an userset.
+		// If the user is a userset, we will not be able to use the shortcut because the algo
+		// will look up the objects associated with user.
+		isUserset := tuple.IsObjectRelation(tk.GetUser())
+		recursiveCTE := false
+		if c.optimizationsEnabled && !isUserset {
+			// more common
+			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				resolver = c.checkTTUFastPathV2
+				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
+			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				if c.recursiveOptimizationEnabled {
+					recursiveCTE = true
+					resolver = c.recursiveTTUFastPathV3
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv3"))
+				} else {
+					resolver = c.recursiveTTUFastPathV2
+					span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+				}
+			}
+		} else if !isUserset {
+			if typesys.TTUCanFastPath(tuple.GetType(object), tuplesetRelation, computedRelation) {
+				resolver = c.checkTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
+			} else if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
+				resolver = c.recursiveTTUFastPath
+				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
+			}
 		}
 
-		storeID := req.GetStoreID()
-		iter, err := ds.Read(
-			ctx,
-			storeID,
-			tuple.NewTupleKey(object, tuplesetRelation, ""),
-			opts,
-		)
+		var iter storage.TupleIterator
+		var err error
+		if !recursiveCTE {
+			opts := storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: req.GetConsistency(),
+				},
+			}
+
+			iter, err = ds.Read(
+				ctx,
+				storeID,
+				tuple.NewTupleKey(object, tuplesetRelation, ""),
+				opts,
+			)
+		} else {
+			iter, err = ds.ReadRecursive(ctx, storeID, tuple.NewTupleKey(object, tuplesetRelation, ""))
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -1488,31 +1536,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		resolver := c.checkTTUSlowPath
-
-		// TODO: optimize the case where user is an userset.
-		// If the user is a userset, we will not be able to use the shortcut because the algo
-		// will look up the objects associated with user.
-		isUserset := tuple.IsObjectRelation(tk.GetUser())
-
-		if c.optimizationsEnabled && !isUserset {
-			// more common
-			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.checkTTUFastPathV2
-				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.recursiveTTUFastPathV2
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
-			}
-		} else if !isUserset {
-			if typesys.TTUCanFastPath(tuple.GetType(object), tuplesetRelation, computedRelation) {
-				resolver = c.checkTTUFastPath
-				span.SetAttributes(attribute.String("resolver", "fastpathv1"))
-			} else if typesys.RecursiveTTUCanFastPath(objectTypeRelation, userType) {
-				resolver = c.recursiveTTUFastPath
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv1"))
-			}
-		}
 		return resolver(ctx, req, rewrite, filteredIter)
 	}
 }
