@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -166,12 +167,16 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// and the traversal for this path is complete. Now we use the stack of relations
 			// we've built to query the datastore for matching tuples.
 			pool.Go(func(ctx context.Context) error {
-				return c.queryForTuples(
+				err := c.queryForTuples(
 					ctx,
 					newReq,
 					needsCheck,
 					resultChan,
 				)
+				if err != nil {
+					c.logger.ErrorWithContext(ctx, "error in query for tuples", zap.Error(err))
+				}
+				return err
 			})
 		case weightedGraph.ComputedEdge:
 			// A computed edge is an alias (e.g., `define viewer: editor`).
@@ -296,6 +301,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				}
 				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, jobDedupeMap)
 				if err != nil {
+					c.logger.ErrorWithContext(ctx, "error in job queue loop", zap.Error(err))
 					return err
 				}
 				localQueue.enqueue(newItems...)
@@ -307,6 +313,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 
 	err = pool.Wait()
 	if err != nil {
+		c.logger.ErrorWithContext(ctx, "error from query pool.Wait", zap.Error(err))
 		telemetry.TraceError(span, err)
 		return err
 	}
