@@ -191,10 +191,10 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
 func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string, latency time.Duration) {
-	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
-	defer shadowCancel()
+	shadowCtx := context.WithoutCancel(parentCtx)
 
 	startTime := time.Now()
+	q.logger.InfoWithContext(shadowCtx, "shadow timeout", zap.Int64("timeout_ms", q.shadowTimeout.Milliseconds()))
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
 	shadowLatency := time.Since(startTime)
 	if errShadow != nil {
