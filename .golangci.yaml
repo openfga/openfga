@@ -19,6 +19,7 @@ linters:
     - perfsprint
     - protogetter
     - revive
+    - recvcheck
     - staticcheck
     - tagalign
     - testifylint
@@ -52,6 +53,10 @@ linters:
     staticcheck:
       checks:
         - all
+    revive:
+      rules:
+        - name: var-naming
+          disabled: true
   exclusions:
     generated: lax
     rules:

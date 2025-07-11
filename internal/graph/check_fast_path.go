@@ -26,6 +26,8 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
+var ErrShortCircuit = errors.New("short circuit")
+
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
 func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg, error) {
@@ -426,13 +428,13 @@ func fastPathRewrite(
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
 	ctx, span := tracer.Start(ctx, "resolveFastPath", trace.WithAttributes(
 		attribute.Bool("allowed", false),
 	))
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := fanInIteratorChannels(cancellableCtx, leftChans, c.concurrencyLimit)
+	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
@@ -443,7 +445,7 @@ func (c *LocalChecker) resolveFastPath(ctx context.Context, leftChans []chan *it
 		if !leftOpen {
 			return
 		}
-		go drainIteratorChannel(leftChan)
+		iterator.Drain(leftChan)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -532,10 +534,9 @@ func produceLeftChannels(
 	req *ResolveCheckRequest,
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
-	concurrencyLimit int,
-) ([]chan *iterator.Msg, error) {
+) ([]<-chan *iterator.Msg, error) {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	leftChans := make([]chan *iterator.Msg, 0, len(relationReferences))
+	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
 		rel, err := typesys.GetRelation(parentType.GetType(), relation)
@@ -553,7 +554,7 @@ func produceLeftChannels(
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
-				go drainIteratorChannel(fanInIteratorChannels(ctx, leftChans, concurrencyLimit))
+				iterator.Drain(iterator.FanInIteratorChannels(ctx, leftChans))
 			}
 			return nil, err
 		}
@@ -573,7 +574,7 @@ func (c *LocalChecker) checkUsersetFastPathV2(ctx context.Context, req *ResolveC
 	defer cancel()
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
 
-	leftChans, err := produceLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc(), c.concurrencyLimit)
+	leftChans, err := produceLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +603,7 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation), c.concurrencyLimit)
+	leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
 	if err != nil {
 		return nil, err
 	}
@@ -614,50 +615,6 @@ func (c *LocalChecker) checkTTUFastPathV2(ctx context.Context, req *ResolveCheck
 	}
 
 	return c.resolveFastPath(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
-}
-
-func fanInIteratorChannels(ctx context.Context, chans []chan *iterator.Msg, concurrencyLimit int) chan *iterator.Msg {
-	limit := len(chans)
-
-	out := make(chan *iterator.Msg, limit)
-
-	if limit == 0 {
-		close(out)
-		return out
-	}
-
-	// It is ok if the limit is < concurrencyLimit because that
-	// is the pool's max limit.
-	pool := concurrency.NewPool(ctx, concurrencyLimit)
-
-	for _, c := range chans {
-		pool.Go(func(ctx context.Context) error {
-			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
-					}
-				}
-			}
-			return nil
-		})
-	}
-
-	go func() {
-		// NOTE: the consumer of this channel will block waiting for it to close
-		_ = pool.Wait()
-		close(out)
-	}()
-
-	return out
-}
-
-func drainIteratorChannel(c chan *iterator.Msg) {
-	for msg := range c {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	}
 }
 
 // Note that visited does not necessary means that there are cycles.  For the following model,
@@ -688,7 +645,10 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	relation := req.GetTupleKey().GetRelation()
 	user := req.GetTupleKey().GetUser()
 
-	chans := make([]chan *iterator.Msg, 0, currentUsersetLevel.Size())
+	pool := concurrency.NewPool(ctx, c.concurrencyLimit)
+	mu := &sync.Mutex{}
+	nextUsersetLevel := hashset.New()
+
 	for _, usersetInterface := range currentUsersetLevel.Values() {
 		userset := usersetInterface.(string)
 		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
@@ -701,61 +661,38 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
-			// TODO: TBD if we hard exit here, if yes, the channel needs to be closed
 			continue
 		}
-		c := make(chan *iterator.Msg, 1)
-		if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: mapper}, c) {
-			mapper.Stop() // will not be received to be cleaned up
-		}
-		close(c)
-		chans = append(chans, c)
-	}
-	leftChan := fanInIteratorChannels(ctx, chans, c.concurrencyLimit)
-	leftOpen := true
-	defer func() {
-		if leftOpen {
-			go drainIteratorChannel(leftChan)
-		}
-	}()
-	nextUsersetLevel := hashset.New()
-
-ConsumerLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			close(checkOutcomeChan)
-			return
-		case msg, ok := <-leftChan:
-			if !ok {
-				// nothing was found in this level, break to proceed into the next one
-				leftOpen = false
-				break ConsumerLoop
-			}
-			for {
-				t, err := msg.Iter.Next(ctx)
-				if err != nil {
-					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
-					}
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
-					close(checkOutcomeChan)
-					return
+		// if the pool is short-circuited, the iterator should be stopped
+		defer mapper.Stop()
+		pool.Go(func(ctx context.Context) error {
+			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
+			for usersetMsg := range objectToUsersetMessageChan {
+				if usersetMsg.err != nil {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
+					return nil
 				}
-
-				if usersetFromUser.Contains(t) {
-					msg.Iter.Stop()
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{Allowed: true}}, checkOutcomeChan)
-					close(checkOutcomeChan)
-					return
+				userset := usersetMsg.userset
+				if usersetFromUser.Contains(userset) {
+					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
+						Allowed: true,
+					}}, checkOutcomeChan)
+					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
-
-				nextUsersetLevel.Add(t)
+				mu.Lock()
+				nextUsersetLevel.Add(userset)
+				mu.Unlock()
 			}
-		}
+			return nil
+		})
 	}
 
+	// wait for all checks to wrap up
+	// if a match was found, clean up
+	if err := pool.Wait(); errors.Is(err, ErrShortCircuit) {
+		close(checkOutcomeChan)
+		return
+	}
 	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
 }
 
@@ -768,16 +705,17 @@ func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *Resol
 	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, 1)
+	wg := sync.WaitGroup{}
 	defer func() {
 		cancel()
 		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
+		wg.Wait()
 	}()
-	pool.Go(func(ctx context.Context) error {
-		c.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
-		return nil
-	})
+	wg.Add(1)
+	go func() {
+		c.breadthFirstRecursiveMatch(cancellableCtx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
+		wg.Done()
+	}()
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
@@ -805,7 +743,6 @@ ConsumerLoop:
 			}
 		}
 	}
-	cancel() // prevent further processing of other checks
 	// context cancellation from upstream (e.g. client)
 	if ctx.Err() != nil {
 		finalErr = ctx.Err()
@@ -929,7 +866,7 @@ func (c *LocalChecker) recursiveTTUFastPathV2(ctx context.Context, req *ResolveC
 
 	ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu, c.concurrencyLimit)
+	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:             storage.TTUKind,
@@ -960,7 +897,7 @@ func (c *LocalChecker) recursiveUsersetFastPathV2(ctx context.Context, req *Reso
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 
 	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider := newRecursiveUsersetObjectProvider(typesys, c.concurrencyLimit)
+	objectProvider := newRecursiveUsersetObjectProvider(typesys)
 
 	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
 		kind:                        storage.UsersetKind,

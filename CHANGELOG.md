@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Changed
+- Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
+
+### Fixed
+- Shared iterator race condition and deadlock. [#2544](https://github.com/openfga/openfga/pull/2544)
+- Fixed bug in how experimental ReverseExpand is handling Intersection nodes. [#2556](https://github.com/openfga/openfga/pull/2556)
+
+## [1.9.0] - 2025-07-03
+### Added
+- Add separate reverse_expand path utilizing the weighted graph. Gated behind `enable-list-objects-optimizations` flag. [#2529](https://github.com/openfga/openfga/pull/2529)
+
+### Changed
+- SQLite based iterators will load tuples only when needed (lazy loading). [#2511](https://github.com/openfga/openfga/pull/2511)
+- Shared iterator improvement to reduce lock contention when creating and cloning. [#2530](https://github.com/openfga/openfga/pull/2530)
+- Enable experimental list object optimizations in shadow mode using flag `enable-list-objects-optimizations`. [#2509](https://github.com/openfga/openfga/pull/2509)
+- Invalidated iterators will be removed from cache if an invalid entity entry is found allowing for less time to refresh. [#2536](https://github.com/openfga/openfga/pull/2536)
+- Shared iterator cache map split into a single map per datastore operation. [#2549](https://github.com/openfga/openfga/pull/2549)
+- Shared Iterator cloning performance improvement. [#2551](https://github.com/openfga/openfga/pull/2551)
+- Shared iterator performance enhancements. [#2553](https://github.com/openfga/openfga/pull/2553)
+
+### Fixed
+- Cache Controller was always completely invalidating. [#2522](https://github.com/openfga/openfga/pull/2522)
+
+## [1.8.16] - 2025-06-17
+### Fixed
+- Context cancelation was preventing database connections from being reused. [#2508](https://github.com/openfga/openfga/pull/2508)
+
+## [1.8.15] - 2025-06-11
+### Added
+- Add support for separate read and write datastores for PostgreSQL. [#2479](https://github.com/openfga/openfga/pull/2479)
+
+### Changed
+- Shared iterator refactor to reduce lock contention. [#2478](https://github.com/openfga/openfga/pull/2478)
+
+### Fixed
+- Improve Check performance for models with recursion and `enable-check-optimizations` experiment flag is enabled. [#2492](https://github.com/openfga/openfga/pull/2492)
+- Reverts the base docker image back to `cgr.dev/chainguard/static` [#2473](https://github.com/openfga/openfga/issues/2473)
+- Fix for picking up env vars for `migrate` pkg [#2493](https://github.com/openfga/openfga/issues/2493)
+
+## [1.8.14] - 2025-06-10
+### Fixed
+- Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
+- SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
+- When `enable-check-optimizations` experiment flag is enabled, incorrect check for model with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
+- Correlate storage context with caller's context. [#2292](https://github.com/openfga/openfga/pull/2292)
 
 ## [1.8.13] - 2025-05-22
 ### Added
@@ -1301,7 +1346,11 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.8.13...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/openfga/openfga/compare/v1.8.16...v1.9.0
+[1.8.16]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
+[1.8.15]: https://github.com/openfga/openfga/compare/v1.8.14...v1.8.15
+[1.8.14]: https://github.com/openfga/openfga/compare/v1.8.13...v1.8.14
 [1.8.13]: https://github.com/openfga/openfga/compare/v1.8.12...v1.8.13
 [1.8.12]: https://github.com/openfga/openfga/compare/v1.8.11...v1.8.12
 [1.8.11]: https://github.com/openfga/openfga/compare/v1.8.10...v1.8.11

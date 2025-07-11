@@ -1646,7 +1646,6 @@ func TestRecursiveTTUFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
 	model := parser.MustTransformDSLToProto(`
 				model
 					schema 1.1
@@ -2063,7 +2062,6 @@ type group
 	})
 
 	t.Run("resolution_depth_exceeded", func(t *testing.T) {
-		t.Parallel()
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -2751,7 +2749,6 @@ func TestRecursiveUsersetFastPathV2(t *testing.T) {
 	})
 
 	t.Run("resolution_depth_exceeded", func(t *testing.T) {
-		t.Parallel()
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 

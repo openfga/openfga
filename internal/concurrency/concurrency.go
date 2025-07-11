@@ -12,9 +12,11 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
+type Pool = pool.ContextPool
+
 // NewPool returns a new pool where each task respects context cancellation.
 // Wait() will only return the first error seen.
-func NewPool(ctx context.Context, maxGoroutines int) *pool.ContextPool {
+func NewPool(ctx context.Context, maxGoroutines int) *Pool {
 	return pool.New().
 		WithContext(ctx).
 		WithCancelOnError().

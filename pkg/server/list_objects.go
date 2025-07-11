@@ -64,9 +64,16 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	q, err := commands.NewListObjectsQuery(
+	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
+		commands.NewShadowListObjectsQueryConfig(
+			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
+			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
+			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
+			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
+			commands.WithShadowListObjectsQueryLogger(s.logger),
+		),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
@@ -81,6 +88,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
+		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
@@ -182,9 +190,16 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	q, err := commands.NewListObjectsQuery(
+	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
+		commands.NewShadowListObjectsQueryConfig(
+			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
+			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
+			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
+			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
+			commands.WithShadowListObjectsQueryLogger(s.logger),
+		),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottlerConfig(threshold.Config{

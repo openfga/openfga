@@ -2,15 +2,15 @@ package sharediterator
 
 import (
 	"context"
-	"errors"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -44,20 +44,11 @@ var (
 		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit OR max admission time has passed.",
 	}, []string{"operation"})
 
-	sharedIteratorWatchDog = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "shared_iterator_watchdog_timer_triggered",
-		Help:      "Total number of times watchdog timer is triggered.",
-	})
-
 	sharedIteratorCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: build.ProjectName,
 		Name:      "shared_iterator_count",
 		Help:      "The current number of items of shared iterator.",
 	})
-
-	errSharedIteratorWatchdog               = errors.New("shared iterator watchdog timeout")
-	errSharedIteratorAfterLastAdmissionTime = errors.New("shared iterator cloned after last admission time")
 )
 
 const (
@@ -65,13 +56,80 @@ const (
 	defaultIteratorTargetSize  = 1000
 )
 
+// Storage is a simple in-memory storage for shared iterators.
+// It uses a sync.Map to store iterators and an atomic counter to keep track of the number of items.
+// The limit is set to defaultSharedIteratorLimit, which can be overridden by the user.
+// The storage is used to share iterators across multiple requests, allowing for efficient reuse of iterators.
 type Storage struct {
-	mu sync.Mutex /* There are two locks (the mutex in Storage [aka big lock]
-	and the mutex in the sharedIterator [aka small lock]) in this file. To avoid deadlock, you MUST release the small
-	lock before obtaining the big lock.
-	*/
-	iters map[string]*internalSharedIterator // protected by mu
-	limit int
+	// read stores shared iterators for the Read operation.
+	read sync.Map
+
+	// rswu stores shared iterators for the ReadWithUser operation.
+	rswu sync.Map
+
+	// rut stores shared iterators for the ReadUserTuples operation.
+	rut sync.Map
+
+	// limit is the maximum number of items that can be stored in the storage.
+	// If the number of items exceeds this limit, new iterators will not be created and the request will be bypassed.
+	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
+	limit int64
+
+	// ctr is an atomic counter that keeps track of the number of items in the storage.
+	// It is incremented when a new iterator is created and decremented when an iterator is removed.
+	// This counter is used to determine if the storage is full and if new iterators should be bypassed.
+	// It is also used to monitor the number of active iterators in the system.
+	ctr atomic.Int64
+}
+
+// storageItem is a wrapper around a shared iterator that provides thread-safe access to the iterator.
+// The unwrap method is used to get a clone of the iterator, and if the iterator is not yet created,
+// it will call the producer function to create a new iterator.
+type storageItem struct {
+	// iter is the shared iterator that is being wrapped.
+	// It is set to nil when the iterator is not yet created, and will be created by the producer function.
+	iter *sharedIterator
+
+	// err is an error that is set when the iterator creation fails.
+	err error
+
+	// producer is a function that creates a new shared iterator.
+	// It is called when the iterator is not yet created, and it should return a new shared iterator or an error.
+	// This allows the storageItem to lazily create the iterator when it is first accessed.
+	// This is useful for cases where the iterator creation is expensive or requires context.
+	producer func() (*sharedIterator, error)
+
+	// once is a sync.Once to ensure that the producer function is only called once.
+	once sync.Once
+}
+
+// unwrap returns a clone of the shared iterator.
+// If a new iterator is created, it will return true to indicate that the iterator was created.
+// If the iterator is not yet created, it will call the producer function to create a new iterator.
+// If the iterator is already created, it will return a clone of the existing iterator.
+// If there is an error while creating the iterator, it will return nil and the error.
+func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
+	var created bool
+
+	s.once.Do(func() {
+		s.iter, s.err = s.producer()
+		created = true
+	})
+
+	if s.err != nil {
+		return nil, false, s.err
+	}
+	clone := s.iter.clone()
+
+	if created {
+		// Stop the original iterator since we are returning a clone.
+		// This is important so that the original iterator does not continue to hold a reference count.
+		// By cloning the iterator, the reference count is incremented to 2. After stopping the original iterator,
+		// the reference count will be decremented to 1, allowing the clone to clean up properly when it is stopped.
+		s.iter.Stop()
+	}
+
+	return clone, created, s.err
 }
 
 type DatastoreStorageOpt func(*Storage)
@@ -79,14 +137,13 @@ type DatastoreStorageOpt func(*Storage)
 // WithSharedIteratorDatastoreStorageLimit sets the limit on the number of items in SF iterator iters.
 func WithSharedIteratorDatastoreStorageLimit(limit int) DatastoreStorageOpt {
 	return func(b *Storage) {
-		b.limit = limit
+		b.limit = int64(limit)
 	}
 }
 
 func NewSharedIteratorDatastoreStorage(opts ...DatastoreStorageOpt) *Storage {
 	newStorage := &Storage{
 		limit: defaultSharedIteratorLimit,
-		iters: map[string]*internalSharedIterator{},
 	}
 	for _, opt := range opts {
 		opt(newStorage)
@@ -100,21 +157,6 @@ type IteratorDatastoreOpt func(*IteratorDatastore)
 func WithSharedIteratorDatastoreLogger(logger logger.Logger) IteratorDatastoreOpt {
 	return func(b *IteratorDatastore) {
 		b.logger = logger
-	}
-}
-
-// WithMaxTTL sets the time for watchdog will kick and clean up.
-func WithMaxTTL(ttl time.Duration) IteratorDatastoreOpt {
-	return func(b *IteratorDatastore) {
-		b.watchdogTTL = ttl
-	}
-}
-
-// WithIteratorTargetSize sets the pre-allocated size of each shared tuple.
-// This allows iterator from having to reallocate buffer space unless we go over that value.
-func WithIteratorTargetSize(targetSize uint32) IteratorDatastoreOpt {
-	return func(b *IteratorDatastore) {
-		b.iteratorTargetSize = targetSize
 	}
 }
 
@@ -134,29 +176,37 @@ func WithMethod(method string) IteratorDatastoreOpt {
 	}
 }
 
+// IteratorDatastore is a wrapper around a storage.RelationshipTupleReader that provides shared iterators.
+// It uses an internal storage to manage shared iterators and provides methods to read tuples starting with a user,
+// read userset tuples, and read tuples by key.
+// The shared iterators are created lazily and are shared across multiple requests to improve performance.
 type IteratorDatastore struct {
+	// RelationshipTupleReader is the inner datastore that provides the actual implementation of reading tuples.
 	storage.RelationshipTupleReader
-	logger             logger.Logger
-	method             string
-	internalStorage    *Storage
-	watchdogTTL        time.Duration
-	maxAdmissionTime   time.Duration
-	iteratorTargetSize uint32
+
+	// logger is used for logging messages related to the shared iterator operations.
+	logger logger.Logger
+
+	// method is used to specify the type of operation being performed (e.g., "check" or "list objects").
+	method string
+
+	// internalStorage is used to store shared iterators and manage their lifecycle.
+	internalStorage *Storage
+
+	// maxAdmissionTime is the maximum duration for which shared iterator allows clone.
+	maxAdmissionTime time.Duration
 }
 
-type internalSharedIterator struct {
-	counter uint64 // indirectly protected by the surrounding mutex. Therefor, it's usage must be made with caution.
-	iter    *sharedIterator
-}
-
+// NewSharedIteratorDatastore creates a new IteratorDatastore with the given inner RelationshipTupleReader and internal storage.
+// It also accepts optional configuration options to customize the behavior of the datastore.
+// The datastore will use shared iterators to improve performance by reusing iterators across multiple requests.
+// If the number of active iterators exceeds the specified limit, new requests will be bypassed and handled by the inner reader.
 func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalStorage *Storage, opts ...IteratorDatastoreOpt) *IteratorDatastore {
 	sf := &IteratorDatastore{
 		RelationshipTupleReader: inner,
 		logger:                  logger.NewNoopLogger(),
 		internalStorage:         internalStorage,
 		method:                  "",
-		watchdogTTL:             config.DefaultSharedIteratorTTL,
-		iteratorTargetSize:      defaultIteratorTargetSize,
 		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
 	}
 
@@ -167,6 +217,8 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 	return sf
 }
 
+// ReadStartingWithUser reads tuples starting with a user using shared iterators.
+// If the request is for higher consistency, it will fall back to the inner RelationshipTupleReader.
 func (sf *IteratorDatastore) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
@@ -178,7 +230,10 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 		"sharedIterator.ReadStartingWithUser",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// for now, we will skip shared iterator since there is a possibility that the request
@@ -196,76 +251,89 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	}
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	sf.internalStorage.mu.Lock()
+	// If the limit is zero, we will not use the shared iterator.
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
-	keyItem, found := sf.internalStorage.iters[cacheKey]
-
-	if found {
-		keyItem.counter++
-		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.Lock()
-
-		span.SetAttributes(attribute.Bool("found", true))
-
-		// by the time we have access to keyItem.iter.mu, we know that
-		// the inner is already set OR the initializationErr is set (for which clone
-		// will fail).
-		item, err := keyItem.iter.clone()
-		if err != nil {
-			// This needs to be unlocked before sf.RelationshipTupleReader.ReadStartingWithUser
-			// to reduce the time holding lock across expensive operation
-			keyItem.iter.mu.Unlock()
-			sf.deref(cacheKey)
-			telemetry.TraceError(span, err)
-			return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
-		}
-		keyItem.iter.mu.Unlock()
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadStartingWithUser, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-		return item, nil
-	}
-	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
-		span.SetAttributes(attribute.Bool("overlimit", true))
-
-		sf.internalStorage.mu.Unlock()
+	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
-		// we cannot share this iterator because we have reached the size limit.
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
-	newIterator.mu.Lock()
+	// Create a new storage item to hold the shared iterator.
+	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
+	newStorageItem := new(storageItem)
 
-	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
-		counter: 1,
-		iter:    newIterator,
+	// The producer function is called to create a new shared iterator when it is first accessed.
+	newStorageItem.producer = func() (*sharedIterator, error) {
+		it, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+		if err != nil {
+			return nil, err
+		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		// Create a new shared iterator from the original iterator.
+		// This allows the iterator to be shared across multiple requests.
+		// The cleanup function will be called when the shared iterator is stopped, which will remove it from the internal storage.
+		// This ensures that the internal storage does not grow indefinitely and that the iterator is cleaned up properly.
+		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage immediately.
+		newIterator := newSharedIterator(it, func() {
+			timer.Stop()
+			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		sharedIteratorCount.Inc()
+
+		return newIterator, nil
 	}
-	sharedIteratorCount.Inc()
-	sf.internalStorage.mu.Unlock()
-	span.SetAttributes(attribute.Bool("found", false))
 
-	actual, err := sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	// Load or store the new storage item in the internal storage map.
+	// If the item is not already present, it will be added to the map and the counter will be incremented.
+	value, loaded := sf.internalStorage.rswu.LoadOrStore(cacheKey, newStorageItem)
+	if !loaded {
+		sf.internalStorage.ctr.Add(1)
+	}
+	item, _ := value.(*storageItem)
+
+	// Unwrap the storage item to get the shared iterator.
+	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
+	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
+	it, created, err := item.unwrap()
 	if err != nil {
-		newIterator.initializationErr = err
-		newIterator.mu.Unlock()
-		sf.deref(cacheKey)
-		telemetry.TraceError(span, err)
+		sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
-	// note that this is protected by the newIterator.Lock. Therefore, any clone will not
-	// have access to inner until it is set.
-	newIterator.inner = actual
-	newIterator.mu.Unlock()
+	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
+	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
+	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
+		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
+	}
+
+	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadStartingWithUser, sf.method, "false",
+		storagewrappersutil.OperationReadStartingWithUser, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
-	return newIterator, nil
+	return it, nil
 }
 
+// ReadUsersetTuples reads userset tuples using shared iterators.
+// If the request is for higher consistency, it will fall back to the inner RelationshipTupleReader.
 func (sf *IteratorDatastore) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
@@ -277,7 +345,10 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
@@ -287,74 +358,89 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	sf.internalStorage.mu.Lock()
+	// If the limit is zero, we will not use the shared iterator.
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
-	keyItem, found := sf.internalStorage.iters[cacheKey]
-
-	if found {
-		keyItem.counter++
-		sf.internalStorage.mu.Unlock()
-
-		keyItem.iter.mu.Lock()
-		span.SetAttributes(attribute.Bool("found", true))
-
-		// by the time we have access to keyItem.iter.mu, we know that
-		// the inner is already set OR the initializationErr is set (for which clone
-		// will fail).
-		item, err := keyItem.iter.clone()
-		if err != nil {
-			keyItem.iter.mu.Unlock()
-			sf.deref(cacheKey)
-			telemetry.TraceError(span, err)
-			return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-		}
-		keyItem.iter.mu.Unlock()
-
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationReadUsersetTuples, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-
-		return item, nil
-	}
-
-	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
-		sf.internalStorage.mu.Unlock()
-		span.SetAttributes(attribute.Bool("overlimit", true))
+	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
-		// we cannot share this iterator because we have reached the size limit.
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
-	newIterator.mu.Lock()
+	// Create a new storage item to hold the shared iterator.
+	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
+	newStorageItem := new(storageItem)
 
-	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
-		counter: 1,
-		iter:    newIterator,
+	// The producer function is called to create a new shared iterator when it is first accessed.
+	newStorageItem.producer = func() (*sharedIterator, error) {
+		it, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+		if err != nil {
+			return nil, err
+		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		// Create a new shared iterator from the original iterator.
+		// This allows the iterator to be shared across multiple requests.
+		// The cleanup function will be called when the shared iterator is stopped, which will remove it from the internal storage.
+		// This ensures that the internal storage does not grow indefinitely and that the iterator is cleaned up properly.
+		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
+		newIterator := newSharedIterator(it, func() {
+			timer.Stop()
+			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		sharedIteratorCount.Inc()
+
+		return newIterator, nil
 	}
-	sharedIteratorCount.Inc()
-	sf.internalStorage.mu.Unlock()
-	span.SetAttributes(attribute.Bool("found", false))
 
-	actual, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+	// Load or store the new storage item in the internal storage map.
+	// If the item is not already present, it will be added to the map and the counter will be incremented.
+	value, loaded := sf.internalStorage.rut.LoadOrStore(cacheKey, newStorageItem)
+	if !loaded {
+		sf.internalStorage.ctr.Add(1)
+	}
+	item, _ := value.(*storageItem)
+
+	// Unwrap the storage item to get the shared iterator.
+	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
+	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
+	it, created, err := item.unwrap()
 	if err != nil {
-		newIterator.initializationErr = err
-		newIterator.mu.Unlock()
-
-		sf.deref(cacheKey)
-		telemetry.TraceError(span, err)
+		sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
-	newIterator.inner = actual
-	newIterator.mu.Unlock()
+	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
+	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
+	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
+		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
+	}
+
+	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, sf.method, "false",
+		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
-	return newIterator, nil
+
+	return it, nil
 }
 
+// Read reads tuples by key using shared iterators.
+// If the request is for higher consistency, it will fall back to the inner RelationshipTupleReader.
 func (sf *IteratorDatastore) Read(
 	ctx context.Context,
 	store string,
@@ -365,7 +451,10 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
-	span.SetAttributes(attribute.String("consistency_preference", options.Consistency.Preference.String()))
+	span.SetAttributes(
+		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("bypassed", "false"),
+	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
@@ -375,323 +464,346 @@ func (sf *IteratorDatastore) Read(
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	sf.internalStorage.mu.Lock()
+	// If the limit is zero, we will not use the shared iterator.
+	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
-	keyItem, found := sf.internalStorage.iters[cacheKey]
-	if found {
-		keyItem.counter++
-		sf.internalStorage.mu.Unlock()
-		keyItem.iter.mu.Lock()
-		span.SetAttributes(attribute.Bool("found", true))
-
-		item, err := keyItem.iter.clone()
-		if err != nil {
-			keyItem.iter.mu.Unlock()
-			sf.deref(cacheKey)
-			telemetry.TraceError(span, err)
-			return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
-		}
-		keyItem.iter.mu.Unlock()
-		sharedIteratorQueryHistogram.WithLabelValues(
-			storagewrappersutil.OperationRead, sf.method, "true",
-		).Observe(float64(time.Since(start).Milliseconds()))
-		return item, nil
-	}
-	if len(sf.internalStorage.iters) >= sf.internalStorage.limit {
-		sf.internalStorage.mu.Unlock()
+	if full {
+		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-
-		// we cannot share this iterator because we have reached the size limit.
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
 
-	newIterator := newSharedIterator(sf, cacheKey, sf.watchdogTTL, sf.maxAdmissionTime, sf.iteratorTargetSize)
-	newIterator.mu.Lock()
+	// Create a new storage item to hold the shared iterator.
+	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
+	newStorageItem := new(storageItem)
 
-	sf.internalStorage.iters[cacheKey] = &internalSharedIterator{
-		counter: 1,
-		iter:    newIterator,
+	// The producer function is called to create a new shared iterator when it is first accessed.
+	newStorageItem.producer = func() (*sharedIterator, error) {
+		it, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		if err != nil {
+			return nil, err
+		}
+
+		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
+		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
+		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
+			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		// Create a new shared iterator from the original iterator.
+		// This allows the iterator to be shared across multiple requests.
+		// The cleanup function will be called when the shared iterator is stopped, which will remove it from the internal storage.
+		// This ensures that the internal storage does not grow indefinitely and that the iterator is cleaned up properly.
+		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
+		newIterator := newSharedIterator(it, func() {
+			timer.Stop()
+			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
+				sf.internalStorage.ctr.Add(-1)
+				sharedIteratorCount.Dec()
+			}
+		})
+
+		sharedIteratorCount.Inc()
+
+		return newIterator, nil
 	}
-	sharedIteratorCount.Inc()
-	sf.internalStorage.mu.Unlock()
-	span.SetAttributes(attribute.Bool("found", false))
 
-	actual, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	// Load or store the new storage item in the internal storage map.
+	// If the item is not already present, it will be added to the map and the counter will be incremented.
+	value, loaded := sf.internalStorage.read.LoadOrStore(cacheKey, newStorageItem)
+	if !loaded {
+		sf.internalStorage.ctr.Add(1)
+	}
+	item, _ := value.(*storageItem)
+
+	// Unwrap the storage item to get the shared iterator.
+	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
+	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
+	it, created, err := item.unwrap()
 	if err != nil {
-		newIterator.initializationErr = err
-		newIterator.mu.Unlock()
-
-		sf.deref(cacheKey)
-		telemetry.TraceError(span, err)
+		sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
-	newIterator.inner = actual
-	newIterator.mu.Unlock()
+
+	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
+	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
+	if it == nil {
+		span.SetAttributes(attribute.String("bypassed", "true"))
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
+		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	}
+
+	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, sf.method, "false",
+		storagewrappersutil.OperationRead, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
-	return newIterator, nil
+
+	return it, nil
 }
 
-// decrement cacheKey from internal reference count
-// If reference count is 0, remove cacheKey.
-func (sf *IteratorDatastore) deref(cacheKey string) {
-	sf.internalStorage.mu.Lock()
-	item, ok := sf.internalStorage.iters[cacheKey]
-	if !ok {
-		sf.internalStorage.mu.Unlock()
-		sf.logger.Error("failed to dereference cache key", zap.String("cacheKey", cacheKey))
-		return
-	}
-	item.counter--
-	if item.counter == 0 {
-		sharedIteratorCount.Dec()
-		delete(sf.internalStorage.iters, cacheKey)
-		sf.internalStorage.mu.Unlock()
-		item.iter.cleanup() // will grab `mu` internally, thus must be yielded before called.
-		return
-	}
-	sf.internalStorage.mu.Unlock()
+// bufferSize is the number of items to fetch at a time when reading from the shared iterator.
+const bufferSize = 100
+
+// await is an object that executes an action exactly once at a time.
+//
+// The singleflight.Group type was used as a comparison to the await type, but was found to be ~59% slower than await
+// in concurrent stress test benchmarks.
+type await struct {
+	active atomic.Bool
+	mu     sync.Mutex
 }
 
-// watchdogTimeout will be called by the sharedIterator to clean itself up upon watchdog timeout.
-// This is needed to avoid leaks when the shared iterator did not stop.
-func (sf *IteratorDatastore) watchdogTimeout(cacheKey string, iter *sharedIterator) {
-	sf.internalStorage.mu.Lock()
-	item, ok := sf.internalStorage.iters[cacheKey]
-	if !ok {
-		// It is possible that the watchdogTimer runs after the item has been dereferenced.
-		// In this case, we do nothing
-		sf.internalStorage.mu.Unlock()
+// Do executes the provided function fn if it is not already being executed.
+// The first goroutine to call Do will execute the function, while subsequent calls will block until the function has completed.
+// This ensures that only one goroutine can execute the function at a time, preventing concurrent execution of the function.
+func (a *await) Do(fn func()) {
+	ex := a.active.Swap(true)
+	a.mu.Lock()
 
-		sf.logger.Debug("shared iterator watchdog timeout failed to deref key", zap.String("cacheKey", cacheKey))
-		return
+	if !ex {
+		fn()
+		a.mu.Unlock()
+		a.active.Store(false)
+	} else {
+		a.mu.Unlock()
 	}
-	if item.iter != iter {
-		// This is the case where the watchdogTimeout runs after the item has been dereferenced and then re-created.
-		// In this case, we only want to clean the timed-out shared iterator up - not the newly re-created iterator.
-		sf.logger.Debug("shared iterator watchdog timeout deref key but new shared iter is created in the meantime", zap.String("cacheKey", cacheKey))
-		sf.internalStorage.mu.Unlock()
-
-		iter.cleanup()
-		return
-	}
-	// no one has deleted / recreate the map's entry. Time to clean myself up.
-	delete(sf.internalStorage.iters, cacheKey)
-	sharedIteratorCount.Dec()
-	sf.internalStorage.mu.Unlock()
-	item.iter.cleanup()
 }
 
-// sharedIterator will be shared with multiple consumers.
+// iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
+type iteratorReader[T any] struct {
+	storage.Iterator[T]
+}
+
+// Read reads items from the iterator into the provided buffer.
+// The method will read up to the length of the buffer, and if there are fewer items available,
+// it will return the number of items read and an error if any occurred.
+func (ir *iteratorReader[T]) Read(ctx context.Context, buf []T) (int, error) {
+	for i := range buf {
+		t, err := ir.Next(ctx)
+		if err != nil {
+			return i, err
+		}
+		buf[i] = t
+	}
+	return len(buf), nil
+}
+
+// iteratorState holds the state of the shared iterator.
+// It contains a slice of items that have been fetched and any error encountered during the iteration.
+// This state is shared between all clones of the iterator and is updated atomically to ensure thread-safety.
+type iteratorState struct {
+	items []*openfgav1.Tuple
+	err   error
+}
+
+// sharedIterator is a thread-safe iterator that allows multiple goroutines to share the same iterator.
+// It uses a mutex to ensure that only one goroutine can access an individual iterator instance at a time.
+// Atomic variables are used to manage data shared between clones.
 type sharedIterator struct {
-	manager          *IteratorDatastore // non-changing
-	key              string             // non-changing
-	maxAliveTime     time.Duration      // non-changing
-	maxAdmissionTime time.Time          // non-changing
-	head             int
+	// mu is a mutex to ensure that only one goroutine can access the current iterator instance at a time.
+	// mu is a value type because it is not shared between iterator instances.
+	mu sync.Mutex
 
-	mu                 *sync.RWMutex         // We expect the contention should be minimal. TODO: minimize mu holding time.
-	initializationErr  error                 // shared - protected by mu. Although it is shared, it is only inspected by clone().
-	items              *[]*openfgav1.Tuple   // shared - protected by mu
-	inner              storage.TupleIterator // shared - protected by mu
-	sharedErr          *error                // shared - protected by mu
-	watchdogTimeoutErr *error                // shared - protected by mu
-	stopped            bool                  // not shared across clone - but protected by mu
-	watchdogTimer      *time.Timer           /* shared - protected by mu. Watchdog timer is used to protect from leak
-	when the shared iterator was not stopped. Every time there is an action on the shared iterator, the watchdog
-	timer's timeout is postponed by the maxAliveTime. When the timer is trigger, watchdogTimeout() will be invoked
-	which will call the manager to clean up this iterator.
-	*/
+	// cleanup is a function that will be called when all shared iterator instances have stopped.
+	cleanup func()
+
+	// head is the index of the next item to be returned by the current iterator instance.
+	// It is incremented each time an item is returned by the iterator in a call to Next.
+	// head is a value type because it is not shared between iterator instances.
+	head int
+
+	// stopped is an atomic boolean that indicates whether the current iterator instance has been stopped.
+	// stopped is a value type because it is not shared between iterator instances.
+	stopped atomic.Bool
+
+	// await ensures that only one goroutine can fetch items at a time.
+	// It is used to block until new items are available or the context is done.
+	await *await
+
+	// ir is the underlying iterator reader that provides the actual implementation of reading tuples.
+	ir *iteratorReader[*openfgav1.Tuple]
+
+	// state is a shared atomic pointer to the iterator state, which contains the items and any error encountered during iteration.
+	state *atomic.Pointer[iteratorState]
+
+	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
+	refs *atomic.Int64
+
+	// closed indicates whether the shared iterator's internal iterator has been stopped.
+	// It is used to prevent future clones from being created if the iterator has already been closed.
+	// This is a pointer value because it is shared between all clones of the iterator.
+	closed *atomic.Bool
 }
 
-func newSharedIterator(manager *IteratorDatastore, key string, maxAliveTime time.Duration, maxAdmissionTime time.Duration, targetSize uint32) *sharedIterator {
-	newIter := &sharedIterator{
-		manager:          manager,
-		key:              key,
-		head:             0,
-		maxAliveTime:     maxAliveTime,
-		maxAdmissionTime: time.Now().Add(maxAdmissionTime),
+// newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
+// It initializes the shared context, cancellation function, and other necessary fields.
+func newSharedIterator(it storage.TupleIterator, cleanup func()) *sharedIterator {
+	var aw await
 
-		mu:                 &sync.RWMutex{},
-		items:              new([]*openfgav1.Tuple),
-		inner:              nil,
-		sharedErr:          new(error),
-		watchdogTimeoutErr: new(error),
+	var closed atomic.Bool
+
+	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
+	var refs atomic.Int64
+	refs.Store(1)
+
+	ir := &iteratorReader[*openfgav1.Tuple]{
+		Iterator: it,
 	}
-	*newIter.items = make([]*openfgav1.Tuple, 0, targetSize)
-	newIter.watchdogTimer = time.AfterFunc(maxAliveTime, newIter.watchdogTimeout)
-	return newIter
+
+	// Initialize the iterator state with an empty slice of items and no error.
+	var state iteratorState
+	var pstate atomic.Pointer[iteratorState]
+	pstate.Store(&state)
+
+	return &sharedIterator{
+		await:   &aw,
+		cleanup: cleanup,
+		ir:      ir,
+		state:   &pstate,
+		refs:    &refs,
+		closed:  &closed,
+	}
 }
 
-// It is assumed that mu is held by the parent while cloning.
-func (s *sharedIterator) clone() (*sharedIterator, error) {
-	if s.initializationErr != nil {
-		return nil, s.initializationErr
-	}
-	if time.Now().After(s.maxAdmissionTime) {
-		// To avoid stale data, we want to prevent shared iterator from using the clone if it is created after
-		// maxAdmissionTime. When we return, the clone will default to skip the shared iterator.
-		return nil, errSharedIteratorAfterLastAdmissionTime
+// clone creates a new shared iterator that shares the same context, cancellation function, and other fields.
+// It increments the reference count and returns a new instance of the shared iterator.
+// If the reference count reaches zero, it returns nil, indicating that the iterator has been stopped.
+// This allows multiple goroutines to share the same iterator instance without interfering with each other.
+// The clone method is thread-safe and ensures that the reference count is incremented atomically.
+func (s *sharedIterator) clone() *sharedIterator {
+	s.refs.Add(1)
+
+	if s.closed.Load() {
+		// if the shared iterator's internal iterator has been stopped,
+		// we return nil to indicate that the iterator is no longer available.
+		s.refs.Add(-1)
+		return nil
 	}
 
-	newIter := &sharedIterator{
-		manager:      s.manager,
-		key:          s.key,
-		head:         0,
-		maxAliveTime: s.maxAliveTime,
-		// the start time and the maxAdmissionTime is only used for checking
-		// whether we need to clone. As such, it is not copied into the cloned copy.
-
-		mu:                 s.mu,
-		items:              s.items,
-		inner:              s.inner,
-		sharedErr:          s.sharedErr,
-		watchdogTimer:      s.watchdogTimer,
-		watchdogTimeoutErr: s.watchdogTimeoutErr,
+	return &sharedIterator{
+		await:   s.await,
+		cleanup: s.cleanup,
+		ir:      s.ir,
+		state:   s.state,
+		refs:    s.refs,
+		closed:  s.closed,
 	}
-	newIter.watchdogTimer.Reset(s.maxAliveTime)
-	return newIter, nil
 }
 
-func (s *sharedIterator) cleanup() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.inner != nil {
-		s.inner.Stop()
+// fetchMore is a method that fetches more items from the underlying storage.TupleIterator.
+// It reads a fixed number of items (bufferSize) from the iterator and appends them
+// to the shared items slice in the iterator state.
+// If an error occurs during the read operation, it updates the error in the iterator state.
+func (s *sharedIterator) fetchMore() {
+	var buf [bufferSize]*openfgav1.Tuple
+	read, e := s.ir.Read(context.Background(), buf[:])
+
+	// Load the current items from the shared items pointer and append the newly fetched items to it.
+	state := s.state.Load()
+
+	newState := &iteratorState{
+		items: make([]*openfgav1.Tuple, len(state.items)+read),
+		err:   state.err,
 	}
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Stop()
+
+	copy(newState.items, state.items)
+	copy(newState.items[len(state.items):], buf[:read])
+
+	if e != nil {
+		newState.err = e
 	}
-	s.inner = nil
-	s.watchdogTimer = nil
+
+	s.state.Store(newState)
 }
 
-// when watchdogTimeout is invoked, it will revoke the current iterator from usage.
-// This will mark the iterator as error and stop on its behalf
-// All further usage of Head/Next() will return error.
-func (s *sharedIterator) watchdogTimeout() {
-	s.mu.Lock()
-	*s.watchdogTimeoutErr = errSharedIteratorWatchdog
-	s.mu.Unlock()
-	sharedIteratorWatchDog.Inc()
-	s.manager.watchdogTimeout(s.key, s)
+// fetchAndWait is a method that fetches items from the underlying storage.TupleIterator and waits for new items to be available.
+// It blocks until new items are fetched or an error occurs.
+// The items and err pointers are updated with the fetched items and any error encountered.
+func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
+	for {
+		state := s.state.Load()
+
+		if s.head < len(state.items) || state.err != nil {
+			*items = state.items
+			*err = state.err
+			return
+		}
+
+		s.await.Do(s.fetchMore)
+	}
 }
 
+// Current returns the current item in the shared iterator without advancing the iterator.
+// It is used to peek at the next item without consuming it.
+// If the iterator is stopped or there are no items available, it returns an error.
+// It also handles fetching new items if the current head is beyond the available items.
+func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	if s.stopped.Load() {
+		return nil, storage.ErrIteratorDone
+	}
+
+	var items []*openfgav1.Tuple
+	var err error
+
+	s.fetchAndWait(&items, &err)
+
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	if s.head >= len(items) {
+		if err != nil {
+			return nil, err
+		}
+		// This is a guard clause to ensure we do not access out of bounds.
+		// If we reach here, it means there is a bug in the underlying iterator.
+		return nil, storage.ErrIteratorDone
+	}
+
+	return items[s.head], nil
+}
+
+// Head returns the first item in the shared iterator without advancing the iterator.
+// It is used to peek at the next item without consuming it.
+// If the iterator is stopped or there are no items available, it returns an error.
+// It also handles fetching new items if the current head is beyond the available items.
 func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.Head",
-	)
-	defer span.End()
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
-		return nil, *s.watchdogTimeoutErr
-	}
-
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
-
-	if s.stopped {
-		span.SetAttributes(attribute.Bool("stopped", true))
-		return nil, storage.ErrIteratorDone
-	}
-
-	if s.head < len(*s.items) {
-		span.SetAttributes(attribute.Bool("newItem", false))
-		return (*s.items)[s.head], nil
-	}
-
-	// If there is an error, no need to get any more items, and we just return the error
-	if s.sharedErr != nil && *s.sharedErr != nil {
-		span.SetAttributes(attribute.Bool("sharedError", true))
-		telemetry.TraceError(span, *s.sharedErr)
-		return nil, *s.sharedErr
-	}
-
-	span.SetAttributes(attribute.Bool("newItem", true))
-	item, err := s.inner.Next(ctx)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return nil, err
-		}
-		*s.sharedErr = err
-		return nil, err
-	}
-	*s.items = append(*s.items, item)
-	return item, nil
+	return s.current(ctx)
 }
 
+// Next returns the next item in the shared iterator and advances the iterator.
+// It is used to consume the next item in the iterator.
+// If the iterator is stopped or there are no items available, it returns an error.
+// It also handles fetching new items if the current head is beyond the available items.
 func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.Next",
-	)
-	defer span.End()
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.watchdogTimeoutErr != nil && *s.watchdogTimeoutErr != nil {
-		return nil, *s.watchdogTimeoutErr
-	}
-
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
-
-	if s.stopped {
-		span.SetAttributes(attribute.Bool("stopped", true))
-		return nil, storage.ErrIteratorDone
-	}
-	if s.head < len(*s.items) {
-		currentHead := s.head
-		s.head++
-		return (*s.items)[currentHead], nil
-	}
-	if s.sharedErr != nil && *s.sharedErr != nil {
-		// we are going to get more items. However, if we see error
-		// previously, we will not need to get more items
-		// and can simply return the same error.
-		span.SetAttributes(attribute.Bool("sharedError", true))
-		telemetry.TraceError(span, *s.sharedErr)
-		return nil, *s.sharedErr
-	}
-	span.SetAttributes(attribute.Bool("newItem", true))
-
-	item, err := s.inner.Next(ctx)
+	result, err := s.current(ctx)
 	if err != nil {
-		telemetry.TraceError(span, err)
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return nil, err
-		}
-		*s.sharedErr = err
 		return nil, err
 	}
-	*s.items = append(*s.items, item)
 	s.head++
-	return item, nil
+	return result, nil
 }
 
+// Stop stops the shared iterator and cleans up resources.
+// It decrements the reference count and checks if it should clean up the iterator.
+// If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
 func (s *sharedIterator) Stop() {
-	s.mu.Lock()
-	if s.stopped {
-		// It is perfectly possible that iterator calling stop more than once.
-		// However, we only want to decrement the count on the first stop.
-		s.mu.Unlock()
-		return
+	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
+		s.cleanup()
+		s.ir.Stop()
 	}
-	s.stopped = true
-	s.mu.Unlock()
-
-	if s.watchdogTimer != nil {
-		s.watchdogTimer.Reset(s.maxAliveTime)
-	}
-	s.manager.deref(s.key)
 }

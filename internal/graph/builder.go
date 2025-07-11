@@ -111,3 +111,27 @@ func (c *CheckResolverOrderedBuilder) close() {
 		resolver.Close()
 	}
 }
+
+// LocalCheckResolver returns the local checker in the chain of CheckResolver.
+func LocalCheckResolver(resolver CheckResolver) (*LocalChecker, bool) {
+	if resolver == nil {
+		return nil, false
+	}
+	localChecker, ok := resolver.(*LocalChecker)
+	if ok {
+		return localChecker, true
+	}
+	shadowChecker, ok := resolver.(*ShadowResolver)
+	if ok {
+		return LocalCheckResolver(shadowChecker.main)
+	}
+	delegate := resolver.GetDelegate()
+	if delegate != nil {
+		if delegate == resolver {
+			// this handles the case where the delegate is itself (to avoid the problem of infinite loop)
+			return nil, false
+		}
+		return LocalCheckResolver(delegate)
+	}
+	return nil, false
+}
