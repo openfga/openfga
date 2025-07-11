@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Shared iterator race condition and deadlock. [#2544](https://github.com/openfga/openfga/pull/2544)
+- Fixed bug in how experimental ReverseExpand is handling Intersection nodes. [#2556](https://github.com/openfga/openfga/pull/2556)
 
 ## [1.9.0] - 2025-07-03
 ### Added
