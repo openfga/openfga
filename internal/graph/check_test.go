@@ -1364,7 +1364,6 @@ func TestCheckDispatchCount(t *testing.T) {
 
 		require.Equal(t, uint32(4), checkRequestMetadata.DispatchCounter.Load())
 	})
-
 	t.Run("dispatch_count_computed_userset_lookups", func(t *testing.T) {
 		storeID := ulid.Make().String()
 

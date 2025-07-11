@@ -529,7 +529,7 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
-	resp, err := c.checkRewrite(ctx, req, rel.GetRewrite())(ctx)
+	resp, err := c.CheckRewrite(ctx, req, rel.GetRewrite())(ctx)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return nil, err
@@ -1542,7 +1542,7 @@ func (c *LocalChecker) checkSetOperation(
 		}
 
 		for _, child := range children {
-			handlers = append(handlers, c.checkRewrite(ctx, req, child))
+			handlers = append(handlers, c.CheckRewrite(ctx, req, child))
 		}
 	default:
 		return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -1566,7 +1566,7 @@ func (c *LocalChecker) checkSetOperation(
 	}
 }
 
-func (c *LocalChecker) checkRewrite(
+func (c *LocalChecker) CheckRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,

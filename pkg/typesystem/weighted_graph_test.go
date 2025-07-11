@@ -700,7 +700,7 @@ func TestConstructUserset(t *testing.T) {
 			Userset: &openfgav1.Userset_TupleToUserset{
 				TupleToUserset: &openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
-						Relation: "team",
+						Relation: "parent",
 					},
 					ComputedUserset: &openfgav1.ObjectRelation{
 						Relation: "member",
