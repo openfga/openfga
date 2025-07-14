@@ -553,7 +553,8 @@ const bufferSize = 100
 // The singleflight.Group type was used as a comparison to the await type, but was found to be ~59% slower than await
 // in concurrent stress test benchmarks.
 type await struct {
-	active atomic.Bool
+	active bool
+	wg     *sync.WaitGroup
 	mu     sync.Mutex
 }
 
@@ -561,16 +562,23 @@ type await struct {
 // The first goroutine to call Do will execute the function, while subsequent calls will block until the function has completed.
 // This ensures that only one goroutine can execute the function at a time, preventing concurrent execution of the function.
 func (a *await) Do(fn func()) {
-	ex := a.active.Swap(true)
 	a.mu.Lock()
-
-	if !ex {
-		fn()
+	if a.active {
 		a.mu.Unlock()
-		a.active.Store(false)
-	} else {
-		a.mu.Unlock()
+		a.wg.Wait()
+		return
 	}
+	a.active = true
+	a.wg = new(sync.WaitGroup)
+	a.wg.Add(1)
+	a.mu.Unlock()
+
+	fn()
+	a.wg.Done()
+
+	a.mu.Lock()
+	a.active = false
+	a.mu.Unlock()
 }
 
 // iteratorReader is a wrapper around a storage.Iterator that implements the reader interface.
