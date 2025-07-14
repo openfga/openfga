@@ -1702,31 +1702,26 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 
 // helper function to return all edges from weighted graph.
 func (t *TypeSystem) GetEdgesFromNodeToType(
-	targetTypeRelation string,
+	node *graph.WeightedAuthorizationModelNode,
 	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelNode, error) {
+) ([]*graph.WeightedAuthorizationModelEdge, error) {
 	if t.authzWeightedGraph == nil {
-		return nil, nil, fmt.Errorf("weighted graph is nil")
+		return nil, fmt.Errorf("weighted graph is nil")
 	}
 
 	wg := t.authzWeightedGraph
 
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
-	if !ok {
-		return nil, nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
-	}
-
 	// This means we cannot reach the source type requested, so there are no relevant edges.
-	if !hasPathTo(currentNode, sourceType) {
-		return nil, nil, nil
+	if !hasPathTo(node, sourceType) {
+		return nil, nil
 	}
 
-	edges, ok := wg.GetEdgesFromNode(currentNode)
+	edges, ok := wg.GetEdgesFromNode(node)
 	if !ok {
 		// Note: this should not happen, but adding the guard nonetheless
-		return nil, nil, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
+		return nil, fmt.Errorf("no outgoing edges from node: %s", node.GetUniqueLabel())
 	}
-	return edges, currentNode, nil
+	return edges, nil
 }
 
 // GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
@@ -1751,12 +1746,20 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	targetTypeRelation string,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	edges, currentNode, err := t.GetEdgesFromNodeToType(targetTypeRelation, sourceType)
+	if t.authzWeightedGraph == nil {
+		return nil, false, fmt.Errorf("weighted graph is nil")
+	}
+
+	wg := t.authzWeightedGraph
+
+	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+	if !ok {
+		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+	}
+
+	edges, err := t.GetEdgesFromNodeToType(currentNode, sourceType)
 	if err != nil {
 		return nil, false, err
-	}
-	if currentNode == nil {
-		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 	if len(edges) == 0 {
 		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())

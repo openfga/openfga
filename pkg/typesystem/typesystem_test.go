@@ -7067,32 +7067,10 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 			authzWeightedGraph: nil,
 		}
 
-		edges, node, err := typeSystem.GetEdgesFromNodeToType("type#relation", "user")
+		edges, err := typeSystem.GetEdgesFromNodeToType(nil, "user")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "weighted graph is nil")
 		require.Nil(t, edges)
-		require.Nil(t, node)
-	})
-
-	t.Run("returns_error_when_node_not_found", func(t *testing.T) {
-		model := `
-		model
-		schema 1.1
-		type user
-		type other
-		type group
-			relations
-				define banned: [other]
-				define allowed: [user, other] but not banned
-		`
-
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, node, err := typeSystem.GetEdgesFromNodeToType("type#relation", "user")
-		require.Error(t, err)
-		require.Nil(t, edges)
-		require.Nil(t, node)
 	})
 }
 

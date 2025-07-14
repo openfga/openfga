@@ -52,13 +52,8 @@ type ReverseExpandRequest struct {
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
-	return r.cloneWithStack(r.relationStack)
-}
-
-func (r *ReverseExpandRequest) cloneWithStack(stack stack.Stack[typeRelEntry]) *ReverseExpandRequest {
-	copy := *r
-	copy.relationStack = stack
-	return &copy
+	copyRequest := *r
+	return &copyRequest
 }
 
 type IsUserRef interface {

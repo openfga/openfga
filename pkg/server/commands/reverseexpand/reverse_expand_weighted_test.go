@@ -1821,7 +1821,10 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys2.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys2.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -1873,7 +1876,10 @@ func TestLoopOverEdges(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -1938,7 +1944,10 @@ func TestLoopOverEdges(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys2.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys2.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -1950,7 +1959,7 @@ func TestLoopOverEdges(t *testing.T) {
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "could not find node with label")
+		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
 	})
 	t.Run("returns_error_when_exclusionHandler_errors", func(t *testing.T) {
 		model := `
@@ -1990,7 +1999,10 @@ func TestLoopOverEdges(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
@@ -2058,7 +2070,10 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys2.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys2.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
@@ -2119,9 +2134,12 @@ func TestIntersectionHandler(t *testing.T) {
 			WithListObjectOptimizationsEnabled(true),
 		)
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("group#member", "user")
+		node, ok := typesys.GetNode("group#member")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
 		go func() {
@@ -2195,9 +2213,12 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
@@ -2259,9 +2280,12 @@ func TestIntersectionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
@@ -2329,7 +2353,10 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		edges, _, err := typesys2.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys2.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys2.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
 
 		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
@@ -2390,9 +2417,12 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
@@ -2454,9 +2484,12 @@ func TestExclusionHandler(t *testing.T) {
 		)
 		q.localCheckResolver = mockCheckResolver
 
-		edges, _, err := typesys.GetEdgesFromNodeToType("document#admin", "user")
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNodeToType(node, "user")
 		require.NoError(t, err)
-		edges, _, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo().GetUniqueLabel(), "user")
+		edges, err = typesys.GetEdgesFromNodeToType(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
