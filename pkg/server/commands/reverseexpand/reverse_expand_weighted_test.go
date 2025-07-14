@@ -232,6 +232,35 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"org:a_org", "org:b_org"},
 		},
 		{
+			name: "intersection_with_multiple_directs",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type doc
+				  relations
+					define can_view: owner or viewer from parent
+					define owner: [user]
+					define parent: [project]
+				type team
+				  relations
+					define member: [user]
+				type project
+				  relations
+    				define viewer: [user, team#member] and contributor
+					define contributor: [user]
+		`,
+			tuples: []string{
+				"team:fga#member@user:justin",
+				"project:fga#viewer@team:fga#member",
+				"doc:one#parent@project:fga",
+			},
+			objectType:      "doc",
+			relation:        "can_view",
+			user:            &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedObjects: []string{"doc:one"},
+		},
+		{
 			name: "simple_userset",
 			model: `model
 				  schema 1.1
