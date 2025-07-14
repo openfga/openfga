@@ -146,6 +146,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
 
+	wasWeightedGraphUsed := result.ResolutionMetadata.WasWeightedGraphUsed.Load()
+	if wasWeightedGraphUsed {
+		listObjectsAlgorithmCounter.WithLabelValues("weighted").Inc()
+	} else {
+		listObjectsAlgorithmCounter.WithLabelValues("non-weighted").Inc()
+	}
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
