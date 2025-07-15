@@ -91,11 +91,11 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method", "datastore_query_count", "dispatch_count", "consistency"})
 
-	listObjectsAlgorithmCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	listObjectsOptimizationCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
-		Name:      "list_objects_algorithm_count",
-		Help:      "The total number of requests that have been processed by the old vs new list objects algorithm.",
-	}, []string{"algorithm"})
+		Name:      "list_objects_optimization_count",
+		Help:      "The total number of requests that have been processed by the weighted graph vs non-weighted graph.",
+	}, []string{"strategy"})
 
 	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
