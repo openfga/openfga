@@ -627,7 +627,6 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 			if err != nil {
 				return err
 			}
-
 		}
 		return nil
 	})
