@@ -564,8 +564,9 @@ type await struct {
 func (a *await) Do(fn func()) {
 	a.mu.Lock()
 	if a.active {
+		wg := a.wg
 		a.mu.Unlock()
-		a.wg.Wait()
+		wg.Wait()
 		return
 	}
 	a.active = true
