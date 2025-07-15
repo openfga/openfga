@@ -241,33 +241,36 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				pool.Go(func(ctx context.Context) error {
 					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 				})
-			} else {
-				switch toNode.GetLabel() {
-				case weightedGraph.IntersectionOperator:
-					intersectionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
-					if err != nil {
-						return err
-					}
-					err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
-					if err != nil {
-						return err
-					}
-				case weightedGraph.ExclusionOperator:
-					exclusionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
-					if err != nil {
-						return err
-					}
-					err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
-					if err != nil {
-						return err
-					}
-				case weightedGraph.UnionOperator:
-					pool.Go(func(ctx context.Context) error {
-						return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-					})
-				default:
-					return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
+				// continue to the next edge
+				break
+			}
+
+			// If the edge is an operator node, we need to handle it differently.
+			switch toNode.GetLabel() {
+			case weightedGraph.IntersectionOperator:
+				intersectionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				if err != nil {
+					return err
 				}
+				err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				if err != nil {
+					return err
+				}
+			case weightedGraph.ExclusionOperator:
+				exclusionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				if err != nil {
+					return err
+				}
+				err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				if err != nil {
+					return err
+				}
+			case weightedGraph.UnionOperator:
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
+			default:
+				return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
 			}
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
@@ -605,23 +608,26 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 				return err
 			}
 
-			// Check if the check result matches the expect isAllowed value
+			// If the allowed value does not match what we expect, we skip this candidate.
 			// eg, for intersection we expect the check result to be true
 			// and for exclusion we expect the check result to be false.
-			if tmpCheckResult.GetAllowed() == isAllowed {
-				if stack.Len(req.relationStack) == 0 {
-					// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-					c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
-				} else {
-					// If the original stack had more than 1 value, we need to query the parent values
-					// new stack with top item in stack
-					err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
-					if err != nil {
-						return err
-					}
-				}
+			if tmpCheckResult.GetAllowed() != isAllowed {
+				continue
 			}
-			// otherwise, candidates are not true candidate and no need to pass back to its parents.
+
+			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+			if stack.Len(req.relationStack) == 0 {
+				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				continue
+			}
+
+			// If the original stack had more than 1 value, we need to query the parent values
+			// new stack with top item in stack
+			err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+			if err != nil {
+				return err
+			}
+
 		}
 		return nil
 	})
@@ -656,11 +662,10 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		return nil
 	}
 
-	var lowestWeightEdges []*weightedGraph.WeightedAuthorizationModelEdge
+	lowestWeightEdges := []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
 		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
-	} else {
-		lowestWeightEdges = []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 	}
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)

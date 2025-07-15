@@ -52,6 +52,9 @@ type ReverseExpandRequest struct {
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
+	if r == nil {
+		return nil
+	}
 	copyRequest := *r
 	return &copyRequest
 }
@@ -238,6 +241,9 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 // candidateObjectsMap as list object candidates need to be validated
 // via check.
 func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
+	if c == nil {
+		return nil
+	}
 	copy := *c
 	copy.candidateObjectsMap = new(sync.Map)
 	return &copy
