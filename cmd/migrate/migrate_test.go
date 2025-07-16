@@ -25,6 +25,9 @@ func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
 		require.False(t, viper.GetBool(verboseMigrationFlag))
+		require.Equal(t, "text", viper.GetString(logFormatFlag))
+		require.Equal(t, "info", viper.GetString(logLevelFlag))
+		require.Equal(t, "Unix", viper.GetString(logTimestampFormatFlag))
 		return nil
 	}
 
@@ -73,6 +76,26 @@ func TestMigrateCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
 		require.True(t, viper.GetBool(verboseMigrationFlag))
+		return nil
+	}
+
+	cmd := cmd.NewRootCommand()
+	cmd.AddCommand(migrateCmd)
+	cmd.SetArgs([]string{"migrate"})
+	require.NoError(t, cmd.Execute())
+}
+func TestMigrateCommandLoggingConfigurationFromEnv(t *testing.T) {
+	util.PrepareTempConfigDir(t)
+	
+	t.Setenv("OPENFGA_LOG_FORMAT", "json")
+	t.Setenv("OPENFGA_LOG_LEVEL", "debug")
+	t.Setenv("OPENFGA_LOG_TIMESTAMP_FORMAT", "ISO8601")
+
+	migrateCmd := NewMigrateCommand()
+	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		require.Equal(t, "json", viper.GetString(logFormatFlag))
+		require.Equal(t, "debug", viper.GetString(logLevelFlag))
+		require.Equal(t, "ISO8601", viper.GetString(logTimestampFormatFlag))
 		return nil
 	}
 

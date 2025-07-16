@@ -3,7 +3,6 @@ package migrate
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
@@ -23,6 +23,7 @@ type MigrationConfig struct {
 	Verbose       bool
 	Username      string
 	Password      string
+	Logger        logger.Logger
 }
 
 // RunMigrations runs the migrations for the given config. This function is exposed to allow embedding openFGA
@@ -35,6 +36,11 @@ type MigrationConfig struct {
 // The function handles migrations for multiple database engines (postgres, mysql, sqlite) and supports
 // both upgrading and downgrading to specific versions.
 func RunMigrations(cfg MigrationConfig) error {
+	// For backward compatibility, create a default logger if none is provided
+	if cfg.Logger == nil {
+		cfg.Logger = logger.MustNewLogger("text", "info", "Unix")
+	}
+
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
@@ -44,7 +50,7 @@ func RunMigrations(cfg MigrationConfig) error {
 	uri = cfg.URI
 	switch cfg.Engine {
 	case "memory":
-		log.Println("no migrations to run for `memory` datastore")
+		cfg.Logger.Info("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
@@ -124,18 +130,18 @@ func RunMigrations(cfg MigrationConfig) error {
 		return fmt.Errorf("failed to get db version: %w", err)
 	}
 
-	log.Printf("current version %d", currentVersion)
+	cfg.Logger.Info(fmt.Sprintf("current version %d", currentVersion))
 
 	if cfg.TargetVersion == 0 {
-		log.Println("running all migrations")
+		cfg.Logger.Info("running all migrations")
 		if err := goose.Up(db, migrationsPath); err != nil {
 			return fmt.Errorf("failed to run migrations: %w", err)
 		}
-		log.Println("migration done")
+		cfg.Logger.Info("migration done")
 		return nil
 	}
 
-	log.Printf("migrating to %d", cfg.TargetVersion)
+	cfg.Logger.Info(fmt.Sprintf("migrating to %d", cfg.TargetVersion))
 	targetInt64Version := int64(cfg.TargetVersion)
 
 	switch {
@@ -148,10 +154,10 @@ func RunMigrations(cfg MigrationConfig) error {
 			return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
 		}
 	default:
-		log.Println("nothing to do")
+		cfg.Logger.Info("nothing to do")
 		return nil
 	}
 
-	log.Println("migration done")
+	cfg.Logger.Info("migration done")
 	return nil
 }

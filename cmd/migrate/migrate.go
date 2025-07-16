@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/migrate"
 )
 
@@ -19,6 +20,9 @@ const (
 	versionFlag           = "version"
 	timeoutFlag           = "timeout"
 	verboseMigrationFlag  = "verbose"
+	logFormatFlag         = "log-format"
+	logLevelFlag          = "log-level"
+	logTimestampFormatFlag = "log-timestamp-format"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -39,6 +43,9 @@ func NewMigrateCommand() *cobra.Command {
 	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout for the time it takes the migrate process to connect to the database")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
+	flags.String(logFormatFlag, "text", "the log format to output logs in ('text' or 'json')")
+	flags.String(logLevelFlag, "info", "the log level to use ('none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal')")
+	flags.String(logTimestampFormatFlag, "Unix", "the timestamp format to use for log messages ('Unix' or 'ISO8601')")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -55,6 +62,12 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	verbose := viper.GetBool(verboseMigrationFlag)
 	username := viper.GetString(datastoreUsernameFlag)
 	password := viper.GetString(datastorePasswordFlag)
+	logFormat := viper.GetString(logFormatFlag)
+	logLevel := viper.GetString(logLevelFlag)
+	logTimestampFormat := viper.GetString(logTimestampFormatFlag)
+
+	// Create logger with the specified configuration
+	migrationLogger := logger.MustNewLogger(logFormat, logLevel, logTimestampFormat)
 
 	cfg := migrate.MigrationConfig{
 		Engine:        engine,
@@ -64,6 +77,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		Verbose:       verbose,
 		Username:      username,
 		Password:      password,
+		Logger:        migrationLogger,
 	}
 	return migrate.RunMigrations(cfg)
 }
