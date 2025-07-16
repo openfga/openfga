@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/url"
 
@@ -50,7 +51,12 @@ func (p *PostgresMigrationProvider) RunMigrations(ctx context.Context, config st
 	}
 
 	// Create provider instance with PostgreSQL dialect and embedded migrations
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, assets.EmbedMigrations)
+	migrationsFS, err := fs.Sub(assets.EmbedMigrations, assets.PostgresMigrationDir)
+	if err != nil {
+		return fmt.Errorf("failed to create postgres migrations filesystem: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrationsFS)
 	if err != nil {
 		return fmt.Errorf("failed to create goose provider: %w", err)
 	}
@@ -72,7 +78,12 @@ func (p *PostgresMigrationProvider) GetCurrentVersion(ctx context.Context, confi
 	defer db.Close()
 
 	// Create provider instance with PostgreSQL dialect and embedded migrations
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, assets.EmbedMigrations)
+	migrationsFS, err := fs.Sub(assets.EmbedMigrations, assets.PostgresMigrationDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create postgres migrations filesystem: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrationsFS)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create goose provider: %w", err)
 	}

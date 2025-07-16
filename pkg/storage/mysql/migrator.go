@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 
 	"github.com/cenkalti/backoff/v4"
@@ -50,7 +51,12 @@ func (m *MySQLMigrationProvider) RunMigrations(ctx context.Context, config stora
 	}
 
 	// Create provider instance with MySQL dialect and embedded migrations
-	provider, err := goose.NewProvider(goose.DialectMySQL, db, assets.EmbedMigrations)
+	migrationsFS, err := fs.Sub(assets.EmbedMigrations, assets.MySQLMigrationDir)
+	if err != nil {
+		return fmt.Errorf("failed to create mysql migrations filesystem: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectMySQL, db, migrationsFS)
 	if err != nil {
 		return fmt.Errorf("failed to create goose provider: %w", err)
 	}
@@ -72,7 +78,12 @@ func (m *MySQLMigrationProvider) GetCurrentVersion(ctx context.Context, config s
 	defer db.Close()
 
 	// Create provider instance with MySQL dialect and embedded migrations
-	provider, err := goose.NewProvider(goose.DialectMySQL, db, assets.EmbedMigrations)
+	migrationsFS, err := fs.Sub(assets.EmbedMigrations, assets.MySQLMigrationDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create mysql migrations filesystem: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectMySQL, db, migrationsFS)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create goose provider: %w", err)
 	}
