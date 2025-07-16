@@ -3,7 +3,6 @@ package migrate
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/sqlite"
 )
 
@@ -23,6 +23,7 @@ type MigrationConfig struct {
 	Verbose       bool
 	Username      string
 	Password      string
+	Logger        logger.Logger
 }
 
 // RunMigrations runs the migrations for the given config. This function is exposed to allow embedding openFGA
@@ -38,13 +39,18 @@ func RunMigrations(cfg MigrationConfig) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
+	log := cfg.Logger
+	if log == nil {
+		log = logger.NewNoopLogger()
+	}
+
 	var driver, migrationsPath string
 	var uri string
 	// We set uri based on engine
 	uri = cfg.URI
 	switch cfg.Engine {
 	case "memory":
-		log.Println("no migrations to run for `memory` datastore")
+		log.Info("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
@@ -124,18 +130,18 @@ func RunMigrations(cfg MigrationConfig) error {
 		return fmt.Errorf("failed to get db version: %w", err)
 	}
 
-	log.Printf("current version %d", currentVersion)
+	log.Info(fmt.Sprintf("current version %d", currentVersion))
 
 	if cfg.TargetVersion == 0 {
-		log.Println("running all migrations")
+		log.Info("running all migrations")
 		if err := goose.Up(db, migrationsPath); err != nil {
 			return fmt.Errorf("failed to run migrations: %w", err)
 		}
-		log.Println("migration done")
+		log.Info("migration done")
 		return nil
 	}
 
-	log.Printf("migrating to %d", cfg.TargetVersion)
+	log.Info(fmt.Sprintf("migrating to %d", cfg.TargetVersion))
 	targetInt64Version := int64(cfg.TargetVersion)
 
 	switch {
@@ -148,10 +154,10 @@ func RunMigrations(cfg MigrationConfig) error {
 			return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
 		}
 	default:
-		log.Println("nothing to do")
+		log.Info("nothing to do")
 		return nil
 	}
 
-	log.Println("migration done")
+	log.Info("migration done")
 	return nil
 }
