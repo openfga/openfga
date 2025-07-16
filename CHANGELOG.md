@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Refactored migration system for dependency injection and library integration. [#2502](https://github.com/openfga/openfga/pull/2502)
+  - Introduced `MigrationProvider` interface for custom migration implementations
+  - Moved per-database migration logic to individual drivers (`postgres/`, `mysql/`, `sqlite/`)
+  - Added `MigratorRegistry` for flexible provider management
+  - Maintains full backward compatibility with existing `RunMigrations` API
+  - Enables applications embedding OpenFGA as a library to inject their own migration systems
+  - Provides multiple integration patterns: default, custom provider, registry, and direct provider usage
+
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
 - Update ReverseExpand to use a intersection and exclusion handler to fast path check calls. [#2543](https://github.com/openfga/openfga/pull/2543)
