@@ -142,7 +142,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		return nil
 	}
 
-	log.Info(fmt.Sprintf("migrating to %d", cfg.TargetVersion))
+	log.Info("migration to", zap.Int("target version", cfg.TargetVersion))
 	targetInt64Version := int64(cfg.TargetVersion)
 
 	switch {
