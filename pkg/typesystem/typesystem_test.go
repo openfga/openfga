@@ -7067,7 +7067,7 @@ func TestGetEdgesFromWeightedGraph(t *testing.T) {
 			authzWeightedGraph: nil,
 		}
 
-		edges, err := typeSystem.GetEdgesFromNodeToType(nil, "user")
+		edges, err := typeSystem.GetEdgesFromNode(nil, "user")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "weighted graph is nil")
 		require.Nil(t, edges)
