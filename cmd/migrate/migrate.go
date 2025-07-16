@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/openfga/openfga/pkg/storage/migrate"
+	migrate_logger "github.com/openfga/openfga/pkg/logger"
 )
 
 const (
@@ -48,6 +49,21 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(_ *cobra.Command, _ []string) error {
+	// Read log config from env, defaulting to json/info/ISO8601
+	logFormat := viper.GetString("log-format")
+	if logFormat == "" {
+		logFormat = "json"
+	}
+	logLevel := viper.GetString("log-level")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	logTimestampFormat := viper.GetString("log-timestamp-format")
+	if logTimestampFormat == "" {
+		logTimestampFormat = "ISO8601"
+	}
+	logger := migrate_logger.MustNewLogger(logFormat, logLevel, logTimestampFormat)
+
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
@@ -65,5 +81,5 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		Username:      username,
 		Password:      password,
 	}
-	return migrate.RunMigrations(cfg)
+	return migrate.RunMigrations(cfg, logger)
 }

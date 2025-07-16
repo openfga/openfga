@@ -3,9 +3,11 @@ package migrate
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/url"
 	"time"
+
+	"github.com/openfga/openfga/pkg/logger"
+
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
@@ -34,7 +36,7 @@ type MigrationConfig struct {
 // 3. Perform versioned upgrades of the schema as needed
 // The function handles migrations for multiple database engines (postgres, mysql, sqlite) and supports
 // both upgrading and downgrading to specific versions.
-func RunMigrations(cfg MigrationConfig) error {
+func RunMigrations(cfg MigrationConfig, log logger.Logger) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
@@ -44,7 +46,7 @@ func RunMigrations(cfg MigrationConfig) error {
 	uri = cfg.URI
 	switch cfg.Engine {
 	case "memory":
-		log.Println("no migrations to run for `memory` datastore")
+		log.Info("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
@@ -124,18 +126,18 @@ func RunMigrations(cfg MigrationConfig) error {
 		return fmt.Errorf("failed to get db version: %w", err)
 	}
 
-	log.Printf("current version %d", currentVersion)
+	log.Info(fmt.Sprintf("current version %d", currentVersion))
 
 	if cfg.TargetVersion == 0 {
-		log.Println("running all migrations")
+		log.Info("running all migrations")
 		if err := goose.Up(db, migrationsPath); err != nil {
 			return fmt.Errorf("failed to run migrations: %w", err)
 		}
-		log.Println("migration done")
+		log.Info("migration done")
 		return nil
 	}
 
-	log.Printf("migrating to %d", cfg.TargetVersion)
+	log.Info(fmt.Sprintf("migrating to %d", cfg.TargetVersion))
 	targetInt64Version := int64(cfg.TargetVersion)
 
 	switch {
@@ -148,10 +150,10 @@ func RunMigrations(cfg MigrationConfig) error {
 			return fmt.Errorf("failed to run migrations up to %v: %w", targetInt64Version, err)
 		}
 	default:
-		log.Println("nothing to do")
+		log.Info("nothing to do")
 		return nil
 	}
 
-	log.Println("migration done")
+	log.Info("migration done")
 	return nil
 }
