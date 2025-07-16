@@ -8,18 +8,25 @@ import (
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
+)
+
+const (
+	listObjectsResultChannelLength = 100
 )
 
 var ErrEmptyStack = errors.New("unexpected empty stack")
@@ -114,6 +121,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	needsCheck bool,
 	resolutionMetadata *ResolutionMetadata,
 	resultChan chan<- *ReverseExpandResult,
+	sourceUserType string,
 ) error {
 	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
@@ -171,6 +179,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 					newReq,
 					needsCheck,
 					resultChan,
+					"",
 				)
 			})
 		case weightedGraph.ComputedEdge:
@@ -228,10 +237,41 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				_, newStack := stack.Pop(newReq.relationStack)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
+
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
+				// continue to the next edge
+				break
 			}
-			pool.Go(func(ctx context.Context) error {
-				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			})
+
+			// If the edge is an operator node, we need to handle it differently.
+			switch toNode.GetLabel() {
+			case weightedGraph.IntersectionOperator:
+				intersectionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				if err != nil {
+					return err
+				}
+				err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				if err != nil {
+					return err
+				}
+			case weightedGraph.ExclusionOperator:
+				exclusionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				if err != nil {
+					return err
+				}
+				err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				if err != nil {
+					return err
+				}
+			case weightedGraph.UnionOperator:
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
+			default:
+				return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
+			}
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
@@ -253,6 +293,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	req *ReverseExpandRequest,
 	needsCheck bool,
 	resultChan chan<- *ReverseExpandResult,
+	foundObject string,
 ) error {
 	span := trace.SpanFromContext(ctx)
 
@@ -262,7 +303,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	queryJobQueue := newJobQueue()
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: ""}, resultChan, needsCheck, jobDedupeMap)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, jobDedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -490,4 +531,234 @@ func (c *ReverseExpandQuery) buildFilteredIterator(
 		),
 		checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, c.typesystem),
 	), nil
+}
+
+// findCandidatesForLowestWeightEdge finds the candidate objects for the lowest weight edge for intersection or exclusion.
+func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
+	pool *concurrency.Pool,
+	req *ReverseExpandRequest,
+	tmpResultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata,
+) {
+	// We need to create a new stack with the top item from the original request's stack
+	// and use it to get the candidates for the lowest weight edge.
+	// If the edge is a tuple to userset edge, we need to later check the candidates against the
+	// original relationStack with the top item removed.
+	var topItemStack stack.Stack[typeRelEntry]
+	if req.relationStack != nil {
+		topItem, newStack := stack.Pop(req.relationStack)
+		req.relationStack = newStack
+		topItemStack = stack.Push(nil, topItem)
+	}
+
+	// getting list object candidates from the lowest weight edge and have its result
+	// pass through tmpResultChan.
+	pool.Go(func(ctx context.Context) error {
+		defer close(tmpResultChan)
+		// stack with only the top item in it
+		newReq := req.clone()
+		newReq.relationStack = topItemStack
+		err := c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			edges,
+			false,
+			resolutionMetadata,
+			tmpResultChan,
+			sourceUserType,
+		)
+		return err
+	})
+}
+
+// callCheckForCandidates calls check on the list objects candidates against non lowest weight edges.
+func (c *ReverseExpandQuery) callCheckForCandidates(
+	pool *concurrency.Pool,
+	req *ReverseExpandRequest,
+	tmpResultChan <-chan *ReverseExpandResult,
+	resultChan chan<- *ReverseExpandResult,
+	userset *openfgav1.Userset,
+	isAllowed bool,
+) {
+	pool.Go(func(ctx context.Context) error {
+		for tmpResult := range tmpResultChan {
+			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+				&graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+					ContextualTuples:     req.ContextualTuples,
+					Context:              req.Context,
+					Consistency:          req.Consistency,
+					RequestMetadata:      graph.NewCheckRequestMetadata(),
+				}, userset)
+			tmpCheckResult, err := handlerFunc(ctx)
+			if err != nil {
+				functionName := "intersectionHandler"
+				if !isAllowed {
+					functionName = "exclusionHandler"
+				}
+				c.logger.Error("Failed to execute", zap.Error(err),
+					zap.String("function", functionName),
+					zap.String("object", tmpResult.Object),
+					zap.String("relation", req.Relation),
+					zap.String("user", req.User.String()))
+				return err
+			}
+
+			// If the allowed value does not match what we expect, we skip this candidate.
+			// eg, for intersection we expect the check result to be true
+			// and for exclusion we expect the check result to be false.
+			if tmpCheckResult.GetAllowed() != isAllowed {
+				continue
+			}
+
+			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+			if stack.Len(req.relationStack) == 0 {
+				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				continue
+			}
+
+			// If the original stack had more than 1 value, we need to query the parent values
+			// new stack with top item in stack
+			err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the non-lowest weight edges against these
+// list objects candidates. If check returns true, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns false, then these list object candidates
+// are invalid because it does not satisfy all paths for intersection.
+func (c *ReverseExpandQuery) intersectionHandler(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
+	if err != nil {
+		c.logger.Error("Failed to get lowest weight edge",
+			zap.String("function", "intersectionHandler"),
+			zap.Error(err),
+			zap.Any("edges", edges),
+			zap.String("sourceUserType", sourceUserType))
+		return err
+	}
+
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
+		// no need to go further because list objects must return empty
+		return nil
+	}
+
+	lowestWeightEdges := []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
+
+	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
+		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
+	}
+
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
+
+	siblings := intersectionEdgeComparison.Siblings
+	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
+
+	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
+		// direct weight is not the lowest edge. Therefore, need to call check against directly assigned types.
+		usersets = append(usersets, typesystem.This())
+	}
+
+	for _, sibling := range siblings {
+		userset, err := c.typesystem.ConstructUserset(sibling)
+		if err != nil {
+			// This should never happen.
+			c.logger.Error("Failed to construct userset",
+				zap.String("function", "intersectionHandler"),
+				zap.Any("edge", sibling),
+				zap.Error(err))
+			return err
+		}
+		usersets = append(usersets, userset)
+	}
+	userset := &openfgav1.Userset{
+		Userset: &openfgav1.Userset_Intersection{
+			Intersection: &openfgav1.Usersets{
+				Child: usersets,
+			}}}
+
+	// Concurrently find candidates and call check on them as they are found
+	pool := concurrency.NewPool(ctx, 2)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true)
+
+	return pool.Wait()
+}
+
+// invoke loopOverWeightedEdges to get list objects candidate. Check
+// will then be invoked on the excluded edge against these
+// list objects candidates. If check returns false, then the list
+// object candidates are true candidates and will be returned via
+// resultChan. If check returns true, then these list object candidates
+// are invalid because it does not satisfy all paths for exclusion.
+func (c *ReverseExpandQuery) exclusionHandler(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	sourceUserType string,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
+	if err != nil {
+		c.logger.Error("Failed to get lowest weight edge",
+			zap.String("function", "exclusionHandler"),
+			zap.Error(err),
+			zap.Any("edges", edges),
+			zap.String("sourceUserType", sourceUserType))
+		return err
+	}
+
+	// This means the exclusion edge does not have a path to the terminal type.
+	// e.g. `B` in `A but not B` is not relevant to this query.
+	if excludedEdge == nil {
+		newReq := req.clone()
+
+		return c.shallowClone().loopOverEdges(
+			ctx,
+			newReq,
+			baseEdges,
+			false,
+			resolutionMetadata,
+			resultChan,
+			sourceUserType,
+		)
+	}
+
+	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
+
+	userset, err := c.typesystem.ConstructUserset(excludedEdge)
+	if err != nil {
+		// This should never happen.
+		c.logger.Error("Failed to construct userset",
+			zap.String("function", "intersectionHandler"),
+			zap.Any("edge", excludedEdge),
+			zap.Error(err))
+		return err
+	}
+
+	// Concurrently find candidates and call check on them as they are found
+	pool := concurrency.NewPool(ctx, 2)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false)
+
+	return pool.Wait()
 }

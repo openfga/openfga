@@ -210,8 +210,12 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	}
 
 	var resultShadowed []string
+	var queryCount uint32
 	if shadowRes != nil {
 		resultShadowed = shadowRes.Objects
+		if shadowRes.ResolutionMetadata.DatastoreQueryCount != nil {
+			queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
+		}
 	}
 
 	mapResultMain := keyMapFromSlice(mainResult)
@@ -235,6 +239,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 				zap.Int("shadow_result_count", len(resultShadowed)),
 				zap.Int("total_delta", totalDelta),
 				zap.Any("delta", delta),
+				zap.Uint32("datastore_query_count", queryCount),
 			)...,
 		)
 	} else {
@@ -244,6 +249,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 				zap.Duration("main_latency", latency),
 				zap.Duration("shadow_latency", shadowLatency),
 				zap.Int("main_result_count", len(mainResult)),
+				zap.Uint32("datastore_query_count", queryCount),
 			)...,
 		)
 	}
