@@ -1700,8 +1700,9 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-// helper function to return all edges from weighted graph.
-func (t *TypeSystem) GetEdgesFromNodeToType(
+// GetEdgesFromNode first checks if the node can reach the source type,
+// then returns all the from edges for the node.
+func (t *TypeSystem) GetEdgesFromNode(
 	node *graph.WeightedAuthorizationModelNode,
 	sourceType string,
 ) ([]*graph.WeightedAuthorizationModelEdge, error) {
@@ -1757,7 +1758,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
-	edges, err := t.GetEdgesFromNodeToType(currentNode, sourceType)
+	edges, err := t.GetEdgesFromNode(currentNode, sourceType)
 	if err != nil {
 		return nil, false, err
 	}
