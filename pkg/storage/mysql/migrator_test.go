@@ -74,10 +74,16 @@ func TestMySQLMigrationProviderErrors(t *testing.T) {
 		ctx := context.Background()
 		_, err := provider.GetCurrentVersion(ctx, config)
 		require.Error(t, err)
-		// The error could be either connection failure or DNS failure
+		// The error could be connection failure, DNS failure, or other network-related errors
+		errMsg := err.Error()
 		require.True(t,
-			strings.Contains(err.Error(), "failed to open mysql connection") ||
-				strings.Contains(err.Error(), "dial tcp: lookup nonexistent"))
+			strings.Contains(errMsg, "failed to open mysql connection") ||
+				strings.Contains(errMsg, "dial tcp: lookup nonexistent") ||
+				strings.Contains(errMsg, "no such host") ||
+				strings.Contains(errMsg, "connection refused") ||
+				strings.Contains(errMsg, "context deadline exceeded") ||
+				strings.Contains(errMsg, "network is unreachable"),
+			"Unexpected error message: %s", errMsg)
 	})
 }
 
