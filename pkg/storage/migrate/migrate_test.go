@@ -118,6 +118,18 @@ func TestMigrationRegistry(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no migration provider registered for engine: unsupported")
 	})
+
+	t.Run("MemoryEngine", func(t *testing.T) {
+		config := migrate.MigrationConfig{
+			Engine:        "memory",
+			URI:           "memory://test",
+			TargetVersion: 0,
+			Timeout:       5 * time.Second,
+		}
+
+		err := migrate.RunMigrations(config)
+		require.NoError(t, err)
+	})
 }
 
 // mockMigrationProvider for testing.

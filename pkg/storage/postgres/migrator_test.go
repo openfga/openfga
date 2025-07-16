@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,5 +34,128 @@ func TestPostgresMigrationProviderSimple(t *testing.T) {
 		err := provider.RunMigrations(ctx, config)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to initialize postgres connection")
+	})
+
+	t.Run("InvalidURI_GetCurrentVersion", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "postgres",
+			URI:     "invalid-uri",
+			Timeout: 5 * time.Second,
+		}
+
+		ctx := context.Background()
+		_, err := provider.GetCurrentVersion(ctx, config)
+		require.Error(t, err)
+		// The error could be either connection failure or parse failure
+		require.True(t,
+			strings.Contains(err.Error(), "failed to initialize postgres connection") ||
+				strings.Contains(err.Error(), "failed to open postgres connection") ||
+				strings.Contains(err.Error(), "cannot parse"))
+	})
+
+	t.Run("ConnectionFailure", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "postgres",
+			URI:     "postgres://user:pass@nonexistent:5432/dbname",
+			Timeout: 1 * time.Second,
+		}
+
+		ctx := context.Background()
+		err := provider.RunMigrations(ctx, config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to initialize postgres connection")
+	})
+
+	t.Run("ConnectionFailure_GetCurrentVersion", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "postgres",
+			URI:     "postgres://user:pass@nonexistent:5432/dbname",
+			Timeout: 1 * time.Second,
+		}
+
+		ctx := context.Background()
+		_, err := provider.GetCurrentVersion(ctx, config)
+		require.Error(t, err)
+		// The error could be either connection failure or DNS failure
+		require.True(t,
+			strings.Contains(err.Error(), "failed to open postgres connection") ||
+				strings.Contains(err.Error(), "dial tcp: lookup nonexistent") ||
+				strings.Contains(err.Error(), "no such host"))
+	})
+}
+
+func TestPostgresMigrationProviderPrepareURI(t *testing.T) {
+	provider := NewPostgresMigrationProvider()
+
+	t.Run("ValidURI", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "postgres",
+			URI:    "postgres://user:pass@localhost:5432/dbname",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://user:pass@localhost:5432/dbname", uri)
+	})
+
+	t.Run("URIWithUsernameOverride", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://user:pass@localhost:5432/dbname",
+			Username: "newuser",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://newuser:pass@localhost:5432/dbname", uri)
+	})
+
+	t.Run("URIWithPasswordOverride", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://user:pass@localhost:5432/dbname",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://user:newpass@localhost:5432/dbname", uri)
+	})
+
+	t.Run("URIWithBothOverrides", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://user:pass@localhost:5432/dbname",
+			Username: "newuser",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://newuser:newpass@localhost:5432/dbname", uri)
+	})
+
+	t.Run("URIWithoutUser", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://localhost:5432/dbname",
+			Username: "newuser",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://newuser:newpass@localhost:5432/dbname", uri)
+	})
+
+	t.Run("InvalidURI", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "postgres",
+			URI:    "://invalid-uri",
+		}
+
+		_, err := provider.prepareURI(config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid postgres database uri")
 	})
 }
