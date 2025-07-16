@@ -248,7 +248,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// If the edge is an operator node, we need to handle it differently.
 			switch toNode.GetLabel() {
 			case weightedGraph.IntersectionOperator:
-				intersectionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				intersectionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
 				if err != nil {
 					return err
 				}
@@ -257,7 +257,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 					return err
 				}
 			case weightedGraph.ExclusionOperator:
-				exclusionEdges, err := c.typesystem.GetEdgesFromNodeToType(toNode, sourceUserType)
+				exclusionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
 				if err != nil {
 					return err
 				}
@@ -756,7 +756,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	if err != nil {
 		// This should never happen.
 		c.logger.Error("Failed to construct userset",
-			zap.String("function", "intersectionHandler"),
+			zap.String("function", "exclusionHandler"),
 			zap.Any("edge", excludedEdge),
 			zap.Error(err))
 		return err
