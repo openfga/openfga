@@ -131,7 +131,7 @@ func RunMigrations(cfg MigrationConfig) error {
 		return fmt.Errorf("failed to get db version: %w", err)
 	}
 
-	log.Info(fmt.Sprintf("current version %d", currentVersion))
+	log.Info("db info", zap.Int("current version", currentVersion))
 
 	if cfg.TargetVersion == 0 {
 		log.Info("running all migrations")
