@@ -390,7 +390,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	currentReq.relationStack = newStack
 
 	// Ensure that we haven't already run this query
-	if c.isDuplicateQuery(userFilter, typeRel) {
+	if c.isDuplicateQuery(userFilter, typeRel, newStack) {
 		return nil, nil
 	}
 
@@ -420,6 +420,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+			fmt.Printf("SENDING CANDIDATE: %s\n", foundObject)
 			continue
 		}
 
@@ -482,6 +483,7 @@ func buildUserFilter(
 func (c *ReverseExpandQuery) isDuplicateQuery(
 	userFilter []*openfgav1.ObjectRelation,
 	typeRel string,
+	relationStack stack.Stack[typeRelEntry],
 ) bool {
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
@@ -489,6 +491,16 @@ func (c *ReverseExpandQuery) isDuplicateQuery(
 	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
 		return current.String() + accumulator
 	})
+
+	// Also need to consider the query's context, as it is possible that many different branches end at the
+	// same leaf or have a common ancestor as part of a unique traversal, and we don't want to kill a unique branch.
+	stackStr := ""
+	for relationStack != nil {
+		var val typeRelEntry
+		val, relationStack = stack.Pop(relationStack)
+		stackStr += fmt.Sprintf("%v", val)
+	}
+	key += stackStr
 
 	key += relation + objectType
 	_, loaded := c.queryDedupeMap.LoadOrStore(key, struct{}{})

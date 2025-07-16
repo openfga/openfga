@@ -1,5 +1,7 @@
 package stack
 
+import "fmt"
+
 // Stack is an implementation of a stack based on a linked list.
 //
 // *Important*: Each push() or pop() operation creates and returns a pointer to a new stack entirely to
