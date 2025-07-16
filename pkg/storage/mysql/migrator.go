@@ -14,9 +14,7 @@ import (
 )
 
 // MySQLMigrationProvider implements MigrationProvider for MySQL.
-type MySQLMigrationProvider struct {
-	provider *goose.Provider
-}
+type MySQLMigrationProvider struct{}
 
 // NewMySQLMigrationProvider creates a new MySQL migration provider.
 func NewMySQLMigrationProvider() *MySQLMigrationProvider {
