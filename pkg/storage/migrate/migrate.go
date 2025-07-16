@@ -7,6 +7,22 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/pressly/goose/v3"
+)
+
+// GooseLoggerAdapter adapts OpenFGA logger.Logger to goose.Logger interface
+// for use in migration logging.
+type GooseLoggerAdapter struct {
+	Logger logger.Logger
+}
+
+func (g *GooseLoggerAdapter) Fatalf(format string, v ...interface{}) {
+	g.Logger.Fatal(fmt.Sprintf(format, v...))
+}
+
+func (g *GooseLoggerAdapter) Printf(format string, v ...interface{}) {
+	g.Logger.Info(fmt.Sprintf(format, v...))
+}
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
@@ -38,7 +54,11 @@ type MigrationConfig struct {
 // both upgrading and downgrading to specific versions.
 func RunMigrations(cfg MigrationConfig) error {
 	log := cfg.Logger
-	goose.SetLogger(goose.NopLogger())
+	if log != nil {
+		goose.SetLogger(&GooseLoggerAdapter{Logger: log})
+	} else {
+		goose.SetLogger(goose.NopLogger())
+	}
 	goose.SetVerbose(cfg.Verbose)
 
 	var driver, migrationsPath string
