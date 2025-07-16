@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- `openfga migrate` command now supports `--log-format`, `--log-level`, and `--log-timestamp-format` flags for controlling log output format, level, and timestamp style.
+- Migration logs can now be output in JSON format and to stdout, consistent with the main server.
+
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
 
