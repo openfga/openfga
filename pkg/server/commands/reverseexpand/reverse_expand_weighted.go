@@ -749,7 +749,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	if err != nil {
 		// This should never happen.
 		c.logger.Error("Failed to construct userset",
-			zap.String("function", "intersectionHandler"),
+			zap.String("function", "exclusionHandler"),
 			zap.Any("edge", excludedEdge),
 			zap.Error(err))
 		return err
