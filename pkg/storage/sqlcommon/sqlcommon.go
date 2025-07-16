@@ -244,6 +244,7 @@ func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTup
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "sqlcommon.fetchBuffer", trace.WithAttributes())
 	defer span.End()
+	ctx = context.WithoutCancel(ctx)
 	rows, err := t.sb.QueryContext(ctx)
 	if err != nil {
 		return t.handleSQLError(err)

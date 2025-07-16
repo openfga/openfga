@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	prometheus_model "github.com/prometheus/client_model/go"
 	"github.com/sourcegraph/conc/pool"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -41,14 +43,627 @@ type testIteratorInfo struct {
 	err  error
 }
 
+func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Create a static iterator as the internal iterator
+	staticIter := storage.NewStaticTupleIterator(tuples)
+
+	// Create shared iterator with cleanup function
+	sharedIter := newSharedIterator(staticIter, func() {
+		// Cleanup function - no-op for benchmark
+	})
+	defer sharedIter.Stop()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Clone the shared iterator for each goroutine
+			clonedIter := sharedIter.clone()
+			if clonedIter == nil {
+				b.Fatal("Failed to clone shared iterator")
+			}
+
+			// Read all tuples from the cloned iterator
+			for {
+				_, err := clonedIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					b.Fatalf("Unexpected error: %v", err)
+				}
+			}
+
+			clonedIter.Stop()
+		}
+	})
+}
+
+func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Create a static iterator as the internal iterator
+	staticIter := storage.NewStaticTupleIterator(tuples)
+
+	// Create shared iterator with cleanup function
+	sharedIter := newSharedIterator(staticIter, func() {
+		// Cleanup function - no-op for benchmark
+	})
+	defer sharedIter.Stop()
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Clone the shared iterator for each goroutine
+			clonedIter := sharedIter.clone()
+			if clonedIter == nil {
+				b.Fatal("Failed to clone shared iterator")
+			}
+
+			// Read all tuples from the cloned iterator
+			for {
+				_, err := clonedIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					b.Fatalf("Unexpected error: %v", err)
+				}
+			}
+
+			clonedIter.Stop()
+		}
+	})
+}
+
+func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	b.Run("SharedIterator", func(b *testing.B) {
+		staticIter := storage.NewStaticTupleIterator(tuples)
+		sharedIter := newSharedIterator(staticIter, func() {})
+		defer sharedIter.Stop()
+
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			clonedIter := sharedIter.clone()
+			if clonedIter == nil {
+				b.Fatal("Failed to clone shared iterator")
+			}
+
+			for {
+				_, err := clonedIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					b.Fatalf("Unexpected error: %v", err)
+				}
+			}
+
+			clonedIter.Stop()
+		}
+	})
+
+	b.Run("DirectStaticIterator", func(b *testing.B) {
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			staticIter := storage.NewStaticTupleIterator(tuples)
+
+			for {
+				_, err := staticIter.Next(ctx)
+				if err != nil {
+					if errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					b.Fatalf("Unexpected error: %v", err)
+				}
+			}
+
+			staticIter.Stop()
+		}
+	})
+}
+
+func BenchmarkSharedIteratorConcurrentCloning(b *testing.B) {
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Create a static iterator as the internal iterator
+	staticIter := storage.NewStaticTupleIterator(tuples)
+
+	// Create shared iterator with cleanup function
+	sharedIter := newSharedIterator(staticIter, func() {
+		// Cleanup function - no-op for benchmark
+	})
+	defer sharedIter.Stop()
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Clone the shared iterator concurrently
+			clonedIter := sharedIter.clone()
+			if clonedIter == nil {
+				b.Fatal("Failed to clone shared iterator")
+			}
+			clonedIter.Stop()
+		}
+	})
+}
+
+func BenchmarkSharedIteratorCloneAndRead(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Create a static iterator as the internal iterator
+	staticIter := storage.NewStaticTupleIterator(tuples)
+
+	// Create shared iterator with cleanup function
+	sharedIter := newSharedIterator(staticIter, func() {
+		// Cleanup function - no-op for benchmark
+	})
+	defer sharedIter.Stop()
+
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// Clone the shared iterator concurrently
+			clonedIter := sharedIter.clone()
+			if clonedIter == nil {
+				b.Fatal("Failed to clone shared iterator")
+			}
+
+			// Read one tuple to simulate realistic usage
+			_, err := clonedIter.Next(ctx)
+			if err != nil && !errors.Is(err, storage.ErrIteratorDone) {
+				b.Fatalf("Unexpected error: %v", err)
+			}
+
+			clonedIter.Stop()
+		}
+	})
+}
+
+func BenchmarkIteratorDatastoreReadConcurrentStress(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Setup mock datastore
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	tk := tuple.NewTupleKey("document:1", "viewer", "")
+
+	// Setup shared iterator datastore
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+	// Mock expects single call that returns static iterator
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+			if err != nil {
+				b.Errorf("Failed to create iterator: %v", err)
+				return
+			}
+		}
+	})
+}
+
+func BenchmarkIteratorDatastoreConcurrentMixedOperations(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+		tuple.NewTupleKey("document:4", "viewer", "user:4"),
+		tuple.NewTupleKey("document:5", "viewer", "user:5"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Setup mock datastore
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	tk := tuple.NewTupleKey("document:1", "viewer", "")
+
+	// Setup shared iterator datastore
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+	// Mock expects calls
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter, _ storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter, _ storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	var id atomic.Int32
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			v := id.Add(1) % 3
+
+			switch v {
+			case 0:
+				_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+				if err != nil {
+					b.Errorf("Failed to create iterator: %v", err)
+				}
+			case 1:
+				_, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
+				if err != nil {
+					b.Errorf("Failed to create iterator: %v", err)
+				}
+			case 2:
+				_, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
+				if err != nil {
+					b.Errorf("Failed to create iterator: %v", err)
+				}
+			}
+		}
+	})
+}
+
+func BenchmarkIteratorDatastoreReadHighContentionStress(b *testing.B) {
+	ctx := context.Background()
+
+	// Create larger test data for stress testing
+	var tks []*openfgav1.TupleKey
+	for i := 0; i < 1000; i++ {
+		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Setup mock datastore
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	tk := tuple.NewTupleKey("document:1", "viewer", "")
+
+	// Setup shared iterator datastore
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+	// Mock expects single call
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	var id atomic.Int32
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			v := id.Add(1)
+
+			iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+			if err != nil {
+				b.Errorf("Failed to create iterator: %v", err)
+				return
+			}
+			defer iter.Stop()
+
+			// Simulate different reading patterns
+			switch v % 3 {
+			case 0:
+				for {
+					_, err := iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+						b.Errorf("Unexpected error: %v", err)
+						return
+					}
+				}
+			case 1:
+				// Partial read with random stop
+				readCount := v
+				for k := 0; k < int(readCount); k++ {
+					_, err := iter.Next(ctx)
+					if err != nil {
+						if errors.Is(err, storage.ErrIteratorDone) {
+							break
+						}
+						b.Errorf("Unexpected error: %v", err)
+						return
+					}
+				}
+			default:
+				// Head operations
+				for k := 0; k < 5; k++ {
+					_, err := iter.Head(ctx)
+					if err != nil && !errors.Is(err, storage.ErrIteratorDone) {
+						b.Errorf("Unexpected error on Head: %v", err)
+						return
+					}
+				}
+			}
+		}
+	})
+}
+
+func BenchmarkIteratorDatastoreReadRapidCreateDestroy(b *testing.B) {
+	ctx := context.Background()
+
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Setup mock datastore
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	tk := tuple.NewTupleKey("document:1", "viewer", "")
+
+	// Setup shared iterator datastore
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+	// Mock expects calls
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+			if err != nil {
+				b.Errorf("Failed to create iterator: %v", err)
+				return
+			}
+
+			// Immediately stop (stress test reference counting)
+			iter.Stop()
+		}
+	})
+}
+
+func BenchmarkIteratorDatastoreReadWithContextCancellation(b *testing.B) {
+	// Create test data
+	tks := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		tuple.NewTupleKey("document:2", "viewer", "user:2"),
+		tuple.NewTupleKey("document:3", "viewer", "user:3"),
+	}
+
+	var tuples []*openfgav1.Tuple
+	for _, tk := range tks {
+		ts := timestamppb.New(time.Now())
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	// Setup mock datastore
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	tk := tuple.NewTupleKey("document:1", "viewer", "")
+
+	// Setup shared iterator datastore
+	internalStorage := NewSharedIteratorDatastoreStorage()
+	ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+		WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+	// Mock expects calls
+	mockDatastore.EXPECT().
+		Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+		DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			return storage.NewStaticTupleIterator(tuples), nil
+		}).AnyTimes()
+
+	b.ResetTimer()
+
+	b.SetParallelism(100)
+
+	var id atomic.Int32
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			v := id.Add(1)
+			timeout := time.Duration(v%10+1) * time.Microsecond
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+
+			iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+			if err != nil {
+				// Context might be cancelled during Read
+				return
+			}
+			defer iter.Stop()
+
+			// Try to read with cancelled context
+			for {
+				_, err := iter.Next(ctx)
+				if err != nil {
+					// Expected to get context cancelled or iterator done
+					if errors.Is(err, context.Canceled) ||
+						errors.Is(err, context.DeadlineExceeded) ||
+						errors.Is(err, storage.ErrIteratorDone) {
+						break
+					}
+					b.Errorf("Unexpected error: %v", err)
+					return
+				}
+			}
+		}
+	})
+}
+
 // helper function to validate the single client case.
-func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *Storage, iter storage.TupleIterator, expected []*openfgav1.Tuple) {
+func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *sync.Map, iter storage.TupleIterator, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
 
-	require.NotEmpty(t, length(&internalStorage.iters))
+	require.NotEmpty(t, length(internalStorage))
 
 	var actual []*openfgav1.Tuple
 
@@ -69,7 +684,7 @@ func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStora
 		actual = append(actual, tup)
 	}
 
-	require.NotEmpty(t, length(&internalStorage.iters))
+	require.NotEmpty(t, length(internalStorage))
 
 	iter.Stop() // has to be sync otherwise the assertion fails
 
@@ -78,16 +693,16 @@ func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStora
 	}
 	// make sure the internal map is deallocated
 
-	require.Empty(t, length(&internalStorage.iters))
+	require.Empty(t, length(internalStorage))
 }
 
-func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *Storage, iterInfos []testIteratorInfo, expected []*openfgav1.Tuple) {
+func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *sync.Map, iterInfos []testIteratorInfo, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
 
-	require.NotEmpty(t, length(&internalStorage.iters))
+	require.NotEmpty(t, length(internalStorage))
 	for i := 0; i < len(iterInfos); i++ {
 		require.NoError(t, iterInfos[i].err)
 		require.NotNil(t, iterInfos[i].iter)
@@ -122,15 +737,15 @@ func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalSt
 
 	// make sure the internal map has not deallocated
 
-	require.NotEmpty(t, length(&internalStorage.iters))
+	require.NotEmpty(t, length(internalStorage))
 
 	for i, iterInfo := range iterInfos {
 		iterInfo.iter.Stop()
 
 		if i < len(iterInfos)-1 {
-			require.NotEmpty(t, length(&internalStorage.iters))
+			require.NotEmpty(t, length(internalStorage))
 		} else {
-			require.Empty(t, length(&internalStorage.iters))
+			require.Empty(t, length(internalStorage))
 		}
 	}
 }
@@ -168,7 +783,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
+		helperValidateSingleClient(ctx, t, &internalStorage.read, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -197,7 +812,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, &internalStorage.read, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -220,7 +835,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		_, err = ds.Read(ctx, storeID, tk1, storage.ReadOptions{})
 		require.Error(t, err)
 
-		require.Empty(t, length(&internalStorage.iters))
+		require.Empty(t, length(&internalStorage.read))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -228,8 +843,8 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		storeID := ulid.Make().String()
 
-		internalStorageLimit := NewSharedIteratorDatastoreStorage(WithSharedIteratorDatastoreStorageLimit(0))
-		dsLimit := NewSharedIteratorDatastore(mockDatastore, internalStorageLimit)
+		internalStorage := NewSharedIteratorDatastoreStorage(WithSharedIteratorDatastoreStorageLimit(0))
+		dsLimit := NewSharedIteratorDatastore(mockDatastore, internalStorage)
 
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
@@ -237,7 +852,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		iter, err := dsLimit.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&internalStorageLimit.iters))
+		require.Empty(t, length(&internalStorage.read))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -263,7 +878,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.iters))
+		require.Empty(t, length(&ds.internalStorage.read))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -324,7 +939,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&ds.internalStorage.iters))
+		require.Empty(t, length(&ds.internalStorage.read))
 	})
 }
 
@@ -371,7 +986,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
+		helperValidateSingleClient(ctx, t, &internalStorage.rut, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -398,7 +1013,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, &internalStorage.rut, iterInfos, tuples)
 	})
 
 	t.Run("error_when_querying", func(t *testing.T) {
@@ -426,7 +1041,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		_, err = ds.ReadUsersetTuples(ctx, storeID, filter1, options)
 		require.Error(t, err)
 
-		require.Empty(t, length(&internalStorage.iters))
+		require.Empty(t, length(&internalStorage.rut))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -442,7 +1057,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		iter, err := dsLimit.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&internalStorageLimit.iters))
+		require.Empty(t, length(&internalStorageLimit.rut))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -466,7 +1081,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.iters))
+		require.Empty(t, length(&ds.internalStorage.rut))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -525,7 +1140,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&ds.internalStorage.iters))
+		require.Empty(t, length(&ds.internalStorage.rut))
 	})
 }
 
@@ -572,7 +1187,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, internalStorage, iter, tuples)
+		helperValidateSingleClient(ctx, t, &internalStorage.rswu, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -599,7 +1214,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, internalStorage, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, &internalStorage.rswu, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -628,7 +1243,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		_, err = ds.ReadStartingWithUser(ctx, storeID, filter1, options)
 		require.Error(t, err)
 
-		require.Empty(t, length(&internalStorage.iters))
+		require.Empty(t, length(&internalStorage.rswu))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -644,7 +1259,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		iter, err := dsLimit.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&internalStorageLimit.iters))
+		require.Empty(t, length(&internalStorageLimit.rswu))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -668,7 +1283,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
 		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.iters))
+		require.Empty(t, length(&ds.internalStorage.rswu))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -688,25 +1303,25 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		iter1, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
-		require.NotEmpty(t, length(&internalStorage.iters))
+		require.NotEmpty(t, length(&internalStorage.rswu))
 
 		iter2, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
-		require.NotEmpty(t, length(&internalStorage.iters))
+		require.NotEmpty(t, length(&internalStorage.rswu))
 
 		iter1.Stop()
 
-		require.NotEmpty(t, length(&internalStorage.iters))
+		require.NotEmpty(t, length(&internalStorage.rswu))
 
 		// we call stop more than once
 		iter1.Stop()
 
-		require.NotEmpty(t, length(&internalStorage.iters))
+		require.NotEmpty(t, length(&internalStorage.rswu))
 
 		iter2.Stop()
 
-		require.Empty(t, length(&internalStorage.iters))
+		require.Empty(t, length(&internalStorage.rswu))
 	})
 	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -760,7 +1375,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&internalStorage.iters))
+		require.Empty(t, length(&internalStorage.rswu))
 	})
 }
 
@@ -769,8 +1384,6 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-
-	BufferSize = 1
 
 	tk := tuple.NewTupleKey("license:1", "owner", "")
 
@@ -1022,6 +1635,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleTwo, nil),
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleThree, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1166,6 +1780,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		tupleOne := &openfgav1.Tuple{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts}
 		gomock.InOrder(
 			mockIterator.EXPECT().Next(gomock.Any()).Return(tupleOne, nil),
+			mockIterator.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone),
 			mockIterator.EXPECT().Stop(),
 		)
 		mockDatastore.EXPECT().
@@ -1362,5 +1977,413 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		defer iter2.Stop()
 		_, err = iter2.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+}
+
+func TestSharedIterator_ManyTuples(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Create 150 test tuples
+	const numTuples = bufferSize + 1
+	var tks []*openfgav1.TupleKey
+	for i := 0; i < numTuples; i++ {
+		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
+	}
+
+	var tuples []*openfgav1.Tuple
+	ts := timestamppb.New(time.Now())
+	for _, tk := range tks {
+		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
+	}
+
+	tk := tuple.NewTupleKey("document:*", "viewer", "")
+
+	t.Run("single_client", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		// Verify we can read all tuples
+		var receivedTuples []*openfgav1.Tuple
+		for {
+			tup, err := iter.Next(ctx)
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "unexpected error", err)
+			}
+			receivedTuples = append(receivedTuples, tup)
+		}
+
+		// Assert we received all tuples
+		require.Len(t, receivedTuples, numTuples, "should receive all tuples")
+
+		// Verify the tuples match (order should be preserved)
+		cmpOpts := []cmp.Option{
+			testutils.TupleKeyCmpTransformer,
+			protocmp.Transform(),
+		}
+		if diff := cmp.Diff(tuples, receivedTuples, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
+func TestSharedIteratorCountMetric(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Helper function to get current metric value
+	getSharedIteratorCount := func() float64 {
+		dto := &prometheus_model.Metric{}
+		sharedIteratorCount.Write(dto)
+		return dto.GetGauge().GetValue()
+	}
+
+	tk := tuple.NewTupleKey("license:1", "owner", "")
+	ts := timestamppb.New(time.Now())
+	tuples := []*openfgav1.Tuple{
+		{Key: tuple.NewTupleKey("license:1", "owner", "user:1"), Timestamp: ts},
+		{Key: tuple.NewTupleKey("license:1", "owner", "user:2"), Timestamp: ts},
+	}
+
+	t.Run("read_increment_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Stop iterator - should decrement count
+		iter.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("readstartingwithuser_increment_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		filter := storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+		}
+
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, filter, storage.ReadStartingWithUserOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Stop iterator - should decrement count
+		iter.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("readusersettuples_increment_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		filter := storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				{Type: "user"},
+			},
+		}
+
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, filter, storage.ReadUsersetTuplesOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Stop iterator - should decrement count
+		iter.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("multiple_clones_single_increment", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		// Should only be called once due to sharing
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create first iterator - should increment count
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Create second iterator (clone) - should NOT increment count again
+		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Stop first iterator - count :w
+		// should remain the same (second clone exists)
+		iter1.Stop()
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Stop last iterator - should decrement count
+		iter2.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("bypassed_higher_consistency_no_increment", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				},
+			}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create iterator with higher consistency - should bypass shared iterator
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+			},
+		})
+		require.NoError(t, err)
+
+		// Verify count was not incremented (bypassed)
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+
+		iter.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("bypassed_storage_limit_no_increment", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+
+		// Create storage with limit of 0 to force bypass
+		internalStorage := NewSharedIteratorDatastoreStorage(
+			WithSharedIteratorDatastoreStorageLimit(0))
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(storage.NewStaticTupleIterator(tuples), nil)
+
+		// Create iterator - should bypass due to limit
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+
+		// Verify count was not incremented (bypassed)
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+
+		iter.Stop()
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("error_during_creation_no_increment", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		// Mock error during iterator creation
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(nil, errors.New("mock error"))
+
+		// Try to create iterator - should fail
+		_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.Error(t, err)
+
+		// Verify count was not incremented
+		require.InDelta(t, initialCount, getSharedIteratorCount(), 0.0001)
+	})
+
+	t.Run("read_timeout_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(100*time.Millisecond)) // Very short timeout
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Wait for admission time to expire - count should be decremented automatically
+		require.Eventually(t, func() bool {
+			return getSharedIteratorCount() == initialCount
+		}, 1*time.Second, 50*time.Millisecond)
+
+		iter.Stop() // Clean up
+	})
+
+	t.Run("readstartingwithuser_timeout_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(100*time.Millisecond)) // Very short timeout
+
+		filter := storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+		}
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, filter, storage.ReadStartingWithUserOptions{}).
+			Return(mockIterator, nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Wait for admission time to expire - count should be decremented automatically
+		require.Eventually(t, func() bool {
+			return getSharedIteratorCount() == initialCount
+		}, 1*time.Second, 50*time.Millisecond)
+
+		iter.Stop() // Clean up
+	})
+
+	t.Run("readusersettuples_timeout_decrement", func(t *testing.T) {
+		initialCount := getSharedIteratorCount()
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(100*time.Millisecond)) // Very short timeout
+
+		filter := storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
+				{Type: "user"},
+			},
+		}
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, filter, storage.ReadUsersetTuplesOptions{}).
+			Return(mockIterator, nil)
+
+		// Create iterator - should increment count
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		require.InDelta(t, initialCount+1, getSharedIteratorCount(), 0.0001)
+
+		// Wait for admission time to expire - count should be decremented automatically
+		require.Eventually(t, func() bool {
+			return getSharedIteratorCount() == initialCount
+		}, 1*time.Second, 50*time.Millisecond)
+
+		iter.Stop() // Clean up
 	})
 }
