@@ -134,5 +134,4 @@ func TestSQLiteMigrationProviderPrepareURI(t *testing.T) {
 		require.Contains(t, uri, "_foreign_keys=on")
 		require.Contains(t, uri, "_pragma=journal_mode")
 	})
-
 }
