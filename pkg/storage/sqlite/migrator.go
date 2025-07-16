@@ -54,7 +54,7 @@ func (s *SQLiteMigrationProvider) RunMigrations(ctx context.Context, config stor
 	if err != nil {
 		return fmt.Errorf("failed to create sqlite migrations filesystem: %w", err)
 	}
-	
+
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, migrationsFS)
 	if err != nil {
 		return fmt.Errorf("failed to create goose provider: %w", err)
@@ -81,7 +81,7 @@ func (s *SQLiteMigrationProvider) GetCurrentVersion(ctx context.Context, config 
 	if err != nil {
 		return 0, fmt.Errorf("failed to create sqlite migrations filesystem: %w", err)
 	}
-	
+
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, migrationsFS)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create goose provider: %w", err)
