@@ -3,6 +3,10 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
+	"github.com/go-sql-driver/mysql"
+	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/pkg/storage/sqlite"
 	"net/url"
 	"time"
 
@@ -23,14 +27,6 @@ func (g *GooseLoggerAdapter) Fatalf(format string, v ...interface{}) {
 func (g *GooseLoggerAdapter) Printf(format string, v ...interface{}) {
 	g.Logger.Info(fmt.Sprintf(format, v...))
 }
-
-	"github.com/cenkalti/backoff/v4"
-	"github.com/go-sql-driver/mysql"
-	"github.com/pressly/goose/v3"
-
-	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/pkg/storage/sqlite"
-)
 
 type MigrationConfig struct {
 	Engine        string
