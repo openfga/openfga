@@ -173,7 +173,8 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 				},
 			}, nil
 		case graph.TTUEdge:
-			parent, relation := tuple.SplitObjectRelation(uniqueLabel)
+			_, parent := tuple.SplitObjectRelation(currentEdge.GetTuplesetRelation())
+			_, relation := tuple.SplitObjectRelation(uniqueLabel)
 			return &openfgav1.Userset{
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: &openfgav1.TupleToUserset{
