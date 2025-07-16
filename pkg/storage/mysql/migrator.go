@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 
@@ -15,7 +14,9 @@ import (
 )
 
 // MySQLMigrationProvider implements MigrationProvider for MySQL.
-type MySQLMigrationProvider struct{}
+type MySQLMigrationProvider struct {
+	provider *goose.Provider
+}
 
 // NewMySQLMigrationProvider creates a new MySQL migration provider.
 func NewMySQLMigrationProvider() *MySQLMigrationProvider {
@@ -29,13 +30,6 @@ func (m *MySQLMigrationProvider) GetSupportedEngine() string {
 
 // RunMigrations executes MySQL database migrations.
 func (m *MySQLMigrationProvider) RunMigrations(ctx context.Context, config storage.MigrationConfig) error {
-	goose.SetLogger(goose.NopLogger())
-	goose.SetVerbose(config.Verbose)
-
-	if err := goose.SetDialect("mysql"); err != nil {
-		return fmt.Errorf("failed to set mysql dialect: %w", err)
-	}
-
 	uri, err := m.prepareURI(config)
 	if err != nil {
 		return err
@@ -57,9 +51,13 @@ func (m *MySQLMigrationProvider) RunMigrations(ctx context.Context, config stora
 		return fmt.Errorf("failed to initialize mysql connection: %w", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
+	// Create provider instance with MySQL dialect and embedded migrations
+	provider, err := goose.NewProvider(goose.DialectMySQL, db, assets.EmbedMigrations)
+	if err != nil {
+		return fmt.Errorf("failed to create goose provider: %w", err)
+	}
 
-	return m.executeMigrations(db, config)
+	return m.executeMigrations(ctx, provider, config)
 }
 
 // GetCurrentVersion returns the current migration version.
@@ -75,8 +73,13 @@ func (m *MySQLMigrationProvider) GetCurrentVersion(ctx context.Context, config s
 	}
 	defer db.Close()
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-	return goose.GetDBVersion(db)
+	// Create provider instance with MySQL dialect and embedded migrations
+	provider, err := goose.NewProvider(goose.DialectMySQL, db, assets.EmbedMigrations)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create goose provider: %w", err)
+	}
+
+	return provider.GetDBVersion(ctx)
 }
 
 // prepareURI processes the database URI with username/password overrides.
@@ -97,10 +100,8 @@ func (m *MySQLMigrationProvider) prepareURI(config storage.MigrationConfig) (str
 }
 
 // executeMigrations runs the actual migration commands.
-func (m *MySQLMigrationProvider) executeMigrations(db *sql.DB, config storage.MigrationConfig) error {
-	migrationsPath := assets.MySQLMigrationDir
-
-	currentVersion, err := goose.GetDBVersion(db)
+func (m *MySQLMigrationProvider) executeMigrations(ctx context.Context, provider *goose.Provider, config storage.MigrationConfig) error {
+	currentVersion, err := provider.GetDBVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get mysql db version: %w", err)
 	}
@@ -109,7 +110,8 @@ func (m *MySQLMigrationProvider) executeMigrations(db *sql.DB, config storage.Mi
 
 	if config.TargetVersion == 0 {
 		log.Println("running all mysql migrations")
-		if err := goose.Up(db, migrationsPath); err != nil {
+		_, err := provider.Up(ctx)
+		if err != nil {
 			return fmt.Errorf("failed to run mysql migrations: %w", err)
 		}
 		log.Println("mysql migration done")
@@ -121,11 +123,13 @@ func (m *MySQLMigrationProvider) executeMigrations(db *sql.DB, config storage.Mi
 
 	switch {
 	case targetInt64Version < currentVersion:
-		if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
+		_, err := provider.DownTo(ctx, targetInt64Version)
+		if err != nil {
 			return fmt.Errorf("failed to run mysql migrations down to %v: %w", targetInt64Version, err)
 		}
 	case targetInt64Version > currentVersion:
-		if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
+		_, err := provider.UpTo(ctx, targetInt64Version)
+		if err != nil {
 			return fmt.Errorf("failed to run mysql migrations up to %v: %w", targetInt64Version, err)
 		}
 	default:

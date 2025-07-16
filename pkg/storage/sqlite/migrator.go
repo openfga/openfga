@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 
@@ -28,13 +27,6 @@ func (s *SQLiteMigrationProvider) GetSupportedEngine() string {
 
 // RunMigrations executes SQLite database migrations.
 func (s *SQLiteMigrationProvider) RunMigrations(ctx context.Context, config storage.MigrationConfig) error {
-	goose.SetLogger(goose.NopLogger())
-	goose.SetVerbose(config.Verbose)
-
-	if err := goose.SetDialect("sqlite"); err != nil {
-		return fmt.Errorf("failed to set sqlite dialect: %w", err)
-	}
-
 	uri, err := s.prepareURI(config)
 	if err != nil {
 		return err
@@ -56,9 +48,13 @@ func (s *SQLiteMigrationProvider) RunMigrations(ctx context.Context, config stor
 		return fmt.Errorf("failed to initialize sqlite connection: %w", err)
 	}
 
-	goose.SetBaseFS(assets.EmbedMigrations)
+	// Create provider instance with SQLite dialect and embedded migrations
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, assets.EmbedMigrations)
+	if err != nil {
+		return fmt.Errorf("failed to create goose provider: %w", err)
+	}
 
-	return s.executeMigrations(db, config)
+	return s.executeMigrations(ctx, provider, config)
 }
 
 // GetCurrentVersion returns the current migration version.
@@ -74,8 +70,13 @@ func (s *SQLiteMigrationProvider) GetCurrentVersion(ctx context.Context, config 
 	}
 	defer db.Close()
 
-	goose.SetBaseFS(assets.EmbedMigrations)
-	return goose.GetDBVersion(db)
+	// Create provider instance with SQLite dialect and embedded migrations
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, assets.EmbedMigrations)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create goose provider: %w", err)
+	}
+
+	return provider.GetDBVersion(ctx)
 }
 
 // prepareURI processes the database URI.
@@ -84,10 +85,8 @@ func (s *SQLiteMigrationProvider) prepareURI(config storage.MigrationConfig) (st
 }
 
 // executeMigrations runs the actual migration commands.
-func (s *SQLiteMigrationProvider) executeMigrations(db *sql.DB, config storage.MigrationConfig) error {
-	migrationsPath := assets.SqliteMigrationDir
-
-	currentVersion, err := goose.GetDBVersion(db)
+func (s *SQLiteMigrationProvider) executeMigrations(ctx context.Context, provider *goose.Provider, config storage.MigrationConfig) error {
+	currentVersion, err := provider.GetDBVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get sqlite db version: %w", err)
 	}
@@ -96,7 +95,8 @@ func (s *SQLiteMigrationProvider) executeMigrations(db *sql.DB, config storage.M
 
 	if config.TargetVersion == 0 {
 		log.Println("running all sqlite migrations")
-		if err := goose.Up(db, migrationsPath); err != nil {
+		_, err := provider.Up(ctx)
+		if err != nil {
 			return fmt.Errorf("failed to run sqlite migrations: %w", err)
 		}
 		log.Println("sqlite migration done")
@@ -108,11 +108,13 @@ func (s *SQLiteMigrationProvider) executeMigrations(db *sql.DB, config storage.M
 
 	switch {
 	case targetInt64Version < currentVersion:
-		if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
+		_, err := provider.DownTo(ctx, targetInt64Version)
+		if err != nil {
 			return fmt.Errorf("failed to run sqlite migrations down to %v: %w", targetInt64Version, err)
 		}
 	case targetInt64Version > currentVersion:
-		if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
+		_, err := provider.UpTo(ctx, targetInt64Version)
+		if err != nil {
 			return fmt.Errorf("failed to run sqlite migrations up to %v: %w", targetInt64Version, err)
 		}
 	default:
