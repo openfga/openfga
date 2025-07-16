@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -23,8 +24,9 @@ func TestSQLiteMigrationProvider(t *testing.T) {
 
 	t.Run("InvalidPath", func(t *testing.T) {
 		config := storage.MigrationConfig{
-			Engine: "sqlite",
-			URI:    "/invalid/path/that/does/not/exist/db.sqlite",
+			Engine:  "sqlite",
+			URI:     "/invalid/path/that/does/not/exist/db.sqlite",
+			Timeout: 5 * time.Second, // Add reasonable timeout
 		}
 
 		ctx := context.Background()

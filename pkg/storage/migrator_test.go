@@ -95,6 +95,10 @@ func TestMigratorRegistry(t *testing.T) {
 		provider1 := NewMockMigrationProvider("test-engine")
 		provider2 := NewMockMigrationProvider("test-engine")
 
+		// Make providers distinguishable by setting different versions
+		provider1.currentVersion = 1
+		provider2.currentVersion = 2
+
 		registry.RegisterProvider("test-engine", provider1)
 		registry.RegisterProvider("test-engine", provider2) // Override
 
