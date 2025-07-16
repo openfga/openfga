@@ -38,10 +38,7 @@ type MigrationConfig struct {
 // both upgrading and downgrading to specific versions.
 func RunMigrations(cfg MigrationConfig) error {
 	log := cfg.Logger
-	if log == nil {
-		log = logger.NewNoopLogger()
-	}
-	goose.SetLogger(log)
+	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(cfg.Verbose)
 
 	var driver, migrationsPath string
