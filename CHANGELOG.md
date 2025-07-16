@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   - Maintains full backward compatibility with existing `RunMigrations` API
   - Enables applications embedding OpenFGA as a library to inject their own migration systems
   - Provides multiple integration patterns: default, custom provider, registry, and direct provider usage
+
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
 - Update ReverseExpand to use a intersection and exclusion handler to fast path check calls. [#2543](https://github.com/openfga/openfga/pull/2543)
