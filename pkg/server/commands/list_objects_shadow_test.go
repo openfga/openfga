@@ -437,6 +437,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
 						gomock.Any(),
 						zap.Int("main_result_count", 3),
+						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
@@ -477,6 +478,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Int("shadow_result_count", 2)),
 						gomock.Eq(zap.Int("total_delta", 3)),
 						gomock.Eq(zap.Any("delta", []string{"+d", "-a", "-b"})),
+						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
@@ -514,6 +516,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Int("shadow_result_count", 5)),
 						gomock.Eq(zap.Int("total_delta", 11)),
 						gomock.Eq(zap.Any("delta", []string{"+x", "+y", "+z"})),
+						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
