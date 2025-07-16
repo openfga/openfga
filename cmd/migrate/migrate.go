@@ -13,13 +13,16 @@ import (
 )
 
 const (
-	datastoreEngineFlag   = "datastore-engine"
-	datastoreURIFlag      = "datastore-uri"
-	datastoreUsernameFlag = "datastore-username"
-	datastorePasswordFlag = "datastore-password"
-	versionFlag           = "version"
-	timeoutFlag           = "timeout"
-	verboseMigrationFlag  = "verbose"
+	datastoreEngineFlag      = "datastore-engine"
+	datastoreURIFlag         = "datastore-uri"
+	datastoreUsernameFlag    = "datastore-username"
+	datastorePasswordFlag    = "datastore-password"
+	versionFlag              = "version"
+	timeoutFlag              = "timeout"
+	verboseMigrationFlag     = "verbose"
+	logFormatFlag            = "log-format"
+	logLevelFlag             = "log-level"
+	logTimestampFlagFlag     = "log-timestamp-format"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -41,6 +44,10 @@ func NewMigrateCommand() *cobra.Command {
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout for the time it takes the migrate process to connect to the database")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 
+	flags.String(logFormatFlag, "json", "the log format to use in the log output (e.g. 'text' or 'json')")
+	flags.String(logLevelFlag, "info", "the log level to use in the log output (e.g. 'info', 'debug')")
+	flags.String(logTimestampFlagFlag, "ISO8601", "the timestamp format for logs (e.g. 'Unix' or 'ISO8601')")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -48,20 +55,11 @@ func NewMigrateCommand() *cobra.Command {
 	return cmd
 }
 
-func runMigration(_ *cobra.Command, _ []string) error {
-	// Read log config from env, defaulting to json/info/ISO8601
-	logFormat := viper.GetString("log-format")
-	if logFormat == "" {
-		logFormat = "json"
-	}
-	logLevel := viper.GetString("log-level")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	logTimestampFormat := viper.GetString("log-timestamp-format")
-	if logTimestampFormat == "" {
-		logTimestampFormat = "ISO8601"
-	}
+func runMigration(cmd *cobra.Command, _ []string) error {
+	// Read log config from flags (with cobra defaults)
+	logFormat, _ := cmd.Flags().GetString(logFormatFlag)
+	logLevel, _ := cmd.Flags().GetString(logLevelFlag)
+	logTimestampFormat, _ := cmd.Flags().GetString(logTimestampFlagFlag)
 	logger := migrate_logger.MustNewLogger(logFormat, logLevel, logTimestampFormat)
 
 	engine := viper.GetString(datastoreEngineFlag)
@@ -80,6 +78,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		Verbose:       verbose,
 		Username:      username,
 		Password:      password,
+		Logger:        logger,
 	}
-	return migrate.RunMigrations(cfg, logger)
+	return migrate.RunMigrations(cfg)
 }

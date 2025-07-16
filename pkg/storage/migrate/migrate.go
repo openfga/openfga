@@ -8,7 +8,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 
-
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
 	"github.com/pressly/goose/v3"
@@ -25,6 +24,7 @@ type MigrationConfig struct {
 	Verbose       bool
 	Username      string
 	Password      string
+	Logger        logger.Logger // Optional: if nil, fallback to default
 }
 
 // RunMigrations runs the migrations for the given config. This function is exposed to allow embedding openFGA
@@ -36,8 +36,12 @@ type MigrationConfig struct {
 // 3. Perform versioned upgrades of the schema as needed
 // The function handles migrations for multiple database engines (postgres, mysql, sqlite) and supports
 // both upgrading and downgrading to specific versions.
-func RunMigrations(cfg MigrationConfig, log logger.Logger) error {
-	goose.SetLogger(goose.NopLogger())
+func RunMigrations(cfg MigrationConfig) error {
+	log := cfg.Logger
+	if log == nil {
+		log = logger.NewNoopLogger()
+	}
+	goose.SetLogger(log)
 	goose.SetVerbose(cfg.Verbose)
 
 	var driver, migrationsPath string
