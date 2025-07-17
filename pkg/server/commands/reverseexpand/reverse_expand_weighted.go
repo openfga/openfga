@@ -420,7 +420,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
-			fmt.Printf("SENDING CANDIDATE: %s\n", foundObject)
 			continue
 		}
 
