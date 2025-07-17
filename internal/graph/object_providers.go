@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"errors"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/checkutil"
@@ -165,7 +164,7 @@ func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out c
 							msg.Iter.Stop()
 							if storage.IterIsDoneOrCancelled(err) {
 								if errors.Is(err, storage.ErrIteratorDone) {
-									return nil
+									break
 								}
 								return ErrShortCircuit
 							}
