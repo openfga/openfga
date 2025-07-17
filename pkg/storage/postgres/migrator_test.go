@@ -84,7 +84,9 @@ func TestPostgresMigrationProviderSimple(t *testing.T) {
 				strings.Contains(errMsg, "no such host") ||
 				strings.Contains(errMsg, "connection refused") ||
 				strings.Contains(errMsg, "context deadline exceeded") ||
-				strings.Contains(errMsg, "network is unreachable"),
+				strings.Contains(errMsg, "network is unreachable") ||
+				strings.Contains(errMsg, "hostname resolving error") ||
+				strings.Contains(errMsg, "server misbehaving"),
 			"Unexpected error message: %s", errMsg)
 	})
 }
