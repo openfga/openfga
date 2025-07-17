@@ -222,12 +222,16 @@ type ResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
+	WasWeightedGraphUsed *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		DispatchCounter: new(atomic.Uint32),
-		WasThrottled:    new(atomic.Bool),
+		DispatchCounter:      new(atomic.Uint32),
+		WasThrottled:         new(atomic.Bool),
+		WasWeightedGraphUsed: new(atomic.Bool),
 	}
 }
 
@@ -399,6 +403,9 @@ func (c *ReverseExpandQuery) execute(
 				typeRel,
 				sourceUserType,
 			)
+
+			// Set value to indicate that the weighted graph was used
+			resolutionMetadata.WasWeightedGraphUsed.Store(true)
 
 			return c.loopOverEdges(
 				ctx,
