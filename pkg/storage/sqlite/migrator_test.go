@@ -373,3 +373,58 @@ func TestSQLiteMigrationProviderAdditionalErrorScenarios(t *testing.T) {
 		// Should fail due to invalid path or connection issues
 	})
 }
+
+func TestSQLiteMigrationProviderEdgeCases(t *testing.T) {
+	provider := NewSQLiteMigrationProvider()
+
+	t.Run("EmptyURI_Success", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "sqlite",
+			URI:    "",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.NotEmpty(t, uri)
+		require.Contains(t, uri, "_pragma=journal_mode")
+	})
+
+	t.Run("MemoryDatabase_Success", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "sqlite",
+			URI:     ":memory:",
+			Timeout: 5 * time.Second,
+		}
+
+		ctx := context.Background()
+		err := provider.RunMigrations(ctx, config)
+		// This should succeed because :memory: is a valid SQLite URI
+		require.NoError(t, err)
+	})
+
+	t.Run("GetCurrentVersion_MemoryDatabase", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "sqlite",
+			URI:     ":memory:",
+			Timeout: 5 * time.Second,
+		}
+
+		ctx := context.Background()
+		version, err := provider.GetCurrentVersion(ctx, config)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, version, int64(0))
+	})
+
+	t.Run("VeryShortTimeout", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "sqlite",
+			URI:     "/nonexistent/path/file.db",
+			Timeout: 1 * time.Nanosecond, // Extremely short timeout
+		}
+
+		ctx := context.Background()
+		err := provider.RunMigrations(ctx, config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to initialize sqlite connection")
+	})
+}

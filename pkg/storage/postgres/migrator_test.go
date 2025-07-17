@@ -405,3 +405,77 @@ func TestPostgresMigrationProviderAdditionalErrorScenarios(t *testing.T) {
 		// Should fail due to timeout/connection issues
 	})
 }
+
+func TestPostgresMigrationProviderEdgeCases(t *testing.T) {
+	provider := NewPostgresMigrationProvider()
+
+	t.Run("EmptyCredentials", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "postgres",
+			URI:    "postgres://localhost:5432/testdb",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Contains(t, uri, "postgres://")
+	})
+
+	t.Run("CredentialsFromURI_Only", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "postgres",
+			URI:    "postgres://dbuser:dbpass@localhost:5432/testdb",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://dbuser:dbpass@localhost:5432/testdb", uri)
+	})
+
+	t.Run("UsernameOverride_Only", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://olduser:oldpass@localhost:5432/testdb",
+			Username: "newuser",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://newuser:oldpass@localhost:5432/testdb", uri)
+	})
+
+	t.Run("PasswordOverride_Only", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "postgres",
+			URI:      "postgres://olduser:oldpass@localhost:5432/testdb",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "postgres://olduser:newpass@localhost:5432/testdb", uri)
+	})
+
+	t.Run("VeryShortTimeout", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "postgres",
+			URI:     "postgres://user:pass@nonexistent-host:5432/testdb",
+			Timeout: 1 * time.Nanosecond, // Extremely short timeout
+		}
+
+		ctx := context.Background()
+		err := provider.RunMigrations(ctx, config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to initialize postgres connection")
+	})
+
+	t.Run("MalformedURI_Characters", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "postgres",
+			URI:    "://invalid-scheme-missing",
+		}
+
+		_, err := provider.prepareURI(config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid postgres database uri")
+	})
+}

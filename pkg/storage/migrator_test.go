@@ -2,6 +2,8 @@ package storage
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,6 +111,54 @@ func TestMigratorRegistry(t *testing.T) {
 	})
 }
 
+func TestMigratorRegistryEdgeCases(t *testing.T) {
+	t.Run("EmptyProviderName", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+		provider := NewMockMigrationProvider("test")
+
+		// Test empty engine name
+		registry.RegisterProvider("", provider)
+		engines := registry.GetSupportedEngines()
+		require.Len(t, engines, 1)
+		require.Contains(t, engines, "")
+	})
+
+	t.Run("NilProvider", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+
+		// Register nil provider
+		registry.RegisterProvider("test", nil)
+
+		provider, exists := registry.GetProvider("test")
+		require.True(t, exists)
+		require.Nil(t, provider)
+	})
+
+	t.Run("MultipleRegistrations", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+
+		provider1 := NewMockMigrationProvider("engine1")
+		provider2 := NewMockMigrationProvider("engine2")
+		provider3 := NewMockMigrationProvider("engine3")
+
+		registry.RegisterProvider("engine1", provider1)
+		registry.RegisterProvider("engine2", provider2)
+		registry.RegisterProvider("engine3", provider3)
+
+		engines := registry.GetSupportedEngines()
+		require.Len(t, engines, 3)
+		require.ElementsMatch(t, []string{"engine1", "engine2", "engine3"}, engines)
+	})
+
+	t.Run("GetNonExistentProvider", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+
+		provider, exists := registry.GetProvider("non-existent")
+		require.False(t, exists)
+		require.Nil(t, provider)
+	})
+}
+
 func TestMigrationConfig(t *testing.T) {
 	t.Run("ValidConfig", func(t *testing.T) {
 		config := MigrationConfig{
@@ -128,6 +178,40 @@ func TestMigrationConfig(t *testing.T) {
 		require.True(t, config.Verbose)
 		require.Equal(t, "user", config.Username)
 		require.Equal(t, "pass", config.Password)
+	})
+}
+
+func TestMigrationConfigValidation(t *testing.T) {
+	t.Run("ZeroValues", func(t *testing.T) {
+		config := MigrationConfig{}
+
+		require.Empty(t, config.Engine)
+		require.Empty(t, config.URI)
+		require.Equal(t, uint(0), config.TargetVersion)
+		require.Equal(t, time.Duration(0), config.Timeout)
+		require.False(t, config.Verbose)
+		require.Empty(t, config.Username)
+		require.Empty(t, config.Password)
+	})
+
+	t.Run("AllFieldsSet", func(t *testing.T) {
+		config := MigrationConfig{
+			Engine:        "postgres",
+			URI:           "postgres://user:pass@localhost:5432/db",
+			TargetVersion: 10,
+			Timeout:       30 * time.Second,
+			Verbose:       true,
+			Username:      "testuser",
+			Password:      "testpass",
+		}
+
+		require.Equal(t, "postgres", config.Engine)
+		require.Equal(t, "postgres://user:pass@localhost:5432/db", config.URI)
+		require.Equal(t, uint(10), config.TargetVersion)
+		require.Equal(t, 30*time.Second, config.Timeout)
+		require.True(t, config.Verbose)
+		require.Equal(t, "testuser", config.Username)
+		require.Equal(t, "testpass", config.Password)
 	})
 }
 
@@ -178,5 +262,160 @@ func TestMockMigrationProvider(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, context.DeadlineExceeded, err)
 		require.Equal(t, int64(0), version)
+	})
+}
+
+func TestMockMigrationProviderExtendedScenarios(t *testing.T) {
+	t.Run("CustomEngine", func(t *testing.T) {
+		provider := NewMockMigrationProvider("custom-engine")
+		require.Equal(t, "custom-engine", provider.GetSupportedEngine())
+	})
+
+	t.Run("ModifyCurrentVersion", func(t *testing.T) {
+		provider := NewMockMigrationProvider("test")
+		provider.currentVersion = 100
+
+		config := MigrationConfig{
+			Engine: "test",
+			URI:    "test://uri",
+		}
+
+		version, err := provider.GetCurrentVersion(context.Background(), config)
+		require.NoError(t, err)
+		require.Equal(t, int64(100), version)
+	})
+
+	t.Run("ContextCancellation", func(t *testing.T) {
+		provider := NewMockMigrationProvider("test")
+
+		config := MigrationConfig{
+			Engine: "test",
+			URI:    "test://uri",
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		// Mock provider doesn't check context, but we can test that it still works
+		err := provider.RunMigrations(ctx, config)
+		require.NoError(t, err)
+	})
+
+	t.Run("StateTracking", func(t *testing.T) {
+		provider := NewMockMigrationProvider("test")
+		require.False(t, provider.migrationsRun)
+
+		config := MigrationConfig{
+			Engine: "test",
+			URI:    "test://uri",
+		}
+
+		err := provider.RunMigrations(context.Background(), config)
+		require.NoError(t, err)
+		require.True(t, provider.migrationsRun)
+	})
+}
+
+func TestMigratorRegistryThreadSafety(t *testing.T) {
+	t.Run("ConcurrentRegistrations", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+
+		// Test concurrent registrations
+		var wg sync.WaitGroup
+		numGoroutines := 10
+
+		for i := 0; i < numGoroutines; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				engineName := fmt.Sprintf("concurrent-engine-%d", id)
+				provider := NewMockMigrationProvider(engineName)
+				registry.RegisterProvider(engineName, provider)
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify all providers were registered
+		engines := registry.GetSupportedEngines()
+		require.Len(t, engines, numGoroutines)
+
+		for i := 0; i < numGoroutines; i++ {
+			engineName := fmt.Sprintf("concurrent-engine-%d", i)
+			provider, exists := registry.GetProvider(engineName)
+			require.True(t, exists)
+			require.NotNil(t, provider)
+			require.Equal(t, engineName, provider.GetSupportedEngine())
+		}
+	})
+
+	t.Run("ConcurrentGetProvider", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+		provider := NewMockMigrationProvider("shared-engine")
+		registry.RegisterProvider("shared-engine", provider)
+
+		// Test concurrent access to the same provider
+		var wg sync.WaitGroup
+		numGoroutines := 50
+		results := make([]MigrationProvider, numGoroutines)
+		exists := make([]bool, numGoroutines)
+
+		for i := 0; i < numGoroutines; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				p, ex := registry.GetProvider("shared-engine")
+				results[id] = p
+				exists[id] = ex
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify all goroutines got the same provider and it existed
+		for i := 0; i < numGoroutines; i++ {
+			require.True(t, exists[i])
+			require.Equal(t, provider, results[i])
+		}
+	})
+}
+
+func TestMigrationProviderInterface(t *testing.T) {
+	t.Run("InterfaceCompliance", func(t *testing.T) {
+		provider := NewMockMigrationProvider("test")
+
+		// Verify it implements the MigrationProvider interface
+		var _ MigrationProvider = provider
+
+		// Test all interface methods
+		require.Equal(t, "test", provider.GetSupportedEngine())
+
+		config := MigrationConfig{
+			Engine: "test",
+			URI:    "test://localhost/db",
+		}
+
+		ctx := context.Background()
+
+		err := provider.RunMigrations(ctx, config)
+		require.NoError(t, err)
+
+		version, err := provider.GetCurrentVersion(ctx, config)
+		require.NoError(t, err)
+		require.Equal(t, int64(5), version)
+	})
+
+	t.Run("NilProvider", func(t *testing.T) {
+		registry := NewMigratorRegistry()
+
+		// Register nil provider
+		registry.RegisterProvider("nil-engine", nil)
+
+		provider, exists := registry.GetProvider("nil-engine")
+		require.True(t, exists)
+		require.Nil(t, provider)
+
+		engines := registry.GetSupportedEngines()
+		require.Contains(t, engines, "nil-engine")
 	})
 }

@@ -388,3 +388,99 @@ func TestMySQLMigrationProviderAdditionalErrorScenarios(t *testing.T) {
 		// Should fail due to timeout/connection issues
 	})
 }
+
+func TestMySQLMigrationProviderEdgeCases(t *testing.T) {
+	provider := NewMySQLMigrationProvider()
+
+	t.Run("EmptyCredentials", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "mysql",
+			URI:    "tcp(localhost:3306)/testdb",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Contains(t, uri, "tcp(localhost:3306)/testdb")
+	})
+
+	t.Run("CredentialsInDSN", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine: "mysql",
+			URI:    "dbuser:dbpass@tcp(localhost:3306)/testdb",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "dbuser:dbpass@tcp(localhost:3306)/testdb", uri)
+	})
+
+	t.Run("UsernameOverride_EmptyPassword", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "mysql",
+			URI:      "olduser@tcp(localhost:3306)/testdb",
+			Username: "newuser",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Equal(t, "newuser@tcp(localhost:3306)/testdb", uri)
+	})
+
+	t.Run("PasswordOverride_EmptyUser", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "mysql",
+			URI:      "tcp(localhost:3306)/testdb",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		// MySQL driver may not format password without username - let's just verify no error occurred
+		// and the URI is still valid
+		require.NotEmpty(t, uri)
+		require.Contains(t, uri, "tcp(localhost:3306)/testdb")
+	})
+
+	t.Run("BothOverrides_EmptyOriginal", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "mysql",
+			URI:      "tcp(localhost:3306)/testdb",
+			Username: "newuser",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Contains(t, uri, "newuser")
+		require.Contains(t, uri, "newpass")
+		require.Contains(t, uri, "tcp(localhost:3306)/testdb")
+	})
+
+	t.Run("VeryShortTimeout", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:  "mysql",
+			URI:     "user:pass@tcp(nonexistent-host:3306)/testdb",
+			Timeout: 1 * time.Nanosecond, // Extremely short timeout
+		}
+
+		ctx := context.Background()
+		err := provider.RunMigrations(ctx, config)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to initialize mysql connection")
+	})
+
+	t.Run("ComplexDSN_WithParams", func(t *testing.T) {
+		config := storage.MigrationConfig{
+			Engine:   "mysql",
+			URI:      "user:pass@tcp(localhost:3306)/testdb?charset=utf8&parseTime=true",
+			Username: "newuser",
+			Password: "newpass",
+		}
+
+		uri, err := provider.prepareURI(config)
+		require.NoError(t, err)
+		require.Contains(t, uri, "newuser:newpass@tcp(localhost:3306)/testdb")
+		require.Contains(t, uri, "charset=utf8")
+		require.Contains(t, uri, "parseTime=true")
+	})
+}
