@@ -52,19 +52,11 @@ type ReverseExpandRequest struct {
 }
 
 func (r *ReverseExpandRequest) clone() *ReverseExpandRequest {
-	return &ReverseExpandRequest{
-		StoreID:           r.StoreID,
-		ObjectType:        r.ObjectType,
-		Relation:          r.Relation,
-		User:              r.User,
-		ContextualTuples:  r.ContextualTuples,
-		Context:           r.Context,
-		Consistency:       r.Consistency,
-		edge:              r.edge,
-		weightedEdge:      r.weightedEdge,
-		skipWeightedGraph: r.skipWeightedGraph,
-		relationStack:     r.relationStack,
+	if r == nil {
+		return nil
 	}
+	copyRequest := *r
+	return &copyRequest
 }
 
 type IsUserRef interface {
@@ -147,7 +139,7 @@ type ReverseExpandQuery struct {
 	candidateObjectsMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver   *graph.LocalChecker
+	localCheckResolver   graph.CheckRewriteResolver
 	optimizationsEnabled bool
 }
 
@@ -249,6 +241,18 @@ func WithLogger(logger logger.Logger) ReverseExpandQueryOption {
 	}
 }
 
+// shallowClone creates an identical copy of reverseExpandQuery except
+// candidateObjectsMap as list object candidates need to be validated
+// via check.
+func (c *ReverseExpandQuery) shallowClone() *ReverseExpandQuery {
+	if c == nil {
+		return nil
+	}
+	copy := *c
+	copy.candidateObjectsMap = new(sync.Map)
+	return &copy
+}
+
 // Execute yields all the objects of the provided objectType that the
 // given user possibly has, a specific relation with and sends those
 // objects to resultChan. It MUST guarantee no duplicate objects sent.
@@ -267,6 +271,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastore)
 	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
 	if err != nil {
 		return err
@@ -409,6 +414,7 @@ func (c *ReverseExpandQuery) execute(
 				needsCheck || intersectionOrExclusionInPreviousEdges,
 				resolutionMetadata,
 				resultChan,
+				sourceUserType,
 			)
 		}
 	}

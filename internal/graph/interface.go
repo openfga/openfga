@@ -2,7 +2,11 @@
 
 package graph
 
-import "context"
+import (
+	"context"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+)
 
 type CheckResolverCloser func()
 
@@ -34,4 +38,10 @@ type CheckResolver interface {
 	SetDelegate(delegate CheckResolver)
 
 	GetDelegate() CheckResolver
+}
+
+type CheckRewriteResolver interface {
+	CheckResolver
+
+	CheckRewrite(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc
 }
