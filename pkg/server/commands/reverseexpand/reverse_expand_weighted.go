@@ -252,7 +252,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if err != nil {
 					return err
 				}
-				err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -261,7 +261,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if err != nil {
 					return err
 				}
-				err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -639,7 +639,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 // resultChan. If check returns false, then these list object candidates
 // are invalid because it does not satisfy all paths for intersection.
 func (c *ReverseExpandQuery) intersectionHandler(
-	ctx context.Context,
+	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -696,11 +696,10 @@ func (c *ReverseExpandQuery) intersectionHandler(
 			}}}
 
 	// Concurrently find candidates and call check on them as they are found
-	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true)
 
-	return pool.Wait()
+	return nil
 }
 
 // invoke loopOverWeightedEdges to get list objects candidate. Check
@@ -711,6 +710,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 // are invalid because it does not satisfy all paths for exclusion.
 func (c *ReverseExpandQuery) exclusionHandler(
 	ctx context.Context,
+	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -756,9 +756,8 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false)
 
-	return pool.Wait()
+	return nil
 }
