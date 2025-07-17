@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -148,7 +149,7 @@ func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out c
 			for {
 				select {
 				case <-ctx.Done():
-					return nil
+					return ErrShortCircuit
 				case msg, ok := <-c:
 					if !ok {
 						open = false
@@ -156,14 +157,17 @@ func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out c
 					}
 					if msg.Err != nil {
 						concurrency.TrySendThroughChannel(ctx, usersetMessage{err: msg.Err}, out)
-						return nil
+						return ErrShortCircuit
 					}
 					for {
 						t, err := msg.Iter.Next(ctx)
 						if err != nil {
 							msg.Iter.Stop()
 							if storage.IterIsDoneOrCancelled(err) {
-								break
+								if errors.Is(err, storage.ErrIteratorDone) {
+									return nil
+								}
+								return ErrShortCircuit
 							}
 							concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, out)
 							break
