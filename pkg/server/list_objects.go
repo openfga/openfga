@@ -146,6 +146,12 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		throttledRequestCounter.WithLabelValues(s.serviceName, methodName).Inc()
 	}
 
+	listObjectsOptimzationLabel := "non-weighted"
+	if result.ResolutionMetadata.WasWeightedGraphUsed.Load() {
+		listObjectsOptimzationLabel = "weighted"
+	}
+	listObjectsOptimizationCounter.WithLabelValues(listObjectsOptimzationLabel).Inc()
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
