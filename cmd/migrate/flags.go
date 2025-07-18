@@ -30,5 +30,14 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag(verboseMigrationFlag, flags.Lookup(verboseMigrationFlag))
 		util.MustBindEnv(verboseMigrationFlag, "OPENFGA_VERBOSE")
+
+		util.MustBindPFlag(logFormatFlag, flags.Lookup(logFormatFlag))
+		util.MustBindEnv(logFormatFlag, "OPENFGA_LOG_FORMAT")
+
+		util.MustBindPFlag(logLevelFlag, flags.Lookup(logLevelFlag))
+		util.MustBindEnv(logLevelFlag, "OPENFGA_LOG_LEVEL")
+
+		util.MustBindPFlag(logTimestampFlag, flags.Lookup(logTimestampFlag))
+		util.MustBindEnv(logTimestampFlag, "OPENFGA_LOG_TIMESTAMP_FORMAT")
 	}
 }
