@@ -9,8 +9,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -19,12 +17,9 @@ import (
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
-	"github.com/openfga/openfga/pkg/telemetry"
 )
 
 var (
-	tracer = otel.Tracer("openfga/pkg/storagewrappers/sharediterator")
-
 	_ storage.RelationshipTupleReader = (*IteratorDatastore)(nil)
 	_ storage.TupleIterator           = (*sharedIterator)(nil)
 
@@ -217,16 +212,6 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 	options storage.ReadStartingWithUserOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.ReadStartingWithUser",
-	)
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("consistency_preference", options.Consistency.Preference.String()),
-		attribute.String("bypassed", "false"),
-	)
-
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// for now, we will skip shared iterator since there is a possibility that the request
 		// may be slightly stale. In the future, consider whether we should have shared iterator
@@ -237,17 +222,13 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 	cacheKey, err := storagewrappersutil.ReadStartingWithUserKey(store, filter)
 	if err != nil {
-		// should never happen
-		telemetry.TraceError(span, err)
 		return nil, err
 	}
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
 	// If the limit is zero, we will not use the shared iterator.
 	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
@@ -313,12 +294,9 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
 		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
-
-	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
 		storagewrappersutil.OperationReadStartingWithUser, sf.method, strconv.FormatBool(!created),
@@ -335,29 +313,17 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 	options storage.ReadUsersetTuplesOptions,
 ) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.ReadUsersetTuples",
-	)
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("consistency_preference", options.Consistency.Preference.String()),
-		attribute.String("bypassed", "false"),
-	)
-
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
 	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
 	// If the limit is zero, we will not use the shared iterator.
 	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
@@ -423,12 +389,9 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 	}
-
-	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
 		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
@@ -444,15 +407,6 @@ func (sf *IteratorDatastore) Read(
 	store string,
 	tupleKey *openfgav1.TupleKey,
 	options storage.ReadOptions) (storage.TupleIterator, error) {
-	ctx, span := tracer.Start(
-		ctx,
-		"sharedIterator.Read",
-	)
-	defer span.End()
-	span.SetAttributes(
-		attribute.String("consistency_preference", options.Consistency.Preference.String()),
-		attribute.String("bypassed", "false"),
-	)
 
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
@@ -460,13 +414,11 @@ func (sf *IteratorDatastore) Read(
 	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
 	// If the limit is zero, we will not use the shared iterator.
 	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
 
 	if full {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
@@ -532,12 +484,9 @@ func (sf *IteratorDatastore) Read(
 	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
-		span.SetAttributes(attribute.String("bypassed", "true"))
 		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
-
-	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
 		storagewrappersutil.OperationRead, sf.method, strconv.FormatBool(!created),
