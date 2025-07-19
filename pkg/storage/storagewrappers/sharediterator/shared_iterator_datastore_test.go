@@ -65,10 +65,7 @@ func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
 	staticIter := storage.NewStaticTupleIterator(tuples)
 
 	// Create shared iterator with cleanup function
-	sharedIter := new(sharedIterator)
-	initSharedIterator(sharedIter, staticIter, func() {
-		// Cleanup function - no-op for benchmark
-	})
+	sharedIter := newSharedIterator(staticIter)
 	defer sharedIter.Stop()
 
 	b.ResetTimer()
@@ -121,10 +118,7 @@ func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
 	staticIter := storage.NewStaticTupleIterator(tuples)
 
 	// Create shared iterator with cleanup function
-	sharedIter := new(sharedIterator)
-	initSharedIterator(sharedIter, staticIter, func() {
-		// Cleanup function - no-op for benchmark
-	})
+	sharedIter := newSharedIterator(staticIter)
 	defer sharedIter.Stop()
 
 	b.ResetTimer()
@@ -173,8 +167,7 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 
 	b.Run("SharedIterator", func(b *testing.B) {
 		staticIter := storage.NewStaticTupleIterator(tuples)
-		sharedIter := new(sharedIterator)
-		initSharedIterator(sharedIter, staticIter, func() {})
+		sharedIter := newSharedIterator(staticIter)
 		defer sharedIter.Stop()
 
 		b.ResetTimer()
