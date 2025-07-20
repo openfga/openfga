@@ -109,7 +109,7 @@ project:
       primary: true
   documentation:
     quickstart-guide: https://openfga.dev/docs/getting-started
-    detailed-guide: https://openfga.dev/docs
+    detailed-guide: https://openfga.dev/docs/getting-started/setup-openfga/overview
     code-of-conduct: https://github.com/cncf/foundation/blob/main/code-of-conduct.md
     release-process: https://github.com/openfga/openfga/blob/main/RELEASES.md
     support-policy: https://openfga.dev/community
