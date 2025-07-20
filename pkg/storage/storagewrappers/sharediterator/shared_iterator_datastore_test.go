@@ -75,8 +75,9 @@ func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			// Clone the shared iterator for each goroutine
-			clonedIter := sharedIter.clone()
-			if clonedIter == nil {
+			var clonedIter sharedIterator
+			cloned := sharedIter.clone(&clonedIter)
+			if !cloned {
 				b.Fatal("Failed to clone shared iterator")
 			}
 
@@ -126,8 +127,9 @@ func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			// Clone the shared iterator for each goroutine
-			clonedIter := sharedIter.clone()
-			if clonedIter == nil {
+			var clonedIter sharedIterator
+			cloned := sharedIter.clone(&clonedIter)
+			if !cloned {
 				b.Fatal("Failed to clone shared iterator")
 			}
 
@@ -173,8 +175,9 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			clonedIter := sharedIter.clone()
-			if clonedIter == nil {
+			var clonedIter sharedIterator
+			cloned := sharedIter.clone(&clonedIter)
+			if !cloned {
 				b.Fatal("Failed to clone shared iterator")
 			}
 
@@ -394,13 +397,11 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 }
 
 // helper function to validate the single client case.
-func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStorage *sync.Map, iter storage.TupleIterator, expected []*openfgav1.Tuple) {
+func helperValidateSingleClient(ctx context.Context, t *testing.T, iter storage.TupleIterator, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
-
-	require.NotEmpty(t, length(internalStorage))
 
 	var actual []*openfgav1.Tuple
 
@@ -421,25 +422,19 @@ func helperValidateSingleClient(ctx context.Context, t *testing.T, internalStora
 		actual = append(actual, tup)
 	}
 
-	require.NotEmpty(t, length(internalStorage))
-
 	iter.Stop() // has to be sync otherwise the assertion fails
 
 	if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-want +got):\n%s", diff)
 	}
-	// make sure the internal map is deallocated
-
-	require.Empty(t, length(internalStorage))
 }
 
-func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalStorage *sync.Map, iterInfos []testIteratorInfo, expected []*openfgav1.Tuple) {
+func helperValidateMultipleClients(ctx context.Context, t *testing.T, iterInfos []testIteratorInfo, expected []*openfgav1.Tuple) {
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
 
-	require.NotEmpty(t, length(internalStorage))
 	for i := 0; i < len(iterInfos); i++ {
 		require.NoError(t, iterInfos[i].err)
 		require.NotNil(t, iterInfos[i].iter)
@@ -471,20 +466,6 @@ func helperValidateMultipleClients(ctx context.Context, t *testing.T, internalSt
 
 	err := p.Wait()
 	require.NoError(t, err)
-
-	// make sure the internal map has not deallocated
-
-	require.NotEmpty(t, length(internalStorage))
-
-	for i, iterInfo := range iterInfos {
-		iterInfo.iter.Stop()
-
-		if i < len(iterInfos)-1 {
-			require.NotEmpty(t, length(internalStorage))
-		} else {
-			require.Empty(t, length(internalStorage))
-		}
-	}
 }
 
 func TestSharedIteratorDatastore_Read(t *testing.T) {
@@ -520,7 +501,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, &internalStorage.read, iter, tuples)
+		helperValidateSingleClient(ctx, t, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -549,7 +530,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, &internalStorage.read, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -571,8 +552,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		// subsequent request will return the same result
 		_, err = ds.Read(ctx, storeID, tk1, storage.ReadOptions{})
 		require.Error(t, err)
-
-		require.Empty(t, length(&internalStorage.read))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -588,8 +567,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.Read(ctx, storeID, tk, storage.ReadOptions{})
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&internalStorage.read))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -614,8 +591,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.read))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -676,7 +651,6 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&ds.internalStorage.read))
 	})
 }
 
@@ -723,7 +697,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, &internalStorage.rut, iter, tuples)
+		helperValidateSingleClient(ctx, t, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -750,7 +724,7 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, &internalStorage.rut, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, iterInfos, tuples)
 	})
 
 	t.Run("error_when_querying", func(t *testing.T) {
@@ -777,8 +751,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		// subsequent call should also return error
 		_, err = ds.ReadUsersetTuples(ctx, storeID, filter1, options)
 		require.Error(t, err)
-
-		require.Empty(t, length(&internalStorage.rut))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -793,8 +765,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.ReadUsersetTuples(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&internalStorageLimit.rut))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -817,8 +787,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		iter, err := ds.ReadUsersetTuples(ctx, storeID, filter, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.rut))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -877,7 +845,6 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&ds.internalStorage.rut))
 	})
 }
 
@@ -924,7 +891,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		helperValidateSingleClient(ctx, t, &internalStorage.rswu, iter, tuples)
+		helperValidateSingleClient(ctx, t, iter, tuples)
 	})
 
 	t.Run("multiple_concurrent_clients", func(t *testing.T) {
@@ -951,7 +918,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			}(i)
 		}
 		wg.Wait()
-		helperValidateMultipleClients(ctx, t, &internalStorage.rswu, iterInfos, tuples)
+		helperValidateMultipleClients(ctx, t, iterInfos, tuples)
 	})
 	t.Run("error_when_querying", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -979,8 +946,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		// other request should also return error
 		_, err = ds.ReadStartingWithUser(ctx, storeID, filter1, options)
 		require.Error(t, err)
-
-		require.Empty(t, length(&internalStorage.rswu))
 	})
 	t.Run("bypass_due_to_map_size_limit", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -995,8 +960,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 			Return(storage.NewStaticTupleIterator(tuples), nil)
 		iter, err := dsLimit.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&internalStorageLimit.rswu))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -1019,8 +982,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		iter, err := ds.ReadStartingWithUser(ctx, storeID, filter, storage.ReadStartingWithUserOptions{Consistency: storage.ConsistencyOptions{
 			Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY}})
 		require.NoError(t, err)
-		// this should not come from the map
-		require.Empty(t, length(&ds.internalStorage.rswu))
 
 		_, ok := iter.(*sharedIterator)
 		require.False(t, ok)
@@ -1040,25 +1001,15 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		iter1, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
-		require.NotEmpty(t, length(&internalStorage.rswu))
-
 		iter2, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 		require.NoError(t, err)
 
-		require.NotEmpty(t, length(&internalStorage.rswu))
-
 		iter1.Stop()
-
-		require.NotEmpty(t, length(&internalStorage.rswu))
 
 		// we call stop more than once
 		iter1.Stop()
 
-		require.NotEmpty(t, length(&internalStorage.rswu))
-
 		iter2.Stop()
-
-		require.Empty(t, length(&internalStorage.rswu))
 	})
 	t.Run("multiple_concurrent_clients_read_and_done", func(t *testing.T) {
 		mockController := gomock.NewController(t)
@@ -1112,7 +1063,6 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 
 		err := p.Wait()
 		require.NoError(t, err)
-		require.Empty(t, length(&internalStorage.rswu))
 	})
 }
 
