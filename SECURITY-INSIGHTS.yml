@@ -1,122 +1,305 @@
 header:
-  schema-version: 1.0.0
-  expiration-date: '2024-12-31T23:23:59.000Z'
-  last-updated: '2024-22-03'
-  last-reviewed: '2024-22-03'
-  commit-hash: e95aa72bf95485e03896709a096ad17f89f6fdad
-  project-url: https://github.com/openfga/openfga
-  project-release: '1.5.1'
-  changelog: https://github.com/openfga/openfga/CHANGELOG.md
-  license: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
-project-lifecycle:
-  status: active
-  roadmap: https://github.com/orgs/openfga/projects/1
-  bug-fixes-only: false
-  core-maintainers:
-  - https://github.com/adriantam
-  - https://github.com/aaguiarz
-  - https://github.com/evansims
-  - https://github.com/ewanharris
-  - https://github.com/curfew-marathon
-  - https://github.com/jimmyjames
-  - https://github.com/jpadilla
-  - https://github.com/justincoh
-  - https://github.com/pdillon
-  - https://github.com/poovamraj
-  - https://github.com/rhamzeh
-  - https://github.com/sergiught
-  - https://github.com/stevehobbsdev
-  - https://github.com/ttrzeng
-  - https://github.com/vic-dev
-  - https://github.com/willvedd
-  - https://github.com/yissellokta
-  - https://github.com/cikasfm
-  - https://github.com/elbuo8
+  schema-version: 2.0.0
+  last-updated: '2025-07-20'
+  last-reviewed: '2025-07-20'
+  url: https://github.com/openfga/openfga
+  comment: |
+    OpenFGA is a high-performance and flexible authorization/permission engine built for developers
+    and inspired by Google Zanzibar. This file contains security insights for the OpenFGA project.
 
-contribution-policy:
-  accepts-pull-requests: true
-  accepts-automated-pull-requests: true
-  automated-tools-list:
-  - automated-tool: dependabot
-    action: allowed
-    path:
-    - .github/workflows
-    - go.mod
-    - go.sum
-    - tools/go.mod
-    - tools/go.sum
-    - Dockerfile
-    - Dockerfile.goreleaser
-  - automated-tool: snyk
-    action: allowed
-    path:
-    - .github/workflows
-    - go.mod
-    - go.sum
-    - tools/go.mod
-    - tools/go.sum
-    - Dockerfile
-    - Dockerfile.goreleaser
-  contributing-policy: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
-  code-of-conduct: https://github.com/cncf/foundation/blob/main/code-of-conduct.md
-documentation:
-- https://openfga.dev
-distribution-points:
-- https://github.com/openfga/openfga
-- https://hub.docker.com/r/openfga/openfga
-security-testing:
-- tool-type: sca
-  tool-name: Dependabot
-  tool-version: latest
-  integration:
-    ad-hoc: false
-    ci: true
-    before-release: true
-  comment: |
-    Dependabot is enabled for this repo.
-- tool-type: sca
-  tool-name: Snyk
-  tool-version: latest
-  integration:
-    ad-hoc: false
-    ci: true
-    before-release: true
-  comment: |
-    Snyk is enabled for this repo.
-- tool-type: sca
-  tool-name: Semgrep
-  tool-version: latest
-  tool-url: https://github.com/openfga/openfga/blob/main/.github/workflows/semgrep.yaml
-  integration:
-    ad-hoc: false
-    ci: true
-    before-release: true
-  comment: |
-    Semgrep is enabled for this repo.
-security-contacts:
-- type: email
-  value: security@openfga.dev
-  primary: true
-vulnerability-reporting:
-  accepts-vulnerability-reports: true
-  email-contact: security@openfga.dev
-  security-policy: https://github.com/openfga/openfga/security/policy
-  bug-bounty-available: false
-dependencies:
-  third-party-packages: true
-  dependencies-lists:
-  - https://github.com/openfga/openfga/blob/main/go.mod
-  - https://github.com/openfga/openfga/blob/main/tools/go.mod
-  sbom:
-  - sbom-file: https://github.com/openfga/openfga/releases/download/v1.5.1/openfga_1.5.1_linux_arm64.tar.gz.sbom
-    sbom-format: SPDX
-    sbom-url: https://github.com/openfga/openfga/releases
-  env-dependencies-policy:
-    policy-url: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
-security-artifacts:
-  threat-model:
-    threat-model-created: false
-  self-assessment:
-    self-assessment-created: true
-    evidence-url: 
-      - https://github.com/cncf/tag-security/blob/main/assessments/projects/openfga/self-assessment.md
+project:
+  name: OpenFGA
+  homepage: https://openfga.dev
+  funding: https://github.com/openfga/.github/blob/main/FUNDING.yml
+  roadmap: https://github.com/orgs/openfga/projects/1
+  steward:
+    uri: https://www.cncf.io
+    comment: |
+      OpenFGA is a Cloud Native Computing Foundation (CNCF) project.
+  administrators:
+    - name: Adrián Tamayo
+      affiliation: OpenFGA
+      email: adrian@openfga.dev
+      social: https://github.com/adriantam
+      primary: true
+    - name: Andrés Aguiar
+      affiliation: OpenFGA
+      email: andres@openfga.dev
+      social: https://github.com/aaguiarz
+      primary: true
+    - name: Evans Sims
+      affiliation: OpenFGA
+      email: evans@openfga.dev
+      social: https://github.com/evansims
+      primary: true
+    - name: Ewan Harris
+      affiliation: OpenFGA
+      email: ewan@openfga.dev
+      social: https://github.com/ewanharris
+      primary: true
+    - name: Jimmy James
+      affiliation: OpenFGA
+      email: jimmy@openfga.dev
+      social: https://github.com/jimmyjames
+      primary: true
+    - name: José Padilla
+      affiliation: OpenFGA
+      email: jose@openfga.dev
+      social: https://github.com/jpadilla
+      primary: true
+    - name: Justin Cohen
+      affiliation: OpenFGA
+      email: justin@openfga.dev
+      social: https://github.com/justincoh
+      primary: true
+    - name: Patrick Dillon
+      affiliation: OpenFGA
+      email: patrick@openfga.dev
+      social: https://github.com/pdillon
+      primary: true
+    - name: Poovamraj
+      affiliation: OpenFGA
+      email: poovamraj@openfga.dev
+      social: https://github.com/poovamraj
+      primary: true
+    - name: Rami Hamzeh
+      affiliation: OpenFGA
+      email: rami@openfga.dev
+      social: https://github.com/rhamzeh
+      primary: true
+    - name: Sergio Gutierrez
+      affiliation: OpenFGA
+      email: sergio@openfga.dev
+      social: https://github.com/sergiught
+      primary: true
+    - name: Steve Hobbs
+      affiliation: OpenFGA
+      email: steve@openfga.dev
+      social: https://github.com/stevehobbsdev
+      primary: true
+    - name: Tricia Trzeng
+      affiliation: OpenFGA
+      email: tricia@openfga.dev
+      social: https://github.com/ttrzeng
+      primary: true
+    - name: Victor Dev
+      affiliation: OpenFGA
+      email: victor@openfga.dev
+      social: https://github.com/vic-dev
+      primary: true
+    - name: Will Vedder
+      affiliation: OpenFGA
+      email: will@openfga.dev
+      social: https://github.com/willvedd
+      primary: true
+    - name: Yisrael Sellem
+      affiliation: OpenFGA
+      email: yisrael@openfga.dev
+      social: https://github.com/yissellokta
+      primary: true
+    - name: Cika Sari
+      affiliation: OpenFGA
+      email: cika@openfga.dev
+      social: https://github.com/cikasfm
+      primary: true
+    - name: Luis Buena
+      affiliation: OpenFGA
+      email: luis@openfga.dev
+      social: https://github.com/elbuo8
+      primary: true
+  documentation:
+    quickstart-guide: https://openfga.dev/docs/getting-started
+    detailed-guide: https://openfga.dev/docs
+    code-of-conduct: https://github.com/cncf/foundation/blob/main/code-of-conduct.md
+    release-process: https://github.com/openfga/openfga/blob/main/RELEASES.md
+    support-policy: https://openfga.dev/community
+    signature-verification: https://github.com/openfga/openfga/releases
+  repositories:
+    - name: OpenFGA
+      url: https://github.com/openfga/openfga
+      comment: |
+        OpenFGA is the core authorization engine repository.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    contact:
+      name: OpenFGA Security Team
+      email: security@openfga.dev
+      primary: true
+    security-policy: https://github.com/openfga/openfga/security/policy
+    comment: |
+      OpenFGA accepts vulnerability reports through GitHub Security Advisories.
+
+repository:
+  url: https://github.com/openfga/openfga
+  status: active
+  bug-fixes-only: false
+  accepts-change-request: true
+  accepts-automated-change-request: true
+  no-third-party-packages: false
+  core-team:
+    - name: Adrián Tamayo
+      affiliation: OpenFGA
+      email: adrian@openfga.dev
+      social: https://github.com/adriantam
+      primary: true
+    - name: Andrés Aguiar
+      affiliation: OpenFGA
+      email: andres@openfga.dev
+      social: https://github.com/aaguiarz
+      primary: true
+    - name: Evans Sims
+      affiliation: OpenFGA
+      email: evans@openfga.dev
+      social: https://github.com/evansims
+      primary: true
+    - name: Ewan Harris
+      affiliation: OpenFGA
+      email: ewan@openfga.dev
+      social: https://github.com/ewanharris
+      primary: true
+    - name: Jimmy James
+      affiliation: OpenFGA
+      email: jimmy@openfga.dev
+      social: https://github.com/jimmyjames
+      primary: true
+    - name: José Padilla
+      affiliation: OpenFGA
+      email: jose@openfga.dev
+      social: https://github.com/jpadilla
+      primary: true
+    - name: Justin Cohen
+      affiliation: OpenFGA
+      email: justin@openfga.dev
+      social: https://github.com/justincoh
+      primary: true
+    - name: Patrick Dillon
+      affiliation: OpenFGA
+      email: patrick@openfga.dev
+      social: https://github.com/pdillon
+      primary: true
+    - name: Poovamraj
+      affiliation: OpenFGA
+      email: poovamraj@openfga.dev
+      social: https://github.com/poovamraj
+      primary: true
+    - name: Rami Hamzeh
+      affiliation: OpenFGA
+      email: rami@openfga.dev
+      social: https://github.com/rhamzeh
+      primary: true
+    - name: Sergio Gutierrez
+      affiliation: OpenFGA
+      email: sergio@openfga.dev
+      social: https://github.com/sergiught
+      primary: true
+    - name: Steve Hobbs
+      affiliation: OpenFGA
+      email: steve@openfga.dev
+      social: https://github.com/stevehobbsdev
+      primary: true
+    - name: Tricia Trzeng
+      affiliation: OpenFGA
+      email: tricia@openfga.dev
+      social: https://github.com/ttrzeng
+      primary: true
+    - name: Victor Dev
+      affiliation: OpenFGA
+      email: victor@openfga.dev
+      social: https://github.com/vic-dev
+      primary: true
+    - name: Will Vedder
+      affiliation: OpenFGA
+      email: will@openfga.dev
+      social: https://github.com/willvedd
+      primary: true
+    - name: Yisrael Sellem
+      affiliation: OpenFGA
+      email: yisrael@openfga.dev
+      social: https://github.com/yissellokta
+      primary: true
+    - name: Cika Sari
+      affiliation: OpenFGA
+      email: cika@openfga.dev
+      social: https://github.com/cikasfm
+      primary: true
+    - name: Luis Buena
+      affiliation: OpenFGA
+      email: luis@openfga.dev
+      social: https://github.com/elbuo8
+      primary: true
+  documentation:
+    contributing-guide: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
+    review-policy: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
+    security-policy: https://github.com/openfga/openfga/security/policy
+    governance: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
+    dependency-management-policy: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
+  license:
+    url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
+    expression: Apache-2.0
+  release:
+    changelog: https://github.com/openfga/openfga/blob/main/CHANGELOG.md
+    automated-pipeline: true
+    attestations:
+      - name: Release SBOM
+        predicate-uri: https://intoto.SPDX
+        location: https://github.com/openfga/openfga/releases
+        comment: SBOM files are generated for each release
+    distribution-points:
+      - uri: https://github.com/openfga/openfga/releases
+        comment: GitHub Release Page
+      - uri: https://hub.docker.com/r/openfga/openfga
+        comment: Docker Hub
+    license:
+      url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
+      expression: Apache-2.0
+  security:
+    assessments:
+      self:
+        evidence: https://github.com/cncf/tag-security/blob/main/assessments/projects/openfga/self-assessment.md
+        date: '2024-12-19'
+        comment: |
+          OpenFGA has completed a CNCF security self-assessment.
+      third-party:
+        - evidence: https://insights.linuxfoundation.org/project/openfga/security
+          date: '2024-12-19'
+          comment: |
+            LFX Insights Security assessment for OpenFGA project.
+    champions:
+      - name: OpenFGA Security Team
+        email: security@openfga.dev
+        primary: true
+    tools:
+      - name: Dependabot
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: |
+          Dependabot is enabled for this repo to automatically update dependencies.
+      - name: Snyk
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: |
+          Snyk is enabled for this repo to scan for vulnerabilities.
+      - name: Semgrep
+        type: SAST
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: |
+          Semgrep is enabled for this repo to perform static analysis.
