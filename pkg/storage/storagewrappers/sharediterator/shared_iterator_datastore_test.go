@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -216,96 +217,6 @@ func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
 	})
 }
 
-func BenchmarkIteratorDatastoreReadLatencyVsDirectAccess(b *testing.B) {
-	ctx := context.Background()
-
-	// Create test data
-	var tks []*openfgav1.TupleKey
-	for i := 0; i < 100; i++ {
-		tks = append(tks, tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i)))
-	}
-
-	var tuples []*openfgav1.Tuple
-	for _, tk := range tks {
-		ts := timestamppb.New(time.Now())
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
-	}
-
-	storeID := ulid.Make().String()
-	tk := tuple.NewTupleKey("document:1", "viewer", "")
-
-	b.Run("SharedIterator_HighContention", func(b *testing.B) {
-		// Setup mock datastore
-		mockController := gomock.NewController(b)
-		defer mockController.Finish()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-
-		// Setup shared iterator datastore
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
-
-		// Mock expects single call due to sharing
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
-				return storage.NewStaticTupleIterator(tuples), nil
-			}).AnyTimes()
-
-		b.ResetTimer()
-		b.SetParallelism(100)
-
-		// Collect latencies in a thread-safe way
-		var latencies []time.Duration
-		var mu sync.Mutex
-
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				start := time.Now()
-				iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-				latency := time.Since(start)
-
-				if err != nil {
-					b.Errorf("Failed to create iterator: %v", err)
-					return
-				}
-
-				// Thread-safe collection of latencies
-				mu.Lock()
-				latencies = append(latencies, latency)
-				mu.Unlock()
-
-				iter.Stop()
-			}
-		})
-
-		b.StopTimer()
-
-		// Report metrics after parallel execution
-		if len(latencies) > 0 {
-			var total time.Duration
-			for _, lat := range latencies {
-				total += lat
-			}
-			avg := total / time.Duration(len(latencies))
-
-			sort.Slice(latencies, func(i, j int) bool {
-				return latencies[i] < latencies[j]
-			})
-
-			p95 := latencies[len(latencies)*95/100]
-			p99 := latencies[len(latencies)*99/100]
-
-			max := latencies[len(latencies)-1]
-
-			b.ReportMetric(float64(avg.Microseconds()), "avg_latency_us")
-			b.ReportMetric(float64(p95.Microseconds()), "p95_latency_us")
-			b.ReportMetric(float64(p99.Microseconds()), "p99_latency_us")
-			b.ReportMetric(float64(max.Microseconds()), "max_latency_us")
-		}
-	})
-}
-
 func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 	ctx := context.Background()
 
@@ -325,7 +236,11 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 
 	for _, concurrency := range concurrencyLevels {
 		b.Run(fmt.Sprintf("Concurrency_%d", concurrency), func(b *testing.B) {
-			// Setup mock datastore
+			var latencies []time.Duration
+			var mu sync.Mutex
+
+			var dbCalls atomic.Int64
+
 			mockController := gomock.NewController(b)
 			defer mockController.Finish()
 			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
@@ -339,38 +254,40 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 			mockDatastore.EXPECT().
 				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
 				DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+					time.Sleep(5 * time.Millisecond)
+					dbCalls.Add(1)
 					return storage.NewStaticTupleIterator(tuples), nil
 				}).AnyTimes()
 
-			b.ResetTimer()
-			b.SetParallelism(concurrency)
+			for b.Loop() {
+				var wg sync.WaitGroup
 
-			// Thread-safe latency collection
-			var latencies []time.Duration
-			var mu sync.Mutex
+				for j := 0; j < concurrency; j++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						start := time.Now()
+						iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+						if err != nil {
+							b.Errorf("Failed to create iterator: %v", err)
+							return
+						}
 
-			b.RunParallel(func(pb *testing.PB) {
-				for pb.Next() {
-					start := time.Now()
-					iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-					latency := time.Since(start)
+						mu.Lock()
+						latencies = append(latencies, time.Since(start))
+						mu.Unlock()
 
-					if err != nil {
-						b.Errorf("Failed to create iterator: %v", err)
-						return
-					}
-
-					mu.Lock()
-					latencies = append(latencies, latency)
-					mu.Unlock()
-
-					iter.Stop()
+						iter.Stop()
+					}()
 				}
-			})
+				wg.Wait()
+			}
 
 			b.StopTimer()
 
-			// Calculate and report statistics after parallel execution
+			// Report metrics
+			b.ReportMetric(float64(dbCalls.Load()), "db_calls")
+
 			if len(latencies) > 0 {
 				sort.Slice(latencies, func(i, j int) bool {
 					return latencies[i] < latencies[j]
@@ -387,10 +304,13 @@ func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
 
 				max := latencies[len(latencies)-1]
 
+				min := latencies[0]
+
 				b.ReportMetric(float64(avg.Microseconds()), "avg_latency_us")
 				b.ReportMetric(float64(p95.Microseconds()), "p95_latency_us")
 				b.ReportMetric(float64(p99.Microseconds()), "p99_latency_us")
 				b.ReportMetric(float64(max.Microseconds()), "max_latency_us")
+				b.ReportMetric(float64(min.Microseconds()), "min_latency_us")
 			}
 		})
 	}
