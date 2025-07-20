@@ -84,7 +84,7 @@ func (g *group) Do(key string, fn func() (*sharedIterator, error)) (*sharedItera
 
 	g.mu.Lock()
 	delete(g.m, key)
-	c.bank = make([]sharedIterator, c.n)
+	c.bank = make([]sharedIterator, atomic.LoadInt64(&c.n))
 	for i := range c.bank {
 		v.clone(&c.bank[i])
 	}
