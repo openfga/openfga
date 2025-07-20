@@ -10,102 +10,131 @@ header:
 project:
   name: OpenFGA
   homepage: https://openfga.dev
-  funding: https://github.com/openfga/.github/blob/main/FUNDING.yml
   roadmap: https://github.com/orgs/openfga/projects/1
   steward:
     uri: https://www.cncf.io
     comment: |
       OpenFGA is a Cloud Native Computing Foundation (CNCF) project.
   administrators:
-    - name: Adrián Tamayo
+    - name: Adrian Tam
       affiliation: OpenFGA
-      email: adrian@openfga.dev
+      email: adrian.tam@okta.com
       social: https://github.com/adriantam
       primary: true
-    - name: Andrés Aguiar
+    - name: Andres Aguiar
       affiliation: OpenFGA
-      email: andres@openfga.dev
+      email: andres.aguiar@okta.com
       social: https://github.com/aaguiarz
       primary: true
-    - name: Evans Sims
+    - name: Dan Cech
+      affiliation: Grafana Labs
+      email: dcech@grafana.com
+      social: https://github.com/DanCech
+      primary: true
+    - name: Evan Sims
       affiliation: OpenFGA
-      email: evans@openfga.dev
+      email: evan.sims@okta.com
       social: https://github.com/evansims
       primary: true
     - name: Ewan Harris
       affiliation: OpenFGA
-      email: ewan@openfga.dev
+      email: ewan.harris@okta.com
       social: https://github.com/ewanharris
       primary: true
-    - name: Jimmy James
+    - name: Jim Anderson
       affiliation: OpenFGA
-      email: jimmy@openfga.dev
+      email: jim.anderson@okta.com
       social: https://github.com/jimmyjames
       primary: true
-    - name: José Padilla
+    - name: Jose Padilla
       affiliation: OpenFGA
-      email: jose@openfga.dev
+      email: jose.padilla@okta.com
       social: https://github.com/jpadilla
+      primary: true
+    - name: Joshua Jones
+      affiliation: OpenFGA
+      email: joshua.jones@okta.com
+      social: https://github.com/senojj
       primary: true
     - name: Justin Cohen
       affiliation: OpenFGA
-      email: justin@openfga.dev
+      email: justin.cohen@okta.com
       social: https://github.com/justincoh
+      primary: true
+    - name: Maurice Ackel
+      affiliation: Netlight
+      email: maurice.ackel@netlight.com
+      social: https://github.com/mauriceackel
       primary: true
     - name: Patrick Dillon
       affiliation: OpenFGA
-      email: patrick@openfga.dev
+      email: patrick.dillon@okta.com
       social: https://github.com/pdillon
       primary: true
-    - name: Poovamraj
+    - name: Poovamraj Thanganadar Thiagarajan
       affiliation: OpenFGA
-      email: poovamraj@openfga.dev
+      email: poovamraj.thanganadarthiagarajan@okta.com
       social: https://github.com/poovamraj
       primary: true
-    - name: Rami Hamzeh
+    - name: Raghd Hamzeh
       affiliation: OpenFGA
-      email: rami@openfga.dev
+      email: raghd.hamzeh@okta.com
       social: https://github.com/rhamzeh
       primary: true
-    - name: Sergio Gutierrez
+    - name: Ryan Quinn
       affiliation: OpenFGA
-      email: sergio@openfga.dev
+      email: ryan.quinn@okta.com
+      social: https://github.com/ryanpq
+      primary: true
+    - name: Sergiu Githea
+      affiliation: OpenFGA
+      email: sergiu.githea@okta.com
       social: https://github.com/sergiught
+      primary: true
+    - name: Siddhant Khare
+      affiliation: Independent
+      email: siddhantkhare2694@gmail.com
+      social: https://github.com/Siddhant-K-code
       primary: true
     - name: Steve Hobbs
       affiliation: OpenFGA
-      email: steve@openfga.dev
+      email: steve.hobbs@okta.com
       social: https://github.com/stevehobbsdev
       primary: true
-    - name: Tricia Trzeng
+    - name: Talent Zeng
       affiliation: OpenFGA
-      email: tricia@openfga.dev
+      email: talent.zeng@okta.com
       social: https://github.com/ttrzeng
       primary: true
-    - name: Victor Dev
+    - name: Tyler Nix
       affiliation: OpenFGA
-      email: victor@openfga.dev
+      email: tyler.nix@okta.com
+      social: https://github.com/tylernix
+      primary: true
+    - name: Victoria Johns
+      affiliation: OpenFGA
+      email: victoria.johns@okta.com
       social: https://github.com/vic-dev
       primary: true
     - name: Will Vedder
       affiliation: OpenFGA
-      email: will@openfga.dev
+      email: will.vedder@okta.com
       social: https://github.com/willvedd
       primary: true
-    - name: Yisrael Sellem
+    - name: Yamil Asusta
       affiliation: OpenFGA
-      email: yisrael@openfga.dev
+      email: yamil.asusta@okta.com
+      social: https://github.com/elbuo8
+      primary: true
+    - name: Yissel Garna
+      affiliation: OpenFGA
+      email: yissel.garma@okta.com
       social: https://github.com/yissellokta
       primary: true
-    - name: Cika Sari
+    - name: Zilvinas Vilutis
       affiliation: OpenFGA
-      email: cika@openfga.dev
+      email: zilvinas.vilutis@okta.com
       social: https://github.com/cikasfm
-      primary: true
-    - name: Luis Buena
-      affiliation: OpenFGA
-      email: luis@openfga.dev
-      social: https://github.com/elbuo8
       primary: true
   documentation:
     quickstart-guide: https://openfga.dev/docs/getting-started
