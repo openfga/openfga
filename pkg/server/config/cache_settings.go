@@ -35,8 +35,6 @@ func NewDefaultCacheSettings() CacheSettings {
 		ListObjectsIteratorCacheMaxResults: DefaultListObjectsIteratorCacheMaxResults,
 		ListObjectsIteratorCacheTTL:        DefaultListObjectsIteratorCacheTTL,
 		SharedIteratorEnabled:              DefaultSharedIteratorEnabled,
-		SharedIteratorLimit:                DefaultSharedIteratorLimit,
-		SharedIteratorTTL:                  DefaultSharedIteratorTTL,
 	}
 }
 

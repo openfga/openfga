@@ -92,10 +92,7 @@ const (
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
-	DefaultSharedIteratorEnabled          = false
-	DefaultSharedIteratorLimit            = 1000000
-	DefaultSharedIteratorTTL              = 4 * time.Minute
-	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
+	DefaultSharedIteratorEnabled = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -758,7 +755,6 @@ func DefaultConfig() *Config {
 		},
 		SharedIterator: SharedIteratorConfig{
 			Enabled: DefaultSharedIteratorEnabled,
-			Limit:   DefaultSharedIteratorLimit,
 		},
 		CacheController: CacheControllerConfig{
 			Enabled: DefaultCacheControllerConfigEnabled,

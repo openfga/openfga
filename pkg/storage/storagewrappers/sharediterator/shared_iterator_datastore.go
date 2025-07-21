@@ -13,7 +13,6 @@ import (
 
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers/storagewrappersutil"
 )
@@ -43,11 +42,6 @@ var (
 		Name:      "shared_iterator_count",
 		Help:      "The current number of items of shared iterator.",
 	})
-)
-
-const (
-	defaultSharedIteratorLimit = 1000000
-	defaultIteratorTargetSize  = 1000
 )
 
 type call struct {
@@ -104,37 +98,9 @@ type Storage struct {
 	rswu group
 
 	rut group
-
-	// limit is the maximum number of items that can be stored in the storage.
-	// If the number of items exceeds this limit, new iterators will not be created and the request will be bypassed.
-	// This is to prevent memory exhaustion and ensure that the storage does not grow indefinitely.
-	limit int64
-
-	// ctr is an atomic counter that keeps track of the number of items in the storage.
-	// It is incremented when a new iterator is created and decremented when an iterator is removed.
-	// This counter is used to determine if the storage is full and if new iterators should be bypassed.
-	// It is also used to monitor the number of active iterators in the system.
-	ctr atomic.Int64
 }
 
 type DatastoreStorageOpt func(*Storage)
-
-// WithSharedIteratorDatastoreStorageLimit sets the limit on the number of items in SF iterator iters.
-func WithSharedIteratorDatastoreStorageLimit(limit int) DatastoreStorageOpt {
-	return func(b *Storage) {
-		b.limit = int64(limit)
-	}
-}
-
-func NewSharedIteratorDatastoreStorage(opts ...DatastoreStorageOpt) *Storage {
-	newStorage := &Storage{
-		limit: defaultSharedIteratorLimit,
-	}
-	for _, opt := range opts {
-		opt(newStorage)
-	}
-	return newStorage
-}
 
 type IteratorDatastoreOpt func(*IteratorDatastore)
 
@@ -142,15 +108,6 @@ type IteratorDatastoreOpt func(*IteratorDatastore)
 func WithSharedIteratorDatastoreLogger(logger logger.Logger) IteratorDatastoreOpt {
 	return func(b *IteratorDatastore) {
 		b.logger = logger
-	}
-}
-
-// WithMaxAdmissionTime sets the maximum duration for which shared iterator allows clone.
-// After this period, clone will fail and fall back to non-shared iterator. This is done
-// to prevent stale data if there are very long-running requests.
-func WithMaxAdmissionTime(maxAdmissionTime time.Duration) IteratorDatastoreOpt {
-	return func(b *IteratorDatastore) {
-		b.maxAdmissionTime = maxAdmissionTime
 	}
 }
 
@@ -177,9 +134,6 @@ type IteratorDatastore struct {
 
 	// internalStorage is used to store shared iterators and manage their lifecycle.
 	internalStorage *Storage
-
-	// maxAdmissionTime is the maximum duration for which shared iterator allows clone.
-	maxAdmissionTime time.Duration
 }
 
 // NewSharedIteratorDatastore creates a new IteratorDatastore with the given inner RelationshipTupleReader and internal storage.
@@ -192,7 +146,6 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		logger:                  logger.NewNoopLogger(),
 		internalStorage:         internalStorage,
 		method:                  "",
-		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
 	}
 
 	for _, opt := range opts {
@@ -221,14 +174,6 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	cacheKey, err := storagewrappersutil.ReadStartingWithUserKey(store, filter)
 	if err != nil {
 		return nil, err
-	}
-
-	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
-
-	if full {
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadStartingWithUser).Inc()
-		return sf.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
 	}
 
 	it, err := sf.internalStorage.rswu.Do(cacheKey, func() (*sharedIterator, error) {
@@ -266,14 +211,6 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
 
-	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
-
-	if full {
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
-		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-	}
-
 	it, err := sf.internalStorage.rut.Do(cacheKey, func() (*sharedIterator, error) {
 		it, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
 		if err != nil {
@@ -308,14 +245,6 @@ func (sf *IteratorDatastore) Read(
 	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
-
-	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
-
-	if full {
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
-	}
 
 	it, err := sf.internalStorage.read.Do(cacheKey, func() (*sharedIterator, error) {
 		it, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)

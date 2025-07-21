@@ -50,14 +50,12 @@ func NewSharedDatastoreResources(
 	opts ...SharedDatastoreResourcesOpt,
 ) (*SharedDatastoreResources, error) {
 	s := &SharedDatastoreResources{
-		WaitGroup:         &sync.WaitGroup{},
-		SingleflightGroup: sharedSf,
-		ServerCtx:         sharedCtx,
-		CacheController:   cachecontroller.NewNoopCacheController(),
-		Logger:            logger.NewNoopLogger(),
-		SharedIteratorStorage: sharediterator.NewSharedIteratorDatastoreStorage(
-			sharediterator.WithSharedIteratorDatastoreStorageLimit(
-				int(settings.SharedIteratorLimit))),
+		WaitGroup:             &sync.WaitGroup{},
+		SingleflightGroup:     sharedSf,
+		ServerCtx:             sharedCtx,
+		CacheController:       cachecontroller.NewNoopCacheController(),
+		Logger:                logger.NewNoopLogger(),
+		SharedIteratorStorage: new(sharediterator.Storage),
 	}
 
 	if settings.ShouldCreateNewCache() {
