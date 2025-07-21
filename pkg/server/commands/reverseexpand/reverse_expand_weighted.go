@@ -297,13 +297,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 ) error {
 	span := trace.SpanFromContext(ctx)
 
-	// This map is used for memoization of database queries for this branch of the reverse expansion.
-	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
-	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, jobDedupeMap)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -335,7 +332,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, jobDedupeMap)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
 				if err != nil {
 					return err
 				}
@@ -369,7 +366,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
-	jobDedupeMap *sync.Map,
 ) ([]queryJob, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -394,7 +390,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	currentReq.relationStack = newStack
 
 	// Ensure that we haven't already run this query
-	if isDuplicateQuery(jobDedupeMap, userFilter, typeRel) {
+	if c.isDuplicateQuery(userFilter, typeRel, newStack) {
 		return nil, nil
 	}
 
@@ -483,10 +479,10 @@ func buildUserFilter(
 	return []*openfgav1.ObjectRelation{filter}, nil
 }
 
-func isDuplicateQuery(
-	dedupeMap *sync.Map,
+func (c *ReverseExpandQuery) isDuplicateQuery(
 	userFilter []*openfgav1.ObjectRelation,
 	typeRel string,
+	relationStack stack.Stack[typeRelEntry],
 ) bool {
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
@@ -495,8 +491,18 @@ func isDuplicateQuery(
 		return current.String() + accumulator
 	})
 
+	// Also need to consider the query's context, as it is possible that many different branches end at the
+	// same leaf or have a common ancestor as part of a unique traversal, and we don't want to kill a unique branch.
+	stackStr := ""
+	for relationStack != nil {
+		var val typeRelEntry
+		val, relationStack = stack.Pop(relationStack)
+		stackStr += fmt.Sprintf("%v", val)
+	}
+	key += stackStr
+
 	key += relation + objectType
-	_, loaded := dedupeMap.LoadOrStore(key, struct{}{})
+	_, loaded := c.queryDedupeMap.LoadOrStore(key, struct{}{})
 
 	return loaded
 }

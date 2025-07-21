@@ -138,6 +138,10 @@ type ReverseExpandQuery struct {
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
 
+	// queryDedupeMap prevents multiple branches of exploration from running
+	// the same queries, since multiple leaf nodes can have a common ancestor
+	queryDedupeMap *sync.Map
+
 	// localCheckResolver allows reverse expand to call check locally
 	localCheckResolver   graph.CheckRewriteResolver
 	optimizationsEnabled bool
@@ -194,6 +198,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		queryDedupeMap:      new(sync.Map),
 		localCheckResolver:  graph.NewLocalChecker(),
 	}
 
@@ -222,12 +227,16 @@ type ResolutionMetadata struct {
 
 	// WasThrottled indicates whether the request was throttled
 	WasThrottled *atomic.Bool
+
+	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
+	WasWeightedGraphUsed *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
 	return &ResolutionMetadata{
-		DispatchCounter: new(atomic.Uint32),
-		WasThrottled:    new(atomic.Bool),
+		DispatchCounter:      new(atomic.Uint32),
+		WasThrottled:         new(atomic.Bool),
+		WasWeightedGraphUsed: new(atomic.Bool),
 	}
 }
 
@@ -399,6 +408,9 @@ func (c *ReverseExpandQuery) execute(
 				typeRel,
 				sourceUserType,
 			)
+
+			// Set value to indicate that the weighted graph was used
+			resolutionMetadata.WasWeightedGraphUsed.Store(true)
 
 			return c.loopOverEdges(
 				ctx,
