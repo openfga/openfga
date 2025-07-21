@@ -395,6 +395,8 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 // clone creates a new shared iterator that shares the same context, cancellation function, and other fields.
 // It increments the reference count and returns a new instance of the shared iterator.
 // If the original iterator has been stopped, it returns false, indicating that the clone could not be created.
+//
+//nolint:unparam
 func (s *sharedIterator) clone(i *sharedIterator) bool {
 	s.mu.Lock()
 	if s.stopped {
