@@ -91,10 +91,10 @@ func (g *group) Do(key string, fn func() (*sharedIterator, error)) (*sharedItera
 	return v, err
 }
 
-// Storage is a simple in-memory storage for shared iterators.
-// It uses a sync.Map to store iterators and an atomic counter to keep track of the number of items.
-// The limit is set to defaultSharedIteratorLimit, which can be overridden by the user.
-// The storage is used to share iterators across multiple requests, allowing for efficient reuse of iterators.
+// Storage manages shared iterators using a single-flight pattern.
+// It contains separate single-flight groups for different iterator operations,
+// ensuring that only one goroutine creates an iterator for a given key at a time
+// while other goroutines wait and receive cloned instances.
 type Storage struct {
 	// read is a single-flight group for the iterator datastore read operation.
 	read group
