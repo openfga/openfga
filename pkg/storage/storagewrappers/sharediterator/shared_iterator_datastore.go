@@ -366,7 +366,7 @@ type sharedIterator struct {
 	refs *atomic.Int64
 }
 
-// initSharedIterator creates a new shared iterator from the given storage.TupleIterator.
+// newSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	var aw await
