@@ -30,12 +30,6 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "method"})
-
-	sharedIteratorBypassed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: build.ProjectName,
-		Name:      "shared_iterator_bypassed",
-		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit OR max admission time has passed.",
-	}, []string{"operation"})
 )
 
 // call is a structure that holds the state of a single-flight call.
@@ -250,7 +244,6 @@ func (sf *IteratorDatastore) Read(
 	store string,
 	tupleKey *openfgav1.TupleKey,
 	options storage.ReadOptions) (storage.TupleIterator, error) {
-
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
