@@ -36,12 +36,6 @@ var (
 		Name:      "shared_iterator_bypassed",
 		Help:      "Total number of iterators bypassed by the shared iterator layer because the internal map size exceed specified limit OR max admission time has passed.",
 	}, []string{"operation"})
-
-	sharedIteratorCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Namespace: build.ProjectName,
-		Name:      "shared_iterator_count",
-		Help:      "The current number of items of shared iterator.",
-	})
 )
 
 // call is a structure that holds the state of a single-flight call.
