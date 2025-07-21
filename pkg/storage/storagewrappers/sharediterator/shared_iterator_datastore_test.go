@@ -1152,7 +1152,7 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 
 		wg.Add(1)
 		go func() {
-			wg.Done()
+			defer wg.Done()
 			iter3, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
