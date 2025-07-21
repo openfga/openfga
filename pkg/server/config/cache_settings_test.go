@@ -237,16 +237,6 @@ func TestCacheSettings(t *testing.T) {
 				expectedCreateShadowCacheController: false,
 			},
 			{
-				name: "not_when_sha",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					CacheControllerEnabled:  true,
-					ShadowCheckCacheEnabled: true,
-				},
-				expectedCreateShadowCacheController: true,
-			},
-			{
 				name: "when_limit_over_zero_and_query_cache_enabled",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit:         10,
@@ -257,20 +247,30 @@ func TestCacheSettings(t *testing.T) {
 				expectedCreateShadowCacheController: true,
 			},
 			{
-				name: "when_limit_over_zero_and_iterator_cache_enabled",
+				name: "not_when_shadow_check_disabled",
 				cacheSettings: CacheSettings{
 					CheckCacheLimit:           10,
 					CheckIteratorCacheEnabled: true,
 					CacheControllerEnabled:    true,
-					ShadowCheckCacheEnabled:   true,
+					ShadowCheckCacheEnabled:   false,
 				},
-				expectedCreateShadowCacheController: true,
+				expectedCreateShadowCacheController: false,
+			},
+			{
+				name: "not_when_cache_controller_disabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					CacheControllerEnabled:  false,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedCreateShadowCacheController: false,
 			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got := tt.cacheSettings.ShouldCreateCacheController()
+				got := tt.cacheSettings.ShouldCreateShadowCacheController()
 				assert.Equal(t, tt.expectedCreateShadowCacheController, got)
 			})
 		}
