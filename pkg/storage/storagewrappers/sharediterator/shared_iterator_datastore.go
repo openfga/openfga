@@ -44,18 +44,33 @@ var (
 	})
 )
 
+// call is a structure that holds the state of a single-flight call.
 type call struct {
+	// bank holds the shared iterators that are allocated for the waiting goroutines.
 	bank []sharedIterator
-	n    int64
-	wg   sync.WaitGroup
-	err  error
+
+	// n holds the number of active goroutines waiting for the shared iterator.
+	n int64
+
+	// wg is a wait group that blocks additional goroutines until the single-flight call is completed.
+	wg sync.WaitGroup
+
+	// err holds any error that occurred during the single-flight call.
+	err error
 }
 
+// group is a structure that manages a group of single-flight calls.
 type group struct {
+	// mu is a mutex that protects access to the map of calls.
 	mu sync.Mutex
-	m  map[string]*call
+
+	// m is a map that holds the active single-flight calls.
+	m map[string]*call
 }
 
+// Do executes the provided function fn for the given key, ensuring that only one goroutine can execute it at a time.
+// If another goroutine is already executing the function for the same key, it will wait for that goroutine to finish.
+// The result of the function execution is cloned to all waiting goroutines.
 func (g *group) Do(key string, fn func() (*sharedIterator, error)) (*sharedIterator, error) {
 	g.mu.Lock()
 	if g.m == nil {
@@ -93,10 +108,13 @@ func (g *group) Do(key string, fn func() (*sharedIterator, error)) (*sharedItera
 // The limit is set to defaultSharedIteratorLimit, which can be overridden by the user.
 // The storage is used to share iterators across multiple requests, allowing for efficient reuse of iterators.
 type Storage struct {
+	// read is a single-flight group for the iterator datastore read operation.
 	read group
 
+	// rswu is a single-flight group for the iterator datastore read starting with user operation.
 	rswu group
 
+	// rut is a single-flight group for the iterator datastore read user tuples operation.
 	rut group
 }
 
@@ -389,9 +407,7 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 
 // clone creates a new shared iterator that shares the same context, cancellation function, and other fields.
 // It increments the reference count and returns a new instance of the shared iterator.
-// If the reference count reaches zero, it returns nil, indicating that the iterator has been stopped.
-// This allows multiple goroutines to share the same iterator instance without interfering with each other.
-// The clone method is thread-safe and ensures that the reference count is incremented atomically.
+// If the original iterator has been stopped, it returns false, indicating that the clone could not be created.
 func (s *sharedIterator) clone(i *sharedIterator) bool {
 	s.mu.Lock()
 	if s.stopped {
