@@ -31,12 +31,15 @@ func TestRequestStorageWrapper(t *testing.T) {
 		}
 
 		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads, Method: apimethod.Check},
-			&shared.SharedDatastoreResources{
-				CheckCache: mockCache,
-				Logger:     logger.NewNoopLogger(),
-			}, config.CacheSettings{
-				CheckIteratorCacheEnabled: true,
-				CheckCacheLimit:           1,
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache: mockCache,
+					Logger:     logger.NewNoopLogger(),
+				},
+				CacheSettings: config.CacheSettings{
+					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:           1,
+				},
 			},
 		)
 		require.NotNil(t, br)
@@ -70,14 +73,17 @@ func TestRequestStorageWrapper(t *testing.T) {
 		sharedIteratorStorage := sharediterator.NewSharedIteratorDatastoreStorage()
 
 		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads, Method: apimethod.Check},
-			&shared.SharedDatastoreResources{
-				CheckCache:            mockCache,
-				Logger:                logger.NewNoopLogger(),
-				SharedIteratorStorage: sharedIteratorStorage,
-			}, config.CacheSettings{
-				CheckIteratorCacheEnabled: true,
-				CheckCacheLimit:           1,
-				SharedIteratorEnabled:     true,
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache:            mockCache,
+					Logger:                logger.NewNoopLogger(),
+					SharedIteratorStorage: sharedIteratorStorage,
+				},
+				CacheSettings: config.CacheSettings{
+					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:           1,
+					SharedIteratorEnabled:     true,
+				},
 			},
 		)
 		require.NotNil(t, br)
@@ -113,8 +119,10 @@ func TestRequestStorageWrapper(t *testing.T) {
 				Method:      apimethod.Check,
 				Concurrency: maxConcurrentReads,
 			},
-			&shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()},
-			config.CacheSettings{},
+			DataResourceConfiguration{
+				Resources:     &shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()},
+				CacheSettings: config.CacheSettings{},
+			},
 		)
 		require.NotNil(t, br)
 
