@@ -345,7 +345,7 @@ type sharedIterator struct {
 
 	// stopped is an atomic boolean that indicates whether the current iterator instance has been stopped.
 	// stopped is a value type because it is not shared between iterator instances.
-	stopped atomic.Bool
+	stopped bool
 
 	// await ensures that only one goroutine can fetch items at a time.
 	// It is used to block until new items are available or the context is done.
@@ -359,19 +359,12 @@ type sharedIterator struct {
 
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
-
-	// closed indicates whether the shared iterator's internal iterator has been stopped.
-	// It is used to prevent future clones from being created if the iterator has already been closed.
-	// This is a pointer value because it is shared between all clones of the iterator.
-	closed *atomic.Bool
 }
 
 // initSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	var aw await
-
-	var closed atomic.Bool
 
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
@@ -387,11 +380,10 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	pstate.Store(&state)
 
 	return &sharedIterator{
-		await:  &aw,
-		ir:     ir,
-		state:  &pstate,
-		refs:   &refs,
-		closed: &closed,
+		await: &aw,
+		ir:    ir,
+		state: &pstate,
+		refs:  &refs,
 	}
 }
 
@@ -401,20 +393,18 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 // This allows multiple goroutines to share the same iterator instance without interfering with each other.
 // The clone method is thread-safe and ensures that the reference count is incremented atomically.
 func (s *sharedIterator) clone(i *sharedIterator) bool {
-	s.refs.Add(1)
-
-	if s.closed.Load() {
-		// if the shared iterator's internal iterator has been stopped,
-		// we return nil to indicate that the iterator is no longer available.
-		s.refs.Add(-1)
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
 		return false
 	}
+	s.refs.Add(1)
+	s.mu.Unlock()
 
 	i.await = s.await
 	i.ir = s.ir
 	i.state = s.state
 	i.refs = s.refs
-	i.closed = s.closed
 
 	return true
 }
@@ -471,7 +461,7 @@ func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) 
 		return nil, ctx.Err()
 	}
 
-	if s.stopped.Load() {
+	if s.stopped {
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -527,7 +517,11 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // It decrements the reference count and checks if it should clean up the iterator.
 // If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
 func (s *sharedIterator) Stop() {
-	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.stopped && s.refs.Add(-1) == 0 {
+		s.stopped = true
 		s.ir.Stop()
 	}
 }
