@@ -365,6 +365,9 @@ func (q *ListObjectsQuery) evaluate(
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
 			}
+			resolutionMetadata.WasWeightedGraphUsed.Store(
+				reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load(),
+			)
 			return nil
 		})
 
