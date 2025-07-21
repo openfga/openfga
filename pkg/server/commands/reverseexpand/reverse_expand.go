@@ -138,6 +138,10 @@ type ReverseExpandQuery struct {
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
 
+	// queryDedupeMap prevents multiple branches of exploration from running
+	// the same queries, since multiple leaf nodes can have a common ancestor
+	queryDedupeMap *sync.Map
+
 	// localCheckResolver allows reverse expand to call check locally
 	localCheckResolver   graph.CheckRewriteResolver
 	optimizationsEnabled bool
@@ -194,6 +198,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		queryDedupeMap:      new(sync.Map),
 		localCheckResolver:  graph.NewLocalChecker(),
 	}
 
