@@ -524,7 +524,7 @@ func (s *sharedIterator) Stop() {
 	defer s.mu.Unlock()
 
 	if !s.stopped && s.refs.Add(-1) == 0 {
-		s.stopped = true
 		s.ir.Stop()
 	}
+	s.stopped = true
 }
