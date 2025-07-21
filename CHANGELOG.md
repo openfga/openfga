@@ -22,7 +22,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed message in log and slight refactor in list objects intersection/exclusion. [#2566](https://github.com/openfga/openfga/pull/2566)
 - Shadow list objects' check resolver should use its own cache. [#2574](https://github.com/openfga/openfga/pull/2574)
 
-
 ## [1.9.0] - 2025-07-03
 ### Added
 - Add separate reverse_expand path utilizing the weighted graph. Gated behind `enable-list-objects-optimizations` flag. [#2529](https://github.com/openfga/openfga/pull/2529)
