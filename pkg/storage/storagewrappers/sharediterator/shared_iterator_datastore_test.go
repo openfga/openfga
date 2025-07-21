@@ -792,8 +792,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter1, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
-			require.NoError(t, err)
+			iter1, _ := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 			iter1.Stop()
 			iter1.Stop()
 		}()
@@ -801,8 +800,7 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter2, err := ds.ReadStartingWithUser(ctx, storeID, filter, options)
-			require.NoError(t, err)
+			iter2, _ := ds.ReadStartingWithUser(ctx, storeID, filter, options)
 			iter2.Stop()
 			iter2.Stop()
 		}()
@@ -1138,48 +1136,51 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 
 		var wg sync.WaitGroup
 
+		var iter1, iter2, iter3 storage.Iterator[*openfgav1.Tuple]
+
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			item1a, err := iter1.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1a)
-			iter1.Stop()
-			_, err = iter1.Next(ctx)
-			require.ErrorIs(t, err, storage.ErrIteratorDone)
+			iter1, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			item1b, err := iter2.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1b)
-			item2a, err := iter2.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleTwo, item2a)
-			item3a, err := iter2.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleThree, item3a)
-			iter2.Stop()
+			iter2, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			wg.Done()
-			iter3, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			item1c, err := iter3.Head(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1c)
-			iter3.Stop()
+			iter3, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Wait()
+
+		item1a, err := iter1.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1a)
+		iter1.Stop()
+		_, err = iter1.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+
+		item1b, err := iter2.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1b)
+		item2a, err := iter2.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleTwo, item2a)
+		item3a, err := iter2.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleThree, item3a)
+		iter2.Stop()
+
+		require.NoError(t, err)
+		item1c, err := iter3.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1c)
+		iter3.Stop()
 	})
 
 	t.Run("error_in_first_item", func(t *testing.T) {
@@ -1204,33 +1205,35 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 				return mockIterator, nil
 			})
 
+		var iter1, iter2 storage.Iterator[*openfgav1.Tuple]
+
 		var wg sync.WaitGroup
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			_, err = iter1.Head(ctx)
-			require.ErrorIs(t, err, mockedError)
-			_, err = iter1.Head(ctx)
-			require.ErrorIs(t, err, mockedError)
-			_, err = iter1.Next(ctx)
-			require.ErrorIs(t, err, mockedError)
-			iter1.Stop()
+			iter1, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			_, err = iter2.Head(ctx)
-			require.ErrorIs(t, err, mockedError)
-			iter2.Stop()
+			iter2, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Wait()
+
+		_, err := iter1.Head(ctx)
+		require.ErrorIs(t, err, mockedError)
+		_, err = iter1.Head(ctx)
+		require.ErrorIs(t, err, mockedError)
+		_, err = iter1.Next(ctx)
+		require.ErrorIs(t, err, mockedError)
+		iter1.Stop()
+
+		_, err = iter2.Head(ctx)
+		require.ErrorIs(t, err, mockedError)
+		iter2.Stop()
 	})
 
 	t.Run("error_in_second_item", func(t *testing.T) {
@@ -1258,57 +1261,58 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 				return mockIterator, nil
 			})
 
+		var iter1, iter2, iter3 storage.Iterator[*openfgav1.Tuple]
+
 		var wg sync.WaitGroup
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			// iter1 will be stopped later (but before iter3 is created)
-			item1a, err := iter1.Head(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1a)
-			item1aNext, err := iter1.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1aNext)
-			_, err = iter1.Next(ctx)
-			require.ErrorIs(t, err, mockedError)
-			iter1.Stop()
+			iter1, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			// client 2
-			iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			item1b, err := iter2.Head(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1b)
-			item1NextB, err := iter2.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1NextB)
-			_, err = iter2.Next(ctx)
-			require.ErrorIs(t, err, mockedError)
-			iter2.Stop()
+			iter2, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			// client 3
-			iter3, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			item1NextC, err := iter3.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, item1NextC)
-			_, err = iter3.Next(ctx)
-			require.ErrorIs(t, err, mockedError)
-			iter3.Stop()
+			iter3, _ = ds.Read(ctx, storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Wait()
+
+		item1a, err := iter1.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1a)
+		item1aNext, err := iter1.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1aNext)
+		_, err = iter1.Next(ctx)
+		require.ErrorIs(t, err, mockedError)
+		iter1.Stop()
+
+		item1b, err := iter2.Head(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1b)
+		item1NextB, err := iter2.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1NextB)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, mockedError)
+		iter2.Stop()
+
+		item1NextC, err := iter3.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, item1NextC)
+		_, err = iter3.Next(ctx)
+		require.ErrorIs(t, err, mockedError)
+		iter3.Stop()
 	})
 
 	t.Run("ignore_context_cancel_error", func(t *testing.T) {
@@ -1334,33 +1338,35 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 				return mockIterator, nil
 			})
 
+		var iter1, iter2 storage.Iterator[*openfgav1.Tuple]
+
 		var wg sync.WaitGroup
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx, cancel := context.WithCancel(context.Background())
-			iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			cancel()
-			_, err = iter1.Next(ctx)
-			require.ErrorIs(t, err, context.Canceled)
-			iter1.Stop()
+			iter1, _ = ds.Read(context.Background(), storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx := context.Background()
-			iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-			require.NoError(t, err)
-			tup1, err := iter2.Next(ctx)
-			require.NoError(t, err)
-			require.Equal(t, tupleOne, tup1)
-			iter2.Stop()
+			iter2, _ = ds.Read(context.Background(), storeID, tk, storage.ReadOptions{})
 		}()
 
 		wg.Wait()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := iter1.Next(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+		iter1.Stop()
+
+		ctx = context.Background()
+		tup1, err := iter2.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, tupleOne, tup1)
+		iter2.Stop()
 	})
 }
 
