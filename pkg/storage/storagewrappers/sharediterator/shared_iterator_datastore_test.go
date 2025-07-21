@@ -34,177 +34,96 @@ type testIteratorInfo struct {
 	err  error
 }
 
-func BenchmarkSharedIteratorWithStaticIterator(b *testing.B) {
+func BenchmarkSharedIteratorLatencyWithDifferentLoads(b *testing.B) {
 	ctx := context.Background()
 
-	// Create test data
-	tks := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		tuple.NewTupleKey("document:2", "viewer", "user:2"),
-		tuple.NewTupleKey("document:3", "viewer", "user:3"),
-		tuple.NewTupleKey("document:4", "viewer", "user:4"),
-		tuple.NewTupleKey("document:5", "viewer", "user:5"),
-	}
-
+	// Create test data similar to the original benchmark
 	var tuples []*openfgav1.Tuple
-	for _, tk := range tks {
+	for i := 0; i < 50; i++ {
+		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "viewer", fmt.Sprintf("user:%d", i))
 		ts := timestamppb.New(time.Now())
 		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
 	}
 
-	// Create a static iterator as the internal iterator
-	staticIter := storage.NewStaticTupleIterator(tuples)
+	// Test with different concurrency levels
+	concurrencyLevels := []int{1, 10, 50, 100, 200, 500}
 
-	// Create shared iterator with cleanup function
-	sharedIter := newSharedIterator(staticIter)
-	defer sharedIter.Stop()
+	for _, concurrency := range concurrencyLevels {
+		b.Run(fmt.Sprintf("Concurrency_%d", concurrency), func(b *testing.B) {
+			var latencies []time.Duration
+			var mu sync.Mutex
 
-	b.ResetTimer()
-
-	b.SetParallelism(100)
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			// Clone the shared iterator for each goroutine
-			var clonedIter sharedIterator
-			cloned := sharedIter.clone(&clonedIter)
-			if !cloned {
-				b.Fatal("Failed to clone shared iterator")
-			}
-
-			// Read all tuples from the cloned iterator
-			for {
-				_, err := clonedIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					b.Fatalf("Unexpected error: %v", err)
-				}
-			}
-
-			clonedIter.Stop()
-		}
-	})
-}
-
-func BenchmarkSharedIteratorConcurrentAccess(b *testing.B) {
-	ctx := context.Background()
-
-	// Create test data
-	tks := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		tuple.NewTupleKey("document:2", "viewer", "user:2"),
-		tuple.NewTupleKey("document:3", "viewer", "user:3"),
-		tuple.NewTupleKey("document:4", "viewer", "user:4"),
-		tuple.NewTupleKey("document:5", "viewer", "user:5"),
-	}
-
-	var tuples []*openfgav1.Tuple
-	for _, tk := range tks {
-		ts := timestamppb.New(time.Now())
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
-	}
-
-	// Create a static iterator as the internal iterator
-	staticIter := storage.NewStaticTupleIterator(tuples)
-
-	// Create shared iterator with cleanup function
-	sharedIter := newSharedIterator(staticIter)
-	defer sharedIter.Stop()
-
-	b.ResetTimer()
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			// Clone the shared iterator for each goroutine
-			var clonedIter sharedIterator
-			cloned := sharedIter.clone(&clonedIter)
-			if !cloned {
-				b.Fatal("Failed to clone shared iterator")
-			}
-
-			// Read all tuples from the cloned iterator
-			for {
-				_, err := clonedIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					b.Fatalf("Unexpected error: %v", err)
-				}
-			}
-
-			clonedIter.Stop()
-		}
-	})
-}
-
-func BenchmarkSharedIteratorVsDirectAccess(b *testing.B) {
-	ctx := context.Background()
-
-	// Create test data
-	tks := []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		tuple.NewTupleKey("document:2", "viewer", "user:2"),
-		tuple.NewTupleKey("document:3", "viewer", "user:3"),
-		tuple.NewTupleKey("document:4", "viewer", "user:4"),
-		tuple.NewTupleKey("document:5", "viewer", "user:5"),
-	}
-
-	var tuples []*openfgav1.Tuple
-	for _, tk := range tks {
-		ts := timestamppb.New(time.Now())
-		tuples = append(tuples, &openfgav1.Tuple{Key: tk, Timestamp: ts})
-	}
-
-	b.Run("SharedIterator", func(b *testing.B) {
-		staticIter := storage.NewStaticTupleIterator(tuples)
-		sharedIter := newSharedIterator(staticIter)
-		defer sharedIter.Stop()
-
-		b.ResetTimer()
-
-		for i := 0; i < b.N; i++ {
-			var clonedIter sharedIterator
-			cloned := sharedIter.clone(&clonedIter)
-			if !cloned {
-				b.Fatal("Failed to clone shared iterator")
-			}
-
-			for {
-				_, err := clonedIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					b.Fatalf("Unexpected error: %v", err)
-				}
-			}
-
-			clonedIter.Stop()
-		}
-	})
-
-	b.Run("DirectStaticIterator", func(b *testing.B) {
-		b.ResetTimer()
-
-		for i := 0; i < b.N; i++ {
+			// Create the shared iterator with a static iterator
 			staticIter := storage.NewStaticTupleIterator(tuples)
+			sharedIter := newSharedIterator(staticIter)
+			defer sharedIter.Stop()
 
-			for {
-				_, err := staticIter.Next(ctx)
-				if err != nil {
-					if errors.Is(err, storage.ErrIteratorDone) {
-						break
-					}
-					b.Fatalf("Unexpected error: %v", err)
+			for b.Loop() {
+				var wg sync.WaitGroup
+
+				for j := 0; j < concurrency; j++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+
+						// Measure clone latency
+						start := time.Now()
+						var clonedIter sharedIterator
+						sharedIter.clone(&clonedIter)
+						cloneLatency := time.Since(start)
+
+						// Measure Next() operation latency
+						nextStart := time.Now()
+						var err error
+						for err == nil {
+							_, err = clonedIter.Next(ctx)
+						}
+						nextLatency := time.Since(nextStart)
+
+						// Total latency for this operation
+						totalLatency := cloneLatency + nextLatency
+
+						if !errors.Is(err, storage.ErrIteratorDone) {
+							b.Errorf("Unexpected error during Next: %v", err)
+						}
+
+						mu.Lock()
+						latencies = append(latencies, totalLatency)
+						mu.Unlock()
+
+						clonedIter.Stop()
+					}()
 				}
+				wg.Wait()
 			}
 
-			staticIter.Stop()
-		}
-	})
+			b.StopTimer()
+
+			// Report metrics
+			if len(latencies) > 0 {
+				sort.Slice(latencies, func(i, j int) bool {
+					return latencies[i] < latencies[j]
+				})
+
+				var total time.Duration
+				for _, lat := range latencies {
+					total += lat
+				}
+				avg := total / time.Duration(len(latencies))
+
+				p95 := latencies[len(latencies)*95/100]
+				p99 := latencies[len(latencies)*99/100]
+				max := latencies[len(latencies)-1]
+				min := latencies[0]
+
+				b.ReportMetric(float64(avg.Microseconds()), "avg_latency_us")
+				b.ReportMetric(float64(p95.Microseconds()), "p95_latency_us")
+				b.ReportMetric(float64(p99.Microseconds()), "p99_latency_us")
+				b.ReportMetric(float64(max.Microseconds()), "max_latency_us")
+				b.ReportMetric(float64(min.Microseconds()), "min_latency_us")
+			}
+		})
+	}
 }
 
 func BenchmarkIteratorDatastoreReadLatencyWithDifferentLoads(b *testing.B) {
