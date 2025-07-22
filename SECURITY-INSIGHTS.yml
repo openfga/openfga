@@ -227,11 +227,6 @@ repository:
       email: raghd.hamzeh@okta.com
       social: https://github.com/rhamzeh
       primary: true
-    - name: Ryan Quinn
-      affiliation: OpenFGA
-      email: ryan.quinn@okta.com
-      social: https://github.com/ryanpq
-      primary: true
     - name: Sergiu Githea
       affiliation: OpenFGA
       email: sergiu.githea@okta.com
