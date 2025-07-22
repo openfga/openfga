@@ -316,6 +316,45 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 	}
 	tk := tuple.NewTupleKey("license:1", "owner", "")
 
+	t.Run("read_error", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := new(Storage)
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()))
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			DoAndReturn(func(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+				time.Sleep(5 * time.Millisecond) // simulate some delay
+				return nil, fmt.Errorf("mock_error")
+			})
+
+		var mu sync.Mutex
+		var errs []error
+		var wg sync.WaitGroup
+
+		for range 50 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}()
+		}
+
+		wg.Wait()
+		require.Len(t, errs, 50)
+		for _, err := range errs {
+			require.Error(t, err)
+			require.EqualError(t, err, "mock_error")
+		}
+	})
+
 	t.Run("single_client", func(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
