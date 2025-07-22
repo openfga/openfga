@@ -69,8 +69,9 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
-	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
+	optimizationsEnabled            bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	useShadowCache                  bool // Indicates that the shadow cache should be used instead of the main cache
+	intersectionAndExclusionEnabled bool // Turns on additional optimizations for Intersections and Exclusions
 }
 
 type ListObjectsResolver interface {
@@ -185,6 +186,12 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	}
 }
 
+func WithListObjectsIntersectionAndExlcusion(enabled bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.intersectionAndExclusionEnabled = enabled
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -217,8 +224,9 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
-		useShadowCache:       false,
+		optimizationsEnabled:            serverconfig.DefaultListObjectsOptimizationsEnabled,
+		intersectionAndExclusionEnabled: serverconfig.DefaultListObjectsIntersectionAndExclusionEnabled,
+		useShadowCache:                  false,
 	}
 
 	for _, opt := range opts {
@@ -350,6 +358,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
 			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
+			reverseexpand.WithIntersectionAndExclusion(q.intersectionAndExclusionEnabled),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

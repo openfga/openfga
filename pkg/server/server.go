@@ -48,6 +48,7 @@ const (
 
 	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
+	ExperimentalIntersectionAndExclusion ExperimentalFeatureFlag = "enable-list-objects-intersection-and-exclusion"
 	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
 	allowedLabel                                                 = "allowed"
 )

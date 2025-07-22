@@ -121,7 +121,13 @@ func newShadowedListObjectsQuery(
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithListObjectsOptimizationsEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{
+			WithListObjectsUseShadowCache(true),
+			WithListObjectsOptimizationsEnabled(true),
+
+			// Disable intersections and exclusions while we troubleshoot performance regression
+			WithListObjectsIntersectionAndExlcusion(false),
+		})...,
 	)
 	if err != nil {
 		return nil, err

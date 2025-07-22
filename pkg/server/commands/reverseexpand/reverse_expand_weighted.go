@@ -245,6 +245,16 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				break
 			}
 
+			// If additional intersection and exclusion optimizations are not enabled,
+			// dispatch and continue to the next edge
+			if !c.intersectionAndExclusionEnabled {
+				pool.Go(func(ctx context.Context) error {
+					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+				})
+				// break switch and continue to the next edge
+				break
+			}
+
 			// If the edge is an operator node, we need to handle it differently.
 			switch toNode.GetLabel() {
 			case weightedGraph.IntersectionOperator:

@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Add `list_objects_optimization_count` metric to list objects requests. [#2524](https://github.com/openfga/openfga/pull/2524)
+- Add `enable-list-objects-intersection-and-exclusion` experimental flag to separate additional optimization. [#2578](https://github.com/openfga/openfga/pull/2578)
 
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)

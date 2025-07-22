@@ -143,8 +143,9 @@ type ReverseExpandQuery struct {
 	queryDedupeMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver   graph.CheckRewriteResolver
-	optimizationsEnabled bool
+	localCheckResolver              graph.CheckRewriteResolver
+	optimizationsEnabled            bool
+	intersectionAndExclusionEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -179,6 +180,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithIntersectionAndExclusion(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.intersectionAndExclusionEnabled = enabled
 	}
 }
 
