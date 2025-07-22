@@ -1215,10 +1215,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.SharedIterator.Enabled)
 
-	val = res.Get("properties.sharedIterator.properties.limit.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.SharedIterator.Limit)
-
 	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
 	require.Len(t, cfg.RequestDurationDatastoreQueryCountBuckets, len(val.Array()))
