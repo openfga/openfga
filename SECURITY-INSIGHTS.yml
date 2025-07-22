@@ -305,7 +305,7 @@ repository:
         comment: |
           OpenFGA has completed a CNCF security self-assessment.
       third-party:
-        - evidence: https://insights.linuxfoundation.org/project/openfga/security
+        - evidence: https://github.com/cncf/tag-security/blob/main/community/assessments/projects/openfga/joint-assessment.md
           date: '2024-12-19'
           comment: |
             LFX Insights Security assessment for OpenFGA project.
