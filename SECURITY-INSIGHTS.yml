@@ -308,7 +308,7 @@ repository:
         - evidence: https://github.com/cncf/tag-security/blob/main/community/assessments/projects/openfga/joint-assessment.md
           date: '2024-12-19'
           comment: |
-            LFX Insights Security assessment for OpenFGA project.
+            Joint assessment with CNCF Tag-Security.
     champions:
       - name: OpenFGA Security Team
         email: security@openfga.dev
