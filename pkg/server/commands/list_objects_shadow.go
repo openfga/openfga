@@ -209,7 +209,8 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 		return
 	}
 
-	// Don't report on requests that fell through to the old reverse_expand (infinite weight requests)
+	// Don't report on requests that fell through to the old reverse_expand
+	// NOTE: remove this once weighted graph code supports infinite weight queries
 	if !shadowRes.ResolutionMetadata.WasWeightedGraphUsed.Load() {
 		return
 	}
