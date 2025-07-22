@@ -628,6 +628,35 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				latency: 0,
 			},
 		},
+		{
+			name: "does_not_log_if_shadow_didnt_run",
+			fields: fields{
+				shadow: &mockListObjectsQuery{
+					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
+						require.NoError(t, ctx.Err()) // context must not be cancelled
+						meta := NewListObjectsResolutionMetadata()
+						meta.WasWeightedGraphUsed.Store(false)
+						return &ListObjectsResponse{ResolutionMetadata: meta}, nil
+					},
+				},
+				shadowPct:     100,
+				shadowTimeout: 1 * time.Second,
+				maxDeltaItems: 0,
+				loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+					mockLogger := mocks.NewMockLogger(ctrl)
+					mockLogger.EXPECT().InfoWithContext(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+					return mockLogger
+				},
+			},
+			args: args{
+				req: &openfgav1.ListObjectsRequest{
+					StoreId:              "req.GetStoreId()",
+					AuthorizationModelId: "req.GetAuthorizationModelId()",
+				},
+				result:  []string{"a", "b", "c"},
+				latency: 77 * time.Millisecond,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
