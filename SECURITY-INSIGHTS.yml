@@ -300,7 +300,7 @@ repository:
   security:
     assessments:
       self:
-        evidence: https://github.com/cncf/tag-security/blob/main/assessments/projects/openfga/self-assessment.md
+        evidence: https://github.com/cncf/tag-security/blob/main/community/assessments/projects/openfga/self-assessment.md
         date: '2024-12-19'
         comment: |
           OpenFGA has completed a CNCF security self-assessment.
