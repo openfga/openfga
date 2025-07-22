@@ -40,6 +40,8 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
+	DefaultShadowCheckCacheEnabled = false
+
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second

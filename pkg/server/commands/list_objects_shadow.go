@@ -121,7 +121,7 @@ func newShadowedListObjectsQuery(
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithListObjectsOptimizationsEnabled(true)})...,
 	)
 	if err != nil {
 		return nil, err

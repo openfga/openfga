@@ -178,4 +178,153 @@ func TestCacheSettings(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("should_create_shadow_cache", func(t *testing.T) {
+		tests := []struct {
+			name                            string
+			cacheSettings                   CacheSettings
+			expectedShouldCreateShadowCache bool
+		}{
+			{
+				name: "not_when_query_cache_disabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         0,
+					CheckQueryCacheEnabled:  false,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedShouldCreateShadowCache: false,
+			},
+			{
+				name: "not_when_shadow_query_cache_disabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					ShadowCheckCacheEnabled: false,
+				},
+				expectedShouldCreateShadowCache: false,
+			},
+			{
+				name: "when_limit_over_zero_and_query_cache_enabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedShouldCreateShadowCache: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := tt.cacheSettings.ShouldCreateShadowNewCache()
+				assert.Equal(t, tt.expectedShouldCreateShadowCache, got)
+			})
+		}
+	})
+
+	t.Run("should_create_shadow_cache_controller", func(t *testing.T) {
+		tests := []struct {
+			name                                string
+			cacheSettings                       CacheSettings
+			expectedCreateShadowCacheController bool
+		}{
+			{
+				name: "not_when_limit_is_zero",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         0,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedCreateShadowCacheController: false,
+			},
+			{
+				name: "when_limit_over_zero_and_query_cache_enabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					CacheControllerEnabled:  true,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedCreateShadowCacheController: true,
+			},
+			{
+				name: "not_when_shadow_check_disabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:           10,
+					CheckIteratorCacheEnabled: true,
+					CacheControllerEnabled:    true,
+					ShadowCheckCacheEnabled:   false,
+				},
+				expectedCreateShadowCacheController: false,
+			},
+			{
+				name: "not_when_cache_controller_disabled",
+				cacheSettings: CacheSettings{
+					CheckCacheLimit:         10,
+					CheckQueryCacheEnabled:  true,
+					CacheControllerEnabled:  false,
+					ShadowCheckCacheEnabled: true,
+				},
+				expectedCreateShadowCacheController: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := tt.cacheSettings.ShouldCreateShadowCacheController()
+				assert.Equal(t, tt.expectedCreateShadowCacheController, got)
+			})
+		}
+	})
+
+	t.Run("should_shadow_cache_iterators", func(t *testing.T) {
+		tests := []struct {
+			name                         string
+			cacheSettings                CacheSettings
+			expectedShadowCacheIterators bool
+		}{
+			{
+				name: "not_when_limit_is_zero",
+				cacheSettings: CacheSettings{
+					ListObjectsIteratorCacheMaxResults: 0,
+					ListObjectsIteratorCacheEnabled:    true,
+					ShadowCheckCacheEnabled:            true,
+				},
+				expectedShadowCacheIterators: false,
+			},
+			{
+				name: "not_when_iterator_cache_disabled",
+				cacheSettings: CacheSettings{
+					ListObjectsIteratorCacheMaxResults: 100,
+					ListObjectsIteratorCacheEnabled:    false,
+					ShadowCheckCacheEnabled:            true,
+				},
+				expectedShadowCacheIterators: false,
+			},
+			{
+				name: "when_limit_over_zero_and_iterator_cache_enabled",
+				cacheSettings: CacheSettings{
+					ListObjectsIteratorCacheMaxResults: 10,
+					ListObjectsIteratorCacheEnabled:    true,
+					ShadowCheckCacheEnabled:            true,
+				},
+				expectedShadowCacheIterators: true,
+			},
+			{
+				name: "should_not_when_shadow_check_disabled",
+				cacheSettings: CacheSettings{
+					ListObjectsIteratorCacheMaxResults: 10,
+					ListObjectsIteratorCacheEnabled:    true,
+					ShadowCheckCacheEnabled:            false,
+				},
+				expectedShadowCacheIterators: false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := tt.cacheSettings.ShouldShadowCacheListObjectsIterators()
+				assert.Equal(t, tt.expectedShadowCacheIterators, got)
+			})
+		}
+	})
 }

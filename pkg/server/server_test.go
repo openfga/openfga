@@ -2062,6 +2062,31 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	})
 }
 
+func TestShadowListObjectsCheckResolver(t *testing.T) {
+	t.Run("shadow_list_objects_query_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithShadowListObjectsQueryEnabled(true),
+			WithCheckQueryCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+		require.True(t, s.cacheSettings.ShadowCheckCacheEnabled)
+	})
+
+	t.Run("shadow_list_objects_query_disabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithCheckQueryCacheEnabled(true),
+		)
+		t.Cleanup(s.Close)
+		require.False(t, s.cacheSettings.ShadowCheckCacheEnabled)
+	})
+}
+
 func TestServer_ThrottleUntilDeadline(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

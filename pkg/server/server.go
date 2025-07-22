@@ -944,6 +944,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
+	if s.shadowListObjectsQueryEnabled {
+		s.cacheSettings.ShadowCheckCacheEnabled = true
+	}
+
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
