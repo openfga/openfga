@@ -242,6 +242,7 @@ func NewResolutionMetadata() *ResolutionMetadata {
 		DispatchCounter:      new(atomic.Uint32),
 		WasThrottled:         new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
+		ShouldRunShadowQuery: new(atomic.Bool),
 	}
 }
 

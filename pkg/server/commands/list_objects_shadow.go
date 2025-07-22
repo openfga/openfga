@@ -153,10 +153,6 @@ func (q *shadowedListObjectsQuery) Execute(
 	}
 	latency := time.Since(startTime)
 
-	if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
-		return nil, nil
-	}
-
 	// If shadow mode is not shadowEnabled, just execute the main query
 	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
 		q.wg.Add(1) // only used for testing signals
@@ -272,6 +268,11 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to max results reached",
 				loShadowLogFields(req)...,
 			)
+			return false
+		}
+
+		if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query")
 			return false
 		}
 
