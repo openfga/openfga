@@ -438,10 +438,11 @@ func (c *ReverseExpandQuery) execute(
 		node, ok := c.typesystem.GetNode(typeRel)
 		if !ok {
 			resolutionMetadata.ShouldRunShadowQuery.Store(false)
-		}
-		weight, _ := node.GetWeight(sourceUserType)
-		if weight == weightedGraph.Infinite {
-			resolutionMetadata.ShouldRunShadowQuery.Store(false)
+		} else {
+			weight, _ := node.GetWeight(sourceUserType)
+			if weight == weightedGraph.Infinite {
+				resolutionMetadata.ShouldRunShadowQuery.Store(false)
+			}
 		}
 	}
 
