@@ -405,6 +405,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		result  []string
 		latency time.Duration
 	}
+	commonMetadata := NewListObjectsResolutionMetadata()
+	commonMetadata.WasWeightedGraphUsed.Store(true)
 	tests := []struct {
 		name   string
 		fields fields
@@ -415,7 +417,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"a", "b", "c"}}, nil
+						return &ListObjectsResponse{Objects: []string{"a", "b", "c"}, ResolutionMetadata: commonMetadata}, nil
 					},
 				},
 				shadowPct:     100,
@@ -456,7 +458,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d"}}, nil
+						return &ListObjectsResponse{Objects: []string{"c", "d"}, ResolutionMetadata: commonMetadata}, nil
 					},
 				},
 				shadowPct:     100,
@@ -494,7 +496,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d", "x", "y", "z"}}, nil
+						return &ListObjectsResponse{Objects: []string{"c", "d", "x", "y", "z"}, ResolutionMetadata: commonMetadata}, nil
 					},
 				},
 				shadowPct:     100,
@@ -608,7 +610,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						require.NoError(t, ctx.Err()) // context must not be cancelled
-						return &ListObjectsResponse{}, nil
+						return &ListObjectsResponse{ResolutionMetadata: commonMetadata}, nil
 					},
 				},
 				shadowPct:     100,
