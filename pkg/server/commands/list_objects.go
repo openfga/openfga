@@ -70,6 +70,7 @@ type ListObjectsQuery struct {
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 }
 
 type ListObjectsResolver interface {
@@ -178,6 +179,12 @@ func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	}
 }
 
+func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.useShadowCache = useShadowCache
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -211,6 +218,7 @@ func NewListObjectsQuery(
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		useShadowCache:       false,
 	}
 
 	for _, opt := range opts {
@@ -326,8 +334,11 @@ func (q *ListObjectsQuery) evaluate(
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
-			q.sharedDatastoreResources,
-			q.cacheSettings,
+			storagewrappers.DataResourceConfiguration{
+				Resources:      q.sharedDatastoreResources,
+				CacheSettings:  q.cacheSettings,
+				UseShadowCache: q.useShadowCache,
+			},
 		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
@@ -477,10 +488,16 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := NewListObjectsResolutionMetadata()
 
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY && q.cacheSettings.ShouldCacheListObjectsIterators() {
-		// Kick off background job to check if cache records are stale, inavlidating where needed
-		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		if q.cacheSettings.ShouldCacheListObjectsIterators() {
+			// Kick off background job to check if cache records are stale, invalidating where needed
+			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
+			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
 	}
+
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {
 		return nil, err

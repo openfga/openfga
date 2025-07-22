@@ -134,8 +134,11 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			ThrottleThreshold: c.datastoreThrottleThreshold,
 			ThrottleDuration:  c.datastoreThrottleDuration,
 		},
-		c.sharedCheckResources,
-		c.cacheSettings,
+		storagewrappers.DataResourceConfiguration{
+			Resources:      c.sharedCheckResources,
+			CacheSettings:  c.cacheSettings,
+			UseShadowCache: false,
+		},
 	)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
