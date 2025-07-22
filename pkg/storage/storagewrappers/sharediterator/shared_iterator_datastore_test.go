@@ -345,7 +345,10 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		const numClient = 3
 		mockDatastore.EXPECT().
 			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(storage.NewStaticTupleIterator(tuples), nil)
+			DoAndReturn(func(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+				time.Sleep(5 * time.Millisecond) // simulate some delay
+				return storage.NewStaticTupleIterator(tuples), nil
+			})
 
 		iterInfos := make([]testIteratorInfo, numClient)
 		wg := sync.WaitGroup{}
@@ -429,6 +432,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 				store string,
 				tupleKey *openfgav1.TupleKey,
 				options storage.ReadOptions) (storage.TupleIterator, error) {
+				time.Sleep(5 * time.Millisecond) // simulate some delay
 				return storage.NewStaticTupleIterator(tuples), nil
 			}).MaxTimes(numClient)
 		p := pool.New().WithErrors()
