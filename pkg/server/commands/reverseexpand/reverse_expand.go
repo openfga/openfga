@@ -230,6 +230,11 @@ type ResolutionMetadata struct {
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
+
+	// Temporary solution to indicate whether shadow list objects query should be run.
+	// For queries with Infinite weight, the weighted graph implementation falls back
+	// to the original code, making any comparison useless.
+	ShouldRunShadowQuery *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
@@ -424,6 +429,21 @@ func (c *ReverseExpandQuery) execute(
 		}
 	}
 
+	// Will only ever run on the first pass through reverse_expand
+	if !req.skipWeightedGraph {
+		req.skipWeightedGraph = true
+		resolutionMetadata.ShouldRunShadowQuery.Store(true)
+		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+		node, ok := c.typesystem.GetNode(typeRel)
+		if !ok {
+			resolutionMetadata.ShouldRunShadowQuery.Store(false)
+		}
+		weight, _ := node.GetWeight(sourceUserType)
+		if weight == weightedGraph.Infinite {
+			resolutionMetadata.ShouldRunShadowQuery.Store(false)
+		}
+	}
+
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
@@ -440,14 +460,15 @@ LoopOnEdges:
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
 		r := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-			User:             req.User,
-			ContextualTuples: req.ContextualTuples,
-			Context:          req.Context,
-			edge:             innerLoopEdge,
-			Consistency:      req.Consistency,
+			StoreID:           req.StoreID,
+			ObjectType:        req.ObjectType,
+			Relation:          req.Relation,
+			User:              req.User,
+			ContextualTuples:  req.ContextualTuples,
+			Context:           req.Context,
+			edge:              innerLoopEdge,
+			Consistency:       req.Consistency,
+			skipWeightedGraph: req.skipWeightedGraph,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:

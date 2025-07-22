@@ -153,6 +153,10 @@ func (q *shadowedListObjectsQuery) Execute(
 	}
 	latency := time.Since(startTime)
 
+	if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
+		return nil, nil
+	}
+
 	// If shadow mode is not shadowEnabled, just execute the main query
 	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
 		q.wg.Add(1) // only used for testing signals
@@ -206,12 +210,6 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 				zap.Any("error", errShadow),
 			)...,
 		)
-		return
-	}
-
-	// Don't report on requests that fell through to the old reverse_expand
-	// NOTE: remove this once weighted graph code supports infinite weight queries
-	if !shadowRes.ResolutionMetadata.WasWeightedGraphUsed.Load() {
 		return
 	}
 
