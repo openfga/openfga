@@ -67,7 +67,7 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		sharedIteratorStorage := sharediterator.NewSharedIteratorDatastoreStorage()
+		sharedIteratorStorage := new(sharediterator.Storage)
 
 		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads, Method: apimethod.Check},
 			&shared.SharedDatastoreResources{
