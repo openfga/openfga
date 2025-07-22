@@ -16,7 +16,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Deduplicate queries more effectively in ReverseExpand. [#2567](https://github.com/openfga/openfga/pull/2567)
 - Update go version to 1.24.5 [#2577](https://github.com/openfga/openfga/pull/2577)
 
-
 ### Fixed
 - Shared iterator race condition and deadlock. [#2544](https://github.com/openfga/openfga/pull/2544)
 - Fixed bug in how experimental ReverseExpand is handling Intersection nodes. [#2556](https://github.com/openfga/openfga/pull/2556)
