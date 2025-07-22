@@ -142,7 +142,7 @@ project:
     code-of-conduct: https://github.com/cncf/foundation/blob/main/code-of-conduct.md
     release-process: https://github.com/openfga/openfga/blob/main/RELEASES.md
     support-policy: https://openfga.dev/community
-    signature-verification: https://github.com/openfga/openfga/releases
+    signature-verification: https://github.com/openfga/community/blob/main/provenance-implementation/openfga.md
   repositories:
     - name: OpenFGA
       url: https://github.com/openfga/openfga
