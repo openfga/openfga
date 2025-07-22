@@ -276,7 +276,7 @@ repository:
     contributing-guide: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
     review-policy: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
     security-policy: https://github.com/openfga/openfga/security/policy
-    governance: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
+    governance: https://github.com/openfga/.github/blob/main/GOVERNANCE.md
     dependency-management-policy: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
   license:
     url: https://raw.githubusercontent.com/openfga/openfga/main/LICENSE
