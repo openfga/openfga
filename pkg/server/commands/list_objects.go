@@ -186,7 +186,7 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	}
 }
 
-func WithListObjectsIntersectionAndExlcusion(enabled bool) ListObjectsQueryOption {
+func WithListObjectsIntersectionAndExclusion(enabled bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.intersectionAndExclusionEnabled = enabled
 	}

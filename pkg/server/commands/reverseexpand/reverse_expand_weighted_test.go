@@ -1733,6 +1733,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 
 					// turn on weighted graph functionality
 					WithListObjectOptimizationsEnabled(true),
+					WithIntersectionAndExclusion(true),
 				)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
@@ -1844,6 +1845,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		typesys2, err := typesystem.New(
@@ -1904,6 +1906,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		node, ok := typesys.GetNode("document#admin")
@@ -1967,6 +1970,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2027,6 +2031,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2093,6 +2098,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2162,6 +2168,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		node, ok := typesys.GetNode("group#member")
@@ -2240,6 +2247,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2307,6 +2315,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2376,6 +2385,7 @@ func TestExclusionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2444,6 +2454,7 @@ func TestExclusionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2511,6 +2522,7 @@ func TestExclusionHandler(t *testing.T) {
 
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
+			WithIntersectionAndExclusion(true),
 		)
 		q.localCheckResolver = mockCheckResolver
 

@@ -126,7 +126,7 @@ func newShadowedListObjectsQuery(
 			WithListObjectsOptimizationsEnabled(true),
 
 			// Disable intersections and exclusions while we troubleshoot performance regression
-			WithListObjectsIntersectionAndExlcusion(false),
+			WithListObjectsIntersectionAndExclusion(false),
 		})...,
 	)
 	if err != nil {

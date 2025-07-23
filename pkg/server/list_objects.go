@@ -89,7 +89,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
 		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
-		commands.WithListObjectsIntersectionAndExlcusion(s.IsExperimentallyEnabled(ExperimentalIntersectionAndExclusion)),
+		commands.WithListObjectsIntersectionAndExclusion(s.IsExperimentallyEnabled(ExperimentalIntersectionAndExclusion)),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
