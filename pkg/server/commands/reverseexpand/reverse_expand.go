@@ -438,7 +438,7 @@ func (c *ReverseExpandQuery) execute(
 	if !req.skipWeightedGraph {
 		req.skipWeightedGraph = true // ensure we don't do this on subsequent recursive calls
 		resolutionMetadata.ShouldRunShadowQuery.Store(true)
-	
+
 		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 		node, ok := c.typesystem.GetNode(typeRel)
 		if !ok {
