@@ -272,7 +272,9 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 		}
 
 		if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query")
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query",
+				loShadowLogFields(req)...,
+			)
 			return false
 		}
 

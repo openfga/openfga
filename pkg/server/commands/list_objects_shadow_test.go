@@ -755,6 +755,10 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 				mockLogger.EXPECT().DebugWithContext(
 					gomock.Any(),
 					gomock.Eq("shadowed list objects query skipped due to infinite weight query"),
+					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
+					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
+					gomock.Eq(zap.String("store_id", "")),
+					gomock.Eq(zap.String("model_id", "")),
 				)
 				return mockLogger
 			},
