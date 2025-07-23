@@ -301,7 +301,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	queryJobQueue := newJobQueue()
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, req, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -333,7 +333,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, req, nextJob, resultChan, needsCheck)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
 				if err != nil {
 					return err
 				}
@@ -364,7 +364,6 @@ func (c *ReverseExpandQuery) queryForTuples(
 //   - If no matching objects are found in the datastore, this branch of reverse expand is a dead end, and no more jobs are needed.
 func (c *ReverseExpandQuery) executeQueryJob(
 	ctx context.Context,
-	req *ReverseExpandRequest,
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
