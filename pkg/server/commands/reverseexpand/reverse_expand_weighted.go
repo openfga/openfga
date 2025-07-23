@@ -19,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -420,7 +421,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// If there are no more type#rel to look for in the stack that means we have hit the base case
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
-			c.trySendCandidate(ctx, req, needsCheck, foundObject, resultChan)
+			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
 			continue
 		}
 
@@ -607,14 +608,15 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 				if !isAllowed {
 					functionName = "exclusionHandler"
 				}
-				c.logger.Error("Failed to execute", zap.Error(err),
+				return serverErrors.WithMetadata(err,
+					"Failed to execute",
 					zap.String("function", functionName),
 					zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
 					zap.String("store_id", req.StoreID),
 					zap.String("object", tmpResult.Object),
 					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()))
-				return err
+					zap.String("user", req.User.String()),
+				)
 			}
 
 			// If the allowed value does not match what we expect, we skip this candidate.
@@ -626,7 +628,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 
 			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
 			if stack.Len(req.relationStack) == 0 {
-				c.trySendCandidate(ctx, req, false, tmpResult.Object, resultChan)
+				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
 				continue
 			}
 
@@ -657,14 +659,12 @@ func (c *ReverseExpandQuery) intersectionHandler(
 ) error {
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get lowest weight edge",
+		return serverErrors.WithMetadata(err,
+			"Failed to get lowest weight edge",
 			zap.String("function", "intersectionHandler"),
-			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
-			zap.String("store_id", req.StoreID),
-			zap.Error(err),
 			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType))
-		return err
+			zap.String("sourceUserType", sourceUserType),
+		)
 	}
 
 	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
@@ -692,13 +692,13 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		userset, err := c.typesystem.ConstructUserset(sibling)
 		if err != nil {
 			// This should never happen.
-			c.logger.Error("Failed to construct userset",
+			return serverErrors.WithMetadata(err,
+				"Failed to construct userset",
 				zap.String("function", "intersectionHandler"),
 				zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
 				zap.String("store_id", req.StoreID),
 				zap.Any("edge", sibling),
-				zap.Error(err))
-			return err
+			)
 		}
 		usersets = append(usersets, userset)
 	}
@@ -732,14 +732,12 @@ func (c *ReverseExpandQuery) exclusionHandler(
 ) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get lowest weight edge",
+		return serverErrors.WithMetadata(err,
+			"Failed to get lowest weight edge",
 			zap.String("function", "exclusionHandler"),
-			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
-			zap.String("store_id", req.StoreID),
-			zap.Error(err),
 			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType))
-		return err
+			zap.String("sourceUserType", sourceUserType),
+		)
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
@@ -763,13 +761,13 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
 		// This should never happen.
-		c.logger.Error("Failed to construct userset",
+		return serverErrors.WithMetadata(err,
+			"Failed to construct userset",
 			zap.String("function", "exclusionHandler"),
 			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
 			zap.String("store_id", req.StoreID),
 			zap.Any("edge", excludedEdge),
-			zap.Error(err))
-		return err
+		)
 	}
 
 	// Concurrently find candidates and call check on them as they are found
