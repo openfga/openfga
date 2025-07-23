@@ -27,6 +27,7 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -728,7 +729,12 @@ LoopOnIterator:
 	return nil
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(
+	ctx context.Context,
+	intersectionOrExclusionInPreviousEdges bool,
+	candidateObject string,
+	candidateChan chan<- *ReverseExpandResult,
+) error {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -747,9 +753,14 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		} else {
-			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
+			err := fmt.Errorf("failed to send candidate object to the result channel")
+			return serverErrors.WithMetadata(err,
+				"failed to send candidate object",
+				zap.String("object", candidateObject),
+			)
 		}
 	}
+	return nil
 }
 
 func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
