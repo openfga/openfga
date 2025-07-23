@@ -231,6 +231,9 @@ type ResolutionMetadata struct {
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
 
+	// The number of times internal check was called for the optimization path
+	CheckCounter *atomic.Uint32
+
 	// Temporary solution to indicate whether shadow list objects query should be run.
 	// For queries with Infinite weight, the weighted graph implementation falls back
 	// to the original code, making any comparison useless.
@@ -243,6 +246,7 @@ func NewResolutionMetadata() *ResolutionMetadata {
 		WasThrottled:         new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
 		ShouldRunShadowQuery: new(atomic.Bool),
+		CheckCounter:         new(atomic.Uint32),
 	}
 }
 

@@ -587,9 +587,11 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 	resultChan chan<- *ReverseExpandResult,
 	userset *openfgav1.Userset,
 	isAllowed bool,
+	resolutionMetadata *ResolutionMetadata,
 ) {
 	pool.Go(func(ctx context.Context) error {
 		for tmpResult := range tmpResultChan {
+			resolutionMetadata.CheckCounter.Add(1)
 			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
 				&graph.ResolveCheckRequest{
 					StoreID:              req.StoreID,
@@ -704,7 +706,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	// Concurrently find candidates and call check on them as they are found
 	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true, resolutionMetadata)
 
 	return pool.Wait()
 }
@@ -764,7 +766,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	// Concurrently find candidates and call check on them as they are found
 	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false, resolutionMetadata)
 
 	return pool.Wait()
 }
