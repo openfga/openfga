@@ -430,10 +430,15 @@ func (c *ReverseExpandQuery) execute(
 		}
 	}
 
-	// Will only ever run on the first pass through reverse_expand
+	// NOTE: this is temporary to ensure that the ListObjects shadow query doesn't run unnecessarily.
+	// For cases where the query is weight INF, reverse_expand_weighted falls back to original reverse_expand,
+	// so there is no value in running a shadow query after the main query completes.
+	// This block will hit on the first pass through reverse_expand, and it marks ShouldRunShadowQuery based on
+	// whether the shadow query will actually run the code we want to test.
 	if !req.skipWeightedGraph {
-		req.skipWeightedGraph = true
+		req.skipWeightedGraph = true // ensure we don't do this on subsequent recursive calls
 		resolutionMetadata.ShouldRunShadowQuery.Store(true)
+	
 		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
 		node, ok := c.typesystem.GetNode(typeRel)
 		if !ok {
