@@ -12,6 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/stack"
@@ -2106,15 +2107,18 @@ func TestIntersectionHandler(t *testing.T) {
 		edges, err := typesys2.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
 
-		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.intersectionHandler(pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
-		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "invalid edges for source type")
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid edges for source type")
+		err = pool.Wait()
+		require.NoError(t, err)
 	})
 
 	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
@@ -2172,8 +2176,10 @@ func TestIntersectionHandler(t *testing.T) {
 		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
 		require.NoError(t, err)
 
+		pool := concurrency.NewPool(ctx, 2)
+
 		go func() {
-			newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+			newErr := q.intersectionHandler(pool, &ReverseExpandRequest{
 				StoreID:       storeID,
 				ObjectType:    objectType,
 				Relation:      relation,
@@ -2183,6 +2189,12 @@ func TestIntersectionHandler(t *testing.T) {
 
 			if newErr != nil {
 				errChan <- newErr
+			}
+
+			poolErr := pool.Wait()
+
+			if poolErr != nil {
+				errChan <- poolErr
 			}
 		}()
 
@@ -2253,14 +2265,17 @@ func TestIntersectionHandler(t *testing.T) {
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
-		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.intersectionHandler(pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
-		require.ErrorIs(t, newErr, errorRet)
+		require.NoError(t, err)
+		err = pool.Wait()
+		require.ErrorIs(t, err, errorRet)
 	})
 
 	t.Run("return_error_when_queryForTuples_errors", func(t *testing.T) {
@@ -2320,14 +2335,17 @@ func TestIntersectionHandler(t *testing.T) {
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
-		newErr := q.intersectionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.intersectionHandler(pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
-		require.ErrorIs(t, newErr, errorRet)
+		require.NoError(t, err)
+		err = pool.Wait()
+		require.ErrorIs(t, err, errorRet)
 	})
 }
 
@@ -2389,15 +2407,18 @@ func TestExclusionHandler(t *testing.T) {
 		edges, err := typesys2.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
 
-		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
 		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
-		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid exclusion edges for source type")
+		err = pool.Wait()
+		require.NoError(t, err)
 	})
 
 	t.Run("return_error_when_check_errors", func(t *testing.T) {
@@ -2457,14 +2478,17 @@ func TestExclusionHandler(t *testing.T) {
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
-		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
-		require.ErrorIs(t, newErr, errorRet)
+		require.NoError(t, err)
+		err = pool.Wait()
+		require.ErrorIs(t, err, errorRet)
 	})
 
 	t.Run("return_error_when_queryForTuples_errors", func(t *testing.T) {
@@ -2524,13 +2548,16 @@ func TestExclusionHandler(t *testing.T) {
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
-		newErr := q.exclusionHandler(ctx, &ReverseExpandRequest{
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
 			StoreID:       storeID,
 			ObjectType:    objectType,
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
-		require.ErrorIs(t, newErr, errorRet)
+		require.NoError(t, err)
+		err = pool.Wait()
+		require.ErrorIs(t, err, errorRet)
 	})
 }
