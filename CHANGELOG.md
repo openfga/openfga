@@ -13,11 +13,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Update ReverseExpand to use a LinkedList to track its relation stack for performance. [#2542](https://github.com/openfga/openfga/pull/2542)
 - Update ReverseExpand to use a intersection and exclusion handler to fast path check calls. [#2543](https://github.com/openfga/openfga/pull/2543)
+- Deduplicate queries more effectively in ReverseExpand. [#2567](https://github.com/openfga/openfga/pull/2567)
+- Update go version to 1.24.5 [#2577](https://github.com/openfga/openfga/pull/2577)
 
 ### Fixed
 - Shared iterator race condition and deadlock. [#2544](https://github.com/openfga/openfga/pull/2544)
 - Fixed bug in how experimental ReverseExpand is handling Intersection nodes. [#2556](https://github.com/openfga/openfga/pull/2556)
+- Migration command now respects logging configuration options. [#2541](https://github.com/openfga/openfga/issues/2541)
 - Fixed message in log and slight refactor in list objects intersection/exclusion. [#2566](https://github.com/openfga/openfga/pull/2566)
+- Shadow list objects' check resolver should use its own cache. [#2574](https://github.com/openfga/openfga/pull/2574)
 
 ## [1.9.0] - 2025-07-03
 ### Added

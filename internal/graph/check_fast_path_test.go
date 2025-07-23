@@ -38,8 +38,10 @@ func setRequestContext(ctx context.Context, ts *typesystem.TypeSystem, ds storag
 			Method:      apimethod.Check,
 			Concurrency: config.DefaultMaxConcurrentReadsForCheck,
 		},
-		nil,
-		config.CacheSettings{},
+		storagewrappers.DataResourceConfiguration{
+			Resources:     nil,
+			CacheSettings: config.CacheSettings{},
+		},
 	)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, rsw)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
