@@ -300,7 +300,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 	queryJobQueue := newJobQueue()
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
+	items, err := c.executeQueryJob(ctx, req, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -332,7 +332,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
+				newItems, err := c.executeQueryJob(ctx, req, nextJob, resultChan, needsCheck)
 				if err != nil {
 					return err
 				}
@@ -363,6 +363,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 //   - If no matching objects are found in the datastore, this branch of reverse expand is a dead end, and no more jobs are needed.
 func (c *ReverseExpandQuery) executeQueryJob(
 	ctx context.Context,
+	req *ReverseExpandRequest,
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
@@ -419,7 +420,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// If there are no more type#rel to look for in the stack that means we have hit the base case
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
-			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+			c.trySendCandidate(ctx, req, needsCheck, foundObject, resultChan)
 			continue
 		}
 
@@ -608,6 +609,8 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 				}
 				c.logger.Error("Failed to execute", zap.Error(err),
 					zap.String("function", functionName),
+					zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+					zap.String("store_id", req.StoreID),
 					zap.String("object", tmpResult.Object),
 					zap.String("relation", req.Relation),
 					zap.String("user", req.User.String()))
@@ -623,7 +626,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 
 			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
 			if stack.Len(req.relationStack) == 0 {
-				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+				c.trySendCandidate(ctx, req, false, tmpResult.Object, resultChan)
 				continue
 			}
 
@@ -656,6 +659,8 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	if err != nil {
 		c.logger.Error("Failed to get lowest weight edge",
 			zap.String("function", "intersectionHandler"),
+			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+			zap.String("store_id", req.StoreID),
 			zap.Error(err),
 			zap.Any("edges", edges),
 			zap.String("sourceUserType", sourceUserType))
@@ -689,6 +694,8 @@ func (c *ReverseExpandQuery) intersectionHandler(
 			// This should never happen.
 			c.logger.Error("Failed to construct userset",
 				zap.String("function", "intersectionHandler"),
+				zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+				zap.String("store_id", req.StoreID),
 				zap.Any("edge", sibling),
 				zap.Error(err))
 			return err
@@ -727,6 +734,8 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	if err != nil {
 		c.logger.Error("Failed to get lowest weight edge",
 			zap.String("function", "exclusionHandler"),
+			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+			zap.String("store_id", req.StoreID),
 			zap.Error(err),
 			zap.Any("edges", edges),
 			zap.String("sourceUserType", sourceUserType))
@@ -756,6 +765,8 @@ func (c *ReverseExpandQuery) exclusionHandler(
 		// This should never happen.
 		c.logger.Error("Failed to construct userset",
 			zap.String("function", "exclusionHandler"),
+			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+			zap.String("store_id", req.StoreID),
 			zap.Any("edge", excludedEdge),
 			zap.Error(err))
 		return err

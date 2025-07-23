@@ -375,7 +375,7 @@ func (c *ReverseExpandQuery) execute(
 
 		// ReverseExpand(type=document, rel=viewer, user=document:1#viewer) will return "document:1"
 		if tuple.UsersetMatchTypeAndRelation(userset.String(), req.Relation, req.ObjectType) {
-			c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan)
+			c.trySendCandidate(ctx, req, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan)
 		}
 	}
 
@@ -392,12 +392,20 @@ func (c *ReverseExpandQuery) execute(
 				// The weighted graph is not guaranteed to be present.
 				// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 				// and then fall back to the non-weighted version of reverse_expand
-				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("nodeID", typeRel))
+				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph",
+					zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+					zap.String("store_id", req.StoreID),
+					zap.String("node_id", typeRel),
+				)
 				req.skipWeightedGraph = true
 			} else {
 				weight, _ := node.GetWeight(sourceUserType)
 				if weight == weightedGraph.Infinite {
-					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("nodeID", typeRel))
+					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph",
+						zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+						zap.String("store_id", req.StoreID),
+						zap.String("node_id", typeRel),
+					)
 					req.skipWeightedGraph = true
 				}
 			}
@@ -728,7 +736,13 @@ LoopOnIterator:
 	return nil
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	intersectionOrExclusionInPreviousEdges bool,
+	candidateObject string,
+	candidateChan chan<- *ReverseExpandResult,
+) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -747,7 +761,11 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionO
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		} else {
-			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
+			c.logger.ErrorWithContext(ctx, "failed to send candidate object",
+				zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
+				zap.String("store_id", req.StoreID),
+				zap.String("object", candidateObject),
+			)
 		}
 	}
 }
