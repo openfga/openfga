@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.9.1] - 2025-07-22
+## [1.9.2] - 2025-07-24
 ### Added
 - Add `list_objects_optimization_count` metric to list objects requests. [#2524](https://github.com/openfga/openfga/pull/2524)
 
@@ -1358,8 +1358,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.1...HEAD
-[1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.2
 [1.9.0]: https://github.com/openfga/openfga/compare/v1.8.16...v1.9.0
 [1.8.16]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
 [1.8.15]: https://github.com/openfga/openfga/compare/v1.8.14...v1.8.15
