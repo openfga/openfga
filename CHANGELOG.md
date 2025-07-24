@@ -28,9 +28,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.9.1] - 2025-07-22
 ### Changed
-⚠️ This is an incorrect version and should not be used. Please upgrade to version `v1.9.2`.
-
-Also do not use its companion docker image with the sha: `sha256:71212e9aa2f26cd74287babf7eb92743b8510960388ff0b5ac68d89a23728898`
+- **WARNING:** This is an incorrect version and should not be used. Please upgrade to version `v1.9.2` and do not use its companion docker image with the sha:
+  `sha256:71212e9aa2f26cd74287babf7eb92743b8510960388ff0b5ac68d89a23728898`
 
 ## [1.9.0] - 2025-07-03
 ### Added
