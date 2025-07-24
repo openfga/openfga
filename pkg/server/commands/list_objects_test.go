@@ -619,6 +619,23 @@ func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore stora
 	}
 }
 
+func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "office:" + strconv.Itoa(objID)
+			user := "company:" + strconv.Itoa(objID)
+			tuples = append(tuples, tuple.NewTupleKey(obj, "parent", user))
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
 func BenchmarkListObjects(b *testing.B) {
 	// One model, some weight 1, some weight 2, some recursive
 	// preload with A LOT of tuples and use them across all benchmarks
@@ -642,6 +659,10 @@ func BenchmarkListObjects(b *testing.B) {
 				relations
 					define owner: [org]
 					define org_member: member from owner
+			type office
+				relations
+					define parent: [company]
+					define weight_three: org_member from parent
 		`).GetTypeDefinitions(),
 	}
 	ctx := context.Background()
@@ -651,6 +672,7 @@ func BenchmarkListObjects(b *testing.B) {
 	n := 10000
 	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)
 	createWeightTwoRelations(b, ctx, datastore, storeID, n)
+	createWeightThreeRelations(b, ctx, datastore, storeID, n)
 
 	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 	require.NoError(b, err)
@@ -660,7 +682,7 @@ func BenchmarkListObjects(b *testing.B) {
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,
-		//WithListObjectsOptimizationsEnabled(true),
+		WithListObjectsOptimizationsEnabled(true),
 		WithListObjectsMaxResults(uint32(objReturnLimit)),
 	)
 	require.NoError(b, err)
@@ -699,7 +721,22 @@ func BenchmarkListObjects(b *testing.B) {
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n) // probably don't even need these?
 		}
+	})
 
+	b.Run("weight_three", func(b *testing.B) {
+		weightThreeRequest := &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.Id,
+			Type:                 "office",
+			Relation:             "weight_three",
+			User:                 "user:justin",
+		}
+
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightThreeRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
 	})
 
 	//// How deep to nest? How wide should each level be?
