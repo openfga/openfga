@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.9.1] - 2025-07-22
+## [1.9.2] - 2025-07-24
 ### Added
 - Add `list_objects_optimization_count` metric to list objects requests. [#2524](https://github.com/openfga/openfga/pull/2524)
 
@@ -25,6 +25,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed message in log and slight refactor in list objects intersection/exclusion. [#2566](https://github.com/openfga/openfga/pull/2566)
 - Shadow list objects' check resolver should use its own cache. [#2574](https://github.com/openfga/openfga/pull/2574)
 - Improve performance for list objects intersection/exclusion with `enable-list-objects-optimizations` flag. [#2569](https://github.com/openfga/openfga/pull/2569)
+
+## [1.9.1] - 2025-07-22
+### Changed
+- **WARNING:** This is an incorrect version and should not be used. Please upgrade to version `v1.9.2` and do not use its companion docker image with the sha:
+  `sha256:71212e9aa2f26cd74287babf7eb92743b8510960388ff0b5ac68d89a23728898`
 
 ## [1.9.0] - 2025-07-03
 ### Added
@@ -1358,7 +1363,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/openfga/openfga/compare/v1.8.16...v1.9.0
 [1.8.16]: https://github.com/openfga/openfga/compare/v1.8.15...v1.8.16
