@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -19,7 +19,6 @@ import (
 	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -30,7 +29,12 @@ const (
 	listObjectsResultChannelLength = 100
 )
 
-var ErrEmptyStack = errors.New("unexpected empty stack")
+var (
+	ErrEmptyStack           = errors.New("unexpected empty stack")
+	ErrCallCheckFail        = errors.New("Check failed to execute")
+	ErrLowestWeightFail     = errors.New("Failed to get lowest weight edge")
+	ErrConstructUsersetFail = errors.New("Failed to construct userset")
+)
 
 // typeRelEntry represents a step in the path taken to reach a leaf node.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it stack.Pushes typeRelEntry structs to a stack.
@@ -603,18 +607,11 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 				}, userset)
 			tmpCheckResult, err := handlerFunc(ctx)
 			if err != nil {
-				functionName := "intersectionHandler"
-				if !isAllowed {
-					functionName = "exclusionHandler"
-				}
-				return serverErrors.WithMetadata(err,
-					"Failed to execute",
-					zap.String("function", functionName),
-					zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
-					zap.String("store_id", req.StoreID),
-					zap.String("object", tmpResult.Object),
-					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()),
+				return fmt.Errorf("%w: object: %s, relation: %s, user: %s",
+					ErrCallCheckFail,
+					tmpResult.Object,
+					req.Relation,
+					req.User.String(),
 				)
 			}
 
@@ -658,11 +655,15 @@ func (c *ReverseExpandQuery) intersectionHandler(
 ) error {
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		return serverErrors.WithMetadata(err,
-			"Failed to get lowest weight edge",
-			zap.String("function", "intersectionHandler"),
-			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType),
+		edgeLabels := make([]string, 0, len(edges))
+		for _, edge := range edges {
+			edgeLabels = append(edgeLabels, edge.GetTo().GetUniqueLabel())
+		}
+
+		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
+			ErrLowestWeightFail,
+			strings.Join(edgeLabels, ", "),
+			sourceUserType,
 		)
 	}
 
@@ -691,12 +692,10 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		userset, err := c.typesystem.ConstructUserset(sibling)
 		if err != nil {
 			// This should never happen.
-			return serverErrors.WithMetadata(err,
-				"Failed to construct userset",
-				zap.String("function", "intersectionHandler"),
-				zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
-				zap.String("store_id", req.StoreID),
-				zap.Any("edge", sibling),
+			return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
+				ErrConstructUsersetFail,
+				sibling.GetTo().GetUniqueLabel(),
+				sourceUserType,
 			)
 		}
 		usersets = append(usersets, userset)
@@ -731,11 +730,15 @@ func (c *ReverseExpandQuery) exclusionHandler(
 ) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
-		return serverErrors.WithMetadata(err,
-			"Failed to get lowest weight edge",
-			zap.String("function", "exclusionHandler"),
-			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType),
+		edgeLabels := make([]string, 0, len(edges))
+		for _, edge := range edges {
+			edgeLabels = append(edgeLabels, edge.GetTo().GetUniqueLabel())
+		}
+
+		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
+			ErrLowestWeightFail,
+			strings.Join(edgeLabels, ", "),
+			sourceUserType,
 		)
 	}
 
@@ -760,12 +763,10 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
 		// This should never happen.
-		return serverErrors.WithMetadata(err,
-			"Failed to construct userset",
-			zap.String("function", "exclusionHandler"),
-			zap.String("authorization_model_id", c.typesystem.GetAuthorizationModelID()),
-			zap.String("store_id", req.StoreID),
-			zap.Any("edge", excludedEdge),
+		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
+			ErrConstructUsersetFail,
+			excludedEdge.GetTo().GetUniqueLabel(),
+			sourceUserType,
 		)
 	}
 

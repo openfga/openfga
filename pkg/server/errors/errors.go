@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 
-	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -159,46 +157,4 @@ func HandleTupleValidateError(err error) error {
 	}
 
 	return HandleError("", err)
-}
-
-// MetadataError represents an error with attached structured metadata.
-type MetadataError struct {
-	// err is the original error
-	err error
-	// msg is a human-readable message describing the error
-	msg string
-	// metadata is the container for structured error context
-	metadata []zap.Field
-}
-
-// Error returns the original error message,
-// ensuring compatibility with the standard error interface.
-func (e *MetadataError) Error() string {
-	return e.err.Error()
-}
-
-// Unwrap allows the error to be unwrapped,
-// returning the original error.
-func (e *MetadataError) Unwrap() error {
-	return e.err
-}
-
-// LogMetadata logs the error with its metadata using the provided logger.
-// It includes the store ID and authorization model ID in the log context.
-func (e *MetadataError) LogMetadata(logger logger.Logger, storeID string, modelID string) {
-	if e == nil {
-		return
-	}
-
-	fields := append([]zap.Field{zap.Error(e.err), zap.String("store_id", storeID), zap.String("authorization_model_id", modelID)}, e.metadata...)
-	logger.Error(e.msg, fields...)
-}
-
-// WithMetadata creates a new error with metadata.
-func WithMetadata(err error, msg string, pairs ...zap.Field) error {
-	return &MetadataError{
-		err:      err,
-		msg:      msg,
-		metadata: pairs,
-	}
 }

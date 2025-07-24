@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -27,7 +28,6 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -761,11 +761,9 @@ func (c *ReverseExpandQuery) trySendCandidate(
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		} else {
-			err := fmt.Errorf("failed to send candidate object to the result channel")
-			return serverErrors.WithMetadata(err,
-				"failed to send candidate object",
-				zap.String("object", candidateObject),
-			)
+			fields := []zap.Field{zap.String("object", candidateObject)}
+			fields = append(fields, ctxzap.TagsToFields(ctx)...)
+			c.logger.ErrorWithContext(ctx, "failed to send candidate object", fields...)
 		}
 	}
 	return nil

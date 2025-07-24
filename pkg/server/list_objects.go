@@ -113,10 +113,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			return nil, serverErrors.ValidationError(err)
 		}
 
-		if e, ok := err.(*serverErrors.MetadataError); ok {
-			e.LogMetadata(s.logger, storeID, typesys.GetAuthorizationModelID())
-		}
-
 		return nil, err
 	}
 	datastoreQueryCount := float64(result.ResolutionMetadata.DatastoreQueryCount.Load())
