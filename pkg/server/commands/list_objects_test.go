@@ -580,6 +580,45 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
+// This helper writes tuples for user:justin with relation "member" to org:0...org:10000
+func createDirectWeightOneRelations(
+	b *testing.B,
+	ctx context.Context,
+	datastore storage.OpenFGADatastore,
+	storeID string,
+	numTuples int,
+) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			obj := "org:" + strconv.Itoa(objID)
+			tuples = append(tuples, tuple.NewTupleKey(obj, "member", "user:justin"))
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "company:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID)
+			tuples = append(tuples, tuple.NewTupleKey(obj, "owner", user))
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
 func BenchmarkListObjects(b *testing.B) {
 	// One model, some weight 1, some weight 2, some recursive
 	// preload with A LOT of tuples and use them across all benchmarks
@@ -599,59 +638,70 @@ func BenchmarkListObjects(b *testing.B) {
 					define member: [user]
 					define parent: [org]
 					define recursive: [user] or recursive from parent
+			type company
+				relations
+					define owner: [org]
+					define org_member: member from owner
 		`).GetTypeDefinitions(),
 	}
 	ctx := context.Background()
 	err := datastore.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(b, err)
 
-	// 100 Iterations * 100 Tuples per write in test = 10k tuples with direct weight 1 relation
-	for i := 0; i < 100; i++ {
-		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
-
-		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
-			obj := "org:" + ulid.Make().String()
-			tuples = append(tuples, tuple.NewTupleKey(obj, "member", "user:justin"))
-		}
-		err = datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(b, err)
-	}
+	n := 10000
+	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)
+	createWeightTwoRelations(b, ctx, datastore, storeID, n)
 
 	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
+	objReturnLimit := 0
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,
-		WithListObjectsOptimizationsEnabled(true),
-		WithListObjectsMaxResults(0), // Unbounded results
+		//WithListObjectsOptimizationsEnabled(true),
+		WithListObjectsMaxResults(uint32(objReturnLimit)),
 	)
 	require.NoError(b, err)
-
-	weightOneRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
-		Type:                 "org",
-		Relation:             "member",
-		User:                 "user:justin",
-	}
 
 	ts, err := typesystem.New(model)
 	require.NoError(b, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	b.Run("simple_weight_one_relations", func(b *testing.B) {
+	b.Run("simple_weight_one_relation", func(b *testing.B) {
+		weightOneRequest := &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.Id,
+			Type:                 "org",
+			Relation:             "member",
+			User:                 "user:justin",
+		}
+
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightOneRequest)
 			require.NoError(b, err)
-			require.Len(b, res.Objects, 10000)
+			require.Len(b, res.Objects, n)
 		}
 	})
 
-	//b.Run("weight_two", func(b *testing.B) {
-	//})
-	//
+	b.Run("weight_two_ttu", func(b *testing.B) {
+		weightTwoRequest := &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.Id,
+			Type:                 "company",
+			Relation:             "org_member",
+			User:                 "user:justin",
+		}
+
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightTwoRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n) // probably don't even need these?
+		}
+
+	})
+
 	//// How deep to nest? How wide should each level be?
 	//b.Run("recursive_ttu", func(b *testing.B) {
 	//})
