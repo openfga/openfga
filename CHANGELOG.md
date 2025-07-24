@@ -24,6 +24,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Migration command now respects logging configuration options. [#2541](https://github.com/openfga/openfga/issues/2541)
 - Fixed message in log and slight refactor in list objects intersection/exclusion. [#2566](https://github.com/openfga/openfga/pull/2566)
 - Shadow list objects' check resolver should use its own cache. [#2574](https://github.com/openfga/openfga/pull/2574)
+- Improve performance for list objects intersection/exclusion with `enable-list-objects-optimizations` flag. [#2569](https://github.com/openfga/openfga/pull/2569)
 
 ## [1.9.0] - 2025-07-03
 ### Added

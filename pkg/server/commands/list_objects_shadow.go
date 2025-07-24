@@ -271,6 +271,13 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 			return false
 		}
 
+		if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query",
+				loShadowLogFields(req)...,
+			)
+			return false
+		}
+
 		// When a list_objects query takes a significant amount of time to complete (approaching its overall timeout),
 		// it often indicates an exhaustive traversal or that it's processing a large dataset.
 		// In such cases, running a parallel shadow query and comparing its results (which do not guarantee order)

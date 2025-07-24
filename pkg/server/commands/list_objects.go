@@ -96,6 +96,11 @@ type ListObjectsResolutionMetadata struct {
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed *atomic.Bool
+
+	// Temporary solution to indicate whether shadow list objects query should be run.
+	// For queries with Infinite weight, the weighted graph implementation falls back
+	// to the original code, making any comparison useless.
+	ShouldRunShadowQuery *atomic.Bool
 }
 
 func NewListObjectsResolutionMetadata() ListObjectsResolutionMetadata {
@@ -104,6 +109,7 @@ func NewListObjectsResolutionMetadata() ListObjectsResolutionMetadata {
 		DispatchCounter:      new(atomic.Uint32),
 		WasThrottled:         new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
+		ShouldRunShadowQuery: new(atomic.Bool),
 	}
 }
 
@@ -376,6 +382,8 @@ func (q *ListObjectsQuery) evaluate(
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
 			}
+			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
+			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil
 		})
 
