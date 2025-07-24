@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -761,9 +760,7 @@ func (c *ReverseExpandQuery) trySendCandidate(
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
 		} else {
-			fields := []zap.Field{zap.String("object", candidateObject)}
-			fields = append(fields, ctxzap.TagsToFields(ctx)...)
-			c.logger.ErrorWithContext(ctx, "failed to send candidate object", fields...)
+			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
 		}
 	}
 	return nil
