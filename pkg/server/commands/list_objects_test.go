@@ -2,13 +2,11 @@ package commands
 
 import (
 	"context"
-	"github.com/oklog/ulid/v2"
-	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/pkg/tuple"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -16,6 +14,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
@@ -27,6 +26,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -580,7 +580,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
-// This helper writes tuples for user:justin with relation "member" to org:0...org:10000
+// This helper writes tuples for user:justin with relation "member" to org:0...org:10000.
 func createDirectWeightOneRelations(
 	b *testing.B,
 	ctx context.Context,
@@ -652,10 +652,10 @@ func createRecursiveRelations(b *testing.B, ctx context.Context, datastore stora
 				continue
 			}
 
-			// otherwise, chain the org#recursive#org relation
+			// otherwise, chain the org#parent#org relation
 			obj := "org:" + strconv.Itoa(objID)
-			user := "org:" + strconv.Itoa(objID+1)
-			tuples[j] = tuple.NewTupleKey(obj, "recursive", user)
+			user := "org:" + strconv.Itoa(objID-1)
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
 			objID++
 		}
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -719,7 +719,7 @@ func BenchmarkListObjects(b *testing.B) {
 
 	weightOneRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 		Type:                 "org",
 		Relation:             "member",
 		User:                 "user:justin",
@@ -745,7 +745,7 @@ func BenchmarkListObjects(b *testing.B) {
 
 	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 		Type:                 "org",
 		Relation:             "computed",
 		User:                 "user:justin",
@@ -771,7 +771,7 @@ func BenchmarkListObjects(b *testing.B) {
 
 	weightTwoRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 		Type:                 "company",
 		Relation:             "org_member",
 		User:                 "user:justin",
@@ -791,13 +791,13 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightTwoRequest)
 			require.NoError(b, err)
-			require.Len(b, res.Objects, n) // probably don't even need these?
+			require.Len(b, res.Objects, n)
 		}
 	})
 
 	weightThreeRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 		Type:                 "office",
 		Relation:             "weight_three",
 		User:                 "user:justin",
@@ -823,7 +823,7 @@ func BenchmarkListObjects(b *testing.B) {
 
 	recursiveRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: model.Id,
+		AuthorizationModelId: model.GetId(),
 		Type:                 "org",
 		Relation:             "recursive",
 		User:                 "user:justin",
@@ -831,7 +831,7 @@ func BenchmarkListObjects(b *testing.B) {
 
 	// optimization currently falls back to non-optimized code when it's a recursive query
 	// Uncomment this when recursive listObjects work is underway
-	//b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
+	// b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
 	//	query.optimizationsEnabled = true
 	//	for i := 0; i < b.N; i++ {
 	//		_, err := query.Execute(ctx, recursiveRequest)
@@ -842,8 +842,9 @@ func BenchmarkListObjects(b *testing.B) {
 	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
-			_, err := query.Execute(ctx, recursiveRequest)
+			res, err := query.Execute(ctx, recursiveRequest)
 			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
 		}
 	})
 }
