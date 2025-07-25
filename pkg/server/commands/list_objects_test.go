@@ -590,11 +590,11 @@ func createDirectWeightOneRelations(
 ) {
 	b.Helper()
 	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
 			obj := "org:" + strconv.Itoa(objID)
-			tuples = append(tuples, tuple.NewTupleKey(obj, "member", "user:justin"))
+			tuples[j] = tuple.NewTupleKey(obj, "member", "user:justin")
 			objID++
 		}
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -605,13 +605,13 @@ func createDirectWeightOneRelations(
 func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
 	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
 			// These IDs can be the same as we already created org:0 - org:numTuples
 			obj := "company:" + strconv.Itoa(objID)
 			user := "org:" + strconv.Itoa(objID)
-			tuples = append(tuples, tuple.NewTupleKey(obj, "owner", user))
+			tuples[j] = tuple.NewTupleKey(obj, "owner", user)
 			objID++
 		}
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -622,13 +622,13 @@ func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore stora
 func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
 	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
 			// These IDs can be the same as we already created org:0 - org:numTuples
 			obj := "office:" + strconv.Itoa(objID)
 			user := "company:" + strconv.Itoa(objID)
-			tuples = append(tuples, tuple.NewTupleKey(obj, "parent", user))
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
 			objID++
 		}
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -639,13 +639,14 @@ func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore sto
 func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
 	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
 			// Every 10th item, make user:justin the leaf
 			if j%10 == 0 {
 				obj := "org:" + strconv.Itoa(objID)
 				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
+				tuples[j] = tk
 				tuples = append(tuples, tk)
 				objID++
 				continue
@@ -654,7 +655,7 @@ func createRecursiveRelations(b *testing.B, ctx context.Context, datastore stora
 			// otherwise, chain the org#recursive#org relation
 			obj := "org:" + strconv.Itoa(objID)
 			user := "org:" + strconv.Itoa(objID+1)
-			tuples = append(tuples, tuple.NewTupleKey(obj, "recursive", user))
+			tuples[j] = tuple.NewTupleKey(obj, "recursive", user)
 			objID++
 		}
 		err := datastore.Write(ctx, storeID, nil, tuples)
