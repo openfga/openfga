@@ -14,10 +14,9 @@ import (
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/server/metadata"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	// TODO: Uncomment when metadata validation is needed
-	// "github.com/openfga/openfga/pkg/server/metadata"
 )
 
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
@@ -66,20 +65,17 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		req.SchemaVersion = typesystem.SchemaVersion1_1
 	}
 
-	// Validate metadata if present (this will be available when API proto is updated)
-	// For now, we simulate this by checking if there's a metadata field in the future
-	// TODO: Uncomment when metadata field is added to WriteAuthorizationModelRequest
-	// if err := metadata.ValidateMetadata(req.GetMetadata()); err != nil {
-	//     return nil, serverErrors.InvalidAuthorizationModelInput(fmt.Errorf("invalid metadata: %w", err))
-	// }
+	// Validate metadata if provided
+	if err := metadata.ValidateMetadata(req.GetMetadata()); err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(fmt.Errorf("invalid metadata: %w", err))
+	}
 
 	model := &openfgav1.AuthorizationModel{
 		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
 		Conditions:      req.GetConditions(),
-		// TODO: Add metadata field when available in proto
-		// Metadata:        metadata.NormalizeMetadata(req.GetMetadata()),
+		Metadata:        metadata.NormalizeMetadata(req.GetMetadata()),
 	}
 
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
