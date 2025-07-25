@@ -580,89 +580,6 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
-// This helper writes tuples for user:justin with relation "member" to org:0...org:10000.
-func createDirectWeightOneRelations(
-	b *testing.B,
-	ctx context.Context,
-	datastore storage.OpenFGADatastore,
-	storeID string,
-	numTuples int,
-) {
-	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
-
-		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
-			obj := "org:" + strconv.Itoa(objID)
-			tuples[j] = tuple.NewTupleKey(obj, "member", "user:justin")
-			objID++
-		}
-		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(b, err)
-	}
-}
-
-func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
-	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
-
-		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
-			// These IDs can be the same as we already created org:0 - org:numTuples
-			obj := "company:" + strconv.Itoa(objID)
-			user := "org:" + strconv.Itoa(objID)
-			tuples[j] = tuple.NewTupleKey(obj, "owner", user)
-			objID++
-		}
-		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(b, err)
-	}
-}
-
-func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
-	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
-
-		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
-			// These IDs can be the same as we already created org:0 - org:numTuples
-			obj := "office:" + strconv.Itoa(objID)
-			user := "company:" + strconv.Itoa(objID)
-			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
-			objID++
-		}
-		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(b, err)
-	}
-}
-
-func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
-	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
-		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
-
-		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
-			// Every 10th item, make user:justin the leaf
-			if j%10 == 0 {
-				obj := "org:" + strconv.Itoa(objID)
-				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
-				tuples[j] = tk
-				tuples = append(tuples, tk)
-				objID++
-				continue
-			}
-
-			// otherwise, chain the org#parent#org relation
-			obj := "org:" + strconv.Itoa(objID)
-			user := "org:" + strconv.Itoa(objID-1)
-			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
-			objID++
-		}
-		err := datastore.Write(ctx, storeID, nil, tuples)
-		require.NoError(b, err)
-	}
-}
-
 func BenchmarkListObjects(b *testing.B) {
 	datastore := memory.New()
 	b.Cleanup(datastore.Close)
@@ -709,7 +626,9 @@ func BenchmarkListObjects(b *testing.B) {
 		datastore,
 		checkResolver,
 		WithListObjectsOptimizationsEnabled(true),
-		WithListObjectsMaxResults(0), // unlimited results, these tests are mostly designed to return 10k objects
+
+		// unlimited results, these tests are designed to return `n` results per iteration
+		WithListObjectsMaxResults(0),
 	)
 	require.NoError(b, err)
 
@@ -847,4 +766,87 @@ func BenchmarkListObjects(b *testing.B) {
 			require.Len(b, res.Objects, n)
 		}
 	})
+}
+
+// This helper writes tuples for user:justin with relation "member" to org:0...org:10000.
+func createDirectWeightOneRelations(
+	b *testing.B,
+	ctx context.Context,
+	datastore storage.OpenFGADatastore,
+	storeID string,
+	numTuples int,
+) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			obj := "org:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "member", "user:justin")
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "company:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "owner", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "office:" + strconv.Itoa(objID)
+			user := "company:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// Every 10th item, make user:justin the leaf
+			if j%10 == 0 {
+				obj := "org:" + strconv.Itoa(objID)
+				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
+				tuples[j] = tk
+				tuples = append(tuples, tk)
+				objID++
+				continue
+			}
+
+			// otherwise, chain the org#parent#org relation
+			obj := "org:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID-1)
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
 }
