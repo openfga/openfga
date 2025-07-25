@@ -407,8 +407,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		result  []string
 		latency time.Duration
 	}
-	commonMetadata := NewListObjectsResolutionMetadata()
-	commonMetadata.ShouldRunShadowQuery.Store(true)
 	tests := []struct {
 		name   string
 		fields fields
@@ -419,7 +417,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"a", "b", "c"}, ResolutionMetadata: commonMetadata}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"a", "b", "c"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -460,7 +461,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d"}, ResolutionMetadata: commonMetadata}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"c", "d"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -498,7 +502,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d", "x", "y", "z"}, ResolutionMetadata: commonMetadata}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"c", "d", "x", "y", "z"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -612,7 +619,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						require.NoError(t, ctx.Err()) // context must not be cancelled
-						return &ListObjectsResponse{ResolutionMetadata: commonMetadata}, nil
+						var resp ListObjectsResponse
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -694,9 +703,10 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "main query latency too high",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(true)
-					return &ListObjectsResponse{Objects: []string{"a"}, ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.Objects = []string{"a"}
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
 				},
 				latency:    950 * time.Millisecond,
 				pct:        100,
@@ -722,9 +732,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "sample rate not met",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(true)
-					return &ListObjectsResponse{Objects: []string{"a"}, ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
 				},
 				latency:    10 * time.Millisecond,
 				pct:        0,
@@ -740,9 +750,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "metadata_should_not_run_shadow",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(false)
-					return &ListObjectsResponse{ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(false)
+					return &resp
 				},
 				latency:    10 * time.Millisecond,
 				pct:        0,
@@ -767,9 +777,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "all preconditions met",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(true)
-					return &ListObjectsResponse{ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
 				},
 				latency:    10 * time.Millisecond,
 				pct:        100,

@@ -86,31 +86,21 @@ type ListObjectsResolver interface {
 
 type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
-	DatastoreQueryCount *atomic.Uint32
+	DatastoreQueryCount atomic.Uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
-	DispatchCounter *atomic.Uint32
+	DispatchCounter atomic.Uint32
 
 	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	WasThrottled atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
-	WasWeightedGraphUsed *atomic.Bool
+	WasWeightedGraphUsed atomic.Bool
 
 	// Temporary solution to indicate whether shadow list objects query should be run.
 	// For queries with Infinite weight, the weighted graph implementation falls back
 	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery *atomic.Bool
-}
-
-func NewListObjectsResolutionMetadata() ListObjectsResolutionMetadata {
-	return ListObjectsResolutionMetadata{
-		DatastoreQueryCount:  new(atomic.Uint32),
-		DispatchCounter:      new(atomic.Uint32),
-		WasThrottled:         new(atomic.Bool),
-		WasWeightedGraphUsed: new(atomic.Bool),
-		ShouldRunShadowQuery: new(atomic.Bool),
-	}
+	ShouldRunShadowQuery atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -494,7 +484,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	resolutionMetadata := NewListObjectsResolutionMetadata()
+	var listObjectsResponse ListObjectsResponse
 
 	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		if q.cacheSettings.ShouldCacheListObjectsIterators() {
@@ -506,12 +496,12 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	objects := make([]string, 0)
+	listObjectsResponse.Objects = make([]string, 0, maxResults)
 
 	var errs error
 
@@ -529,17 +519,14 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.HandleError("", result.Err)
 		}
 
-		objects = append(objects, result.ObjectID)
+		listObjectsResponse.Objects = append(listObjectsResponse.Objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs != nil {
+	if len(listObjectsResponse.Objects) < int(maxResults) && errs != nil {
 		return nil, errs
 	}
 
-	return &ListObjectsResponse{
-		Objects:            objects,
-		ResolutionMetadata: resolutionMetadata,
-	}, nil
+	return &listObjectsResponse, nil
 }
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
@@ -557,7 +544,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		defer cancel()
 	}
 
-	resolutionMetadata := NewListObjectsResolutionMetadata()
+	var resolutionMetadata ListObjectsResolutionMetadata
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {

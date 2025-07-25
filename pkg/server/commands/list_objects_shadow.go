@@ -213,9 +213,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	var queryCount uint32
 	if shadowRes != nil {
 		resultShadowed = shadowRes.Objects
-		if shadowRes.ResolutionMetadata.DatastoreQueryCount != nil {
-			queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
-		}
+		queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
 	}
 
 	mapResultMain := keyMapFromSlice(mainResult)
