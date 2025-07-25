@@ -80,6 +80,9 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 // be used with the ReadAuthorizationModels method.
 type ReadAuthorizationModelsOptions struct {
 	Pagination PaginationOptions
+	// MetadataFilter allows filtering authorization models by metadata labels
+	// Each key-value pair in the map represents a label selector (exact match)
+	MetadataFilter map[string]string
 }
 
 // ListStoresOptions represents the options that can
