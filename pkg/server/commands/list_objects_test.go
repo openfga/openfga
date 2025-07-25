@@ -705,12 +705,11 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
-	objReturnLimit := 0
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,
 		WithListObjectsOptimizationsEnabled(true),
-		WithListObjectsMaxResults(uint32(objReturnLimit)),
+		WithListObjectsMaxResults(0), // unlimited results, these tests are mostly designed to return 10k objects
 	)
 	require.NoError(b, err)
 
@@ -718,15 +717,16 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	b.Run("weight_one_direct", func(b *testing.B) {
-		weightOneRequest := &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.Id,
-			Type:                 "org",
-			Relation:             "member",
-			User:                 "user:justin",
-		}
+	weightOneRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.Id,
+		Type:                 "org",
+		Relation:             "member",
+		User:                 "user:justin",
+	}
 
+	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightOneRequest)
 			require.NoError(b, err)
@@ -734,15 +734,8 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_one_computed", func(b *testing.B) {
-		weightOneRequest := &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.Id,
-			Type:                 "org",
-			Relation:             "computed",
-			User:                 "user:justin",
-		}
-
+	b.Run("weight_one_direct_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightOneRequest)
 			require.NoError(b, err)
@@ -750,15 +743,42 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_two_ttu", func(b *testing.B) {
-		weightTwoRequest := &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.Id,
-			Type:                 "company",
-			Relation:             "org_member",
-			User:                 "user:justin",
-		}
+	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.Id,
+		Type:                 "org",
+		Relation:             "computed",
+		User:                 "user:justin",
+	}
 
+	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneComputedRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	b.Run("weight_one_computed_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneComputedRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	weightTwoRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.Id,
+		Type:                 "company",
+		Relation:             "org_member",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = true
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightTwoRequest)
 			require.NoError(b, err)
@@ -766,15 +786,25 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_three", func(b *testing.B) {
-		weightThreeRequest := &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.Id,
-			Type:                 "office",
-			Relation:             "weight_three",
-			User:                 "user:justin",
+	b.Run("weight_two_ttu_without_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightTwoRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n) // probably don't even need these?
 		}
+	})
 
+	weightThreeRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.Id,
+		Type:                 "office",
+		Relation:             "weight_three",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_three_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
 			require.NoError(b, err)
@@ -782,15 +812,35 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("recursive_ttu", func(b *testing.B) {
-		recursiveRequest := &openfgav1.ListObjectsRequest{
-			StoreId:              storeID,
-			AuthorizationModelId: model.Id,
-			Type:                 "org",
-			Relation:             "recursive",
-			User:                 "user:justin",
+	b.Run("weight_three_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightThreeRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
 		}
+	})
 
+	recursiveRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.Id,
+		Type:                 "org",
+		Relation:             "recursive",
+		User:                 "user:justin",
+	}
+
+	// optimization currently falls back to non-optimized code when it's a recursive query
+	// Uncomment this when recursive listObjects work is underway
+	//b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
+	//	query.optimizationsEnabled = true
+	//	for i := 0; i < b.N; i++ {
+	//		_, err := query.Execute(ctx, recursiveRequest)
+	//		require.NoError(b, err)
+	//	}
+	//})
+
+	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			_, err := query.Execute(ctx, recursiveRequest)
 			require.NoError(b, err)
