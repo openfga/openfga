@@ -580,6 +580,10 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
+// BenchmarkListObjects sets up an authorization model with various relationship weights:
+// weight one direct, weight one computed, weight two, weight three, and recursive (weight INF).
+// Each weight has 10k tuples written for that relation, and a benchmark is b.Run() specific to each weight.
+// The benchmarks are currently run 2x—once with optimizations enabled and once without.
 func BenchmarkListObjects(b *testing.B) {
 	datastore := memory.New()
 	b.Cleanup(datastore.Close)
