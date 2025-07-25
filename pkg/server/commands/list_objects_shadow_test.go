@@ -407,7 +407,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 		result  []string
 		latency time.Duration
 	}
-	commonMetadata := NewListObjectsResolutionMetadata()
+	var commonMetadata ListObjectsResolutionMetadata
 	commonMetadata.ShouldRunShadowQuery.Store(true)
 	tests := []struct {
 		name   string
@@ -694,9 +694,10 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "main query latency too high",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(true)
-					return &ListObjectsResponse{Objects: []string{"a"}, ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.Objects = []string{"a"}
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
 				},
 				latency:    950 * time.Millisecond,
 				pct:        100,
@@ -722,7 +723,7 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "sample rate not met",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
+					meta := ListObjectsResolutionMetadata{}
 					meta.ShouldRunShadowQuery.Store(true)
 					return &ListObjectsResponse{Objects: []string{"a"}, ResolutionMetadata: meta}
 				},
@@ -740,9 +741,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "metadata_should_not_run_shadow",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(false)
-					return &ListObjectsResponse{ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(false)
+					return &resp
 				},
 				latency:    10 * time.Millisecond,
 				pct:        0,
@@ -767,9 +768,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			name: "all preconditions met",
 			args: args{
 				mainResultFunc: func() *ListObjectsResponse {
-					meta := NewListObjectsResolutionMetadata()
-					meta.ShouldRunShadowQuery.Store(true)
-					return &ListObjectsResponse{ResolutionMetadata: meta}
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
 				},
 				latency:    10 * time.Millisecond,
 				pct:        100,
