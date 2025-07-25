@@ -837,7 +837,7 @@ func BenchmarkListObjects(b *testing.B) {
 	//		_, err := query.Execute(ctx, recursiveRequest)
 	//		require.NoError(b, err)
 	//	}
-	//})
+	// })
 
 	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
 		query.optimizationsEnabled = false
