@@ -636,9 +636,33 @@ func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore sto
 	}
 }
 
+func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	for objID := 0; objID < numTuples; objID++ {
+		tuples := make([]*openfgav1.TupleKey, 0, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// Every 10th item, make user:justin the leaf
+			if j%10 == 0 {
+				obj := "org:" + strconv.Itoa(objID)
+				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
+				tuples = append(tuples, tk)
+				objID++
+				continue
+			}
+
+			// otherwise, chain the org#recursive#org relation
+			obj := "org:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID+1)
+			tuples = append(tuples, tuple.NewTupleKey(obj, "recursive", user))
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
 func BenchmarkListObjects(b *testing.B) {
-	// One model, some weight 1, some weight 2, some recursive
-	// preload with A LOT of tuples and use them across all benchmarks
 	datastore := memory.New()
 	b.Cleanup(datastore.Close)
 	storeID := ulid.Make().String()
@@ -653,6 +677,7 @@ func BenchmarkListObjects(b *testing.B) {
 			type org
 				relations
 					define member: [user]
+					define computed: member
 					define parent: [org]
 					define recursive: [user] or recursive from parent
 			type company
@@ -673,6 +698,7 @@ func BenchmarkListObjects(b *testing.B) {
 	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)
 	createWeightTwoRelations(b, ctx, datastore, storeID, n)
 	createWeightThreeRelations(b, ctx, datastore, storeID, n)
+	createRecursiveRelations(b, ctx, datastore, storeID, n)
 
 	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 	require.NoError(b, err)
@@ -691,12 +717,28 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	b.Run("simple_weight_one_relation", func(b *testing.B) {
+	b.Run("weight_one_direct", func(b *testing.B) {
 		weightOneRequest := &openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: model.Id,
 			Type:                 "org",
 			Relation:             "member",
+			User:                 "user:justin",
+		}
+
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	b.Run("weight_one_computed", func(b *testing.B) {
+		weightOneRequest := &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.Id,
+			Type:                 "org",
+			Relation:             "computed",
 			User:                 "user:justin",
 		}
 
@@ -739,7 +781,18 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	//// How deep to nest? How wide should each level be?
-	//b.Run("recursive_ttu", func(b *testing.B) {
-	//})
+	b.Run("recursive_ttu", func(b *testing.B) {
+		recursiveRequest := &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: model.Id,
+			Type:                 "org",
+			Relation:             "recursive",
+			User:                 "user:justin",
+		}
+
+		for i := 0; i < b.N; i++ {
+			_, err := query.Execute(ctx, recursiveRequest)
+			require.NoError(b, err)
+		}
+	})
 }
