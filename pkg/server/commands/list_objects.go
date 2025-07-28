@@ -70,6 +70,7 @@ type ListObjectsQuery struct {
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 }
 
 type ListObjectsResolver interface {
@@ -85,25 +86,21 @@ type ListObjectsResolver interface {
 
 type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
-	DatastoreQueryCount *atomic.Uint32
+	DatastoreQueryCount atomic.Uint32
 
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
-	DispatchCounter *atomic.Uint32
+	DispatchCounter atomic.Uint32
 
 	// WasThrottled indicates whether the request was throttled
-	WasThrottled *atomic.Bool
+	WasThrottled atomic.Bool
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
-	WasWeightedGraphUsed *atomic.Bool
-}
+	WasWeightedGraphUsed atomic.Bool
 
-func NewListObjectsResolutionMetadata() ListObjectsResolutionMetadata {
-	return ListObjectsResolutionMetadata{
-		DatastoreQueryCount:  new(atomic.Uint32),
-		DispatchCounter:      new(atomic.Uint32),
-		WasThrottled:         new(atomic.Bool),
-		WasWeightedGraphUsed: new(atomic.Bool),
-	}
+	// Temporary solution to indicate whether shadow list objects query should be run.
+	// For queries with Infinite weight, the weighted graph implementation falls back
+	// to the original code, making any comparison useless.
+	ShouldRunShadowQuery atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -178,6 +175,12 @@ func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	}
 }
 
+func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.useShadowCache = useShadowCache
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -211,6 +214,7 @@ func NewListObjectsQuery(
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		useShadowCache:       false,
 	}
 
 	for _, opt := range opts {
@@ -326,8 +330,11 @@ func (q *ListObjectsQuery) evaluate(
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
-			q.sharedDatastoreResources,
-			q.cacheSettings,
+			storagewrappers.DataResourceConfiguration{
+				Resources:      q.sharedDatastoreResources,
+				CacheSettings:  q.cacheSettings,
+				UseShadowCache: q.useShadowCache,
+			},
 		)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(
@@ -365,6 +372,8 @@ func (q *ListObjectsQuery) evaluate(
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
 			}
+			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
+			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil
 		})
 
@@ -475,18 +484,24 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	resolutionMetadata := NewListObjectsResolutionMetadata()
+	var listObjectsResponse ListObjectsResponse
 
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY && q.cacheSettings.ShouldCacheListObjectsIterators() {
-		// Kick off background job to check if cache records are stale, inavlidating where needed
-		q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		if q.cacheSettings.ShouldCacheListObjectsIterators() {
+			// Kick off background job to check if cache records are stale, invalidating where needed
+			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
+			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
 	}
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
+
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	objects := make([]string, 0)
+	listObjectsResponse.Objects = make([]string, 0, maxResults)
 
 	var errs error
 
@@ -504,17 +519,14 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.HandleError("", result.Err)
 		}
 
-		objects = append(objects, result.ObjectID)
+		listObjectsResponse.Objects = append(listObjectsResponse.Objects, result.ObjectID)
 	}
 
-	if len(objects) < int(maxResults) && errs != nil {
+	if len(listObjectsResponse.Objects) < int(maxResults) && errs != nil {
 		return nil, errs
 	}
 
-	return &ListObjectsResponse{
-		Objects:            objects,
-		ResolutionMetadata: resolutionMetadata,
-	}, nil
+	return &listObjectsResponse, nil
 }
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
@@ -532,7 +544,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		defer cancel()
 	}
 
-	resolutionMetadata := NewListObjectsResolutionMetadata()
+	var resolutionMetadata ListObjectsResolutionMetadata
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {

@@ -252,7 +252,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if err != nil {
 					return err
 				}
-				err = c.intersectionHandler(ctx, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -261,7 +261,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				if err != nil {
 					return err
 				}
-				err = c.exclusionHandler(ctx, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -297,13 +297,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 ) error {
 	span := trace.SpanFromContext(ctx)
 
-	// This map is used for memoization of database queries for this branch of the reverse expansion.
-	// It prevents re-running the exact same database query for a given object type, relation, and user filter.
-	jobDedupeMap := new(sync.Map)
 	queryJobQueue := newJobQueue()
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, jobDedupeMap)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -335,7 +332,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, jobDedupeMap)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
 				if err != nil {
 					return err
 				}
@@ -369,7 +366,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
-	jobDedupeMap *sync.Map,
 ) ([]queryJob, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -394,7 +390,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	currentReq.relationStack = newStack
 
 	// Ensure that we haven't already run this query
-	if isDuplicateQuery(jobDedupeMap, userFilter, typeRel) {
+	if c.isDuplicateQuery(userFilter, typeRel, newStack) {
 		return nil, nil
 	}
 
@@ -483,10 +479,10 @@ func buildUserFilter(
 	return []*openfgav1.ObjectRelation{filter}, nil
 }
 
-func isDuplicateQuery(
-	dedupeMap *sync.Map,
+func (c *ReverseExpandQuery) isDuplicateQuery(
 	userFilter []*openfgav1.ObjectRelation,
 	typeRel string,
+	relationStack stack.Stack[typeRelEntry],
 ) bool {
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
@@ -495,8 +491,18 @@ func isDuplicateQuery(
 		return current.String() + accumulator
 	})
 
+	// Also need to consider the query's context, as it is possible that many different branches end at the
+	// same leaf or have a common ancestor as part of a unique traversal, and we don't want to kill a unique branch.
+	stackStr := ""
+	for relationStack != nil {
+		var val typeRelEntry
+		val, relationStack = stack.Pop(relationStack)
+		stackStr += fmt.Sprintf("%v", val)
+	}
+	key += stackStr
+
 	key += relation + objectType
-	_, loaded := dedupeMap.LoadOrStore(key, struct{}{})
+	_, loaded := c.queryDedupeMap.LoadOrStore(key, struct{}{})
 
 	return loaded
 }
@@ -573,6 +579,61 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 	})
 }
 
+// callCheckForCandidates calls check on the list objects candidate against non lowest weight edges.
+func (c *ReverseExpandQuery) callCheckForCandidate(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	tmpResult *ReverseExpandResult,
+	resultChan chan<- *ReverseExpandResult,
+	userset *openfgav1.Userset,
+	isAllowed bool,
+) error {
+	handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
+		&graph.ResolveCheckRequest{
+			StoreID:              req.StoreID,
+			AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
+			TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
+			ContextualTuples:     req.ContextualTuples,
+			Context:              req.Context,
+			Consistency:          req.Consistency,
+			RequestMetadata:      graph.NewCheckRequestMetadata(),
+		}, userset)
+	tmpCheckResult, err := handlerFunc(ctx)
+	if err != nil {
+		functionName := "intersectionHandler"
+		if !isAllowed {
+			functionName = "exclusionHandler"
+		}
+		c.logger.Error("Failed to execute", zap.Error(err),
+			zap.String("function", functionName),
+			zap.String("object", tmpResult.Object),
+			zap.String("relation", req.Relation),
+			zap.String("user", req.User.String()))
+		return err
+	}
+
+	// If the allowed value does not match what we expect, we skip this candidate.
+	// eg, for intersection we expect the check result to be true
+	// and for exclusion we expect the check result to be false.
+	if tmpCheckResult.GetAllowed() != isAllowed {
+		return nil
+	}
+
+	// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
+	if stack.Len(req.relationStack) == 0 {
+		c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
+		return nil
+	}
+
+	// If the original stack had more than 1 value, we need to query the parent values
+	// new stack with top item in stack
+	err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // callCheckForCandidates calls check on the list objects candidates against non lowest weight edges.
 func (c *ReverseExpandQuery) callCheckForCandidates(
 	pool *concurrency.Pool,
@@ -583,52 +644,17 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 	isAllowed bool,
 ) {
 	pool.Go(func(ctx context.Context) error {
+		// note that we create a separate goroutine pool instead of the main pool
+		// to avoid starvation on the main pool as there could be many candidates
+		// arriving concurrently.
+		tmpResultPool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+
 		for tmpResult := range tmpResultChan {
-			handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
-				&graph.ResolveCheckRequest{
-					StoreID:              req.StoreID,
-					AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-					TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-					ContextualTuples:     req.ContextualTuples,
-					Context:              req.Context,
-					Consistency:          req.Consistency,
-					RequestMetadata:      graph.NewCheckRequestMetadata(),
-				}, userset)
-			tmpCheckResult, err := handlerFunc(ctx)
-			if err != nil {
-				functionName := "intersectionHandler"
-				if !isAllowed {
-					functionName = "exclusionHandler"
-				}
-				c.logger.Error("Failed to execute", zap.Error(err),
-					zap.String("function", functionName),
-					zap.String("object", tmpResult.Object),
-					zap.String("relation", req.Relation),
-					zap.String("user", req.User.String()))
-				return err
-			}
-
-			// If the allowed value does not match what we expect, we skip this candidate.
-			// eg, for intersection we expect the check result to be true
-			// and for exclusion we expect the check result to be false.
-			if tmpCheckResult.GetAllowed() != isAllowed {
-				continue
-			}
-
-			// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-			if stack.Len(req.relationStack) == 0 {
-				c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
-				continue
-			}
-
-			// If the original stack had more than 1 value, we need to query the parent values
-			// new stack with top item in stack
-			err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
-			if err != nil {
-				return err
-			}
+			tmpResultPool.Go(func(ctx context.Context) error {
+				return c.callCheckForCandidate(ctx, req, tmpResult, resultChan, userset, isAllowed)
+			})
 		}
-		return nil
+		return tmpResultPool.Wait()
 	})
 }
 
@@ -639,7 +665,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 // resultChan. If check returns false, then these list object candidates
 // are invalid because it does not satisfy all paths for intersection.
 func (c *ReverseExpandQuery) intersectionHandler(
-	ctx context.Context,
+	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -696,11 +722,10 @@ func (c *ReverseExpandQuery) intersectionHandler(
 			}}}
 
 	// Concurrently find candidates and call check on them as they are found
-	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true)
 
-	return pool.Wait()
+	return nil
 }
 
 // invoke loopOverWeightedEdges to get list objects candidate. Check
@@ -711,6 +736,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 // are invalid because it does not satisfy all paths for exclusion.
 func (c *ReverseExpandQuery) exclusionHandler(
 	ctx context.Context,
+	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	edges []*weightedGraph.WeightedAuthorizationModelEdge,
@@ -756,9 +782,8 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	pool := concurrency.NewPool(ctx, 2)
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false)
 
-	return pool.Wait()
+	return nil
 }

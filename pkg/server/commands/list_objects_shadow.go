@@ -121,7 +121,7 @@ func newShadowedListObjectsQuery(
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithListObjectsOptimizationsEnabled(true)})...,
 	)
 	if err != nil {
 		return nil, err
@@ -213,9 +213,7 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	var queryCount uint32
 	if shadowRes != nil {
 		resultShadowed = shadowRes.Objects
-		if shadowRes.ResolutionMetadata.DatastoreQueryCount != nil {
-			queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
-		}
+		queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
 	}
 
 	mapResultMain := keyMapFromSlice(mainResult)
@@ -266,6 +264,13 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 		// so it is impossible to compare the results
 		if len(res.Objects) == int(loq.listObjectsMaxResults) {
 			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to max results reached",
+				loShadowLogFields(req)...,
+			)
+			return false
+		}
+
+		if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
+			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query",
 				loShadowLogFields(req)...,
 			)
 			return false

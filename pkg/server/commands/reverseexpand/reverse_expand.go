@@ -138,6 +138,10 @@ type ReverseExpandQuery struct {
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
 
+	// queryDedupeMap prevents multiple branches of exploration from running
+	// the same queries, since multiple leaf nodes can have a common ancestor
+	queryDedupeMap *sync.Map
+
 	// localCheckResolver allows reverse expand to call check locally
 	localCheckResolver   graph.CheckRewriteResolver
 	optimizationsEnabled bool
@@ -194,6 +198,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		},
 		candidateObjectsMap: new(sync.Map),
 		visitedUsersetsMap:  new(sync.Map),
+		queryDedupeMap:      new(sync.Map),
 		localCheckResolver:  graph.NewLocalChecker(),
 	}
 
@@ -225,6 +230,11 @@ type ResolutionMetadata struct {
 
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ReverseExpand request.
 	WasWeightedGraphUsed *atomic.Bool
+
+	// Temporary solution to indicate whether shadow list objects query should be run.
+	// For queries with Infinite weight, the weighted graph implementation falls back
+	// to the original code, making any comparison useless.
+	ShouldRunShadowQuery *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
@@ -232,6 +242,7 @@ func NewResolutionMetadata() *ResolutionMetadata {
 		DispatchCounter:      new(atomic.Uint32),
 		WasThrottled:         new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
+		ShouldRunShadowQuery: new(atomic.Bool),
 	}
 }
 
@@ -419,6 +430,27 @@ func (c *ReverseExpandQuery) execute(
 		}
 	}
 
+	// NOTE: this is temporary to ensure that the ListObjects shadow query doesn't run unnecessarily.
+	// For cases where the query is weight INF, reverse_expand_weighted falls back to original reverse_expand,
+	// so there is no value in running a shadow query after the main query completes.
+	// This block will hit on the first pass through reverse_expand, and it marks ShouldRunShadowQuery based on
+	// whether the shadow query will actually run the code we want to test.
+	if !req.skipWeightedGraph {
+		req.skipWeightedGraph = true // ensure we don't do this on subsequent recursive calls
+		resolutionMetadata.ShouldRunShadowQuery.Store(true)
+
+		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
+		node, ok := c.typesystem.GetNode(typeRel)
+		if !ok {
+			resolutionMetadata.ShouldRunShadowQuery.Store(false)
+		} else {
+			weight, _ := node.GetWeight(sourceUserType)
+			if weight == weightedGraph.Infinite {
+				resolutionMetadata.ShouldRunShadowQuery.Store(false)
+			}
+		}
+	}
+
 	g := graph.New(c.typesystem)
 
 	edges, err := g.GetPrunedRelationshipEdges(targetObjRef, sourceUserRef)
@@ -435,14 +467,15 @@ LoopOnEdges:
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
 		r := &ReverseExpandRequest{
-			StoreID:          req.StoreID,
-			ObjectType:       req.ObjectType,
-			Relation:         req.Relation,
-			User:             req.User,
-			ContextualTuples: req.ContextualTuples,
-			Context:          req.Context,
-			edge:             innerLoopEdge,
-			Consistency:      req.Consistency,
+			StoreID:           req.StoreID,
+			ObjectType:        req.ObjectType,
+			Relation:          req.Relation,
+			User:              req.User,
+			ContextualTuples:  req.ContextualTuples,
+			Context:           req.Context,
+			edge:              innerLoopEdge,
+			Consistency:       req.Consistency,
+			skipWeightedGraph: req.skipWeightedGraph,
 		}
 		switch innerLoopEdge.Type {
 		case graph.DirectEdge:

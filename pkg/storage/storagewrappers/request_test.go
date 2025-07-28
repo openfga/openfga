@@ -31,12 +31,15 @@ func TestRequestStorageWrapper(t *testing.T) {
 		}
 
 		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads, Method: apimethod.Check},
-			&shared.SharedDatastoreResources{
-				CheckCache: mockCache,
-				Logger:     logger.NewNoopLogger(),
-			}, config.CacheSettings{
-				CheckIteratorCacheEnabled: true,
-				CheckCacheLimit:           1,
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache: mockCache,
+					Logger:     logger.NewNoopLogger(),
+				},
+				CacheSettings: config.CacheSettings{
+					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:           1,
+				},
 			},
 		)
 		require.NotNil(t, br)
@@ -70,14 +73,17 @@ func TestRequestStorageWrapper(t *testing.T) {
 		sharedIteratorStorage := sharediterator.NewSharedIteratorDatastoreStorage()
 
 		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads, Method: apimethod.Check},
-			&shared.SharedDatastoreResources{
-				CheckCache:            mockCache,
-				Logger:                logger.NewNoopLogger(),
-				SharedIteratorStorage: sharedIteratorStorage,
-			}, config.CacheSettings{
-				CheckIteratorCacheEnabled: true,
-				CheckCacheLimit:           1,
-				SharedIteratorEnabled:     true,
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache:            mockCache,
+					Logger:                logger.NewNoopLogger(),
+					SharedIteratorStorage: sharedIteratorStorage,
+				},
+				CacheSettings: config.CacheSettings{
+					CheckIteratorCacheEnabled: true,
+					CheckCacheLimit:           1,
+					SharedIteratorEnabled:     true,
+				},
 			},
 		)
 		require.NotNil(t, br)
@@ -113,8 +119,10 @@ func TestRequestStorageWrapper(t *testing.T) {
 				Method:      apimethod.Check,
 				Concurrency: maxConcurrentReads,
 			},
-			&shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()},
-			config.CacheSettings{},
+			DataResourceConfiguration{
+				Resources:     &shared.SharedDatastoreResources{Logger: logger.NewNoopLogger()},
+				CacheSettings: config.CacheSettings{},
+			},
 		)
 		require.NotNil(t, br)
 
@@ -136,7 +144,10 @@ func TestRequestStorageWrapper(t *testing.T) {
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
 		}
 
-		br := NewRequestStorageWrapper(mockDatastore, requestContextualTuples, &Operation{Concurrency: maxConcurrentReads})
+		br := NewRequestStorageWrapper(mockDatastore, requestContextualTuples,
+			&Operation{Concurrency: maxConcurrentReads,
+				Method: apimethod.ListObjects,
+			})
 		require.NotNil(t, br)
 
 		// assert on the chain
@@ -145,6 +156,85 @@ func TestRequestStorageWrapper(t *testing.T) {
 
 		c, ok := a.RelationshipTupleReader.(*BoundedTupleReader)
 		require.Equal(t, maxConcurrentReads, cap(c.limiter))
+		require.True(t, ok)
+	})
+
+	t.Run("list_apis_with_cache", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		requestContextualTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+		}
+
+		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples,
+			&Operation{Concurrency: maxConcurrentReads, Method: apimethod.ListObjects},
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache: mockCache,
+					Logger:     logger.NewNoopLogger(),
+				},
+				CacheSettings: config.CacheSettings{
+					ListObjectsIteratorCacheEnabled:    true,
+					CheckCacheLimit:                    1,
+					ListObjectsIteratorCacheMaxResults: 1,
+				},
+			},
+		)
+		require.NotNil(t, br)
+
+		// assert on the chain
+		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		require.True(t, ok)
+
+		c, ok := a.RelationshipTupleReader.(*CachedDatastore)
+		require.True(t, ok)
+
+		d, ok := c.RelationshipTupleReader.(*BoundedTupleReader)
+		require.Equal(t, maxConcurrentReads, cap(d.limiter))
+		require.True(t, ok)
+	})
+
+	t.Run("list_apis_with_shadow_cache", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		shadowCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		requestContextualTuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
+		}
+
+		br := NewRequestStorageWrapperWithCache(mockDatastore, requestContextualTuples,
+			&Operation{Concurrency: maxConcurrentReads, Method: apimethod.ListObjects},
+			DataResourceConfiguration{
+				Resources: &shared.SharedDatastoreResources{
+					CheckCache:       mockCache,
+					ShadowCheckCache: shadowCache,
+					Logger:           logger.NewNoopLogger(),
+				},
+				CacheSettings: config.CacheSettings{
+					ListObjectsIteratorCacheEnabled:    true,
+					CheckCacheLimit:                    1,
+					ListObjectsIteratorCacheMaxResults: 1,
+				},
+				UseShadowCache: true,
+			},
+		)
+		require.NotNil(t, br)
+
+		// assert on the chain
+		a, ok := br.RelationshipTupleReader.(*CombinedTupleReader)
+		require.True(t, ok)
+
+		c, ok := a.RelationshipTupleReader.(*CachedDatastore)
+		require.True(t, ok)
+
+		d, ok := c.RelationshipTupleReader.(*BoundedTupleReader)
+		require.Equal(t, maxConcurrentReads, cap(d.limiter))
 		require.True(t, ok)
 	})
 }

@@ -40,7 +40,9 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
 		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
+		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
 		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
+		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
 		assert.Equal(t, noopLogger, query.logger)
 		assert.Equal(t, 13, query.shadowPct)
 		assert.Equal(t, 99, query.maxDeltaItems)
@@ -415,7 +417,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"a", "b", "c"}}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"a", "b", "c"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -456,7 +461,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d"}}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"c", "d"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -494,7 +502,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			fields: fields{
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
-						return &ListObjectsResponse{Objects: []string{"c", "d", "x", "y", "z"}}, nil
+						var resp ListObjectsResponse
+						resp.Objects = []string{"c", "d", "x", "y", "z"}
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -608,7 +619,9 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 				shadow: &mockListObjectsQuery{
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						require.NoError(t, ctx.Err()) // context must not be cancelled
-						return &ListObjectsResponse{}, nil
+						var resp ListObjectsResponse
+						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+						return &resp, nil
 					},
 				},
 				shadowPct:     100,
@@ -648,11 +661,11 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 
 func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 	type args struct {
-		mainResult *ListObjectsResponse
-		latency    time.Duration
-		pct        int
-		maxResults uint32
-		deadline   time.Duration
+		mainResultFunc func() *ListObjectsResponse
+		latency        time.Duration
+		pct            int
+		maxResults     uint32
+		deadline       time.Duration
 	}
 	tests := []struct {
 		name           string
@@ -664,7 +677,9 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		{
 			name: "main result reaches max result size",
 			args: args{
-				mainResult: &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
+				mainResultFunc: func() *ListObjectsResponse {
+					return &ListObjectsResponse{Objects: []string{"a", "b", "c"}}
+				},
 				latency:    10 * time.Millisecond,
 				pct:        100,
 				maxResults: 3,
@@ -687,7 +702,12 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		{
 			name: "main query latency too high",
 			args: args{
-				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				mainResultFunc: func() *ListObjectsResponse {
+					var resp ListObjectsResponse
+					resp.Objects = []string{"a"}
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
+				},
 				latency:    950 * time.Millisecond,
 				pct:        100,
 				maxResults: 10,
@@ -711,7 +731,11 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		{
 			name: "sample rate not met",
 			args: args{
-				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				mainResultFunc: func() *ListObjectsResponse {
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
+				},
 				latency:    10 * time.Millisecond,
 				pct:        0,
 				maxResults: 10,
@@ -723,9 +747,40 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			},
 		},
 		{
+			name: "metadata_should_not_run_shadow",
+			args: args{
+				mainResultFunc: func() *ListObjectsResponse {
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(false)
+					return &resp
+				},
+				latency:    10 * time.Millisecond,
+				pct:        0,
+				maxResults: 10,
+				deadline:   1 * time.Second,
+			},
+			expectedReturn: false,
+			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
+				mockLogger := mocks.NewMockLogger(ctrl)
+				mockLogger.EXPECT().DebugWithContext(
+					gomock.Any(),
+					gomock.Eq("shadowed list objects query skipped due to infinite weight query"),
+					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
+					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
+					gomock.Eq(zap.String("store_id", "")),
+					gomock.Eq(zap.String("model_id", "")),
+				)
+				return mockLogger
+			},
+		},
+		{
 			name: "all preconditions met",
 			args: args{
-				mainResult: &ListObjectsResponse{Objects: []string{"a"}},
+				mainResultFunc: func() *ListObjectsResponse {
+					var resp ListObjectsResponse
+					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
+					return &resp
+				},
 				latency:    10 * time.Millisecond,
 				pct:        100,
 				maxResults: 10,
@@ -752,7 +807,7 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 				logger:    mockLogger,
 			}
 
-			ret := q.checkShadowModePreconditions(context.TODO(), &openfgav1.ListObjectsRequest{}, tt.args.mainResult, tt.args.latency)
+			ret := q.checkShadowModePreconditions(context.TODO(), &openfgav1.ListObjectsRequest{}, tt.args.mainResultFunc(), tt.args.latency)
 			assert.Equal(t, tt.expectedReturn, ret)
 		})
 	}
