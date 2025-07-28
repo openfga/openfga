@@ -389,10 +389,11 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 	currentReq.relationStack = newStack
 
+	// TODO: removed temporarily to investigate correctness issue
 	// Ensure that we haven't already run this query
-	if c.isDuplicateQuery(userFilter, typeRel, newStack) {
-		return nil, nil
-	}
+	// if c.isDuplicateQuery(userFilter, typeRel, newStack) {
+	//	return nil, nil
+	// }
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
@@ -479,7 +480,7 @@ func buildUserFilter(
 	return []*openfgav1.ObjectRelation{filter}, nil
 }
 
-func (c *ReverseExpandQuery) isDuplicateQuery(
+func (c *ReverseExpandQuery) isDuplicateQuery( //nolint:unused
 	userFilter []*openfgav1.ObjectRelation,
 	typeRel string,
 	relationStack stack.Stack[typeRelEntry],
