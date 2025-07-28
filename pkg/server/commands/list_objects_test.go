@@ -781,7 +781,8 @@ func createDirectWeightOneRelations(
 	numTuples int,
 ) {
 	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
+	objID := 0
+	for objID < numTuples {
 		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
@@ -796,7 +797,8 @@ func createDirectWeightOneRelations(
 
 func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
+	objID := 0
+	for objID < numTuples {
 		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
@@ -813,7 +815,8 @@ func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore stora
 
 func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
+	objID := 0
+	for objID < numTuples {
 		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
@@ -830,7 +833,8 @@ func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore sto
 
 func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
 	b.Helper()
-	for objID := 0; objID < numTuples; objID++ {
+	objID := 0
+	for objID < numTuples {
 		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
 
 		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
