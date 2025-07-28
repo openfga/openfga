@@ -17,7 +17,6 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -389,11 +388,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 	currentReq.relationStack = newStack
 
-	// Ensure that we haven't already run this query
-	if c.isDuplicateQuery(userFilter, typeRel, newStack) {
-		return nil, nil
-	}
-
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
 
 	filteredIter, err := c.buildFilteredIterator(ctx, currentReq, objectType, relation, userFilter)
@@ -477,34 +471,6 @@ func buildUserFilter(
 	}
 
 	return []*openfgav1.ObjectRelation{filter}, nil
-}
-
-func (c *ReverseExpandQuery) isDuplicateQuery(
-	userFilter []*openfgav1.ObjectRelation,
-	typeRel string,
-	relationStack stack.Stack[typeRelEntry],
-) bool {
-	objectType, relation := tuple.SplitObjectRelation(typeRel)
-
-	// Create a unique key for the current query to avoid duplicate work.
-	key := utils.Reduce(userFilter, "", func(accumulator string, current *openfgav1.ObjectRelation) string {
-		return current.String() + accumulator
-	})
-
-	// Also need to consider the query's context, as it is possible that many different branches end at the
-	// same leaf or have a common ancestor as part of a unique traversal, and we don't want to kill a unique branch.
-	stackStr := ""
-	for relationStack != nil {
-		var val typeRelEntry
-		val, relationStack = stack.Pop(relationStack)
-		stackStr += fmt.Sprintf("%v", val)
-	}
-	key += stackStr
-
-	key += relation + objectType
-	_, loaded := c.queryDedupeMap.LoadOrStore(key, struct{}{})
-
-	return loaded
 }
 
 // buildFilteredIterator constructs the iterator used when reverse_expand queries for tuples.
