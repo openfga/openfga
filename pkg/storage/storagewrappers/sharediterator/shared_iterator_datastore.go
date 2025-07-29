@@ -422,7 +422,6 @@ func (sf *IteratorDatastore) Read(
 	store string,
 	tupleKey *openfgav1.TupleKey,
 	options storage.ReadOptions) (storage.TupleIterator, error) {
-
 	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
 	}
@@ -617,8 +616,7 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	}
 }
 
-// clone creates a new shared iterator that shares some state with the original.
-// clone increments an internal reference count and returns a new instance of the shared iterator.
+// Clone increments an internal reference count and returns a new instance of the shared iterator.
 // If the original iterator has been stopped, it returns nil.
 // This allows multiple goroutines to share the same iterator instance without interfering with each other.
 // The clone method is thread-safe and ensures that the reference count is incremented atomically.
