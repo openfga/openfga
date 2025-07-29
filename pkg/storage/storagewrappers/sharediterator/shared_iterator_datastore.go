@@ -88,11 +88,19 @@ type storageItem struct {
 	// err is an error that is set when the iterator creation fails.
 	err error
 
+	admissionDuration time.Duration
+
+	idleDuration time.Duration
+
+	idleTimer *time.Timer
+
 	// producer is a function that creates a new shared iterator.
 	// It is called when the iterator is not yet created, and it should return a new shared iterator or an error.
 	// This allows the storageItem to lazily create the iterator when it is first accessed.
 	// This is useful for cases where the iterator creation is expensive or requires context.
 	producer func() (*sharedIterator, error)
+
+	cleanup func()
 
 	// once is a sync.Once to ensure that the producer function is only called once.
 	once sync.Once
@@ -108,6 +116,22 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 
 	s.once.Do(func() {
 		s.iter, s.err = s.producer()
+		if s.err != nil {
+			return
+		}
+
+		admissionTimer := time.AfterFunc(s.admissionDuration, func() {
+			s.idleTimer.Stop()
+			s.iter.Stop()
+			s.cleanup()
+		})
+
+		s.idleTimer = time.AfterFunc(s.idleDuration, func() {
+			if admissionTimer.Stop() {
+				s.iter.Stop()
+				s.cleanup()
+			}
+		})
 		created = true
 	})
 
@@ -115,6 +139,7 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 		return nil, false, s.err
 	}
 	clone := s.iter.clone()
+	s.idleTimer.Reset(s.idleDuration)
 
 	return clone, created, s.err
 }
@@ -147,12 +172,21 @@ func WithSharedIteratorDatastoreLogger(logger logger.Logger) IteratorDatastoreOp
 	}
 }
 
-// WithMaxAdmissionTime sets the maximum duration for which shared iterator allows clone.
-// After this period, clone will fail and fall back to non-shared iterator. This is done
+// WithMaxAdmissionTime sets the maximum duration for which a shared iterator may reused.
+// After this period, the shared iterator will be removed from the cache. This is done
 // to prevent stale data if there are very long-running requests.
 func WithMaxAdmissionTime(maxAdmissionTime time.Duration) IteratorDatastoreOpt {
 	return func(b *IteratorDatastore) {
 		b.maxAdmissionTime = maxAdmissionTime
+	}
+}
+
+// WithMaxIdleTime sets the maximum duration for which a shared iterator can remain idle before it is no longer reusable.
+// After this period, the shared iterator will be removed from the cache. This is done
+// to prevent unused shared iterators from being cached for longer than necessary.
+func WithMaxIdleTime(maxIdleTime time.Duration) IteratorDatastoreOpt {
+	return func(b *IteratorDatastore) {
+		b.maxIdleTime = maxIdleTime
 	}
 }
 
@@ -182,6 +216,8 @@ type IteratorDatastore struct {
 
 	// maxAdmissionTime is the maximum duration for which shared iterator allows clone.
 	maxAdmissionTime time.Duration
+
+	maxIdleTime time.Duration
 }
 
 // NewSharedIteratorDatastore creates a new IteratorDatastore with the given inner RelationshipTupleReader and internal storage.
@@ -195,6 +231,7 @@ func NewSharedIteratorDatastore(inner storage.RelationshipTupleReader, internalS
 		internalStorage:         internalStorage,
 		method:                  "",
 		maxAdmissionTime:        config.DefaultSharedIteratorMaxAdmissionTime,
+		maxIdleTime:             config.DefaultSharedIteratorMaxIdleTime,
 	}
 
 	for _, opt := range opts {
@@ -236,6 +273,8 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 	// Create a new storage item to hold the shared iterator.
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
+	newStorageItem.admissionDuration = sf.maxAdmissionTime
+	newStorageItem.idleDuration = sf.maxIdleTime
 
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
@@ -246,19 +285,16 @@ func (sf *IteratorDatastore) ReadStartingWithUser(
 
 		si := newSharedIterator(it)
 
-		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-		time.AfterFunc(sf.maxAdmissionTime, func() {
-			si.Stop()
-			if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
-				sf.internalStorage.ctr.Add(-1)
-				sharedIteratorCount.Dec()
-			}
-		})
-
 		sharedIteratorCount.Inc()
 
 		return si, nil
+	}
+
+	newStorageItem.cleanup = func() {
+		if sf.internalStorage.rswu.CompareAndDelete(cacheKey, newStorageItem) {
+			sf.internalStorage.ctr.Add(-1)
+			sharedIteratorCount.Dec()
+		}
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -318,6 +354,8 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 	// Create a new storage item to hold the shared iterator.
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
+	newStorageItem.admissionDuration = sf.maxAdmissionTime
+	newStorageItem.idleDuration = sf.maxIdleTime
 
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
@@ -328,19 +366,16 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 
 		si := newSharedIterator(it)
 
-		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-		time.AfterFunc(sf.maxAdmissionTime, func() {
-			si.Stop()
-			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
-				sf.internalStorage.ctr.Add(-1)
-				sharedIteratorCount.Dec()
-			}
-		})
-
 		sharedIteratorCount.Inc()
 
 		return si, nil
+	}
+
+	newStorageItem.cleanup = func() {
+		if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
+			sf.internalStorage.ctr.Add(-1)
+			sharedIteratorCount.Dec()
+		}
 	}
 
 	// Load or store the new storage item in the internal storage map.
@@ -400,6 +435,8 @@ func (sf *IteratorDatastore) Read(
 	// Create a new storage item to hold the shared iterator.
 	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
 	newStorageItem := new(storageItem)
+	newStorageItem.admissionDuration = sf.maxAdmissionTime
+	newStorageItem.idleDuration = sf.maxIdleTime
 
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
@@ -410,19 +447,16 @@ func (sf *IteratorDatastore) Read(
 
 		si := newSharedIterator(it)
 
-		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-		time.AfterFunc(sf.maxAdmissionTime, func() {
-			si.Stop()
-			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
-				sf.internalStorage.ctr.Add(-1)
-				sharedIteratorCount.Dec()
-			}
-		})
-
 		sharedIteratorCount.Inc()
 
 		return si, nil
+	}
+
+	newStorageItem.cleanup = func() {
+		if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
+			sf.internalStorage.ctr.Add(-1)
+			sharedIteratorCount.Dec()
+		}
 	}
 
 	// Load or store the new storage item in the internal storage map.
