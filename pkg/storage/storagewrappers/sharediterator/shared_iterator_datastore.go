@@ -127,7 +127,6 @@ func (s *storageItem) unwrap() (*sharedIterator, bool, error) {
 		}
 
 		admissionTimer := time.AfterFunc(s.admissionDuration, func() {
-			s.idleTimer.Stop()
 			s.iter.Stop()
 			s.cleanup()
 		})
