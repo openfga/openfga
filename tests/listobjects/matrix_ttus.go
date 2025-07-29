@@ -304,6 +304,23 @@ var ttus = []matrixTest{
 		},
 	},
 	{
+		Name: "duplicate_ttu_parents",
+		Tuples: []*openfgav1.TupleKey{
+			{Object: "ttus:1", Relation: "mult_parent_types", User: "directs:1"},
+			{Object: "directs:1", Relation: "direct", User: "user:1"},
+		},
+		ListObjectAssertions: []*listobjectstest.Assertion{
+			{
+				Request: &openfgav1.ListObjectsRequest{
+					User:     "user:1",
+					Type:     "ttus",
+					Relation: "duplicate_ttu",
+				},
+				Expectation: []string{"ttus:1"},
+			},
+		},
+	},
+	{
 		Name: "ttus_tuple_cycle_len2_ttu",
 		Tuples: []*openfgav1.TupleKey{
 			// Create a cycle of ttus -> directs
