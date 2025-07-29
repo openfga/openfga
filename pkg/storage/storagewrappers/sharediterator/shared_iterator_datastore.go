@@ -44,6 +44,12 @@ var (
 		Name:      "shared_iterator_count",
 		Help:      "The current number of items of shared iterator.",
 	})
+
+	sharedIteratorCloneCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: build.ProjectName,
+		Name:      "shared_iterator_clone_count",
+		Help:      "The current number of clones of shared iterators.",
+	})
 )
 
 const (
@@ -634,6 +640,8 @@ func (s *sharedIterator) clone() *sharedIterator {
 		return nil
 	}
 
+	sharedIteratorCloneCount.Inc()
+
 	return &sharedIterator{
 		await:  s.await,
 		ir:     s.ir,
@@ -751,7 +759,10 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // It decrements the reference count and checks if it should clean up the iterator.
 // If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
 func (s *sharedIterator) Stop() {
-	if s.stopped.CompareAndSwap(false, true) && s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
-		s.ir.Stop()
+	if s.stopped.CompareAndSwap(false, true) {
+		if s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
+			s.ir.Stop()
+		}
+		sharedIteratorCloneCount.Dec()
 	}
 }
