@@ -566,16 +566,16 @@ type iteratorState struct {
 type sharedIterator struct {
 	// mu is a mutex to ensure that only one goroutine can access the current iterator instance at a time.
 	// mu is a value type because it is not shared between iterator instances.
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	// head is the index of the next item to be returned by the current iterator instance.
 	// It is incremented each time an item is returned by the iterator in a call to Next.
 	// head is a value type because it is not shared between iterator instances.
 	head int
 
-	// stopped is an atomic boolean that indicates whether the current iterator instance has been stopped.
+	// stopped is a boolean that indicates whether the current iterator instance has been stopped.
 	// stopped is a value type because it is not shared between iterator instances.
-	stopped atomic.Bool
+	stopped bool
 
 	// await ensures that only one goroutine can fetch items at a time.
 	// It is used to block until new items are available or the context is done.
@@ -589,19 +589,12 @@ type sharedIterator struct {
 
 	// refs is a shared atomic counter that keeps track of the number of shared instances of the iterator.
 	refs *atomic.Int64
-
-	// closed indicates whether the shared iterator's internal iterator has been stopped.
-	// It is used to prevent future clones from being created if the iterator has already been closed.
-	// This is a pointer value because it is shared between all clones of the iterator.
-	closed *atomic.Bool
 }
 
 // initSharedIterator creates a new shared iterator from the given storage.TupleIterator.
 // It initializes the shared context, cancellation function, and other necessary fields.
 func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	var aw await
-
-	var closed atomic.Bool
 
 	// Initialize the reference counter to 1, indicating that there is one active instance of the iterator.
 	var refs atomic.Int64
@@ -617,37 +610,34 @@ func newSharedIterator(it storage.TupleIterator) *sharedIterator {
 	pstate.Store(&state)
 
 	return &sharedIterator{
-		await:  &aw,
-		ir:     ir,
-		state:  &pstate,
-		refs:   &refs,
-		closed: &closed,
+		await: &aw,
+		ir:    ir,
+		state: &pstate,
+		refs:  &refs,
 	}
 }
 
-// clone creates a new shared iterator that shares the same context, cancellation function, and other fields.
-// It increments the reference count and returns a new instance of the shared iterator.
-// If the reference count reaches zero, it returns nil, indicating that the iterator has been stopped.
+// clone creates a new shared iterator that shares some state with the original.
+// clone increments an internal reference count and returns a new instance of the shared iterator.
+// If the original iterator has been stopped, it returns nil.
 // This allows multiple goroutines to share the same iterator instance without interfering with each other.
 // The clone method is thread-safe and ensures that the reference count is incremented atomically.
 func (s *sharedIterator) clone() *sharedIterator {
-	s.refs.Add(1)
-
-	if s.closed.Load() {
-		// if the shared iterator's internal iterator has been stopped,
-		// we return nil to indicate that the iterator is no longer available.
-		s.refs.Add(-1)
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
 		return nil
 	}
+	s.refs.Add(1)
+	s.mu.RUnlock()
 
 	sharedIteratorCloneCount.Inc()
 
 	return &sharedIterator{
-		await:  s.await,
-		ir:     s.ir,
-		state:  s.state,
-		refs:   s.refs,
-		closed: s.closed,
+		await: s.await,
+		ir:    s.ir,
+		state: s.state,
+		refs:  s.refs,
 	}
 }
 
@@ -698,12 +688,12 @@ func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
 // It is used to peek at the next item without consuming it.
 // If the iterator is stopped or there are no items available, it returns an error.
 // It also handles fetching new items if the current head is beyond the available items.
-func (s *sharedIterator) current(ctx context.Context) (*openfgav1.Tuple, error) {
+func (s *sharedIterator) currentLocked(ctx context.Context) (*openfgav1.Tuple, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	if s.stopped.Load() {
+	if s.stopped {
 		return nil, storage.ErrIteratorDone
 	}
 
@@ -736,7 +726,7 @@ func (s *sharedIterator) Head(ctx context.Context) (*openfgav1.Tuple, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.current(ctx)
+	return s.currentLocked(ctx)
 }
 
 // Next returns the next item in the shared iterator and advances the iterator.
@@ -747,7 +737,7 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result, err := s.current(ctx)
+	result, err := s.currentLocked(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -759,8 +749,12 @@ func (s *sharedIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 // It decrements the reference count and checks if it should clean up the iterator.
 // If the reference count reaches zero, it calls the cleanup function to remove the iterator from the internal storage.
 func (s *sharedIterator) Stop() {
-	if s.stopped.CompareAndSwap(false, true) {
-		if s.refs.Add(-1) == 0 && !s.closed.Swap(true) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.stopped {
+		s.stopped = true
+		if s.refs.Add(-1) == 0 {
 			s.ir.Stop()
 		}
 		sharedIteratorCloneCount.Dec()
