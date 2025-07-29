@@ -598,6 +598,82 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, length(&ds.internalStorage.read))
 	})
+
+	t.Run("call_after_max_admission_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(50*time.Millisecond),
+			WithMaxIdleTime(1*time.Second))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
+	})
+
+	t.Run("call_after_max_idle_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(1*time.Second),
+			WithMaxIdleTime(50*time.Millisecond))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
+	})
 }
 
 func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
@@ -798,6 +874,82 @@ func TestSharedIteratorDatastore_ReadUsersetTuples(t *testing.T) {
 		err := p.Wait()
 		require.NoError(t, err)
 		require.Empty(t, length(&ds.internalStorage.rut))
+	})
+
+	t.Run("call_after_max_admission_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(50*time.Millisecond),
+			WithMaxIdleTime(1*time.Second))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
+	})
+
+	t.Run("call_after_max_idle_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(1*time.Second),
+			WithMaxIdleTime(50*time.Millisecond))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			ReadUsersetTuples(gomock.Any(), storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{}, storage.ReadUsersetTuplesOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
 	})
 }
 
@@ -1033,6 +1185,82 @@ func TestSharedIteratorDatastore_ReadStartingWithUser(t *testing.T) {
 		err := p.Wait()
 		require.NoError(t, err)
 		require.Empty(t, length(&internalStorage.rswu))
+	})
+
+	t.Run("call_after_max_admission_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(50*time.Millisecond),
+			WithMaxIdleTime(1*time.Second))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
+	})
+
+	t.Run("call_after_max_idle_time", func(t *testing.T) {
+		ctx := context.Background()
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
+		storeID := ulid.Make().String()
+		internalStorage := NewSharedIteratorDatastoreStorage()
+		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
+			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
+			WithMaxAdmissionTime(1*time.Second),
+			WithMaxIdleTime(50*time.Millisecond))
+
+		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator.EXPECT().Stop()
+
+		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
+		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
+		mockIterator2.EXPECT().Stop()
+
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{}).
+			Return(mockIterator, nil)
+		mockDatastore.EXPECT().
+			ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{}).
+			Return(mockIterator2, nil)
+		iter1, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		iter1.Stop()
+		// sleep time is > admission time
+		time.Sleep(100 * time.Millisecond)
+		iter2, err := ds.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{}, storage.ReadStartingWithUserOptions{})
+		require.NoError(t, err)
+		_, err = iter2.Next(ctx)
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
+		iter2.Stop()
+		time.Sleep(100 * time.Millisecond) // ensure the internal map is cleaned up
 	})
 }
 
@@ -1598,42 +1826,6 @@ func TestNewSharedIteratorDatastore_iter(t *testing.T) {
 		require.Equal(t, tupleThree, item3b)
 		_, err = iter2.Next(ctx)
 		require.ErrorIs(t, err, mockedError)
-	})
-
-	t.Run("clone_after_new_admission_time", func(t *testing.T) {
-		ctx := context.Background()
-		mockController := gomock.NewController(t)
-		defer mockController.Finish()
-		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
-		storeID := ulid.Make().String()
-		internalStorage := NewSharedIteratorDatastoreStorage()
-		ds := NewSharedIteratorDatastore(mockDatastore, internalStorage,
-			WithSharedIteratorDatastoreLogger(logger.NewNoopLogger()),
-			WithMaxAdmissionTime(500*time.Millisecond))
-
-		mockIterator := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-		mockIterator.EXPECT().Stop()
-
-		mockIterator2 := mocks.NewMockIterator[*openfgav1.Tuple](mockController)
-		mockIterator2.EXPECT().Next(gomock.Any()).Return(nil, storage.ErrIteratorDone)
-		mockIterator2.EXPECT().Stop()
-
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator, nil)
-		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
-			Return(mockIterator2, nil)
-		iter1, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter1.Stop()
-		// sleep time is smaller than watchdog but > admission time
-		time.Sleep(1 * time.Second)
-		iter2, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
-		require.NoError(t, err)
-		defer iter2.Stop()
-		_, err = iter2.Next(ctx)
-		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
 
