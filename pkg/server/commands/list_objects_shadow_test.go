@@ -404,7 +404,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 	}
 	type args struct {
 		req     *openfgav1.ListObjectsRequest
-		result  []string
+		result  *ListObjectsResponse
 		latency time.Duration
 	}
 	tests := []struct {
@@ -442,7 +442,8 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Duration("main_latency", 77*time.Millisecond)),
 						gomock.Any(),
 						zap.Int("main_result_count", 3),
-						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("main_datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("shadow_datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
@@ -452,7 +453,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					StoreId:              "req.GetStoreId()",
 					AuthorizationModelId: "req.GetAuthorizationModelId()",
 				},
-				result:  []string{"a", "b", "c"},
+				result:  &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
 				latency: 77 * time.Millisecond,
 			},
 		},
@@ -486,14 +487,15 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Int("shadow_result_count", 2)),
 						gomock.Eq(zap.Int("total_delta", 3)),
 						gomock.Eq(zap.Any("delta", []string{"+d", "-a", "-b"})),
-						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("main_datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("shadow_datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
 			},
 			args: args{
 				req:     &openfgav1.ListObjectsRequest{},
-				result:  []string{"a", "b", "c"},
+				result:  &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
 				latency: 77 * time.Millisecond,
 			},
 		},
@@ -527,14 +529,15 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 						gomock.Eq(zap.Int("shadow_result_count", 5)),
 						gomock.Eq(zap.Int("total_delta", 11)),
 						gomock.Eq(zap.Any("delta", []string{"+x", "+y", "+z"})),
-						gomock.Eq(zap.Uint32("datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("main_datastore_query_count", uint32(0))),
+						gomock.Eq(zap.Uint32("shadow_datastore_query_count", uint32(0))),
 					)
 					return mockLogger
 				},
 			},
 			args: args{
 				req:     &openfgav1.ListObjectsRequest{},
-				result:  []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+				result:  &ListObjectsResponse{Objects: []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}},
 				latency: 77 * time.Millisecond,
 			},
 		},
@@ -569,7 +572,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			},
 			args: args{
 				req:     &openfgav1.ListObjectsRequest{},
-				result:  []string{"a", "b", "c"},
+				result:  &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
 				latency: 77 * time.Millisecond,
 			},
 		},
@@ -603,7 +606,7 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			},
 			args: args{
 				req:     &openfgav1.ListObjectsRequest{},
-				result:  []string{"a", "b", "c"},
+				result:  &ListObjectsResponse{Objects: []string{"a", "b", "c"}},
 				latency: 77 * time.Millisecond,
 			},
 		},
