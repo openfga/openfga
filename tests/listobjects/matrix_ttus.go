@@ -306,17 +306,17 @@ var ttus = []matrixTest{
 	{
 		Name: "duplicate_ttu_parents",
 		Tuples: []*openfgav1.TupleKey{
-			{Object: "ttus:1", Relation: "mult_parent_types", User: "directs:1"},
-			{Object: "directs:1", Relation: "direct", User: "user:1"},
+			{Object: "ttus:duplicate_parent", Relation: "mult_parent_types", User: "directs:duplicate_parent"},
+			{Object: "directs:duplicate_parent", Relation: "direct", User: "user:duplicate_parent_anne"},
 		},
 		ListObjectAssertions: []*listobjectstest.Assertion{
 			{
 				Request: &openfgav1.ListObjectsRequest{
-					User:     "user:1",
+					User:     "user:duplicate_parent_anne",
 					Type:     "ttus",
 					Relation: "duplicate_ttu",
 				},
-				Expectation: []string{"ttus:1"},
+				Expectation: []string{"ttus:duplicate_parent"},
 			},
 		},
 	},
