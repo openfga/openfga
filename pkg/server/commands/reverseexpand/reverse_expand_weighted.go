@@ -129,17 +129,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
-
-		// Going to a userset presents risk of infinite loop. Using from + to ensures
-		// we don't traverse the exact same edge more than once.
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
-		if goingToUserset {
-			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation()
-			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
-				// we've already visited this userset through this edge, exit to avoid an infinite cycle
-				continue
-			}
-		}
 
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -161,6 +151,18 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				newStack = stack.Push(newStack, entry)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
+
+				// Going to a userset presents risk of infinite loop. Using from + to ensures
+				// we don't traverse the exact same edge more than once.
+				key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.Print(newStack)
+				_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
+				fmt.Printf("Key: %s, Loaded: %v\n", key, loaded)
+				fmt.Printf("Edge Type: %v\n", edge.GetEdgeType())
+				fmt.Printf("ToEdge: %v\n", toNode.GetNodeType())
+				if loaded {
+					// we've already visited this userset through this edge, exit to avoid an infinite cycle
+					continue
+				}
 
 				// Now continue traversing
 				pool.Go(func(ctx context.Context) error {
@@ -185,6 +187,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// A computed edge is an alias (e.g., `define viewer: editor`).
 			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
 			// as tuples are only written against `editor`.
+			var newStack stack.Stack[typeRelEntry]
 			if toNode.GetNodeType() != weightedGraph.OperatorNode {
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
@@ -192,6 +195,20 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				_, newStack := stack.Pop(newReq.relationStack)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
+			}
+
+			// Going to a userset presents risk of infinite loop. Using from + to ensures
+			// we don't traverse the exact same edge more than once.
+			if goingToUserset {
+				key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.Print(newStack)
+				_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
+				fmt.Printf("Key: %s, Loaded: %v\n", key, loaded)
+				fmt.Printf("Edge Type: %v\n", edge.GetEdgeType())
+				fmt.Printf("ToEdge: %v\n", toNode.GetNodeType())
+				if loaded {
+					// we've already visited this userset through this edge, exit to avoid an infinite cycle
+					continue
+				}
 			}
 
 			pool.Go(func(ctx context.Context) error {
@@ -222,6 +239,20 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			newReq.relationStack = newStack
 
+			// Going to a userset presents risk of infinite loop. Using from + to ensures
+			// we don't traverse the exact same edge more than once.
+			if goingToUserset {
+				key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.Print(newStack)
+				_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
+				fmt.Printf("Key: %s, Loaded: %v\n", key, loaded)
+				fmt.Printf("Edge Type: %v\n", edge.GetEdgeType())
+				fmt.Printf("ToEdge: %v\n", toNode.GetNodeType())
+				if loaded {
+					// we've already visited this userset through this edge, exit to avoid an infinite cycle
+					continue
+				}
+			}
+
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			})
@@ -236,6 +267,20 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				_, newStack := stack.Pop(newReq.relationStack)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
+
+				// Going to a userset presents risk of infinite loop. Using from + to ensures
+				// we don't traverse the exact same edge more than once.
+				if goingToUserset {
+					key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.Print(newStack)
+					_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
+					fmt.Printf("Key: %s, Loaded: %v\n", key, loaded)
+					fmt.Printf("Edge Type: %v\n", edge.GetEdgeType())
+					fmt.Printf("ToEdge: %v\n", toNode.GetNodeType())
+					if loaded {
+						// we've already visited this userset through this edge, exit to avoid an infinite cycle
+						continue
+					}
+				}
 
 				pool.Go(func(ctx context.Context) error {
 					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)

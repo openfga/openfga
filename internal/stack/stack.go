@@ -1,5 +1,7 @@
 package stack
 
+import "fmt"
+
 // Stack is an implementation of a stack based on a linked list.
 //
 // *Important*: Each push() or pop() operation creates and returns a pointer to a new stack entirely to
@@ -31,4 +33,14 @@ func Len[T any](stack Stack[T]) int {
 		s = s.next
 	}
 	return ctr
+}
+
+func Print[T any](stack Stack[T]) string {
+	stackStr := ""
+	var val T
+	for stack != nil {
+		val, stack = Pop(stack)
+		stackStr += fmt.Sprintf("%v", val)
+	}
+	return stackStr
 }
