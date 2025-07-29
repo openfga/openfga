@@ -1708,6 +1708,35 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"document:a"},
 			expectedUnoptimizedObjects: []string{"document:a"},
 		},
+		{
+			name: "duplicate_parent_ttu",
+			model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define account: [account]
+						define parent: [account]
+						define can_view: super_admin from account or super_admin from parent
+				type account
+					relations
+						define super_admin: [user]
+		`,
+			tuples: []string{
+				"thing:4#parent@account:4",
+				"account:4#super_admin@user:1",
+			},
+			objectType: "thing",
+			relation:   "can_view",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+			expectedOptimizedObjects: []string{
+				"thing:4",
+			},
+			expectedUnoptimizedObjects: []string{
+				"thing:4",
+			},
+		},
 		// TODO: add these when optimization supports infinite weight
 		// intersection with ttu recursive
 		// intersection with userset recursive
