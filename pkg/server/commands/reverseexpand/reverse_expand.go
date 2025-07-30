@@ -741,7 +741,7 @@ func (c *ReverseExpandQuery) trySendCandidate(
 	intersectionOrExclusionInPreviousEdges bool,
 	candidateObject string,
 	candidateChan chan<- *ReverseExpandResult,
-) error {
+) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -763,7 +763,6 @@ func (c *ReverseExpandQuery) trySendCandidate(
 			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
 		}
 	}
-	return nil
 }
 
 func (c *ReverseExpandQuery) throttle(ctx context.Context, currentNumDispatch uint32, metadata *ResolutionMetadata) {
