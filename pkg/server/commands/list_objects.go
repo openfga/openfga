@@ -98,7 +98,7 @@ type ListObjectsResolutionMetadata struct {
 	WasWeightedGraphUsed atomic.Bool
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
-	CheckCounter *atomic.Uint32
+	CheckCounter atomic.Uint32
 
 	// Temporary solution to indicate whether shadow list objects query should be run.
 	// For queries with Infinite weight, the weighted graph implementation falls back
