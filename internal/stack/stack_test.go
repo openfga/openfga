@@ -67,6 +67,6 @@ func TestStack(t *testing.T) {
 		require.Equal(t, "hello", String(s))
 
 		_, s = Pop(s)
-		require.Equal(t, "", String(s))
+		require.Empty(t, String(s))
 	})
 }
