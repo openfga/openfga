@@ -3,7 +3,6 @@ package reverseexpand
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -1739,7 +1738,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			},
 		},
 		{
-			name: "TODO_name_this_something",
+			name: "multiple_ttus_going_to_same_terminal_typerel",
 			model: `
 				model
 					schema 1.1
@@ -1798,7 +1797,8 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"thing:5",
 			},
 		},
-		{name: "TODO_name_this_something2",
+		{
+			name: "multiple_ttus_same_terminal_typerel_additional_paths",
 			model: `
 				model
 					schema 1.1
@@ -1858,21 +1858,21 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"resource:5#also_user@user:1",
 
 				// satisfies resource#member of parent#can_view #viewer relation
-				//"thing:6#parent@document:3",
-				//"document:3#resource@resource:6",
-				//"resource:6#also_user@user:1",
-				//"resource:6#member@user:1",
-				//"document:3#viewer@resource:6#member",
+				"thing:6#parent@document:3",
+				"document:3#resource@resource:6",
+				"resource:6#also_user@user:1",
+				"resource:6#member@user:1",
+				"document:3#viewer@resource:6#member",
 
-				//// satisfies resource#member of parent#can_view #viewer relation via resource#member
-				//// when the also_user is from a different resource
-				// "thing:7#parent@document:4",
-				// "document:4#resource@resource:7",
-				//"resource:7#also_user@user:1",
-				//"resource:7#member@user:1",
-				//"resource:8#also_user@user:1",
-				//"resource:8#member@user:1",
-				//"document:4#viewer@resource:8#member",
+				// satisfies resource#member of parent#can_view #viewer relation via resource#member
+				// when the also_user is from a different resource
+				"thing:7#parent@document:4",
+				"document:4#resource@resource:7",
+				"resource:7#also_user@user:1",
+				"resource:7#member@user:1",
+				"resource:8#also_user@user:1",
+				"resource:8#member@user:1",
+				"document:4#viewer@resource:8#member",
 			},
 			objectType: "thing",
 			relation:   "can_view",
@@ -1883,8 +1883,8 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"thing:3",
 				"thing:4",
 				"thing:5",
-				//"thing:6",
-				// "thing:7",
+				"thing:6",
+				"thing:7",
 			},
 			expectedUnoptimizedObjects: []string{
 				"thing:1",
@@ -1892,8 +1892,8 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"thing:3",
 				"thing:4",
 				"thing:5",
-				//"thing:6",
-				// "thing:7",
+				"thing:6",
+				"thing:7",
 			},
 		},
 		// TODO: add these when optimization supports infinite weight
@@ -1937,33 +1937,33 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			}()
 
 			// once without optimization enabled
-			//unoptimizedResultsChan := make(chan *ReverseExpandResult)
-			//go func() {
-			//	q := NewReverseExpandQuery(ds, typesys)
-			//
-			//	newErr := q.Execute(ctx, &ReverseExpandRequest{
-			//		StoreID:    storeID,
-			//		ObjectType: test.objectType,
-			//		Relation:   test.relation,
-			//		User:       test.user,
-			//	}, unoptimizedResultsChan, NewResolutionMetadata())
-			//
-			//	if newErr != nil {
-			//		errChan <- newErr
-			//	}
-			//}()
+			unoptimizedResultsChan := make(chan *ReverseExpandResult)
+			go func() {
+				q := NewReverseExpandQuery(ds, typesys)
+
+				newErr := q.Execute(ctx, &ReverseExpandRequest{
+					StoreID:    storeID,
+					ObjectType: test.objectType,
+					Relation:   test.relation,
+					User:       test.user,
+				}, unoptimizedResultsChan, NewResolutionMetadata())
+
+				if newErr != nil {
+					errChan <- newErr
+				}
+			}()
 
 			var optimizedResults []string
-			//var unoptimizedResults []string
+			var unoptimizedResults []string
 		ConsumerLoop:
 			for {
 				select {
-				//case result, open := <-unoptimizedResultsChan:
-				//	if !open {
-				//		unoptimizedResultsChan = nil
-				//		break
-				//	}
-				//	unoptimizedResults = append(unoptimizedResults, result.Object)
+				case result, open := <-unoptimizedResultsChan:
+					if !open {
+						unoptimizedResultsChan = nil
+						break
+					}
+					unoptimizedResults = append(unoptimizedResults, result.Object)
 				case result, open := <-optimizedResultsChan:
 					if !open {
 						optimizedResultsChan = nil
@@ -1971,7 +1971,6 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					}
 					optimizedResults = append(optimizedResults, result.Object)
 				case err := <-errChan:
-					fmt.Printf("error: %v\n", err)
 					require.FailNow(t, "unexpected error received on error channel:"+err.Error())
 					break ConsumerLoop
 				case <-ctx.Done():
@@ -1979,13 +1978,12 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				}
 
 				// When both channels have completed, break the loop
-				if optimizedResultsChan == nil {
+				if unoptimizedResultsChan == nil && optimizedResultsChan == nil {
 					break ConsumerLoop
 				}
 			}
-			fmt.Printf("Done\n")
 			require.ElementsMatch(t, test.expectedOptimizedObjects, optimizedResults)
-			//require.ElementsMatch(t, test.expectedUnoptimizedObjects, unoptimizedResults)
+			require.ElementsMatch(t, test.expectedUnoptimizedObjects, unoptimizedResults)
 		})
 	}
 }
