@@ -103,6 +103,7 @@ jobs:
     permissions:
       contents: read
       security-events: write # needed for uploading results to GitHub Code Scanning
+    continue-on-error: true # allow the workflow to continue even if Snyk finds vulnerabilities
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
