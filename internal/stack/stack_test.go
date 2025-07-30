@@ -57,4 +57,16 @@ func TestStack(t *testing.T) {
 		require.Nil(t, secondStack)
 		Pop(secondStack) // this line should cause a panic
 	})
+
+	t.Run("test_string", func(t *testing.T) {
+		s := Push(nil, "hello")
+		s = Push(s, "world")
+		require.Equal(t, String(s), "worldhello")
+
+		_, s = Pop(s)
+		require.Equal(t, String(s), "hello")
+
+		_, s = Pop(s)
+		require.Equal(t, String(s), "")
+	})
 }
