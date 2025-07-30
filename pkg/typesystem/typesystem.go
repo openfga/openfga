@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/server/config"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -1281,7 +1282,13 @@ func hasEntrypoints(
 		return true, false, nil
 	}
 
-	panic("unexpected userset rewrite encountered")
+	// This should never happen because rewrite.GetUserset().(type) returns an unknown type (or it itself is nil).
+	rwString := "rewrite_nil"
+	if rewrite != nil {
+		rwString = rewrite.String()
+	}
+
+	return false, false, serverErrors.HandleError("error validating model", fmt.Errorf("hasEntrypoints unknown rewrite %s for '%s#%s'", rwString, typeName, relationName))
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
