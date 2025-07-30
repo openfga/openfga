@@ -332,7 +332,7 @@ type tupleChangeRec struct {
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
-func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
+func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.WriteTupleOption) error {
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 

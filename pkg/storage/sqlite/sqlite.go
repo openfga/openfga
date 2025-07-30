@@ -113,7 +113,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite", tupleUpsertSuffix)
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -213,11 +213,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	options ...storage.WriteTupleOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return s.write(ctx, store, deletes, writes, time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, time.Now().UTC(), options...)
 }
 
 // Write provides the common method for writing to database across sql storage.
@@ -227,7 +228,13 @@ func (s *Datastore) write(
 	deletes storage.Deletes,
 	writes storage.Writes,
 	now time.Time,
+	opts ...storage.WriteTupleOption,
 ) error {
+	options := new(storage.WriteTupleOptions)
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	var txn *sql.Tx
 	err := busyRetry(func() error {
 		var err error
@@ -260,6 +267,7 @@ func (s *Datastore) write(
 
 	deleteBuilder := s.stbl.Delete("tuple")
 
+	actualDeletesCount := 0
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
@@ -284,7 +292,10 @@ func (s *Datastore) write(
 			return err
 		})
 		if err != nil {
-			return HandleSQLError(err, tk)
+			sqlErr := HandleSQLError(err, tk)
+			if !options.IdempotencyEnabled() || !errors.Is(sqlErr, storage.ErrInvalidWriteInput) {
+				return sqlErr
+			}
 		}
 
 		rowsAffected, err := res.RowsAffected()
@@ -292,27 +303,30 @@ func (s *Datastore) write(
 			return HandleSQLError(err)
 		}
 
-		if rowsAffected != 1 {
+		if !options.IdempotencyEnabled() && rowsAffected != 1 {
 			return storage.InvalidWriteInputError(
 				tk,
 				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			)
 		}
 
-		changelogBuilder = changelogBuilder.Values(
-			store,
-			objectType,
-			objectID,
-			tk.GetRelation(),
-			userObjectType,
-			userObjectID,
-			userRelation,
-			"",
-			nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id,
-			sq.Expr("datetime('subsec')"),
-		)
+		if rowsAffected > 0 {
+			actualDeletesCount++
+			changelogBuilder = changelogBuilder.Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				userObjectType,
+				userObjectID,
+				userRelation,
+				"",
+				nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+				id,
+				sq.Expr("datetime('subsec')"),
+			)
+		}
 	}
 
 	insertBuilder := s.stbl.
@@ -331,6 +345,13 @@ func (s *Datastore) write(
 			"ulid",
 			"inserted_at",
 		)
+
+	if options.IdempotencyEnabled() {
+		suffix := tupleUpsertSuffix()
+		if suffix != "" {
+			insertBuilder = insertBuilder.Suffix(suffix)
+		}
+	}
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -382,7 +403,7 @@ func (s *Datastore) write(
 		)
 	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if len(writes) > 0 || actualDeletesCount > 0 {
 		err := busyRetry(func() error {
 			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 			return err
@@ -1093,4 +1114,8 @@ func isBusyError(err error) bool {
 
 	_, ok := busyErrors[sqliteErr.Code()]
 	return ok
+}
+
+func tupleUpsertSuffix() string {
+	return "ON CONFLICT (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation) DO UPDATE SET condition_name = EXCLUDED.condition_name, condition_context = EXCLUDED.condition_context"
 }

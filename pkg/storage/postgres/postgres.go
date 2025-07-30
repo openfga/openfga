@@ -146,7 +146,7 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.State
 	}
 
 	stbl = sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "postgres", tupleUpsertSuffix)
 
 	return dbInfo, stbl, collector, nil
 }
@@ -299,11 +299,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	options ...storage.WriteTupleOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, time.Now().UTC(), options...)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -898,4 +899,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
+}
+
+func tupleUpsertSuffix() string {
+	return "ON CONFLICT (store, object_type, object_id, relation, _user) DO UPDATE SET condition_name = EXCLUDED.condition_name, condition_context = EXCLUDED.condition_context"
 }

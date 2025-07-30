@@ -213,6 +213,20 @@ type RelationshipTupleReader interface {
 	) (TupleIterator, error)
 }
 
+type WriteTupleOptions struct {
+	idempotent bool
+}
+
+func (o *WriteTupleOptions) IdempotencyEnabled() bool {
+	return o.idempotent
+}
+
+type WriteTupleOption func(*WriteTupleOptions)
+
+func IdempotentWrite(opts *WriteTupleOptions) {
+	opts.idempotent = true
+}
+
 // RelationshipTupleWriter is an interface that defines the set of methods
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
@@ -221,7 +235,7 @@ type RelationshipTupleWriter interface {
 	// It must also write to the changelog.
 	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
 	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
-	Write(ctx context.Context, store string, d Deletes, w Writes) error
+	Write(ctx context.Context, store string, d Deletes, w Writes, options ...WriteTupleOption) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
 	// allowed in a single write transaction.

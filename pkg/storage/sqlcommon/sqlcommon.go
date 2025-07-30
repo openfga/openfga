@@ -454,23 +454,27 @@ func (t *SQLTupleIterator) Stop() {
 
 // DBInfo encapsulates DB information for use in common method.
 type DBInfo struct {
-	db             *sql.DB
-	stbl           sq.StatementBuilderType
-	HandleSQLError errorHandlerFn
+	db                   *sql.DB
+	stbl                 sq.StatementBuilderType
+	HandleSQLError       errorHandlerFn
+	UpsertSuffixForTuple tupleUpsertSuffixFn
 }
 
 type errorHandlerFn func(error, ...interface{}) error
 
+type tupleUpsertSuffixFn func() string
+
 // NewDBInfo constructs a [DBInfo] object.
-func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialect string) *DBInfo {
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandlerFn, dialect string, upsertSuffix tupleUpsertSuffixFn) *DBInfo {
 	if err := goose.SetDialect(dialect); err != nil {
 		panic("failed to set database dialect: " + err.Error())
 	}
 
 	return &DBInfo{
-		db:             db,
-		stbl:           stbl,
-		HandleSQLError: errorHandler,
+		db:                   db,
+		stbl:                 stbl,
+		HandleSQLError:       errorHandler,
+		UpsertSuffixForTuple: upsertSuffix,
 	}
 }
 
@@ -482,7 +486,13 @@ func Write(
 	deletes storage.Deletes,
 	writes storage.Writes,
 	now time.Time,
+	opts ...storage.WriteTupleOption,
 ) error {
+	options := new(storage.WriteTupleOptions)
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return dbInfo.HandleSQLError(err)
@@ -500,6 +510,7 @@ func Write(
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
+	actualDeletesCount := 0
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
@@ -516,7 +527,10 @@ func Write(
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
-			return dbInfo.HandleSQLError(err, tk)
+			sqlErr := dbInfo.HandleSQLError(err, tk)
+			if !options.IdempotencyEnabled() || !errors.Is(sqlErr, storage.ErrInvalidWriteInput) {
+				return sqlErr
+			}
 		}
 
 		rowsAffected, err := res.RowsAffected()
@@ -524,20 +538,23 @@ func Write(
 			return dbInfo.HandleSQLError(err)
 		}
 
-		if rowsAffected != 1 {
+		if !options.IdempotencyEnabled() && rowsAffected != 1 {
 			return storage.InvalidWriteInputError(
 				tk,
 				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			)
 		}
 
-		changelogBuilder = changelogBuilder.Values(
-			store, objectType, objectID,
-			tk.GetRelation(), tk.GetUser(),
-			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, sq.Expr("NOW()"),
-		)
+		if rowsAffected > 0 {
+			actualDeletesCount++
+			changelogBuilder = changelogBuilder.Values(
+				store, objectType, objectID,
+				tk.GetRelation(), tk.GetUser(),
+				"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+				id, sq.Expr("NOW()"),
+			)
+		}
 	}
 
 	insertBuilder := dbInfo.stbl.
@@ -546,6 +563,13 @@ func Write(
 			"store", "object_type", "object_id", "relation", "_user", "user_type",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		)
+
+	if options.IdempotencyEnabled() {
+		suffix := dbInfo.UpsertSuffixForTuple()
+		if suffix != "" {
+			insertBuilder = insertBuilder.Suffix(suffix)
+		}
+	}
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -589,7 +613,7 @@ func Write(
 		)
 	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if len(writes) > 0 || actualDeletesCount > 0 {
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
 			return dbInfo.HandleSQLError(err)

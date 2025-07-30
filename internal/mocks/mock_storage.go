@@ -988,7 +988,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter
 }
 
 // Write mocks base method.
-func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
+func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.WriteTupleOption) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Write", ctx, store, d, w)
 	ret0, _ := ret[0].(error)

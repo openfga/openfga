@@ -109,7 +109,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "mysql")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "mysql", tupleUpsertSuffix)
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -204,11 +204,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	options ...storage.WriteTupleOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, time.Now().UTC(), options...)
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -797,4 +798,8 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
+}
+
+func tupleUpsertSuffix() string {
+	return "ON DUPLICATE KEY UPDATE condition_name = VALUES(condition_name), condition_context = VALUES(condition_context)"
 }
