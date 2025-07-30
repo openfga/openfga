@@ -114,6 +114,7 @@ type ttus
     define ttu_other_rel: other_rel from mult_parent_types
     define ttu_alg_combined: alg_combined from mult_parent_types
     define ttu_alg_combined_oneline: alg_combined_oneline from mult_parent_types
+    define duplicate_ttu: direct from direct_parent or direct from mult_parent_types
     define ttu_computed: ttu_direct
     define ttu_alg_combined_computed: ttu_alg_combined
     define user_rel1: [user, user:*]

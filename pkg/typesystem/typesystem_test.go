@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -380,81 +381,82 @@ func TestRelationEquals(t *testing.T) {
 }
 
 func TestHasEntrypoints(t *testing.T) {
-	tests := map[string]struct {
-		model         string
-		inputType     string
-		inputRelation string
-		expectError   string
-		expectDetails *relationDetails
-	}{
-		`undefined_input_type`: {
-			model: `
+	t.Run("valid_rw", func(t *testing.T) {
+		tests := map[string]struct {
+			model         string
+			inputType     string
+			inputRelation string
+			expectError   string
+			expectDetails *relationDetails
+		}{
+			`undefined_input_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [folder]`,
-			inputType:     "unknown",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'unknown#viewer'",
-		},
-		`undefined_input_relation`: {
-			model: `
+				inputType:     "unknown",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'unknown#viewer'",
+			},
+			`undefined_input_relation`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [folder]`,
-			inputType:     "document",
-			inputRelation: "unknown",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_type_in_assignable_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "unknown",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_type_in_assignable_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [unknown#editor]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'unknown#editor'",
-		},
-		`undefined_relation_in_assignable_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'unknown#editor'",
+			},
+			`undefined_relation_in_assignable_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document#unknown]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_computed_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_computed_userset`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: unknown`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_tupleset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_tupleset`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: viewer from unknown`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectError:   "undefined type definition for 'document#unknown'",
-		},
-		`undefined_computed_relation_on_tupleset_target`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectError:   "undefined type definition for 'document#unknown'",
+			},
+			`undefined_computed_relation_on_tupleset_target`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -465,34 +467,34 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [folder]
 						define viewer: viewer from parent`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, // TODO this should be an error
-		},
-		`this_has_entrypoints_to_same_type`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false}, // TODO this should be an error
+			},
+			`this_has_entrypoints_to_same_type`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_has_entrypoints_through_user_wildcard`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_has_entrypoints_through_user_wildcard`: {
+				model: `
 				model
 					schema 1.1
 				type document
 					relations
 						define viewer: [document:*]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_has_entrypoints_through_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_has_entrypoints_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -502,24 +504,24 @@ func TestHasEntrypoints(t *testing.T) {
 				type folder
 					relations
 						define parent: [org#member]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_with_two_assignable_types_has_entrypoints_through_first`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_with_two_assignable_types_has_entrypoints_through_first`: {
+				model: `
 				model
 					schema 1.1
 				type user
 				type folder
 					relations
 						define parent: [user, folder#parent]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		`this_with_two_assignable_types_has_entrypoints_through_second`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			`this_with_two_assignable_types_has_entrypoints_through_second`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -527,35 +529,35 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define parent: [folder#parent, folder#editor]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{true, false},
-		},
-		// TODO fix
-		// `this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
-		//	model: `
-		//	model
-		//		schema 1.1
-		//	type folder
-		//		relations
-		//			define parent: [unknown]`,
-		//	inputType:     "folder",
-		//	inputRelation: "parent",
-		//	expectError:   "undefined type 'unknown'",
-		// },
-		`this_has_no_entrypoints_through_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{true, false},
+			},
+			// TODO fix
+			// `this_has_no_entrypoints_because_type_unknown_is_not_defined`: {
+			//	model: `
+			//	model
+			//		schema 1.1
+			//	type folder
+			//		relations
+			//			define parent: [unknown]`,
+			//	inputType:     "folder",
+			//	inputRelation: "parent",
+			//	expectError:   "undefined type 'unknown'",
+			// },
+			`this_has_no_entrypoints_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define parent: [folder#parent]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{false, false},
-		},
-		`this_has_no_entrypoints_through_recursive_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{false, false},
+			},
+			`this_has_no_entrypoints_through_recursive_userset`: {
+				model: `
 				model
 					schema 1.1
 				type group
@@ -565,12 +567,12 @@ func TestHasEntrypoints(t *testing.T) {
 				type folder
 					relations
 						define parent: [group#member]`,
-			inputType:     "folder",
-			inputRelation: "parent",
-			expectDetails: &relationDetails{false, false},
-		},
-		`computed_relation_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "parent",
+				expectDetails: &relationDetails{false, false},
+			},
+			`computed_relation_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -578,12 +580,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define viewer: editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`computed_relation_has_no_entrypoint_through_usersets`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_has_no_entrypoint_through_usersets`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -591,12 +593,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [document#viewer]
 						define viewer: [document#editor]`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`computed_relation_has_entrypoint_through_userset`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`computed_relation_has_entrypoint_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -607,24 +609,24 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 					define a2: [org#member]
 					define a1: a2`,
-			inputType:     "folder",
-			inputRelation: "a1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`computed_relation_has_no_entrypoints_because_no_direct_relationships`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "a1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`computed_relation_has_no_entrypoints_because_no_direct_relationships`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define a2: a1
 						define a1: a2`,
-			inputType:     "folder",
-			inputRelation: "a1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`computed_relation_has_no_entrypoints_through_ttu`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "a1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`computed_relation_has_no_entrypoints_through_ttu`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -639,12 +641,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define parent: [folder]
 						define editor: viewer
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false}, // TODO it DOES have a cycle
-		},
-		`union_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false}, // TODO it DOES have a cycle
+			},
+			`union_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -653,12 +655,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [user]
 						define viewer: [document#viewer] or editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`union_has_no_entrypoint`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`union_has_no_entrypoint`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -667,12 +669,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define editor: [document#viewer]
 						define viewer: [document#viewer] or editor`,
-			inputType:     "document",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`ttu_has_entrypoint_through_user`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`ttu_has_entrypoint_through_user`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -683,12 +685,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [org]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_entrypoint_through_userset`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_entrypoint_through_userset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -700,24 +702,24 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [org#member]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_no_entrypoint`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_no_entrypoint`: {
+				model: `
 				model
 					schema 1.1
 				type folder
 					relations
 						define parent: [folder]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{false, false},
-		},
-		`intersection_has_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{false, false},
+			},
+			`intersection_has_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -727,12 +729,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin and editor
 						define admin: [user]
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`intersection_has_no_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`intersection_has_no_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -741,12 +743,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define action1: [document#action1] and editor
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, false},
-		},
-		`intersection_has_no_entrypoint_and_has_cycle_2`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, false},
+			},
+			`intersection_has_no_entrypoint_and_has_cycle_2`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -757,12 +759,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin and action2 and action3
 						define action2: admin and action1 and action3
 						define action3: admin and action1 and action2`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`difference_has_entrypoints_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`difference_has_entrypoints_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -772,12 +774,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin but not editor
 						define admin: [user]
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{true, false},
-		},
-		`difference_has_entrypoints_and_no_cycle_2`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{true, false},
+			},
+			`difference_has_entrypoints_and_no_cycle_2`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -789,12 +791,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define viewer: [document#viewer] or editor
 						define can_view: viewer but not restricted
 						define can_view_actual: can_view`,
-			inputType:     "document",
-			inputRelation: "can_view_actual",
-			expectDetails: &relationDetails{true, false},
-		},
-		`difference_has_no_entrypoint_and_no_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "can_view_actual",
+				expectDetails: &relationDetails{true, false},
+			},
+			`difference_has_no_entrypoint_and_no_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -803,12 +805,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define action1: [document#action1] but not editor
 						define editor: [user]`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, false},
-		},
-		`difference_has_no_entrypoint_and_has_cycle`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, false},
+			},
+			`difference_has_no_entrypoint_and_has_cycle`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -819,12 +821,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define action1: admin but not action2
 						define action2: admin but not action3
 						define action3: admin but not action1`,
-			inputType:     "document",
-			inputRelation: "action1",
-			expectDetails: &relationDetails{false, true},
-		},
-		`issue_1385`: {
-			model: `
+				inputType:     "document",
+				inputRelation: "action1",
+				expectDetails: &relationDetails{false, true},
+			},
+			`issue_1385`: {
+				model: `
 				model
 					schema 1.1
 
@@ -840,12 +842,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define has_access_to_logging : contextual_member from has_logging_product but not block_logging from has_logging_product
 						define can_enable_logging : has_access_to_logging
 			`,
-			inputType:     "entity",
-			inputRelation: "can_enable_logging",
-			expectDetails: &relationDetails{true, false},
-		},
-		`issue_1260_parallel_edges_mean_entrypoints`: {
-			model: `
+				inputType:     "entity",
+				inputRelation: "can_enable_logging",
+				expectDetails: &relationDetails{true, false},
+			},
+			`issue_1260_parallel_edges_mean_entrypoints`: {
+				model: `
 				model
 					schema 1.1
 
@@ -863,12 +865,12 @@ func TestHasEntrypoints(t *testing.T) {
 						define end: [state]
 						define can_apply: [user] and can_view from start and can_view from end
 			`,
-			inputType:     "state",
-			inputRelation: "can_transition_with",
-			expectDetails: &relationDetails{true, false},
-		},
-		`ttu_has_entrypoint_through_second_tupleset`: {
-			model: `
+				inputType:     "state",
+				inputRelation: "can_transition_with",
+				expectDetails: &relationDetails{true, false},
+			},
+			`ttu_has_entrypoint_through_second_tupleset`: {
+				model: `
 				model
 					schema 1.1
 				type user
@@ -879,12 +881,12 @@ func TestHasEntrypoints(t *testing.T) {
 					relations
 						define parent: [folder, group]
 						define viewer: viewer from parent`,
-			inputType:     "folder",
-			inputRelation: "viewer",
-			expectDetails: &relationDetails{true, false},
-		},
-		`revisited_direct_has_entrypoints`: {
-			model: `
+				inputType:     "folder",
+				inputRelation: "viewer",
+				expectDetails: &relationDetails{true, false},
+			},
+			`revisited_direct_has_entrypoints`: {
+				model: `
 				model
 					schema 1.1
 
@@ -897,31 +899,60 @@ func TestHasEntrypoints(t *testing.T) {
 						define c: a
 						define d: b and c
 			`,
-			inputType:     "document",
-			inputRelation: "d",
-			expectDetails: &relationDetails{true, false},
-		},
-	}
+				inputType:     "document",
+				inputRelation: "d",
+				expectDetails: &relationDetails{true, false},
+			},
+		}
 
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			model := testutils.MustTransformDSLToProtoWithID(test.model)
-			ts, err := New(model)
-			require.NoError(t, err)
-			inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
-
-			rewrite := inputRelation.GetRewrite()
-			hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
-
-			if test.expectError != "" {
-				require.ErrorContains(t, err, test.expectError)
-			} else {
+		for name, test := range tests {
+			t.Run(name, func(t *testing.T) {
+				model := testutils.MustTransformDSLToProtoWithID(test.model)
+				ts, err := New(model)
 				require.NoError(t, err)
-				require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
-				require.Equal(t, test.expectDetails.hasLoop, hasCycle, "unexpected value for hasLoop")
-			}
+				inputRelation, _ := ts.GetRelation(test.inputType, test.inputRelation)
+
+				rewrite := inputRelation.GetRewrite()
+				hasEntrypoints, hasCycle, err := hasEntrypoints(ts.GetAllRelations(), test.inputType, test.inputRelation, rewrite, map[string]map[string]bool{})
+
+				if test.expectError != "" {
+					require.ErrorContains(t, err, test.expectError)
+				} else {
+					require.NoError(t, err)
+					require.Equal(t, test.expectDetails.hasEntrypoints, hasEntrypoints, "unexpected value for hasEntrypoints")
+					require.Equal(t, test.expectDetails.hasLoop, hasCycle, "unexpected value for hasLoop")
+				}
+			})
+		}
+	})
+	t.Run("invalid_rw", func(t *testing.T) {
+		modelString := `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define a: [user]
+						define b: a
+						define c: a
+						define d: b and c
+			`
+		model := testutils.MustTransformDSLToProtoWithID(modelString)
+		ts, err := New(model)
+		require.NoError(t, err)
+		var internalError serverErrors.InternalError
+
+		t.Run("nil_rewrite", func(t *testing.T) {
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", nil, map[string]map[string]bool{})
+			require.ErrorAs(t, err, &internalError)
 		})
-	}
+		t.Run("bad_rewrite", func(t *testing.T) {
+			_, _, err = hasEntrypoints(ts.GetAllRelations(), "document", "d", &openfgav1.Userset{}, map[string]map[string]bool{})
+			require.ErrorAs(t, err, &internalError)
+		})
+	})
 }
 
 func TestResolveComputedRelation(t *testing.T) {
