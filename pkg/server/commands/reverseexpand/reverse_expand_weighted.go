@@ -31,9 +31,9 @@ const (
 
 var (
 	ErrEmptyStack           = errors.New("unexpected empty stack")
-	ErrCallCheckFail        = errors.New("Check failed to execute")
-	ErrLowestWeightFail     = errors.New("Failed to get lowest weight edge")
-	ErrConstructUsersetFail = errors.New("Failed to construct userset")
+	ErrCallCheckFail        = errors.New("check failed to execute")
+	ErrLowestWeightFail     = errors.New("failed to get lowest weight edge")
+	ErrConstructUsersetFail = errors.New("failed to construct userset")
 )
 
 // typeRelEntry represents a step in the path taken to reach a leaf node.
