@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -646,16 +645,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 ) error {
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		edgeLabels := make([]string, 0, len(edges))
-		for _, edge := range edges {
-			edgeLabels = append(edgeLabels, edge.GetTo().GetUniqueLabel())
-		}
-
-		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
-			ErrLowestWeightFail,
-			strings.Join(edgeLabels, ", "),
-			sourceUserType,
-		)
+		return fmt.Errorf("%w: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
@@ -683,11 +673,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		userset, err := c.typesystem.ConstructUserset(sibling)
 		if err != nil {
 			// This should never happen.
-			return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
-				ErrConstructUsersetFail,
-				sibling.GetTo().GetUniqueLabel(),
-				sourceUserType,
-			)
+			return fmt.Errorf("%w: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
 	}
@@ -721,16 +707,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 ) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
-		edgeLabels := make([]string, 0, len(edges))
-		for _, edge := range edges {
-			edgeLabels = append(edgeLabels, edge.GetTo().GetUniqueLabel())
-		}
-
-		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
-			ErrLowestWeightFail,
-			strings.Join(edgeLabels, ", "),
-			sourceUserType,
-		)
+		return fmt.Errorf("%w: exclusion: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
@@ -754,11 +731,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
 		// This should never happen.
-		return fmt.Errorf("%w: edges: %s, sourceUserType: %s",
-			ErrConstructUsersetFail,
-			excludedEdge.GetTo().GetUniqueLabel(),
-			sourceUserType,
-		)
+		return fmt.Errorf("%w: exclusion: %s", ErrConstructUsersetFail, err.Error())
 	}
 
 	// Concurrently find candidates and call check on them as they are found
