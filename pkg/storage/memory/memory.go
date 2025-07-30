@@ -333,6 +333,10 @@ type tupleChangeRec struct {
 
 // Write see [storage.RelationshipTupleWriter].Write.
 func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.WriteTupleOption) error {
+	options := new(storage.WriteTupleOptions)
+	for _, opt := range opts {
+		opt(options)
+	}
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
@@ -341,8 +345,10 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
-		return err
+	if !options.IdempotencyEnabled() {
+		if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
+			return err
+		}
 	}
 
 	var records []*storage.TupleRecord
@@ -372,8 +378,13 @@ Delete:
 
 Write:
 	for _, t := range writes {
-		for _, et := range records {
+		existingRecordIndex := -1
+		for i, et := range records {
 			if match(et, t) {
+				if options.IdempotencyEnabled() {
+					existingRecordIndex = i
+					break
+				}
 				continue Write
 			}
 		}
@@ -387,17 +398,24 @@ Write:
 
 		objectType, objectID := tupleUtils.SplitObject(t.GetObject())
 
-		records = append(records, &storage.TupleRecord{
-			Store:            store,
-			ObjectType:       objectType,
-			ObjectID:         objectID,
-			Relation:         t.GetRelation(),
-			User:             t.GetUser(),
-			ConditionName:    conditionName,
-			ConditionContext: conditionContext,
-			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-			InsertedAt:       now.AsTime(),
-		})
+		if existingRecordIndex == -1 {
+			records = append(records, &storage.TupleRecord{
+				Store:            store,
+				ObjectType:       objectType,
+				ObjectID:         objectID,
+				Relation:         t.GetRelation(),
+				User:             t.GetUser(),
+				ConditionName:    conditionName,
+				ConditionContext: conditionContext,
+				Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+				InsertedAt:       now.AsTime(),
+			})
+		} else {
+			r := records[existingRecordIndex]
+			r.ConditionName = conditionName
+			r.ConditionContext = conditionContext
+			r.InsertedAt = now.AsTime()
+		}
 
 		tk := tupleUtils.NewTupleKeyWithCondition(
 			tupleUtils.BuildObject(objectType, objectID),
