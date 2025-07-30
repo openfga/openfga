@@ -172,7 +172,7 @@ func (q *shadowedListObjectsQuery) Execute(
 				}
 			}()
 
-			q.executeShadowModeAndCompareResults(cloneCtx, req, res.Objects, latency)
+			q.executeShadowModeAndCompareResults(cloneCtx, req, res, latency)
 		}()
 	}
 	return res, err
@@ -190,19 +190,27 @@ func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
 // It compares the results of the main and shadow functions, logging any differences.
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
-func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult []string, latency time.Duration) {
+func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult *ListObjectsResponse, latency time.Duration) {
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
 
 	startTime := time.Now()
 	shadowRes, errShadow := q.shadow.Execute(shadowCtx, req)
 	shadowLatency := time.Since(startTime)
+
+	var mainQueryCount uint32
+	var mainResultObjects []string
+	if mainResult != nil {
+		mainQueryCount = mainResult.ResolutionMetadata.DatastoreQueryCount.Load()
+		mainResultObjects = mainResult.Objects
+	}
+
 	if errShadow != nil {
 		q.logger.WarnWithContext(parentCtx, "shadowed list objects error",
 			loShadowLogFields(req,
 				zap.Duration("main_latency", latency),
 				zap.Duration("shadow_latency", shadowLatency),
-				zap.Int("main_result_count", len(mainResult)),
+				zap.Int("main_result_count", len(mainResultObjects)),
 				zap.Any("error", errShadow),
 			)...,
 		)
@@ -210,15 +218,13 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 	}
 
 	var resultShadowed []string
-	var queryCount uint32
+	var shadowQueryCount uint32
 	if shadowRes != nil {
 		resultShadowed = shadowRes.Objects
-		if shadowRes.ResolutionMetadata.DatastoreQueryCount != nil {
-			queryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
-		}
+		shadowQueryCount = shadowRes.ResolutionMetadata.DatastoreQueryCount.Load()
 	}
 
-	mapResultMain := keyMapFromSlice(mainResult)
+	mapResultMain := keyMapFromSlice(mainResultObjects)
 	mapResultShadow := keyMapFromSlice(resultShadowed)
 
 	// compare sorted string arrays - sufficient for equality check
@@ -235,11 +241,12 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 				zap.Bool("is_match", false),
 				zap.Duration("main_latency", latency),
 				zap.Duration("shadow_latency", shadowLatency),
-				zap.Int("main_result_count", len(mainResult)),
+				zap.Int("main_result_count", len(mainResultObjects)),
 				zap.Int("shadow_result_count", len(resultShadowed)),
 				zap.Int("total_delta", totalDelta),
 				zap.Any("delta", delta),
-				zap.Uint32("datastore_query_count", queryCount),
+				zap.Uint32("main_datastore_query_count", mainQueryCount),
+				zap.Uint32("shadow_datastore_query_count", shadowQueryCount),
 			)...,
 		)
 	} else {
@@ -248,8 +255,9 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 				zap.Bool("is_match", true),
 				zap.Duration("main_latency", latency),
 				zap.Duration("shadow_latency", shadowLatency),
-				zap.Int("main_result_count", len(mainResult)),
-				zap.Uint32("datastore_query_count", queryCount),
+				zap.Int("main_result_count", len(mainResultObjects)),
+				zap.Uint32("main_datastore_query_count", mainQueryCount),
+				zap.Uint32("shadow_datastore_query_count", shadowQueryCount),
 			)...,
 		)
 	}
