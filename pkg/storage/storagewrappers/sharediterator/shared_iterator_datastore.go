@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -345,98 +346,12 @@ func (sf *IteratorDatastore) ReadUsersetTuples(
 		"sharedIterator.ReadUsersetTuples",
 	)
 	defer span.End()
-	span.SetAttributes(
-		attribute.String("consistency_preference", options.Consistency.Preference.String()),
-		attribute.String("bypassed", "false"),
-	)
-
-	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-	}
-	start := time.Now()
 
 	cacheKey := storagewrappersutil.ReadUsersetTuplesKey(store, filter)
-	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
-	// If the limit is zero, we will not use the shared iterator.
-	full := sf.internalStorage.limit == 0 || sf.internalStorage.ctr.Load() >= sf.internalStorage.limit
-
-	if full {
-		span.SetAttributes(attribute.String("bypassed", "true"))
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
+	return sf.readWithSharedIterator(&sf.internalStorage.rut, cacheKey, options.Consistency.Preference, span, func() (storage.TupleIterator, error) {
 		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-	}
-
-	// Create a new storage item to hold the shared iterator.
-	// This item will be stored in the internal storage map and will be used to share the iterator across requests.
-	newStorageItem := new(storageItem)
-
-	// The producer function is called to create a new shared iterator when it is first accessed.
-	newStorageItem.producer = func() (*sharedIterator, error) {
-		it, err := sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-		if err != nil {
-			return nil, err
-		}
-
-		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
-		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
-		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
-				sf.internalStorage.ctr.Add(-1)
-				sharedIteratorCount.Dec()
-			}
-		})
-
-		// Create a new shared iterator from the original iterator.
-		// This allows the iterator to be shared across multiple requests.
-		// The cleanup function will be called when the shared iterator is stopped, which will remove it from the internal storage.
-		// This ensures that the internal storage does not grow indefinitely and that the iterator is cleaned up properly.
-		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
-		newIterator := newSharedIterator(it, func() {
-			timer.Stop()
-			if sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem) {
-				sf.internalStorage.ctr.Add(-1)
-				sharedIteratorCount.Dec()
-			}
-		})
-
-		sharedIteratorCount.Inc()
-
-		return newIterator, nil
-	}
-
-	// Load or store the new storage item in the internal storage map.
-	// If the item is not already present, it will be added to the map and the counter will be incremented.
-	value, loaded := sf.internalStorage.rut.LoadOrStore(cacheKey, newStorageItem)
-	if !loaded {
-		sf.internalStorage.ctr.Add(1)
-	}
-	item, _ := value.(*storageItem)
-
-	// Unwrap the storage item to get the shared iterator.
-	// If there is an error while unwrapping, we will remove the item from the internal storage and return the error.
-	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
-	it, created, err := item.unwrap()
-	if err != nil {
-		sf.internalStorage.rut.CompareAndDelete(cacheKey, newStorageItem)
-		return nil, err
-	}
-
-	// If the iterator is nil, we will fall back to the inner RelationshipTupleReader.
-	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
-	if it == nil {
-		span.SetAttributes(attribute.String("bypassed", "true"))
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
-		return sf.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-	}
-
-	span.SetAttributes(attribute.Bool("found", !created))
-
-	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
-	).Observe(float64(time.Since(start).Milliseconds()))
-
-	return it, nil
+	})
 }
 
 // Read reads tuples by key using shared iterators.
@@ -451,17 +366,23 @@ func (sf *IteratorDatastore) Read(
 		"sharedIterator.Read",
 	)
 	defer span.End()
+	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
+	return sf.readWithSharedIterator(&sf.internalStorage.read, cacheKey, options.Consistency.Preference, span, func() (storage.TupleIterator, error) {
+		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	})
+}
+
+func (sf *IteratorDatastore) readWithSharedIterator(ds *sync.Map, cacheKey string, preference openfgav1.ConsistencyPreference, span trace.Span, actualReader func() (storage.TupleIterator, error)) (storage.TupleIterator, error) {
 	span.SetAttributes(
-		attribute.String("consistency_preference", options.Consistency.Preference.String()),
+		attribute.String("consistency_preference", preference.String()),
 		attribute.String("bypassed", "false"),
 	)
 
-	if options.Consistency.Preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	if preference == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return actualReader()
 	}
 	start := time.Now()
 
-	cacheKey := storagewrappersutil.ReadKey(store, tupleKey)
 	span.SetAttributes(attribute.String("cache_key", cacheKey))
 
 	// If the limit is zero, we will not use the shared iterator.
@@ -469,8 +390,8 @@ func (sf *IteratorDatastore) Read(
 
 	if full {
 		span.SetAttributes(attribute.String("bypassed", "true"))
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
+		return actualReader()
 	}
 
 	// Create a new storage item to hold the shared iterator.
@@ -479,7 +400,7 @@ func (sf *IteratorDatastore) Read(
 
 	// The producer function is called to create a new shared iterator when it is first accessed.
 	newStorageItem.producer = func() (*sharedIterator, error) {
-		it, err := sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		it, err := actualReader()
 		if err != nil {
 			return nil, err
 		}
@@ -487,7 +408,7 @@ func (sf *IteratorDatastore) Read(
 		// Set a timer to remove the item from the internal storage if it is not used within the max admission time.
 		// This is to prevent clones from being created indefinitely and to ensure that the storage does not grow indefinitely.
 		timer := time.AfterFunc(sf.maxAdmissionTime, func() {
-			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
+			if ds.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 				sharedIteratorCount.Dec()
 			}
@@ -500,7 +421,7 @@ func (sf *IteratorDatastore) Read(
 		// The cleanup function will also stop the timer, ensuring that the item is removed from the internal storage.
 		newIterator := newSharedIterator(it, func() {
 			timer.Stop()
-			if sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem) {
+			if ds.CompareAndDelete(cacheKey, newStorageItem) {
 				sf.internalStorage.ctr.Add(-1)
 				sharedIteratorCount.Dec()
 			}
@@ -513,7 +434,7 @@ func (sf *IteratorDatastore) Read(
 
 	// Load or store the new storage item in the internal storage map.
 	// If the item is not already present, it will be added to the map and the counter will be incremented.
-	value, loaded := sf.internalStorage.read.LoadOrStore(cacheKey, newStorageItem)
+	value, loaded := ds.LoadOrStore(cacheKey, newStorageItem)
 	if !loaded {
 		sf.internalStorage.ctr.Add(1)
 	}
@@ -524,7 +445,7 @@ func (sf *IteratorDatastore) Read(
 	// If this is the first time the iterator is accessed, it will call the producer function to create a new iterator.
 	it, created, err := item.unwrap()
 	if err != nil {
-		sf.internalStorage.read.CompareAndDelete(cacheKey, newStorageItem)
+		ds.CompareAndDelete(cacheKey, newStorageItem)
 		return nil, err
 	}
 
@@ -532,14 +453,14 @@ func (sf *IteratorDatastore) Read(
 	// This can happen if the cloned shared iterator is already stopped and all references have been cleaned up.
 	if it == nil {
 		span.SetAttributes(attribute.String("bypassed", "true"))
-		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationRead).Inc()
-		return sf.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		sharedIteratorBypassed.WithLabelValues(storagewrappersutil.OperationReadUsersetTuples).Inc()
+		return actualReader()
 	}
 
 	span.SetAttributes(attribute.Bool("found", !created))
 
 	sharedIteratorQueryHistogram.WithLabelValues(
-		storagewrappersutil.OperationRead, sf.method, strconv.FormatBool(!created),
+		storagewrappersutil.OperationReadUsersetTuples, sf.method, strconv.FormatBool(!created),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return it, nil
