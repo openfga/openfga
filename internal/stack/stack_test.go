@@ -61,12 +61,12 @@ func TestStack(t *testing.T) {
 	t.Run("test_string", func(t *testing.T) {
 		s := Push(nil, "hello")
 		s = Push(s, "world")
-		require.Equal(t, String(s), "worldhello")
+		require.Equal(t, "worldhello", String(s))
 
 		_, s = Pop(s)
-		require.Equal(t, String(s), "hello")
+		require.Equal(t, "hello", String(s))
 
 		_, s = Pop(s)
-		require.Equal(t, String(s), "")
+		require.Equal(t, "", String(s))
 	})
 }
