@@ -9,6 +9,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Change ListObjectsResolutionMetadata fields to value types instead of pointers. [#2583](https://github.com/openfga/openfga/pull/2583)
+- Instead of panic when encountering unknown parameters in hasEntrypoints, return internal error to allow graceful handling. [#2588](https://github.com/openfga/openfga/pull/2588)
+
+### Fixed
+- Fixed bug in how experimental ReverseExpand is handling duplicate TTUs. [#2589](https://github.com/openfga/openfga/pull/2589)
 
 ## [1.9.2] - 2025-07-24
 ### Added
