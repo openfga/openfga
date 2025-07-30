@@ -129,13 +129,14 @@ func (c *ReverseExpandQuery) loopOverEdges(
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
-
-		// Going to a userset presents risk of infinite loop. Using from + to ensures
-		// we don't traverse the exact same edge more than once.
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
+
+		// Going to a userset presents risk of infinite loop. Checking the edge and the traversal stack
+		// ensures we don't perform the same traversal multiple times.
 		if goingToUserset {
-			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation()
-			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.String(newReq.relationStack)
+			_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
+			if loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				continue
 			}
