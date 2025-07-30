@@ -35,7 +35,7 @@ func Len[T any](stack Stack[T]) int {
 	return ctr
 }
 
-func Print[T any](stack Stack[T]) string {
+func String[T any](stack Stack[T]) string {
 	stackStr := ""
 	var val T
 	for stack != nil {
