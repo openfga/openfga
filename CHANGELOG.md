@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Fixed bug in how experimental ReverseExpand is handling duplicate TTUs. [#2589](https://github.com/openfga/openfga/pull/2589)
+- Fixed bug in how experimental ReverseExpand is handling duplicate edge traversals. [#2594](https://github.com/openfga/openfga/pull/2594)
 
 ## [1.9.2] - 2025-07-24
 ### Added

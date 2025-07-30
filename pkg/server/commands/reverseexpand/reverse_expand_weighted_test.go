@@ -1737,6 +1737,165 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"thing:4",
 			},
 		},
+		{
+			name: "multiple_ttus_going_to_same_terminal_typerel",
+			model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define resource: [resource]
+						define can_view: can_view from parent or admin from resource
+						define parent: [document]
+				type document
+					relations
+						define resource: [resource]
+						define can_view: admin from resource
+				type resource
+					relations
+						define owner: [user] and also_user
+						define admin: ([user] and also_user) or owner
+						define also_user: [user]
+		`,
+			tuples: []string{
+				"thing:1#resource@resource:1",
+				"resource:1#also_user@user:1",
+				"resource:1#owner@user:1",
+
+				"thing:2#resource@resource:2",
+				"resource:2#also_user@user:1",
+				"resource:2#owner@user:1",
+
+				"thing:3#resource@resource:3",
+				"resource:3#also_user@user:1",
+				"resource:3#owner@user:1",
+
+				"thing:4#resource@resource:4",
+				"resource:4#also_user@user:1",
+				"resource:4#owner@user:1",
+
+				"thing:5#resource@resource:5",
+				"resource:5#also_user@user:1",
+				"resource:5#owner@user:1",
+			},
+			objectType: "thing",
+			relation:   "can_view",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+			expectedOptimizedObjects: []string{
+				"thing:1",
+				"thing:2",
+				"thing:3",
+				"thing:4",
+				"thing:5",
+			},
+			expectedUnoptimizedObjects: []string{
+				"thing:1",
+				"thing:2",
+				"thing:3",
+				"thing:4",
+				"thing:5",
+			},
+		},
+		{
+			name: "multiple_ttus_same_terminal_typerel_additional_paths",
+			model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define resource: [resource]
+						define can_view: owner or super_admin from resource or can_view from parent
+						define owner: [user] and also_user from resource
+						define parent: [document]
+				type document
+					relations
+						define _also_user: also_user from resource
+						define resource: [resource]
+						define can_view: viewer or editor or owner or super_admin from resource
+						define editor: [user, team#member, resource#member, resource#admin] and _also_user
+						define owner: [user] and _also_user
+						define viewer: [user, team#member, resource#member, resource#admin] and _also_user
+				type resource
+					relations
+						define admin: ([user] and also_user) or super_admin
+						define member: ([user] and also_user) or admin
+						define owner: [user] and also_user
+						define super_admin: ([user] and also_user) or owner
+						define also_user: [user]
+				type team
+					relations
+						define member: [user]
+		`,
+			tuples: []string{
+				// This satisfies can_view: 'owner'
+				"thing:1#resource@resource:1",
+				"resource:1#also_user@user:1",
+				"thing:1#owner@user:1",
+
+				// satisfies one of resource#super_admin edges for can_view: 'super_admin from resource'
+				"thing:2#resource@resource:2",
+				"resource:2#also_user@user:1",
+				"resource:2#super_admin@user:1",
+
+				// satisfies OR edge of resource#super_admin
+				"thing:3#resource@resource:3",
+				"resource:3#also_user@user:1",
+				"resource:3#owner@user:1",
+
+				// satisfies one of parent#can_view #viewer relation
+				"thing:4#parent@document:1",
+				"document:1#viewer@user:1",
+				"document:1#resource@resource:4",
+				"resource:4#also_user@user:1",
+
+				// satisfies team#member of parent#can_view #viewer relation
+				"thing:5#parent@document:2",
+				"document:2#viewer@team:1#member",
+				"team:1#member@user:1",
+				"document:2#resource@resource:5",
+				"resource:5#also_user@user:1",
+
+				// satisfies resource#member of parent#can_view #viewer relation
+				"thing:6#parent@document:3",
+				"document:3#resource@resource:6",
+				"resource:6#also_user@user:1",
+				"resource:6#member@user:1",
+				"document:3#viewer@resource:6#member",
+
+				// satisfies resource#member of parent#can_view #viewer relation via resource#member
+				// when the also_user is from a different resource
+				"thing:7#parent@document:4",
+				"document:4#resource@resource:7",
+				"resource:7#also_user@user:1",
+				"resource:7#member@user:1",
+				"resource:8#also_user@user:1",
+				"resource:8#member@user:1",
+				"document:4#viewer@resource:8#member",
+			},
+			objectType: "thing",
+			relation:   "can_view",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+			expectedOptimizedObjects: []string{
+				"thing:1",
+				"thing:2",
+				"thing:3",
+				"thing:4",
+				"thing:5",
+				"thing:6",
+				"thing:7",
+			},
+			expectedUnoptimizedObjects: []string{
+				"thing:1",
+				"thing:2",
+				"thing:3",
+				"thing:4",
+				"thing:5",
+				"thing:6",
+				"thing:7",
+			},
+		},
 		// TODO: add these when optimization supports infinite weight
 		// intersection with ttu recursive
 		// intersection with userset recursive
