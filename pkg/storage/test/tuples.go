@@ -733,6 +733,22 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.ErrorContains(t, err, "cannot delete a tuple which does not exist")
 	})
 
+	t.Run("delete_doesnt_fail_if_the_tuple_does_not_exist_and_idempotency_is_enabled", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		err := datastore.Write(
+			ctx,
+			storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				tuple.TupleKeyToTupleKeyWithoutCondition(tk),
+			},
+			nil,
+			storage.IdempotentWrite,
+		)
+		require.NoError(t, err)
+	})
+
 	t.Run("deleting_a_tuple_which_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
@@ -771,6 +787,19 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
+	t.Run("inserting_a_tuple_twice_doesnt_fail_when_idempotency_is_enabled", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		// Second write of the same tuple shouldn't fail with idempotency.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk}, storage.IdempotentWrite)
+		require.NoError(t, err)
+	})
+
 	t.Run("inserting_a_tuple_twice_either_conditioned_or_not_fails", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
@@ -792,6 +821,40 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			},
 		})
 		require.EqualError(t, err, expectedError.Error())
+	})
+
+	t.Run("inserting_a_tuple_twice_either_conditioned_or_not_doesnt_fail_when_idempotency_is_enabled", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+		initialTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize, nil))
+		require.Len(t, initialTuples, 1)
+		initialTuple := initialTuples[0]
+		require.Nil(t, initialTuple.GetCondition())
+
+		// Second write of the same tuple but conditioned should update the existing tuple.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{
+				Object:   tk.GetObject(),
+				Relation: tk.GetRelation(),
+				User:     tk.GetUser(),
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "condition",
+				},
+			},
+		}, storage.IdempotentWrite)
+		require.NoError(t, err)
+		updatedTuples := testutils.ConvertTuplesToTupleKeys(readWithPageSize(t, datastore, storeID, storage.DefaultPageSize, nil))
+		require.Len(t, updatedTuples, 1)
+		updatedTuple := updatedTuples[0]
+		require.NotNil(t, updatedTuple.GetCondition())
+		require.Equal(t, initialTuple.GetObject(), updatedTuple.GetObject())
+		require.Equal(t, initialTuple.GetRelation(), updatedTuple.GetRelation())
+		require.Equal(t, initialTuple.GetUser(), updatedTuple.GetUser())
+		require.Equal(t, "condition", updatedTuple.GetCondition().GetName())
 	})
 
 	t.Run("inserting_conditioned_tuple_and_deleting_tuple_succeeds", func(t *testing.T) {
