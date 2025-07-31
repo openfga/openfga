@@ -2463,7 +2463,9 @@ func TestIntersectionHandler(t *testing.T) {
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
-		require.ErrorIs(t, err, errorRet)
+		require.ErrorContains(t, err, "test")
+		var execError *ExecutionError
+		require.ErrorAs(t, err, &execError)
 	})
 
 	t.Run("return_error_when_queryForTuples_errors", func(t *testing.T) {
@@ -2676,7 +2678,9 @@ func TestExclusionHandler(t *testing.T) {
 		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
-		require.ErrorIs(t, err, errorRet)
+		require.ErrorContains(t, err, "test")
+		var execError *ExecutionError
+		require.ErrorAs(t, err, &execError)
 	})
 
 	t.Run("return_error_when_queryForTuples_errors", func(t *testing.T) {
