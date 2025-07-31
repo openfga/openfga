@@ -396,12 +396,12 @@ func (c *ReverseExpandQuery) execute(
 				// The weighted graph is not guaranteed to be present.
 				// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
 				// and then fall back to the non-weighted version of reverse_expand
-				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("nodeID", typeRel))
+				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("node_id", typeRel))
 				req.skipWeightedGraph = true
 			} else {
 				weight, _ := node.GetWeight(sourceUserType)
 				if weight == weightedGraph.Infinite {
-					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("nodeID", typeRel))
+					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("node_id", typeRel))
 					req.skipWeightedGraph = true
 				}
 			}
@@ -732,7 +732,12 @@ LoopOnIterator:
 	return nil
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(
+	ctx context.Context,
+	intersectionOrExclusionInPreviousEdges bool,
+	candidateObject string,
+	candidateChan chan<- *ReverseExpandResult,
+) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
