@@ -139,7 +139,7 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config, isPrimary bool) (*sqlcommon.
 
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
-		dbName := "opefnga"
+		dbName := "openfga"
 
 		if !isPrimary {
 			dbName += "_secondary"

@@ -27,16 +27,32 @@ func TestPostgresDatastore(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
-	cfg.ExportMetrics = true
 	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
 
+func TestPostgresDatastoreStartup(t *testing.T) {
+	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+	primaryURI := primaryDatastore.GetConnectionURI(true)
+
+	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
+
+	ds, err := New(primaryURI, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	status, err := ds.IsReady(context.Background())
+	require.NoError(t, err)
+	require.True(t, status.IsReady)
+}
+
 func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 	primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	primaryDatastore.CreateSecondary(t)
+	err := primaryDatastore.CreateSecondary(t)
+	require.NoError(t, err)
 
 	primaryURI := primaryDatastore.GetConnectionURI(true)
 
