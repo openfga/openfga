@@ -27,6 +27,7 @@ func TestPostgresDatastore(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI(true)
 	cfg := sqlcommon.NewConfig()
+	cfg.ExportMetrics = true
 	ds, err := New(uri, cfg)
 	require.NoError(t, err)
 	defer ds.Close()
@@ -41,6 +42,7 @@ func TestPostgresDatastoreStatusWithSecondaryDB(t *testing.T) {
 
 	cfg := sqlcommon.NewConfig()
 	cfg.SecondaryURI = primaryDatastore.GetSecondaryConnectionURI(true)
+	cfg.ExportMetrics = true
 
 	ds, err := New(primaryURI, cfg)
 	require.NoError(t, err)
