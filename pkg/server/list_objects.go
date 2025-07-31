@@ -152,6 +152,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	}
 	listObjectsOptimizationCounter.WithLabelValues(listObjectsOptimzationLabel).Inc()
 
+	checkCounter := float64(result.ResolutionMetadata.CheckCounter.Load())
+	grpc_ctxtags.Extract(ctx).Set(listObjectsCheckCountName, checkCounter)
+
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
