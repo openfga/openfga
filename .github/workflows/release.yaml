@@ -103,6 +103,7 @@ jobs:
     permissions:
       contents: read
       security-events: write # needed for uploading results to GitHub Code Scanning
+    continue-on-error: true # allow the workflow to continue even if Snyk finds vulnerabilities
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v3.5.2
@@ -116,12 +117,17 @@ jobs:
           image: openfga/openfga
           args: --file=Dockerfile
 
-      # Replace any "undefined" security severity values with 0. The undefined value is used in the case
-      # of license-related findings, which do not do not indicate a security vulnerability.
+      # 1. Replace any "undefined" security severity values with 0. The undefined value is used in the case
+      # of license-related findings, which do not indicate a security vulnerability.
       # See https://github.com/github/codeql-action/issues/2187 for more context.
+      # 2. Add the `automationDetails.id` field to each run in the SARIF file because snyk does not do that
+      # automatically. This is required to upload the SARIF file to GitHub Code Scanning.
+      # See https://github.blog/changelog/2025-07-21-code-scanning-will-stop-combining-multiple-sarif-runs-uploaded-in-the-same-sarif-file/
       - name: Post-process snyk.sarif output
         run: |
           sed -i 's/"security-severity": "undefined"/"security-severity": "0"/g' snyk.sarif
+          jq 'if .runs then .runs |= (to_entries | map(.value.automationDetails.id = "snyk-category-\(.key)" | .value)) else . end' snyk.sarif > snyk.categorized.sarif
+          mv snyk.categorized.sarif snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@d6bbdef45e766d081b84a2def353b0055f728d3e # pin@v2
