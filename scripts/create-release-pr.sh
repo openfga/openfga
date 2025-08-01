@@ -115,18 +115,18 @@ info "Committing..."
 
 git add "$changelog_file" && git commit -m "${title}"
 
-# git push --set-upstream origin $branch_name
+git push --set-upstream origin $branch_name
 
-# body=$(cat << END
-# ## Description
-# This PR updates the changelog in preparation for releasing \`v${tag}\`.
-# END
-# )
+body=$(cat << END
+## Description
+This PR updates the changelog in preparation for releasing \`v${tag}\`.
+END
+)
 
-# echo "$body"
+echo "$body"
 
-# info "Creating pull request..."
+info "Creating pull request..."
 
-# pull_request=$(gh pr create --base ${base} --title "Update changelog to prep for ${tag} release" --body "$body" --label "$labels")
+pull_request=$(gh pr create --base ${base} --title "Update changelog to prep for ${tag} release" --body "$body" --label "$labels")
 
-# echo "Pull Request: $pull_request"
+echo "Pull Request: $pull_request"
