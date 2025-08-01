@@ -83,11 +83,10 @@ title="Update changelog to prep for ${tag} release"
 
 echo "Branch name: ${branch_name}"
 echo "Base branch: ${base}"
-info "Creating branch '${branch_name}'..."
 
 git checkout $base && git pull || die "Could not checkout or pull ${base}."
 
-info "Checking out branch..."
+info "Creating branch '${branch_name}'..."
 git checkout -b $branch_name
 
 curr_date=$(date +%Y-%m-%d)
@@ -108,11 +107,13 @@ awk -v tag="$tag" -v date="$curr_date" '
 ' "$changelog_file" > "$tmp_file"
 
 mv "$tmp_file" "$changelog_file"
-echo "Promoted Unreleased section to [$TAG] - $DATE"
+echo "Promoted Unreleased section to [$tag] - $curr_date"
+
+npx keep-a-changelog
 
 info "Committing..."
 
-git commit -m "${title}"
+git add "$changelog_file" && git commit -m "${title}"
 
 # git push --set-upstream origin $branch_name
 
