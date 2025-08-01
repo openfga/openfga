@@ -28,7 +28,19 @@ The above command will find the release notes that include `v1.9.2` in the `tag_
 
 ## Usage
 
+Check if you are already logged in using `gh auth status`. If not, follow the browser login for `gh`. To login with `ssh` using a browser, use:
+
 ```
-gh auth login
+gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key --web
+```
+
+Next, run the script by passing the tag version:
+
+```
 ./scripts/create-release-pr.sh -t <version>
+
+# eg,
+./scripts/create-release-pr.sh -t 1.9.2
 ```
+
+If the tag already exists, or the branch was already used, the script will be cancelled and you will need to proceed further manually.
