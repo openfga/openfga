@@ -85,6 +85,10 @@ if [[ -z "$tag" ]]; then
   die -c 2 "Missing required -t <version> argument"
 fi
 
+if gh api repos/:owner/:repo/tags --jq '.[].name' | grep -q "^v${tag}$"; then
+  die -c 2 "Tag '${tag}' already exists on the remote repository."
+fi
+
 labels="release"
 branch_name="release/v${tag}"
 title="Update changelog to prep for ${tag} release"
