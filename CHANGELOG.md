@@ -22,6 +22,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed logs in ListObjects weighted graph to include `store_id` and `authorization_model_id` through the context. [#2581](https://github.com/openfga/openfga/pull/2581)
 - Fixed bug where OpenFGA fail to start when both secondary DB and db metrics enabled. [#2598](https://github.com/openfga/openfga/pull/2598)
 
+### Security
+- Bumped up the `grpc-health-probe` dependency in the published Docker image to the latest release (v0.4.39) which fixes some vulnerabilities. [#2601](https://github.com/openfga/openfga/pull/2601)
+
 ## [1.9.2] - 2025-07-24
 ### Added
 - Add `list_objects_optimization_count` metric to list objects requests. [#2524](https://github.com/openfga/openfga/pull/2524)
