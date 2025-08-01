@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
@@ -24,6 +26,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -574,5 +577,284 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 			sharedResources.Close()
 			require.NoError(t, err)
 		})
+	}
+}
+
+// BenchmarkListObjects sets up an authorization model with various relationship weights:
+// weight one direct, weight one computed, weight two, weight three, and recursive (weight INF).
+// Each weight has 10k tuples written for that relation, and a benchmark is b.Run() specific to each weight.
+// The benchmarks are currently run 2x—once with optimizations enabled and once without.
+func BenchmarkListObjects(b *testing.B) {
+	datastore := memory.New()
+	b.Cleanup(datastore.Close)
+	storeID := ulid.Make().String()
+
+	model := &openfgav1.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustTransformDSLToProto(`
+			model
+			schema 1.1
+			type user
+			type org
+				relations
+					define member: [user]
+					define computed: member
+					define parent: [org]
+					define recursive: [user] or recursive from parent
+			type company
+				relations
+					define owner: [org]
+					define org_member: member from owner
+			type office
+				relations
+					define parent: [company]
+					define weight_three: org_member from parent
+		`).GetTypeDefinitions(),
+	}
+	ctx := context.Background()
+	err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(b, err)
+
+	n := 10000
+	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)
+	createWeightTwoRelations(b, ctx, datastore, storeID, n)
+	createWeightThreeRelations(b, ctx, datastore, storeID, n)
+	createRecursiveRelations(b, ctx, datastore, storeID, n)
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(b, err)
+	b.Cleanup(checkResolverCloser)
+
+	query, err := NewListObjectsQuery(
+		datastore,
+		checkResolver,
+		WithListObjectsOptimizationsEnabled(true),
+
+		// unlimited results, these tests are designed to return `n` results per iteration
+		WithListObjectsMaxResults(0),
+	)
+	require.NoError(b, err)
+
+	ts, err := typesystem.New(model)
+	require.NoError(b, err)
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+	weightOneRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "org",
+		Relation:             "member",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	b.Run("weight_one_direct_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "org",
+		Relation:             "computed",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneComputedRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	b.Run("weight_one_computed_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightOneComputedRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	weightTwoRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "company",
+		Relation:             "org_member",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = true
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightTwoRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n) // probably don't even need these?
+		}
+	})
+
+	b.Run("weight_two_ttu_without_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightTwoRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	weightThreeRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "office",
+		Relation:             "weight_three",
+		User:                 "user:justin",
+	}
+
+	b.Run("weight_three_with_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = true
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightThreeRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	b.Run("weight_three_without_optimization", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, weightThreeRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+
+	recursiveRequest := &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: model.GetId(),
+		Type:                 "org",
+		Relation:             "recursive",
+		User:                 "user:justin",
+	}
+
+	// optimization currently falls back to non-optimized code when it's a recursive query
+	// Uncomment this when recursive listObjects work is underway
+	// b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
+	//	query.optimizationsEnabled = true
+	//	for i := 0; i < b.N; i++ {
+	//		_, err := query.Execute(ctx, recursiveRequest)
+	//		require.NoError(b, err)
+	//	}
+	// })
+
+	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
+		query.optimizationsEnabled = false
+		for i := 0; i < b.N; i++ {
+			res, err := query.Execute(ctx, recursiveRequest)
+			require.NoError(b, err)
+			require.Len(b, res.Objects, n)
+		}
+	})
+}
+
+// This helper writes tuples for user:justin with relation "member" to org:0...org:10000.
+func createDirectWeightOneRelations(
+	b *testing.B,
+	ctx context.Context,
+	datastore storage.OpenFGADatastore,
+	storeID string,
+	numTuples int,
+) {
+	b.Helper()
+	objID := 0
+	for objID < numTuples {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			obj := "org:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "member", "user:justin")
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createWeightTwoRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	objID := 0
+	for objID < numTuples {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "company:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "owner", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createWeightThreeRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	objID := 0
+	for objID < numTuples {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// These IDs can be the same as we already created org:0 - org:numTuples
+			obj := "office:" + strconv.Itoa(objID)
+			user := "company:" + strconv.Itoa(objID)
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
+	}
+}
+
+func createRecursiveRelations(b *testing.B, ctx context.Context, datastore storage.OpenFGADatastore, storeID string, numTuples int) {
+	b.Helper()
+	objID := 0
+	for objID < numTuples {
+		tuples := make([]*openfgav1.TupleKey, datastore.MaxTuplesPerWrite())
+
+		for j := 0; j < datastore.MaxTuplesPerWrite(); j++ {
+			// Every 10th item, make user:justin the leaf
+			if j%10 == 0 {
+				obj := "org:" + strconv.Itoa(objID)
+				tk := tuple.NewTupleKey(obj, "recursive", "user:justin")
+				tuples[j] = tk
+				tuples = append(tuples, tk)
+				objID++
+				continue
+			}
+
+			// otherwise, chain the org#parent#org relation
+			obj := "org:" + strconv.Itoa(objID)
+			user := "org:" + strconv.Itoa(objID-1)
+			tuples[j] = tuple.NewTupleKey(obj, "parent", user)
+			objID++
+		}
+		err := datastore.Write(ctx, storeID, nil, tuples)
+		require.NoError(b, err)
 	}
 }
