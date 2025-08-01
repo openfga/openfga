@@ -30,7 +30,6 @@ Creates a release pull request.
 
 $(echo -e "\033[1mUSAGE\033[0m")
     ${0##*/} [OPTIONS]
-    ${0##*/} -h
 
 This performs the following steps:
 - Checkout the base branch
@@ -59,7 +58,7 @@ info() {
 echo "===>" "$@"
 }
 
-while getopts ":fb:v:o:h" opt; do
+while getopts ":t:h" opt; do
 case "$opt" in
     t)
     ### -t    The version of the release to use for the tag.
