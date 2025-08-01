@@ -26,10 +26,11 @@ exit $exit_code
  
 print_usage() {
 cat <<EOF
-Usage: ${0##*/} [OPTIONS]
-    ${0##*/} -h
-
 Creates a release pull request.
+
+$(echo -e "\033[1mUSAGE\033[0m")
+    ${0##*/} [OPTIONS]
+    ${0##*/} -h
 
 This performs the following steps:
 - Checkout the base branch
@@ -38,13 +39,16 @@ This performs the following steps:
 - Adds the body to the pull request
 - Adds the pull request labels
 
-OPTIONS
+$(echo -e "\033[1mOPTIONS\033[0m")
 EOF
 sed -n '/^[[:space:]]*###/ s//   /p' "$BASH_SOURCE"
 
 cat <<EOF
 
-EXIT CODES:
+$(echo -e "\033[1mEXAMPLE\033[0m")
+    \$ ${0##*/} -t 1.9.3
+
+$(echo -e "\033[1mEXIT CODES\033[0m")
 - 0: Success
 - 1: General error
 - 2: Usage error
