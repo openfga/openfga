@@ -8,7 +8,6 @@ import (
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -28,7 +27,29 @@ const (
 	listObjectsResultChannelLength = 100
 )
 
-var ErrEmptyStack = errors.New("unexpected empty stack")
+var (
+	ErrEmptyStack           = errors.New("unexpected empty stack")
+	ErrLowestWeightFail     = errors.New("failed to get lowest weight edge")
+	ErrConstructUsersetFail = errors.New("failed to construct userset")
+)
+
+type ExecutionError struct {
+	operation string
+	object    string
+	relation  string
+	user      string
+	cause     error
+}
+
+func (e *ExecutionError) Error() string {
+	return fmt.Sprintf("failed to execute: operation: %s: object: %s: relation: %s: user: %s: cause: %s",
+		e.operation,
+		e.object,
+		e.relation,
+		e.user,
+		e.cause.Error(),
+	)
+}
 
 // typeRelEntry represents a step in the path taken to reach a leaf node.
 // As reverseExpand traverses from a requested type#rel to its leaf nodes, it stack.Pushes typeRelEntry structs to a stack.
@@ -554,7 +575,9 @@ func (c *ReverseExpandQuery) callCheckForCandidate(
 	resultChan chan<- *ReverseExpandResult,
 	userset *openfgav1.Userset,
 	isAllowed bool,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
+	resolutionMetadata.CheckCounter.Add(1)
 	handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
 		&graph.ResolveCheckRequest{
 			StoreID:              req.StoreID,
@@ -567,16 +590,18 @@ func (c *ReverseExpandQuery) callCheckForCandidate(
 		}, userset)
 	tmpCheckResult, err := handlerFunc(ctx)
 	if err != nil {
-		functionName := "intersectionHandler"
+		operation := "intersection"
 		if !isAllowed {
-			functionName = "exclusionHandler"
+			operation = "exclusion"
 		}
-		c.logger.Error("Failed to execute", zap.Error(err),
-			zap.String("function", functionName),
-			zap.String("object", tmpResult.Object),
-			zap.String("relation", req.Relation),
-			zap.String("user", req.User.String()))
-		return err
+
+		return &ExecutionError{
+			operation: operation,
+			object:    tmpResult.Object,
+			relation:  req.Relation,
+			user:      req.User.String(),
+			cause:     err,
+		}
 	}
 
 	// If the allowed value does not match what we expect, we skip this candidate.
@@ -609,6 +634,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 	resultChan chan<- *ReverseExpandResult,
 	userset *openfgav1.Userset,
 	isAllowed bool,
+	resolutionMetadata *ResolutionMetadata,
 ) {
 	pool.Go(func(ctx context.Context) error {
 		// note that we create a separate goroutine pool instead of the main pool
@@ -618,7 +644,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 
 		for tmpResult := range tmpResultChan {
 			tmpResultPool.Go(func(ctx context.Context) error {
-				return c.callCheckForCandidate(ctx, req, tmpResult, resultChan, userset, isAllowed)
+				return c.callCheckForCandidate(ctx, req, tmpResult, resultChan, userset, isAllowed, resolutionMetadata)
 			})
 		}
 		return tmpResultPool.Wait()
@@ -641,12 +667,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 ) error {
 	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get lowest weight edge",
-			zap.String("function", "intersectionHandler"),
-			zap.Error(err),
-			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType))
-		return err
+		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
@@ -674,11 +695,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		userset, err := c.typesystem.ConstructUserset(sibling)
 		if err != nil {
 			// This should never happen.
-			c.logger.Error("Failed to construct userset",
-				zap.String("function", "intersectionHandler"),
-				zap.Any("edge", sibling),
-				zap.Error(err))
-			return err
+			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
 	}
@@ -690,7 +707,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 
 	// Concurrently find candidates and call check on them as they are found
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true, resolutionMetadata)
 
 	return nil
 }
@@ -712,12 +729,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 ) error {
 	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
 	if err != nil {
-		c.logger.Error("Failed to get lowest weight edge",
-			zap.String("function", "exclusionHandler"),
-			zap.Error(err),
-			zap.Any("edges", edges),
-			zap.String("sourceUserType", sourceUserType))
-		return err
+		return fmt.Errorf("%w: operation: exclusion: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
@@ -741,16 +753,12 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	userset, err := c.typesystem.ConstructUserset(excludedEdge)
 	if err != nil {
 		// This should never happen.
-		c.logger.Error("Failed to construct userset",
-			zap.String("function", "exclusionHandler"),
-			zap.Any("edge", excludedEdge),
-			zap.Error(err))
-		return err
+		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())
 	}
 
 	// Concurrently find candidates and call check on them as they are found
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false)
+	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false, resolutionMetadata)
 
 	return nil
 }
