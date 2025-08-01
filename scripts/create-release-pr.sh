@@ -69,6 +69,9 @@ case "$opt" in
     print_usage
     exit 0
     ;;
+    :)
+    die 2 "Option -$OPTARG requires an argument."
+    ;;
     \?)
     die "Invalid option: -${OPTARG}"
     ;;
@@ -76,6 +79,11 @@ esac
 done
 
 shift "$((OPTIND-1))"
+
+if [[ -z "$tag" ]]; then
+  print_usage
+  die -c 2 "Missing required -t <version> argument"
+fi
 
 labels="release"
 branch_name="release/v${tag}"
