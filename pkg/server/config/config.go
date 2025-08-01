@@ -98,6 +98,7 @@ const (
 	DefaultSharedIteratorLimit            = 1000000
 	DefaultSharedIteratorTTL              = 4 * time.Minute
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
+	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
 )
 
 type DatastoreMetricsConfig struct {
