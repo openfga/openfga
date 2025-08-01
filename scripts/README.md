@@ -26,6 +26,14 @@ gh api repos/:owner/:repo/releases | jq --arg packageVersion "v1.9.2" '.[] | sel
 
 The above command will find the release notes that include `v1.9.2` in the `tag_name`, thereby finding the release for the OpenFGA v1.9.2 package release.
 
+## Installing npm
+
+To install `npm` in order to use `npx`, if you plan on using `node`, it is recommended that you use [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating). However if you just need to run this script, you can use:
+
+```
+brew install npm
+```
+
 ## Usage
 
 Check if you are already logged in using `gh auth status`. If not, follow the browser login for `gh`. To login with `ssh` using a browser, use:
