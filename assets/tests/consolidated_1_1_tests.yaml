@@ -10128,14 +10128,18 @@ tests:
               define parent: [role]
               define can_read: assignee from parent
         tuples:
-          - object: job:1
-            user: role:admin
+          - object: job:2
+            user: role:admin2
             relation: parent
+
+          - user: user:2
+            relation: assignee
+            object: role:admin2
         checkAssertions:
           - tuple:
-              user: user:1
+              user: user:2
               relation: can_read
-              object: job:1
+              object: job:2
             expectation: true
 
   - name: userset_discard_invalid
@@ -10176,14 +10180,18 @@ tests:
             relations
               define can_read: [role#assignee]
         tuples:
-          - object: job:1
-            user: role:admin#assignee
+          - user: user:2
+            relation: assignee
+            object: role:admin2
+
+          - object: job:2
+            user: role:admin2#assignee
             relation: can_read
         checkAssertions:
           - tuple:
-              user: user:1
+              user: user:2
               relation: can_read
-              object: job:1
+              object: job:2
             expectation: true
 
   - name: userset_discard_invalid_wildcard
@@ -10202,6 +10210,9 @@ tests:
           - user: user:*
             relation: can_read
             object: job:1
+          - user: user:*
+            relation: can_read
+            object: job:2
         checkAssertions:
           - tuple:
               user: user:1
@@ -10224,22 +10235,22 @@ tests:
             relations
               define can_read: [role#assignee]
         tuples:
-          - object: job:1
+          - object: job:2
             user: role:admin#assignee
             relation: can_read
-          - user: user:1
+          - user: user:3
             relation: assignee
             object: role:admin
         checkAssertions:
           - tuple:
-              user: user:1
+              user: user:3
               relation: can_read
-              object: job:1
+              object: job:2
             expectation: true
           - tuple:
-              user: user:2
+              user: user:4
               relation: can_read
-              object: job:1
+              object: job:2
             expectation: false
   - name: recursive_ttu_union_algebraic_operations
     stages:
