@@ -111,6 +111,17 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
 		checker.wg.Wait()
+	})
+	t.Run("output_difference", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		main := NewMockCheckResolver(ctrl)
+		main.EXPECT().Close().MaxTimes(1)
+		shadow := NewMockCheckResolver(ctrl)
+		shadow.EXPECT().Close().MaxTimes(1)
+		logger := mocks.NewMockLogger(ctrl)
+		checker := NewShadowChecker(main, shadow, ShadowResolverWithLogger(logger), ShadowResolverWithSamplePercentage(100), ShadowResolverWithTimeout(1*time.Second))
+		defer checker.Close()
 		main.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(&ResolveCheckResponse{
 			Allowed: false,
 		}, nil)
@@ -118,7 +129,7 @@ func TestShadowResolver_ResolveCheck(t *testing.T) {
 			Allowed: true,
 		}, nil)
 		logger.EXPECT().InfoWithContext(gomock.Any(), "shadow check difference", gomock.Any())
-		res, err = checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
+		res, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		require.NoError(t, err)
 		require.False(t, res.Allowed)
 		checker.wg.Wait()
