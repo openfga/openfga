@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    tags-ignore:
+      - "test*"
 
 permissions:
   contents: read
