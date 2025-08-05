@@ -2,7 +2,6 @@ package checkutil
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -36,23 +35,6 @@ func BuildTupleKeyConditionFilter(ctx context.Context, reqCtx *structpb.Struct, 
 		}
 
 		return condEvalResult.ConditionMet, nil
-	}
-}
-
-// ObjectIDInSortedSet returns whether any of the object IDs in the tuples given by the iterator is in the input set of objectIDs.
-func ObjectIDInSortedSet(ctx context.Context, iter storage.TupleKeyIterator, objectIDs storage.SortedSet) (bool, error) {
-	for {
-		t, err := iter.Next(ctx)
-		if errors.Is(err, storage.ErrIteratorDone) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		_, objectID := tuple.SplitObject(t.GetObject())
-		if objectIDs.Exists(objectID) {
-			return true, nil
-		}
 	}
 }
 
@@ -131,14 +113,6 @@ func IteratorReadStartingFromUser(ctx context.Context,
 	), nil
 }
 
-func buildUsersetDetails(typesys *typesystem.TypeSystem, objectType, relation string) (string, error) {
-	cr, err := typesys.ResolveComputedRelation(objectType, relation)
-	if err != nil {
-		return "", err
-	}
-	return tuple.ToObjectRelationString(objectType, cr), nil
-}
-
 type V2RelationFunc func(*openfgav1.RelationReference) string
 
 // BuildUsersetV2RelationFunc returns the reference's relation.
@@ -152,36 +126,5 @@ func BuildUsersetV2RelationFunc() V2RelationFunc {
 func BuildTTUV2RelationFunc(computedRelation string) V2RelationFunc {
 	return func(_ *openfgav1.RelationReference) string {
 		return computedRelation
-	}
-}
-
-type UsersetDetailsFunc func(*openfgav1.TupleKey) (string, string, error)
-
-// BuildUsersetDetailsUserset given tuple doc:1#viewer@group:2#member will return group#member, 2, nil.
-func BuildUsersetDetailsUserset(typesys *typesystem.TypeSystem) UsersetDetailsFunc {
-	return func(t *openfgav1.TupleKey) (string, string, error) {
-		// the relation is from the tuple
-		object, relation := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		rel, err := buildUsersetDetails(typesys, objectType, relation)
-		if err != nil {
-			return "", "", err
-		}
-		return rel, objectID, nil
-	}
-}
-
-// BuildUsersetDetailsTTU given (tuple doc:1#viewer@group:2, member) will return group#member, 2, nil.
-// This util takes into account computed relationships, otherwise it will resolve it from the target UserType.
-// nolint:unused
-func BuildUsersetDetailsTTU(typesys *typesystem.TypeSystem, computedRelation string) UsersetDetailsFunc {
-	return func(t *openfgav1.TupleKey) (string, string, error) {
-		object, _ := tuple.SplitObjectRelation(t.GetUser())
-		objectType, objectID := tuple.SplitObject(object)
-		rel, err := buildUsersetDetails(typesys, objectType, computedRelation)
-		if err != nil {
-			return "", "", err
-		}
-		return rel, objectID, nil
 	}
 }
