@@ -10090,6 +10090,7 @@ tests:
               - user:1
 
   - name: ttu_discard_invalid
+    # Tests that after a model change, any now obsolete tuples should not affect the check assertion.
     stages:
       - model: |
           model
@@ -10105,17 +10106,22 @@ tests:
         tuples:
           - user: user:1
             relation: assignee
-            object: role:admin
+            object: role:minion
 
+          # This tuple will become obsolete after the model change in the next stage.
           - object: role:parent
             user: role:minion#assignee
             relation: assignee
+
+          - object: job:1
+            user: role:parent
+            relation: parent 
         checkAssertions:
           - tuple:
               user: user:1
               relation: can_read
               object: job:1
-            expectation: false
+            expectation: true
       - model: |
           model
             schema 1.1
@@ -10128,21 +10134,22 @@ tests:
               define parent: [role]
               define can_read: assignee from parent
         tuples:
-          - object: job:2
-            user: role:admin2
-            relation: parent
-
           - user: user:2
             relation: assignee
-            object: role:admin2
+            object: role:minion
+          
+          - object: job:2
+            user: role:parent
+            relation: parent
         checkAssertions:
           - tuple:
               user: user:2
               relation: can_read
               object: job:2
-            expectation: true
+            expectation: false
 
   - name: userset_discard_invalid
+    # Tests that after a model change, any now obsolete tuples should not affect the check assertion.
     stages:
       - model: |
           model
@@ -10160,6 +10167,7 @@ tests:
             relation: assignee
             object: role:admin
 
+          # This tuple will become obsolete after the model change in the next stage.
           - object: role:invalid
             user: role:awesome#placeholder
             relation: assignee
@@ -10195,6 +10203,7 @@ tests:
             expectation: true
 
   - name: userset_discard_invalid_wildcard
+    # Tests that after a model change, any now obsolete tuples should not affect the check assertion.
     stages:
       - model: |
           model
@@ -10207,9 +10216,12 @@ tests:
             relations
               define can_read: [role#assignee, user:*]
         tuples:
+          # This tuple will become obsolete after the model change in the next stage.
           - user: user:*
             relation: can_read
             object: job:1
+          
+          # This tuple will become obsolete after the model change in the next stage.
           - user: user:*
             relation: can_read
             object: job:2
