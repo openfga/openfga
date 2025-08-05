@@ -340,11 +340,6 @@ func testRunAll(t *testing.T, engine string) {
 
 	cfg.CheckIteratorCache.Enabled = true
 
-	// Some tests/stages are sensitive to the cache TTL,
-	// so we set it to a very low value to still exercise
-	// the Check iterator cache.
-	cfg.CheckIteratorCache.TTL = 1 * time.Nanosecond
-
 	tests.StartServer(t, cfg)
 
 	conn := testutils.CreateGrpcConnection(t, cfg.GRPC.Addr)
