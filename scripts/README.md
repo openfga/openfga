@@ -1,4 +1,11 @@
 # Release Scripts
+
+This performs the following steps:
+- Checkout the base branch
+- Creates the release branch off of the base
+- Creates the pull request against the base branch
+- Adds the body to the pull request
+- Adds the pull request labels
  
 ## Setup
 
