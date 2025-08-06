@@ -8,6 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.9.8] - 2025-08-06
+
 ## [1.9.6] - 2025-08-06
 
 ## [1.9.5] - 2025-08-06
@@ -1387,7 +1389,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.8...HEAD
+[1.9.8]: https://github.com/openfga/openfga/compare/v1.9.6...v1.9.8
 [1.9.6]: https://github.com/openfga/openfga/compare/v1.9.5...v1.9.6
 [1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
 [1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
