@@ -119,7 +119,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	return NewWithDB(primaryDB, secondaryDB, cfg)
 }
 
-func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.StatementBuilderType, prometheus.Collector, error) {
+func configureDB(db *sql.DB, cfg *sqlcommon.Config, dbName string) (*sqlcommon.DBInfo, sq.StatementBuilderType, prometheus.Collector, error) {
 	var stbl sq.StatementBuilderType
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
@@ -139,7 +139,7 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.State
 
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
-		collector = collectors.NewDBStatsCollector(db, "openfga")
+		collector = collectors.NewDBStatsCollector(db, dbName)
 		if err := prometheus.Register(collector); err != nil {
 			return nil, stbl, nil, fmt.Errorf("initialize metrics: %w", err)
 		}
@@ -153,7 +153,7 @@ func configureDB(db *sql.DB, cfg *sqlcommon.Config) (*sqlcommon.DBInfo, sq.State
 
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
 func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
-	primaryDBInfo, primaryStbl, primaryCollector, err := configureDB(primaryDB, cfg)
+	primaryDBInfo, primaryStbl, primaryCollector, err := configureDB(primaryDB, cfg, "openfga")
 	if err != nil {
 		return nil, fmt.Errorf("configure primary db: %w", err)
 	}
@@ -162,7 +162,7 @@ func NewWithDB(primaryDB, secondaryDB *sql.DB, cfg *sqlcommon.Config) (*Datastor
 	var secondaryStbl sq.StatementBuilderType
 	var secondaryCollector prometheus.Collector
 	if secondaryDB != nil {
-		secondaryDBInfo, secondaryStbl, secondaryCollector, err = configureDB(secondaryDB, cfg)
+		secondaryDBInfo, secondaryStbl, secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
 		if err != nil {
 			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
