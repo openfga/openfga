@@ -3,7 +3,7 @@
 set -eo pipefail
  
 tag=
-base="main"
+base="wip/tag-generation-workflow"
  
 die() {
 local exit_code=1
@@ -90,7 +90,7 @@ if gh api repos/:owner/:repo/tags --jq '.[].name' | grep -q "^v${tag}$"; then
 fi
 
 labels="release"
-branch_name="release/v${tag}"
+branch_name="test-release/test${tag}"
 title="Update changelog to prep for ${tag} release"
 
 echo "Branch name: ${branch_name}"
