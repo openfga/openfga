@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc/v3"
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -426,6 +430,29 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				})
 			},
 		},
+		{
+			testDescription: "verify_token_successfully_when_jwt_header_lacks_kid",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_2",
+					jwtKid:         "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
+					issuerAliases:  []string{"issuer_alias"},
+					subjects:       []string{"openfga client"},
+					clientIDClaims: customClientIDClaims,
+					jwtClaims: jwt.MapClaims{
+						"iss":       "issuer_alias",
+						"aud":       "right_audience",
+						"sub":       "openfga client",
+						"custom-id": customClientID,
+						"scope":     scopes,
+						"exp":       time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+		},
 	}
 
 	for _, testC := range successTestCases {
@@ -515,15 +542,29 @@ func generateJWTSignatureKeys() (*rsa.PrivateKey, *rsa.PublicKey) {
 
 // fetchKeysMock returns a function that sets up a mock JWKS.
 func fetchKeysMock(publicKey *rsa.PublicKey, kid string) func(oidc *RemoteOidcAuthenticator) error {
-	// Create a keyfunc with the given RSA public key and RS256 algorithm
-	givenKeys := keyfunc.NewGivenCustom(publicKey, keyfunc.GivenKeyOptions{
-		Algorithm: "RS256",
-	})
 	// Return a function that sets up the mock JWKS with the provided kid
 	return func(oidc *RemoteOidcAuthenticator) error {
-		jwks := keyfunc.NewGiven(map[string]keyfunc.GivenKey{
-			kid: givenKeys,
-		})
+		// Create a JWK Set JSON with the RSA public key
+		n := base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(publicKey.E)).Bytes())
+
+		jwkSetJSON := fmt.Sprintf(`{
+			"keys": [{
+				"kty": "RSA",
+				"kid": "%s",
+				"use": "sig",
+				"alg": "RS256",
+				"n": "%s",
+				"e": "%s"
+			}]
+		}`, kid, n, e)
+
+		// Create keyfunc from JWK Set JSON
+		jwks, err := keyfunc.NewJWKSetJSON(json.RawMessage(jwkSetJSON))
+		if err != nil {
+			log.Fatalf("failed to create keyfunc from JWK Set: %v", err)
+		}
+
 		oidc.JWKs = jwks
 		return nil
 	}
