@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -88,6 +89,7 @@ func (l *ZapLogger) WarnWithContext(ctx context.Context, msg string, fields ...z
 }
 
 func (l *ZapLogger) ErrorWithContext(ctx context.Context, msg string, fields ...zap.Field) {
+	fields = append(fields, ctxzap.TagsToFields(ctx)...)
 	l.Logger.Error(msg, fields...)
 }
 

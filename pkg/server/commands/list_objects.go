@@ -97,6 +97,9 @@ type ListObjectsResolutionMetadata struct {
 	// WasWeightedGraphUsed indicates whether the weighted graph was used as the algorithm for the ListObjects request.
 	WasWeightedGraphUsed atomic.Bool
 
+	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
+	CheckCounter atomic.Uint32
+
 	// Temporary solution to indicate whether shadow list objects query should be run.
 	// For queries with Infinite weight, the weighted graph implementation falls back
 	// to the original code, making any comparison useless.
@@ -372,6 +375,7 @@ func (q *ListObjectsQuery) evaluate(
 			if !resolutionMetadata.WasThrottled.Load() && reverseExpandResolutionMetadata.WasThrottled.Load() {
 				resolutionMetadata.WasThrottled.Store(true)
 			}
+			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
 			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil

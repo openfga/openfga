@@ -21,42 +21,6 @@ type objectProvider interface {
 	Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error)
 }
 
-type recursiveObjectProvider struct {
-	mapper storage.TupleMapper
-	ts     *typesystem.TypeSystem
-	ds     storage.RelationshipTupleReader
-}
-
-func newRecursiveObjectProvider(ts *typesystem.TypeSystem, ds storage.RelationshipTupleReader) *recursiveObjectProvider {
-	return &recursiveObjectProvider{ts: ts, ds: ds}
-}
-
-var _ objectProvider = (*recursiveObjectProvider)(nil)
-
-func (s *recursiveObjectProvider) End() {
-	if s.mapper != nil {
-		s.mapper.Stop()
-	}
-}
-
-func (s *recursiveObjectProvider) Begin(ctx context.Context, req *ResolveCheckRequest) (<-chan usersetMessage, error) {
-	// Note: we set sortContextualTuples to false because we don't care about ordering of results,
-	// since the consumer is using hashsets to check for intersection.
-	userIter, err := checkutil.IteratorReadStartingFromUser(ctx, s.ts, s.ds, req,
-		tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()),
-		nil, false)
-	if err != nil {
-		return nil, err
-	}
-	usersetFromUserIter := storage.WrapIterator(storage.ObjectIDKind, userIter)
-	s.mapper = usersetFromUserIter
-
-	// note: this function will close the channel
-	userToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, usersetFromUserIter)
-
-	return userToUsersetMessageChan, nil
-}
-
 type recursiveTTUObjectProvider struct {
 	ts               *typesystem.TypeSystem
 	tuplesetRelation string
