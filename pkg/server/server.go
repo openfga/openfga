@@ -97,6 +97,8 @@ var (
 		Help:      "The total number of requests that have been processed by the weighted graph vs non-weighted graph.",
 	}, []string{"strategy"})
 
+	listObjectsCheckCountName = "check_count"
+
 	throttledRequestCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "throttled_requests_count",

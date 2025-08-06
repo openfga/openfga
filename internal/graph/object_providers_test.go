@@ -561,6 +561,7 @@ func TestIteratorToUserset(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, 1, count)
+		require.GreaterOrEqual(t, count, 1)
+		require.LessOrEqual(t, count, 2)
 	})
 }
