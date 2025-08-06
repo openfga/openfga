@@ -59,7 +59,7 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/git/refs)
           http_status=$(echo "$response" | jq -r .status)
           if [ "$http_status" -ne 201 ]; then
-            echo "Failed to create tag. Status: $http_status"
+            echo "Failed to create tag"
             echo "$response"
             exit 1
           fi
