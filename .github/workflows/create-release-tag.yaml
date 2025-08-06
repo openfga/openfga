@@ -54,7 +54,7 @@ jobs:
           fi
           echo "Creating a new tag $tag_name..."
           SHA=${{ github.event.pull_request.merge_commit_sha }}
-          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          curl -s -X POST -H "Authorization: token ${{ secrets.GORELEASER_GITHUB_TOKEN }}" \
             -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"$SHA\"}" \
             https://api.github.com/repos/${{ github.repository }}/git/refs
           echo "TAG_NAME=$tag_name" >> $GITHUB_ENV
