@@ -62,6 +62,8 @@ require (
 	cel.dev/expr v0.24.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
+	github.com/MicahParks/jwkset v0.8.0 // indirect
+	github.com/MicahParks/keyfunc/v3 v3.6.1-0.20250804232944-2245943d43ec // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect

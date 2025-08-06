@@ -3,7 +3,7 @@ package authn
 import (
 	"context"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -21,8 +21,6 @@ type Authenticator interface {
 	// Authenticate returns a nil error and the AuthClaims info (if available) if the subject is authenticated or a
 	// non-nil error with an appropriate error cause otherwise.
 	Authenticate(requestContext context.Context) (*authclaims.AuthClaims, error)
-	// Close Cleans up the authenticator.
-	Close()
 }
 
 type NoopAuthenticator struct{}
@@ -46,5 +44,5 @@ type OidcConfig struct {
 
 type OIDCAuthenticator interface {
 	GetConfiguration() (*OidcConfig, error)
-	GetKeys() (*keyfunc.JWKS, error)
+	GetKeys() (keyfunc.Keyfunc, error)
 }
