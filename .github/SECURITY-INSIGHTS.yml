@@ -79,7 +79,7 @@ repository:
     dependency-management-policy: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
     governance: https://github.com/openfga/.github/blob/main/GOVERNANCE.md
     review-policy: https://github.com/openfga/.github/blob/main/CONTRIBUTING.md
-    security-policy: https://github.com/openfga/openfga/?tab=security-ov-file
+    security-policy: https://github.com/openfga/openfga/blob/main/SECURITY.md
 
   security:
     assessments:
