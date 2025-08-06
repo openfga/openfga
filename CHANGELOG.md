@@ -9,6 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
+- Promote the Check fast path v2 implementations to no longer being behind the `enable-check-optimizations` config flag. [#2609](https://github.com/openfga/openfga/pull/2609)
 
 ### Changed
 - Change ListObjectsResolutionMetadata fields to value types instead of pointers. [#2583](https://github.com/openfga/openfga/pull/2583)
