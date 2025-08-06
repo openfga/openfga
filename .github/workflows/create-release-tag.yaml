@@ -5,7 +5,7 @@ on:
     types:
       - closed
     branches:
-      - main
+      - wip/tag-generation-workflow
     paths:
       - 'CHANGELOG.md'
 
@@ -56,7 +56,7 @@ jobs:
             echo "No version found in CHANGELOG. Exiting..."
             exit 1
           else
-            tag_name="v$tag_name"
+            tag_name="test$tag_name"
           fi
           echo "Creating a new tag $tag_name..."
           curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
