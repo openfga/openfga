@@ -29,6 +29,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
 - Promote the Check fast path v2 implementations to no longer being behind the `enable-check-optimizations` config flag. [#2609](https://github.com/openfga/openfga/pull/2609)
+- Support for verifying JWTs without a `kid` header by checking against all available keys in the JWK Set. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ### Changed
 - Change ListObjectsResolutionMetadata fields to value types instead of pointers. [#2583](https://github.com/openfga/openfga/pull/2583)
@@ -37,6 +38,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Update go toolchain version to 1.24.6 - related: [CVE-2025-47907](https://nvd.nist.gov/vuln/detail/CVE-2025-47907)
 - Revert min supported go version to 1.24.0
 - Bump the base docker image to `cgr.dev/chainguard/static@sha256:6a4b683f4708f1f167ba218e31fcac0b7515d94c33c3acf223c36d5c6acd3783`
+- - Upgraded `keyfunc` library from v2 to v3 to enable access to all keys for JWT verification. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ### Fixed
 - Fixed bug in how experimental ReverseExpand is handling duplicate TTUs. [#2589](https://github.com/openfga/openfga/pull/2589)
