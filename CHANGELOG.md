@@ -8,6 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.9.4] - 2025-08-06
+
 ## [1.9.3] - 2025-08-06
 ### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
@@ -1381,7 +1383,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.4...HEAD
+[1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
 [1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
