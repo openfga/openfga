@@ -30,12 +30,6 @@ jobs:
           fi
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Get current branch commit SHA
-        id: get_sha
-        run: |
-          echo "Getting the latest commit SHA..."
-          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/git/refs/heads/main | jq -r .object.sha)
-          echo "SHA=$sha" >> $GITHUB_ENV
       - name: Create new tag
         id: create_tag
         run: |
@@ -59,6 +53,7 @@ jobs:
             tag_name="v$tag_name"
           fi
           echo "Creating a new tag $tag_name..."
+          SHA=${{ github.event.pull_request.merge_commit_sha }}
           curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"${{ env.SHA }}\"}" \
             https://api.github.com/repos/${{ github.repository }}/git/refs
