@@ -1,0 +1,65 @@
+name: tag-generation
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+    paths:
+      - 'CHANGELOG.md'
+
+jobs:
+  create-tag:
+    if: github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'release') && contains(github.event.pull_request.title, 'Update changelog to prep for release')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check if PR author is a maintainer
+        run: |
+          pr_author="${{ github.event.pull_request.user.login }}"
+          permission=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/collaborators/$pr_author/permission" | jq -r .permission)
+
+          if [[ "$permission" == "admin" || "$permission" == "write" ]]; then
+            echo "$pr_author is a maintainer. Continue with tag creation."
+          else
+            echo "$pr_author is NOT a maintainer. Exiting..."
+            exit 1
+          fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Get current branch commit SHA
+        id: get_sha
+        run: |
+          echo "Getting the latest commit SHA..."
+          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/git/refs/heads/main | jq -r .object.sha)
+          echo "SHA=$sha" >> $GITHUB_ENV
+      - name: Create new tag
+        id: create_tag
+        run: |
+          echo "Getting the latest version from CHANGELOG..."
+          tag_name=$(awk '
+            BEGIN { unreleased_found=0 }
+            /^## \[Unreleased\]/ { unreleased_found=1; next }
+            unreleased_found && /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+              # Extract version using split
+              line = $0
+              n = split(line, arr, "[")
+              m = split(arr[2], ver, "]")
+              print ver[1]
+              exit
+            }
+          ' "CHANGELOG.md")
+          if [ -z "$tag_name" ]; then
+            echo "No version found in CHANGELOG. Exiting..."
+            exit 1
+          else
+            tag_name="v$tag_name"
+          fi
+          echo "Creating a new tag $tag_name..."
+          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"${{ env.SHA }}\"}" \
+            https://api.github.com/repos/${{ github.repository }}/git/refs
+          echo "TAG_NAME=$tag_name" >> $GITHUB_ENV
