@@ -8,13 +8,13 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/iterator"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -442,7 +442,6 @@ func TestIteratorToUserset(t *testing.T) {
 		require.LessOrEqual(t, count, 5)
 	})
 	t.Run("handles_errors", func(t *testing.T) {
-
 		iterError := errors.New("iterator error")
 		chans := make([]<-chan *iterator.Msg, 0, 2)
 		iterChan1 := make(chan *iterator.Msg, 1)

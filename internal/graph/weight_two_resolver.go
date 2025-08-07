@@ -209,7 +209,6 @@ func produceLeftChannels(
 	return leftChans, nil
 }
 
-
 func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg, error) {
 	iterChan := make(chan *iterator.Msg)
 	close(iterChan)

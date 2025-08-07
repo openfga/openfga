@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
-
 	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
