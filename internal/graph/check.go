@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/emirpasic/gods/sets/hashset"
+
 	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
@@ -554,240 +555,6 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 	return false
 }
 
-type dispatchParams struct {
-	parentReq *ResolveCheckRequest
-	tk        *openfgav1.TupleKey
-}
-
-type dispatchMsg struct {
-	err            error
-	shortCircuit   bool
-	dispatchParams *dispatchParams
-}
-
-func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
-	defer close(dispatches)
-	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			// cancelled doesn't need to flush nor send errors back to main routine
-			if storage.IterIsDoneOrCancelled(err) {
-				break
-			}
-			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
-			break
-		}
-
-		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-		// if the user value is a typed wildcard and the type of the wildcard
-		// matches the target user objectType, then we're done searching
-		if tuple.IsTypedWildcard(usersetObject) && typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-			wildcardType := tuple.GetType(usersetObject)
-
-			if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
-				concurrency.TrySendThroughChannel(ctx, dispatchMsg{shortCircuit: true}, dispatches)
-				break
-			}
-		}
-
-		if usersetRelation != "" {
-			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
-			concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
-		}
-	}
-}
-
-// processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatchChan chan dispatchMsg) <-chan checkOutcome {
-	outcomes := make(chan checkOutcome, limit)
-	dispatchPool := concurrency.NewPool(ctx, limit)
-
-	go func() {
-		defer func() {
-			// We need to wait always to avoid a goroutine leak.
-			_ = dispatchPool.Wait()
-			close(outcomes)
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg, ok := <-dispatchChan:
-				if !ok {
-					return
-				}
-				if msg.err != nil {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: msg.err}, outcomes)
-					break // continue
-				}
-				if msg.shortCircuit {
-					resp := &ResolveCheckResponse{
-						Allowed: true,
-					}
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-					return
-				}
-
-				if msg.dispatchParams != nil {
-					dispatchPool.Go(func(ctx context.Context) error {
-						recoveredError := panics.Try(func() {
-							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
-						})
-						if recoveredError != nil {
-							concurrency.TrySendThroughChannel(
-								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
-								outcomes,
-							)
-						}
-						return nil
-					})
-				}
-			}
-		}
-	}()
-
-	return outcomes
-}
-
-func (c *LocalChecker) consumeDispatches(ctx context.Context, limit int, dispatchChan chan dispatchMsg) (*ResolveCheckResponse, error) {
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
-
-	var finalErr error
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-ConsumerLoop:
-	for {
-		select {
-		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-outcomeChannel:
-			if !ok {
-				break ConsumerLoop
-			}
-			if outcome.err != nil {
-				finalErr = outcome.err
-				break // continue
-			}
-
-			if outcome.resp.GetResolutionMetadata().CycleDetected {
-				finalResult.ResolutionMetadata.CycleDetected = true
-			}
-
-			if outcome.resp.Allowed {
-				finalErr = nil
-				finalResult = outcome.resp
-				break ConsumerLoop
-			}
-		}
-	}
-	cancel() // prevent further processing of other checks
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
-	if finalErr != nil {
-		return nil, finalErr
-	}
-
-	return finalResult, nil
-}
-
-// checkUsersetSlowPath will check userset path.
-// This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) checkUsersetSlowPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
-	ctx, span := tracer.Start(ctx, "checkUsersetSlowPath")
-	defer span.End()
-
-	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
-
-	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, 1)
-	defer func() {
-		cancelFunc()
-		// We need to wait always to avoid a goroutine leak.
-		poolErr := pool.Wait()
-		if poolErr != nil {
-			err = poolErr
-			resp = nil
-		}
-	}()
-	pool.Go(func(ctx context.Context) error {
-		recoveredError := panics.Try(func() {
-			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
-		})
-
-		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-		}
-		return nil
-	})
-
-	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return
-	}
-
-	return
-}
-
-type usersetMessage struct {
-	userset string
-	err     error
-}
-
-// streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
-// It closes the channel in the end.
-func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) <-chan usersetMessage {
-	ctx, span := tracer.Start(ctx, "streamedLookupUsersetFromIterator")
-	usersetMessageChan := make(chan usersetMessage, 100)
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", ErrPanic, r)}, usersetMessageChan)
-			}
-
-			close(usersetMessageChan)
-			span.End()
-		}()
-
-		for {
-			res, err := iter.Next(ctx)
-			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					return
-				}
-				telemetry.TraceError(span, err)
-				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
-				return
-			}
-			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
-		}
-	}()
-
-	return usersetMessageChan
-}
-
-// processUsersetMessage will add the userset in the primarySet.
-// In addition, it returns whether the userset exists in secondarySet.
-// This is used to find the intersection between userset from user and userset from object.
-func processUsersetMessage(userset string,
-	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
-	primarySet.Add(userset)
-	return secondarySet.Contains(userset)
-}
-
 func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
@@ -974,17 +741,17 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			resolver := c.checkUsersetSlowPath
+			resolver := c.defaultUserset
 			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 			userType := tuple.GetType(reqTupleKey.GetUser())
 
 			if !isUserset {
-				if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
-					resolver = c.checkUsersetFastPathV2
-					span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-				} else if typesys.RecursiveUsersetCanFastPathV2(objectType, relation, userType) {
-					resolver = c.recursiveUsersetFastPathV2
-					span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					resolver = c.weight2Userset
+					span.SetAttributes(attribute.String("resolver", "weight2"))
+				} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
+					resolver = c.recursiveUserset
+					span.SetAttributes(attribute.String("resolver", "recursive"))
 				}
 			}
 
@@ -1052,70 +819,6 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 	}
 }
 
-func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
-	defer close(dispatches)
-	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
-	for {
-		t, err := iter.Next(ctx)
-		if err != nil {
-			if storage.IterIsDoneOrCancelled(err) {
-				break
-			}
-			concurrency.TrySendThroughChannel(ctx, dispatchMsg{err: err}, dispatches)
-			break
-		}
-
-		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				continue // skip computed relations on tupleset relationships if they are undefined
-			}
-		}
-
-		tupleKey := &openfgav1.TupleKey{
-			Object:   userObj,
-			Relation: computedRelation,
-			User:     reqTupleKey.GetUser(),
-		}
-
-		concurrency.TrySendThroughChannel(ctx, dispatchMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, dispatches)
-	}
-}
-
-// checkTTUSlowPath is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
-// resort to dispatch check on its children.
-func (c *LocalChecker) checkTTUSlowPath(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "checkTTUSlowPath")
-	defer span.End()
-
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-
-	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
-
-	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-	pool := concurrency.NewPool(cancellableCtx, 1)
-	defer func() {
-		cancelFunc()
-		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
-	}()
-	pool.Go(func(ctx context.Context) error {
-		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
-		return nil
-	})
-
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
-	if err != nil {
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
-
-	return resp, nil
-}
-
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
@@ -1176,7 +879,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
-		resolver := c.checkTTUSlowPath
+		resolver := c.defaultTTU
 
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
@@ -1184,13 +887,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
-			// more common
-			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.checkTTUFastPathV2
-				span.SetAttributes(attribute.String("resolver", "fastpathv2"))
-			} else if typesys.RecursiveTTUCanFastPathV2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				resolver = c.recursiveTTUFastPathV2
-				span.SetAttributes(attribute.String("resolver", "recursivefastpathv2"))
+			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				resolver = c.weight2TTU
+				span.SetAttributes(attribute.String("resolver", "weight2"))
+			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+				resolver = c.recursiveTTU
+				span.SetAttributes(attribute.String("resolver", "recursive"))
 			}
 		}
 
@@ -1270,4 +972,51 @@ func (c *LocalChecker) CheckRewrite(
 			return nil, ErrUnknownSetOperator
 		}
 	}
+}
+
+// TODO: make these subsequent functions generic and move outside this package.
+
+type usersetMessage struct {
+	userset string
+	err     error
+}
+
+// streamedLookupUsersetFromIterator returns a channel with all the usersets given by the input iterator.
+// It closes the channel in the end.
+func streamedLookupUsersetFromIterator(ctx context.Context, iter storage.TupleMapper) <-chan usersetMessage {
+	usersetMessageChan := make(chan usersetMessage, 100)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: fmt.Errorf("%w: %s", ErrPanic, r)}, usersetMessageChan)
+			}
+
+			close(usersetMessageChan)
+		}()
+
+		for {
+			res, err := iter.Next(ctx)
+			if err != nil {
+				if storage.IterIsDoneOrCancelled(err) {
+					return
+				}
+				concurrency.TrySendThroughChannel(ctx, usersetMessage{err: err}, usersetMessageChan)
+				return
+			}
+			concurrency.TrySendThroughChannel(ctx, usersetMessage{userset: res}, usersetMessageChan)
+		}
+	}()
+
+	return usersetMessageChan
+}
+
+// processUsersetMessage will add the userset in the primarySet.
+// In addition, it returns whether the userset exists in secondarySet.
+// This is used to find the intersection between userset from user and userset from object.
+func processUsersetMessage(userset string,
+	primarySet *hashset.Set,
+	secondarySet *hashset.Set) bool {
+	primarySet.Add(userset)
+	return secondarySet.Contains(userset)
 }
