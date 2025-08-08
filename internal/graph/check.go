@@ -739,7 +739,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var b strings.Builder
 		b.WriteString("userset|")
-		b.WriteString(storeID)
+		b.WriteString(req.GetAuthorizationModelID())
 		b.WriteString("|")
 		b.WriteString(objectType)
 		b.WriteString("|")
@@ -957,7 +957,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		var b strings.Builder
 		b.WriteString("ttu|")
-		b.WriteString(storeID)
+		b.WriteString(req.GetAuthorizationModelID())
 		b.WriteString("|")
 		b.WriteString(objectType)
 		b.WriteString("|")
