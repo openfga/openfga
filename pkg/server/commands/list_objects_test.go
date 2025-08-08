@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -731,6 +732,9 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
 			require.NoError(b, err)
+			if len(res.Objects) != n {
+				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
+			}
 			require.Len(b, res.Objects, n)
 		}
 	})
@@ -740,6 +744,9 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
 			require.NoError(b, err)
+			if len(res.Objects) != n {
+				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
+			}
 			require.Len(b, res.Objects, n)
 		}
 	})
@@ -767,6 +774,9 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, recursiveRequest)
 			require.NoError(b, err)
+			if len(res.Objects) != n {
+				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
+			}
 			require.Len(b, res.Objects, n)
 		}
 	})
