@@ -8,56 +8,70 @@ import (
 
 type Planner struct {
 	// ttu|userset_storeID_objectType_relation_userType
-	stats map[string]map[string]*ThompsonStats
-	mu    sync.RWMutex
-	rng   *rand.Rand // Random number generator for sampling
+	keys sync.Map
+}
+
+type KeyPlan struct {
+	mu    sync.Mutex
+	stats map[string]*ThompsonStats
+	rng   *rand.Rand
 }
 
 func New() *Planner {
-	p := &Planner{
-		stats: make(map[string]map[string]*ThompsonStats),
+	return &Planner{}
+}
+
+func (p *Planner) getKeyPlan(key string) *KeyPlan {
+	// LoadOrStore is an atomic operation that returns the existing value for a key
+	// or stores the new one if it doesn't exist.
+	kp, _ := p.keys.LoadOrStore(key, &KeyPlan{
+		stats: make(map[string]*ThompsonStats),
 		rng:   rand.New(rand.NewSource(time.Now().UnixNano())),
-	}
-	return p
+	})
+	return kp.(*KeyPlan)
 }
 
 // SelectResolver implements the Thompson Sampling decision rule.
 // It is now public and is the main entry point for getting a decision.
 func (p *Planner) SelectResolver(key string, resolvers []string) string {
-	p.mu.Lock() // Lock for the duration of sampling to ensure consistency
-	defer p.mu.Unlock()
+	kp := p.getKeyPlan(key)
+	kp.mu.Lock()
+	defer kp.mu.Unlock()
 
-	// Ensure stats exist for this key for all strategies.
-	if _, ok := p.stats[key]; !ok {
-		p.stats[key] = make(map[string]*ThompsonStats)
-	}
+	// Ensure stats exist for this key for all resolvers.
 	for _, name := range resolvers {
-		if _, ok := p.stats[key][name]; !ok {
-			p.stats[key][name] = NewThompsonStats()
+		if _, ok := kp.stats[name]; !ok {
+			kp.stats[name] = NewThompsonStats()
 		}
 	}
 
-	bestStrategy := ""
+	resolver := ""
 	var minSampledTime float64 = -1
 
-	// Sample from each strategy's distribution and pick the one with the best (lowest) sample.
-	for name, ts := range p.stats[key] {
-		sampledTime := ts.Sample(p.rng)
-		if bestStrategy == "" || sampledTime < minSampledTime {
+	// Sample from each resolver's distribution and pick the one with the best (lowest) sample.
+	for _, name := range resolvers {
+		ts := kp.stats[name]
+		// We use the global rng, but the lock ensures that the read of the stats
+		// and the subsequent update are consistent for a given key.
+		sampledTime := ts.Sample(kp.rng)
+		if resolver == "" || sampledTime < minSampledTime {
 			minSampledTime = sampledTime
-			bestStrategy = name
+			resolver = name
 		}
 	}
 
-	return bestStrategy
+	return resolver
 }
 
-// UpdateStats performs the Bayesian update for the given strategy.
+// UpdateStats performs the Bayesian update for the given resolver.
 func (p *Planner) UpdateStats(key, resolver string, duration time.Duration) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	kp := p.getKeyPlan(key)
+	kp.mu.Lock()
+	defer kp.mu.Unlock()
 
-	// The selectStrategy call ensures this entry exists.
-	statsForStrategy := p.stats[key][resolver]
-	statsForStrategy.Update(duration)
+	if _, ok := kp.stats[resolver]; !ok {
+		kp.stats[resolver] = NewThompsonStats()
+	}
+
+	kp.stats[resolver].Update(duration)
 }

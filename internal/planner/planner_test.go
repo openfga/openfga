@@ -10,8 +10,6 @@ import (
 func TestPlanner_New(t *testing.T) {
 	p := New()
 	require.NotNil(t, p)
-	require.NotNil(t, p.stats)
-	require.NotNil(t, p.rng)
 }
 
 func TestPlanner_SelectResolver(t *testing.T) {
@@ -21,9 +19,11 @@ func TestPlanner_SelectResolver(t *testing.T) {
 
 	choice := p.SelectResolver(key, resolvers)
 	require.Contains(t, resolvers, choice)
-	require.NotNil(t, p.stats[key])
-	require.NotNil(t, p.stats[key]["fast"])
-	require.NotNil(t, p.stats[key]["slow"])
+	kp := p.getKeyPlan(key)
+
+	require.NotNil(t, kp)
+	require.NotNil(t, kp.stats["fast"])
+	require.NotNil(t, kp.stats["slow"])
 }
 
 func TestProfiler_Update(t *testing.T) {
