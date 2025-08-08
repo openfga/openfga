@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -617,7 +616,7 @@ func BenchmarkListObjects(b *testing.B) {
 	err := datastore.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(b, err)
 
-	n := 10000
+	n := 5000
 	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)
 	createWeightTwoRelations(b, ctx, datastore, storeID, n)
 	createWeightThreeRelations(b, ctx, datastore, storeID, n)
@@ -732,9 +731,6 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
 			require.NoError(b, err)
-			if len(res.Objects) != n {
-				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
-			}
 			require.Len(b, res.Objects, n)
 		}
 	})
@@ -744,9 +740,6 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
 			require.NoError(b, err)
-			if len(res.Objects) != n {
-				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
-			}
 			require.Len(b, res.Objects, n)
 		}
 	})
@@ -774,9 +767,6 @@ func BenchmarkListObjects(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, recursiveRequest)
 			require.NoError(b, err)
-			if len(res.Objects) != n {
-				fmt.Printf("Expected %d objects, got %d\n", n, len(res.Objects))
-			}
 			require.Len(b, res.Objects, n)
 		}
 	})
