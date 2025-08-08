@@ -772,7 +772,7 @@ func BenchmarkListObjects(b *testing.B) {
 	})
 }
 
-// This helper writes tuples for user:justin with relation "member" to org:0...org:10000.
+// This helper writes tuples for user:justin with relation "member" to org:0...org:numTuples.
 func createDirectWeightOneRelations(
 	b *testing.B,
 	ctx context.Context,
