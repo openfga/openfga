@@ -10,11 +10,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
 - Promote the Check fast path v2 implementations to no longer being behind the `enable-check-optimizations` config flag. [#2609](https://github.com/openfga/openfga/pull/2609)
+- Support for verifying JWTs without a `kid` header by checking against all available keys in the JWK Set. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ### Changed
 - Change ListObjectsResolutionMetadata fields to value types instead of pointers. [#2583](https://github.com/openfga/openfga/pull/2583)
 - Instead of panic when encountering unknown parameters in hasEntrypoints, return internal error to allow graceful handling. [#2588](https://github.com/openfga/openfga/pull/2588)
 - Shared iterators now rely entirely on a TTL for eviction from the pool. [#2590](https://github.com/openfga/openfga/pull/2590)
+- - Upgraded `keyfunc` library from v2 to v3 to enable access to all keys for JWT verification. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ### Fixed
 - Fixed bug in how experimental ReverseExpand is handling duplicate TTUs. [#2589](https://github.com/openfga/openfga/pull/2589)
