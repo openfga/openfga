@@ -736,7 +736,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			return resolver(ctx, req, filteredIter)
 		}
 
-		planKey := "userset" + storeID + objectType + relation + userType
+		planKey := "userset|" + storeID + "|" + objectType + "|" + relation + "|" + userType
 		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
@@ -945,7 +945,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return resolver(ctx, req, rewrite, filteredIter)
 		}
 
-		planKey := "ttu" + storeID + objectType + relation + userType
+		planKey := "ttu|" + storeID + objectType + "|" + relation + "|" + userType + "|" + tuplesetRelation + "|" + computedRelation
 		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
