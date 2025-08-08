@@ -11,17 +11,11 @@ type Planner struct {
 	keys sync.Map
 }
 
-type KeyPlan struct {
-	mu    sync.Mutex
-	stats map[string]*ThompsonStats
-	rng   *rand.Rand
-}
-
 func New() *Planner {
 	return &Planner{}
 }
 
-func (p *Planner) getKeyPlan(key string) *KeyPlan {
+func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 	// LoadOrStore is an atomic operation that returns the existing value for a key
 	// or stores the new one if it doesn't exist.
 	kp, _ := p.keys.LoadOrStore(key, &KeyPlan{
@@ -31,10 +25,15 @@ func (p *Planner) getKeyPlan(key string) *KeyPlan {
 	return kp.(*KeyPlan)
 }
 
+type KeyPlan struct {
+	mu    sync.Mutex
+	stats map[string]*ThompsonStats
+	rng   *rand.Rand
+}
+
 // SelectResolver implements the Thompson Sampling decision rule.
 // It is now public and is the main entry point for getting a decision.
-func (p *Planner) SelectResolver(key string, resolvers []string) string {
-	kp := p.getKeyPlan(key)
+func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
 
@@ -64,8 +63,7 @@ func (p *Planner) SelectResolver(key string, resolvers []string) string {
 }
 
 // UpdateStats performs the Bayesian update for the given resolver.
-func (p *Planner) UpdateStats(key, resolver string, duration time.Duration) {
-	kp := p.getKeyPlan(key)
+func (kp *KeyPlan) UpdateStats(resolver string, duration time.Duration) {
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
 

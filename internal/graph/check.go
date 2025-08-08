@@ -747,7 +747,8 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		b.WriteString("|")
 		b.WriteString(userType)
 		planKey := b.String()
-		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
+		keyPlan := c.planner.GetKeyPlan(planKey)
+		resolverName := keyPlan.SelectResolver(possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
@@ -764,7 +765,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		if err != nil {
 			return nil, err
 		}
-		c.planner.UpdateStats(planKey, resolverName, time.Since(start))
+		keyPlan.UpdateStats(resolverName, time.Since(start))
 
 		return res, nil
 	}
@@ -969,7 +970,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString("|")
 		b.WriteString(computedRelation)
 		planKey := b.String()
-		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
+		keyPlan := c.planner.GetKeyPlan(planKey)
+		resolverName := keyPlan.SelectResolver(possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
@@ -986,7 +988,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if err != nil {
 			return nil, err
 		}
-		c.planner.UpdateStats(planKey, resolverName, time.Since(start))
+		keyPlan.UpdateStats(resolverName, time.Since(start))
 		return res, nil
 	}
 }
