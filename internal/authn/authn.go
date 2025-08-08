@@ -21,6 +21,8 @@ type Authenticator interface {
 	// Authenticate returns a nil error and the AuthClaims info (if available) if the subject is authenticated or a
 	// non-nil error with an appropriate error cause otherwise.
 	Authenticate(requestContext context.Context) (*authclaims.AuthClaims, error)
+	// Legacy Close Method
+	Close()
 }
 
 type NoopAuthenticator struct{}
