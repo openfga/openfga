@@ -256,3 +256,6 @@ func KeyfuncWithFallback(authHeader string, jwks keyfunc.Keyfunc) jwt.Keyfunc {
 		return nil, fmt.Errorf("verification failed using all keys: %w", lastErr)
 	}
 }
+
+func (oidc *RemoteOidcAuthenticator) Close() {
+}
