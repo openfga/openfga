@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
@@ -964,16 +965,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
+	queryPlanner := planner.New()
+
 	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(queryPlanner),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(queryPlanner),
 		}...),
 		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
