@@ -424,7 +424,7 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
+func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -491,7 +491,7 @@ func (t *TypeSystem) UsersetCanFastPathWeight2(objectType, relation, userType st
 	return len(usersetEdges) == totalAllowed
 }
 
-func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -554,14 +554,14 @@ func (t *TypeSystem) TTUCanFastPathWeight2(objectType, relation, userType string
 	return len(ttuEdges) != 0
 }
 
-// RecursiveTTUCanFastPathV2 returns true fast path can be applied to user/relation.
+// TTUUseRecursiveResolver returns true fast path can be applied to user/relation.
 // For it to return true, all of these conditions:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
 // 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
 // 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // must be all true.
-func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
+func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
@@ -631,7 +631,7 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 	return recursiveTTUFound
 }
 
-// RecursiveUsersetCanFastPathV2 returns true if all these conditions apply:
+// UsersetUseRecursiveResolver returns true if all these conditions apply:
 // 1. Node[objectType#relation].weights[userType] = infinite
 // 2. Any other direct type, userset or computed relation used in the relation needs to be weight = 1 for the usertype
 // Example:
@@ -642,9 +642,9 @@ func (t *TypeSystem) RecursiveTTUCanFastPathV2(objectType, relation, userType st
 // rel5 = [user]
 // rel7 = [user]
 // rel8 = [employee]
-// calling RecursiveUsersetCanFastPathV2(doc, rel1, user) should return TRUE
-// calling RecursiveUsersetCanFastPathV2(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
-func (t *TypeSystem) RecursiveUsersetCanFastPathV2(objectType, relation, userType string) bool {
+// calling UsersetUseRecursiveResolver(doc, rel1, user) should return TRUE
+// calling UsersetUseRecursiveResolver(doc, rel1, employee) should return FALSE because there is a doc#rel8 that has weight = 2 for employee.
+func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType string) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
