@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -736,17 +737,26 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			return resolver(ctx, req, filteredIter)
 		}
 
-		planKey := "userset|" + storeID + "|" + objectType + "|" + relation + "|" + userType
+		var b strings.Builder
+		b.WriteString("userset|")
+		b.WriteString(storeID)
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		planKey := b.String()
 		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
-		case "default":
-			resolver = c.defaultUserset
 		case "weight2":
 			resolver = c.weight2Userset
 		case "recursive":
 			resolver = c.recursiveUserset
+		default:
+			resolver = c.defaultUserset
 		}
 
 		start := time.Now()
@@ -945,17 +955,30 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return resolver(ctx, req, rewrite, filteredIter)
 		}
 
-		planKey := "ttu|" + storeID + objectType + "|" + relation + "|" + userType + "|" + tuplesetRelation + "|" + computedRelation
+		var b strings.Builder
+		b.WriteString("ttu|")
+		b.WriteString(storeID)
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		b.WriteString("|")
+		b.WriteString(tuplesetRelation)
+		b.WriteString("|")
+		b.WriteString(computedRelation)
+		planKey := b.String()
 		resolverName := c.planner.SelectResolver(planKey, possibleResolvers)
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
-		case "default":
-			resolver = c.defaultTTU
 		case "weight2":
 			resolver = c.weight2TTU
 		case "recursive":
 			resolver = c.recursiveTTU
+		default:
+			resolver = c.defaultTTU
 		}
 
 		start := time.Now()
