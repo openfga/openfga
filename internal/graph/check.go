@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/sourcegraph/conc"
@@ -18,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -50,7 +53,8 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
-	usersetBatchSize     int
+	usersetBatchSize     int // TODO: delete this, its not used.
+	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
@@ -68,6 +72,12 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 func WithOptimizations(enabled bool) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithPlanner(p *planner.Planner) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.planner = p
 	}
 }
 
@@ -101,8 +111,9 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
+		planner:            planner.New(),
 	}
-	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
 
 	for _, opt := range opts {
@@ -662,6 +673,104 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 	}
 }
 
+func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	reqTupleKey := req.GetTupleKey()
+
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
+			attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
+			attribute.String("resolver", "default"),
+		))
+		defer span.End()
+
+		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+
+		opts := storage.ReadUsersetTuplesOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: req.GetConsistency(),
+			},
+		}
+
+		storeID := req.GetStoreID()
+		objectType, relation := tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+
+		iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:                      reqTupleKey.GetObject(),
+			Relation:                    relation,
+			AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+		}, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(iter),
+				validation.FilterInvalidTuples(typesys),
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+		)
+		defer filteredIter.Stop()
+
+		resolver := c.defaultUserset
+		possibleResolvers := []string{"default"}
+
+		isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
+		userType := tuple.GetType(reqTupleKey.GetUser())
+
+		if !isUserset {
+			if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
+				resolver = c.weight2Userset
+				span.SetAttributes(attribute.String("resolver", "weight2"))
+				possibleResolvers = append(possibleResolvers, "weight2")
+			} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
+				resolver = c.recursiveUserset
+				span.SetAttributes(attribute.String("resolver", "recursive"))
+				possibleResolvers = append(possibleResolvers, "recursive")
+			}
+		}
+
+		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
+			// short circuit, no additional resolvers are available or planner is not enabled yet
+			return resolver(ctx, req, filteredIter)
+		}
+
+		var b strings.Builder
+		b.WriteString("userset|")
+		b.WriteString(req.GetAuthorizationModelID())
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		planKey := b.String()
+		keyPlan := c.planner.GetKeyPlan(planKey)
+		resolverName := keyPlan.SelectResolver(possibleResolvers)
+		span.SetAttributes(attribute.String("resolver", resolverName))
+
+		switch resolverName {
+		case "weight2":
+			resolver = c.weight2Userset
+		case "recursive":
+			resolver = c.recursiveUserset
+		default:
+			resolver = c.defaultUserset
+		}
+
+		start := time.Now()
+		res, err := resolver(ctx, req, filteredIter)
+		if err != nil {
+			return nil, err
+		}
+		keyPlan.UpdateStats(resolverName, time.Since(start))
+
+		return res, nil
+	}
+}
+
 // helper function to return whether checkDirectUserTuple should run.
 func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
@@ -712,68 +821,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
-		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
-
-		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-
-		// TODO(jpadilla): can we lift this function up?
-		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
-				attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
-				attribute.String("resolver", "slow"),
-			))
-			defer span.End()
-
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-
-			opts := storage.ReadUsersetTuplesOptions{
-				Consistency: storage.ConsistencyOptions{
-					Preference: req.GetConsistency(),
-				},
-			}
-
-			resolver := c.defaultUserset
-			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
-			userType := tuple.GetType(reqTupleKey.GetUser())
-
-			if !isUserset {
-				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
-					resolver = c.weight2Userset
-					span.SetAttributes(attribute.String("resolver", "weight2"))
-				} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
-					resolver = c.recursiveUserset
-					span.SetAttributes(attribute.String("resolver", "recursive"))
-				}
-			}
-
-			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      reqTupleKey.GetObject(),
-				Relation:                    reqTupleKey.GetRelation(),
-				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			}, opts)
-			if err != nil {
-				return nil, err
-			}
-
-			filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-				storage.NewFilteredTupleKeyIterator(
-					storage.NewTupleKeyIteratorFromTupleIterator(iter),
-					validation.FilterInvalidTuples(typesys),
-				),
-				checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-			)
-			defer filteredIter.Stop()
-
-			return resolver(ctx, req, filteredIter)
-		}
 
 		var checkFuncs []CheckHandlerFunc
 
@@ -786,7 +839,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
-			checkFuncs = append(checkFuncs, checkDirectUsersetTuples)
+			checkFuncs = append(checkFuncs, c.checkDirectUsersetTuples(parentctx, req))
 		}
 
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
@@ -822,7 +875,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "slow")))
+		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "default")))
 		defer span.End()
 
 		if ctx.Err() != nil {
@@ -880,6 +933,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.defaultTTU
 
+		possibleResolvers := []string{"default"}
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
@@ -889,13 +943,53 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.weight2TTU
 				span.SetAttributes(attribute.String("resolver", "weight2"))
+				possibleResolvers = append(possibleResolvers, "weight2")
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.recursiveTTU
 				span.SetAttributes(attribute.String("resolver", "recursive"))
+				possibleResolvers = append(possibleResolvers, "recursive")
 			}
 		}
 
-		return resolver(ctx, req, rewrite, filteredIter)
+		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
+			// short circuit, no additional resolvers are available or planner is not enabled yet
+			return resolver(ctx, req, rewrite, filteredIter)
+		}
+
+		var b strings.Builder
+		b.WriteString("ttu|")
+		b.WriteString(req.GetAuthorizationModelID())
+		b.WriteString("|")
+		b.WriteString(objectType)
+		b.WriteString("|")
+		b.WriteString(relation)
+		b.WriteString("|")
+		b.WriteString(userType)
+		b.WriteString("|")
+		b.WriteString(tuplesetRelation)
+		b.WriteString("|")
+		b.WriteString(computedRelation)
+		planKey := b.String()
+		keyPlan := c.planner.GetKeyPlan(planKey)
+		resolverName := keyPlan.SelectResolver(possibleResolvers)
+		span.SetAttributes(attribute.String("resolver", resolverName))
+
+		switch resolverName {
+		case "weight2":
+			resolver = c.weight2TTU
+		case "recursive":
+			resolver = c.recursiveTTU
+		default:
+			resolver = c.defaultTTU
+		}
+
+		start := time.Now()
+		res, err := resolver(ctx, req, rewrite, filteredIter)
+		if err != nil {
+			return nil, err
+		}
+		keyPlan.UpdateStats(resolverName, time.Since(start))
+		return res, nil
 	}
 }
 
