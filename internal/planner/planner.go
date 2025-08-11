@@ -41,9 +41,9 @@ func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 	resolver := ""
 	var minSampledTime float64 = -1
 
-    // Sample from each resolver's distribution and pick the one with the best (lowest) sample.
+	// Sample from each resolver's distribution and pick the one with the best (lowest) sample.
 	for _, name := range resolvers {
-	    // Ensure stats exist for this key for all resolvers.
+		// Ensure stats exist for this key for all resolvers.
 		if _, ok := kp.stats[name]; !ok {
 			kp.stats[name] = NewThompsonStats()
 		}
