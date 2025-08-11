@@ -139,6 +139,6 @@ echo "$body"
 
 info "Creating pull request..."
 
-pull_request=$(gh pr create --base ${base} --title "Update changelog to prep for release \`${tag}\`" --body "$body" --label "$labels")
+pull_request=$(gh pr create --base ${base} --title "release: update changelog for release \`v${tag}\`" --body "$body" --label "$labels")
 
 echo "Pull Request: $pull_request"
