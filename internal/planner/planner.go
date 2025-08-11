@@ -7,7 +7,8 @@ import (
 )
 
 type Planner struct {
-	// ttu|userset_storeID_objectType_relation_userType
+	// ttu|storeID|objectType|relation|userType|tuplesetRelation|tuplesetComputedRelation
+	// userset|storeID|objectType|relation|userType
 	keys sync.Map
 }
 
