@@ -640,136 +640,87 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-	weightOneRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.GetId(),
-		Type:                 "org",
-		Relation:             "member",
-		User:                 "user:justin",
+	tests := []struct {
+		name    string
+		request *openfgav1.ListObjectsRequest
+	}{
+		{
+			name: "weight_one_direct",
+			request: &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "org",
+				Relation:             "member",
+				User:                 "user:justin",
+			},
+		},
+		{
+			name: "weight_one_computed",
+			request: &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "org",
+				Relation:             "computed",
+				User:                 "user:justin",
+			},
+		},
+		{
+			name: "weight_two_ttu",
+			request: &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "company",
+				Relation:             "org_member",
+				User:                 "user:justin",
+			},
+		},
+		{
+			name: "weight_three",
+			request: &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "office",
+				Relation:             "weight_three",
+				User:                 "user:justin",
+			},
+		},
+		{
+			name: "recursive_ttu",
+			request: &openfgav1.ListObjectsRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: model.GetId(),
+				Type:                 "org",
+				Relation:             "recursive",
+				User:                 "user:justin",
+			},
+		},
 	}
 
-	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightOneRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
+	for _, test := range tests {
+		b.Run(test.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.Run("weight_one_direct_without_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightOneRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
+			query.optimizationsEnabled = false
+			for i := 0; i < b.N; i++ {
+				resp, err := query.Execute(ctx, test.request)
+				require.NoError(b, err)
+				require.Len(b, resp.Objects, n)
+			}
+		})
 
-	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.GetId(),
-		Type:                 "org",
-		Relation:             "computed",
-		User:                 "user:justin",
+		b.Run(test.name+"_with_optimizations", func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			query.optimizationsEnabled = true
+			for i := 0; i < b.N; i++ {
+				resp, err := query.Execute(ctx, test.request)
+				require.NoError(b, err)
+				require.Len(b, resp.Objects, n)
+			}
+		})
 	}
-
-	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightOneComputedRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
-
-	b.Run("weight_one_computed_without_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightOneComputedRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
-
-	weightTwoRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.GetId(),
-		Type:                 "company",
-		Relation:             "org_member",
-		User:                 "user:justin",
-	}
-
-	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightTwoRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n) // probably don't even need these?
-		}
-	})
-
-	b.Run("weight_two_ttu_without_optimizations", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightTwoRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
-
-	weightThreeRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.GetId(),
-		Type:                 "office",
-		Relation:             "weight_three",
-		User:                 "user:justin",
-	}
-
-	b.Run("weight_three_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightThreeRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
-
-	b.Run("weight_three_without_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, weightThreeRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
-
-	recursiveRequest := &openfgav1.ListObjectsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: model.GetId(),
-		Type:                 "org",
-		Relation:             "recursive",
-		User:                 "user:justin",
-	}
-
-	// optimization currently falls back to non-optimized code when it's a recursive query
-	// Uncomment this when recursive listObjects work is underway
-	// b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
-	//	query.optimizationsEnabled = true
-	//	for i := 0; i < b.N; i++ {
-	//		_, err := query.Execute(ctx, recursiveRequest)
-	//		require.NoError(b, err)
-	//	}
-	// })
-
-	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		for i := 0; i < b.N; i++ {
-			res, err := query.Execute(ctx, recursiveRequest)
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-	})
 }
 
 // This helper writes tuples for user:justin with relation "member" to org:0...org:numTuples.
