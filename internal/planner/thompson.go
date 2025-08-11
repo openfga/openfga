@@ -59,7 +59,8 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 // representing our initial uncertainty about a strategy's performance.
 func NewThompsonStats() *ThompsonStats {
 	return &ThompsonStats{
-		Mu:     7.0,  // Initial guess for mean execution time (in ms)
+		Mu: 7.0, // Guess for mean execution time (in ms) for each call to "Update".
+		// From the context of Check, each subproblem of userset or TTU will get an individual call to "Update".
 		Lambda: 1.0,  // Low confidence in the initial mean
 		Alpha:  1.0,  // Diffuse prior for the shape
 		Beta:   10.0, // Diffuse prior for the rate (encourages higher variance initially)
