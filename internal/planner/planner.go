@@ -38,18 +38,15 @@ func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
 
-	// Ensure stats exist for this key for all resolvers.
-	for _, name := range resolvers {
-		if _, ok := kp.stats[name]; !ok {
-			kp.stats[name] = NewThompsonStats()
-		}
-	}
-
 	resolver := ""
 	var minSampledTime float64 = -1
 
-	// Sample from each resolver's distribution and pick the one with the best (lowest) sample.
+    // Sample from each resolver's distribution and pick the one with the best (lowest) sample.
 	for _, name := range resolvers {
+	    // Ensure stats exist for this key for all resolvers.
+		if _, ok := kp.stats[name]; !ok {
+			kp.stats[name] = NewThompsonStats()
+		}
 		ts := kp.stats[name]
 		// We use the global rng, but the lock ensures that the read of the stats
 		// and the subsequent update are consistent for a given key.
