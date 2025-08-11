@@ -645,29 +645,33 @@ func (s *sharedIterator) fetchMore() {
 	var buf [bufferSize]*openfgav1.Tuple
 	read, e := s.ir.Read(context.Background(), buf[:])
 
-	// Load the current items from the shared items pointer and append the newly fetched items to it.
 	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+
 	state := s.state
 
+	// Check if we need to grow the slice capacity
 	if read+len(state.items) > cap(state.items) {
 		// Allocate new slice with double the capacity
 		newCapacity := cap(state.items) * 2
 		if newCapacity == 0 {
-			newCapacity = 1
+			newCapacity = bufferSize // Start with bufferSize instead of 1
 		}
-		newItems := make([]*openfgav1.Tuple, newCapacity)
+		if newCapacity < read+len(state.items) {
+			newCapacity = read + len(state.items) // Ensure we have enough space
+		}
+
+		newItems := make([]*openfgav1.Tuple, len(state.items), newCapacity)
 		copy(newItems, state.items)
 		state.items = newItems
 	}
 
+	// Append the newly fetched items
 	state.items = append(state.items, buf[:read]...)
 
-	s.stateMu.Unlock()
-
+	// Update error state if there was an error
 	if e != nil {
-		s.stateMu.Lock()
 		state.err = e
-		s.stateMu.Unlock()
 	}
 }
 
@@ -678,14 +682,20 @@ func (s *sharedIterator) fetchAndWait(items *[]*openfgav1.Tuple, err *error) {
 	for {
 		s.stateMu.RLock()
 		state := s.state
+		stateItems := state.items
+		stateErr := state.err
+		s.stateMu.RUnlock()
 
-		if s.head < len(state.items) || state.err != nil {
-			*items = state.items
-			*err = state.err
-			s.stateMu.RUnlock()
+		// We need to check head under instanceMu to avoid data races
+		s.instanceMu.Lock()
+		head := s.head
+		s.instanceMu.Unlock()
+
+		if head < len(stateItems) || stateErr != nil {
+			*items = stateItems
+			*err = stateErr
 			return
 		}
-		s.stateMu.RUnlock()
 
 		s.await.Do(s.fetchMore)
 	}
