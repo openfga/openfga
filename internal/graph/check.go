@@ -680,7 +680,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
 			attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
-			attribute.String("resolver", "default"),
+			attribute.String("resolver", defaultResolver),
 		))
 		defer span.End()
 
@@ -715,7 +715,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		defer filteredIter.Stop()
 
 		resolver := c.defaultUserset
-		possibleResolvers := []string{"default"}
+		possibleResolvers := []string{defaultResolver}
 
 		isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 		userType := tuple.GetType(reqTupleKey.GetUser())
@@ -723,12 +723,12 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		if !isUserset {
 			if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
 				resolver = c.weight2Userset
-				span.SetAttributes(attribute.String("resolver", "weight2"))
-				possibleResolvers = append(possibleResolvers, "weight2")
+				span.SetAttributes(attribute.String("resolver", weightTwoResolver))
+				possibleResolvers = append(possibleResolvers, weightTwoResolver)
 			} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
 				resolver = c.recursiveUserset
-				span.SetAttributes(attribute.String("resolver", "recursive"))
-				possibleResolvers = append(possibleResolvers, "recursive")
+				span.SetAttributes(attribute.String("resolver", recursiveResolver))
+				possibleResolvers = append(possibleResolvers, recursiveResolver)
 			}
 		}
 
@@ -752,9 +752,9 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
-		case "weight2":
+		case weightTwoResolver:
 			resolver = c.weight2Userset
-		case "recursive":
+		case recursiveResolver:
 			resolver = c.recursiveUserset
 		default:
 			resolver = c.defaultUserset
@@ -875,7 +875,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", "default")))
+		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", defaultResolver)))
 		defer span.End()
 
 		if ctx.Err() != nil {
@@ -933,7 +933,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.defaultTTU
 
-		possibleResolvers := []string{"default"}
+		possibleResolvers := []string{defaultResolver}
 		// TODO: optimize the case where user is an userset.
 		// If the user is a userset, we will not be able to use the shortcut because the algo
 		// will look up the objects associated with user.
@@ -942,12 +942,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.weight2TTU
-				span.SetAttributes(attribute.String("resolver", "weight2"))
-				possibleResolvers = append(possibleResolvers, "weight2")
+				span.SetAttributes(attribute.String("resolver", weightTwoResolver))
+				possibleResolvers = append(possibleResolvers, weightTwoResolver)
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.recursiveTTU
-				span.SetAttributes(attribute.String("resolver", "recursive"))
-				possibleResolvers = append(possibleResolvers, "recursive")
+				span.SetAttributes(attribute.String("resolver", recursiveResolver))
+				possibleResolvers = append(possibleResolvers, recursiveResolver)
 			}
 		}
 
@@ -975,9 +975,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		span.SetAttributes(attribute.String("resolver", resolverName))
 
 		switch resolverName {
-		case "weight2":
+		case weightTwoResolver:
 			resolver = c.weight2TTU
-		case "recursive":
+		case recursiveResolver:
 			resolver = c.recursiveTTU
 		default:
 			resolver = c.defaultTTU
