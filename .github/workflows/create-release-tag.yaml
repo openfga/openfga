@@ -11,7 +11,10 @@ on:
 
 jobs:
   create-tag:
-    if: github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ','), 'release') && startsWith(github.event.pull_request.title, 'release: update changelog for release')
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(join(github.event.pull_request.labels.*.name, ','), 'release') &&
+      startsWith(github.event.pull_request.title, 'release: update changelog for release')
     runs-on: ubuntu-latest
     permissions:
       contents: write
