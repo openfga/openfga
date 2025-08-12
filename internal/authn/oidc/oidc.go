@@ -203,6 +203,8 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 		return nil, fmt.Errorf("error getting OIDC: %w", err)
 	}
 
+	defer res.Body.Close()
+
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
 	}
