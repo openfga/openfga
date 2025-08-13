@@ -243,6 +243,29 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		testSetup       func() (*RemoteOidcAuthenticator, context.Context, Config, error)
 	}{
 		{
+			testDescription: "empty_audience",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_2",
+					jwtKid:         "kid_2",
+					issuerURL:      "right_issuer",
+					audience:       "",
+					issuerAliases:  nil,
+					subjects:       nil,
+					clientIDClaims: []string{"custom_claim", "custom_claim_2"},
+					jwtClaims: jwt.MapClaims{
+						"iss":            "right_issuer",
+						"aud":            "",
+						"sub":            "some-user",
+						"custom_claim_2": customClientID,
+						"scope":          scopes,
+						"exp":            time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+		},
+		{
 			testDescription: "when_the_token_is_valid,_it_MUST_return_the_token_subject_and_its_associated_scopes",
 			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
 				return quickConfigSetup(Config{
