@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"strconv"
 	"sync"
 	"time"
@@ -27,6 +29,18 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/storage/sqlcommon")
+
+var openConnectionCounter = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: build.ProjectName,
+	Name:      "db_open_connection_counter",
+	Help:      "The total number of connections opened.",
+})
+
+var closeConnectionCounter = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: build.ProjectName,
+	Name:      "db_closed_connection_counter",
+	Help:      "The total number of connections closed.",
+})
 
 // Config defines the configuration parameters
 // for setting up and managing a sql connection.
@@ -232,6 +246,7 @@ var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTupleIterator {
+	//fmt.Println("NEW ITERATOR-------------------")
 	return &SQLTupleIterator{
 		sb:             sb,
 		rows:           nil,
@@ -249,6 +264,7 @@ func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
 	if err != nil {
 		return t.handleSQLError(err)
 	}
+	openConnectionCounter.Inc()
 	t.rows = rows
 	return nil
 }
@@ -449,6 +465,7 @@ func (t *SQLTupleIterator) Stop() {
 	defer t.mu.Unlock()
 	if t.rows != nil {
 		_ = t.rows.Close()
+		closeConnectionCounter.Inc()
 	}
 }
 
