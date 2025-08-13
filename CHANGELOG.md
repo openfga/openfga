@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
-### Changed
-- Fix breaking changed introuced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
+
+## [1.9.4] - 2025-08-13
+### Fixed
+- Fix breaking change introduced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
 
 ## [1.9.3] - 2025-08-11
 ### Added
@@ -1387,7 +1389,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.4...HEAD
+[1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
 [1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
