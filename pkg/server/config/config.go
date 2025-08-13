@@ -22,7 +22,7 @@ const (
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 10
 	DefaultUsersetBatchSize                 = 1000
-	DefaultListObjectsDeadline              = 3 * time.Second
+	DefaultListObjectsDeadline              = 100 * time.Millisecond
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
