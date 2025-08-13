@@ -9,8 +9,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.9.4] - 2025-08-13
-### Changed
-- Fix breaking changed introuced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
+### Fixed
+- Fix breaking change introduced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
 
 ## [1.9.3] - 2025-08-11
 ### Added
