@@ -17,7 +17,7 @@ jobs:
       startsWith(github.event.pull_request.title, 'release: update changelog for release')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Check if PR author is a maintainer
         run: |
@@ -57,7 +57,7 @@ jobs:
           fi
           echo "Creating a new tag $tag_name..."
           SHA=${{ github.event.pull_request.merge_commit_sha }}
-          response=$(curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          response=$(curl -s -X POST -H "Authorization: token ${{ secrets.GORELEASER_GITHUB_TOKEN }}" \
             -d "{\"ref\":\"refs/tags/$tag_name\", \"sha\":\"$SHA\"}" \
             https://api.github.com/repos/${{ github.repository }}/git/refs)
           http_status=$(echo "$response" | jq -r .status)
