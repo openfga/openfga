@@ -91,7 +91,7 @@ const (
 	DefaultListUsersDispatchThrottlingDefaultThreshold = 100
 	DefaultListUsersDispatchThrottlingMaxThreshold     = 0 // 0 means use the default threshold as max
 
-	DefaultRequestTimeout     = 3 * time.Second
+	DefaultRequestTimeout     = 200 * time.Millisecond
 	additionalUpstreamTimeout = 3 * time.Second
 
 	DefaultSharedIteratorEnabled          = false
