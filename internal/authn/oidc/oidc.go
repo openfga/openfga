@@ -81,12 +81,17 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		return nil, authn.ErrMissingBearerToken
 	}
 
-	jwtParser := jwt.NewParser(
+	options := []jwt.ParserOption{
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
-		jwt.WithAudience(oidc.Audience),
-	)
+	}
+
+	if strings.TrimSpace(oidc.Audience) != "" {
+		options = append(options, jwt.WithAudience(oidc.Audience))
+	}
+
+	jwtParser := jwt.NewParser(options...)
 
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
