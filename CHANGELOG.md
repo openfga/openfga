@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [1.9.3] - 2025-08-11
 ### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
 - Promote the Check fast path v2 implementations to no longer being behind the `enable-check-optimizations` config flag. [#2609](https://github.com/openfga/openfga/pull/2609)
@@ -15,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Change ListObjectsResolutionMetadata fields to value types instead of pointers. [#2583](https://github.com/openfga/openfga/pull/2583)
 - Instead of panic when encountering unknown parameters in hasEntrypoints, return internal error to allow graceful handling. [#2588](https://github.com/openfga/openfga/pull/2588)
 - Shared iterators now rely entirely on a TTL for eviction from the pool. [#2590](https://github.com/openfga/openfga/pull/2590)
+- Update go toolchain version to 1.24.6 - related: [CVE-2025-47907](https://nvd.nist.gov/vuln/detail/CVE-2025-47907)
+- Revert min supported go version to 1.24.0
+- Bump the base docker image to `cgr.dev/chainguard/static@sha256:6a4b683f4708f1f167ba218e31fcac0b7515d94c33c3acf223c36d5c6acd3783`
 
 ### Fixed
 - Fixed bug in how experimental ReverseExpand is handling duplicate TTUs. [#2589](https://github.com/openfga/openfga/pull/2589)
@@ -1380,7 +1385,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.3...HEAD
+[1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/openfga/openfga/compare/v1.8.16...v1.9.0

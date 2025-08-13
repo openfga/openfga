@@ -3829,7 +3829,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			require.NoError(t, err)
 			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
 			require.NoError(t, err)
-			result := typeSystem.UsersetCanFastPathWeight2(test.objectType, test.relation, test.userType, directlyRelated)
+			result := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, directlyRelated)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})
@@ -4462,7 +4462,7 @@ func TestTTUCanFastPathWeight2(t *testing.T) {
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			actual := typesys.TTUCanFastPathWeight2(test.objectType, test.relation, "user",
+			actual := typesys.TTUUseWeight2Resolver(test.objectType, test.relation, "user",
 				&openfgav1.TupleToUserset{
 					Tupleset: &openfgav1.ObjectRelation{
 						Relation: test.tuplesetRelation,
@@ -4935,7 +4935,7 @@ type group
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 			objectType, relation := tuple.SplitObjectRelation(test.objectTypeRelation)
-			resultV2 := typesys.RecursiveUsersetCanFastPathV2(objectType, relation, test.userType)
+			resultV2 := typesys.UsersetUseRecursiveResolver(objectType, relation, test.userType)
 			require.Equal(t, test.expected, resultV2)
 		})
 	}
@@ -5425,7 +5425,7 @@ type company
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 			typesys, err := NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
-			res := typesys.RecursiveTTUCanFastPathV2(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
+			res := typesys.TTUUseRecursiveResolver(test.objectType, test.relation, test.userType, &openfgav1.TupleToUserset{
 				Tupleset: &openfgav1.ObjectRelation{
 					Relation: test.tuplesetRelation,
 				},
