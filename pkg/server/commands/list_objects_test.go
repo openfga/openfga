@@ -657,7 +657,7 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_one_direct_without_optimization", func(b *testing.B) {
+	b.Run("weight_one_direct", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightOneRequest)
@@ -683,7 +683,7 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_one_computed_without_optimization", func(b *testing.B) {
+	b.Run("weight_one_computed", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightOneComputedRequest)
@@ -709,7 +709,7 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_two_ttu_without_optimizations", func(b *testing.B) {
+	b.Run("weight_two_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightTwoRequest)
@@ -735,7 +735,7 @@ func BenchmarkListObjects(b *testing.B) {
 		}
 	})
 
-	b.Run("weight_three_without_optimization", func(b *testing.B) {
+	b.Run("weight_three", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, weightThreeRequest)
@@ -762,7 +762,7 @@ func BenchmarkListObjects(b *testing.B) {
 	//	}
 	// })
 
-	b.Run("recursive_ttu_without_optimizations", func(b *testing.B) {
+	b.Run("recursive_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
 		for i := 0; i < b.N; i++ {
 			res, err := query.Execute(ctx, recursiveRequest)
