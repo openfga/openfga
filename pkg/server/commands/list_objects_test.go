@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -580,6 +581,20 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
+func reportP99(b *testing.B, durations []time.Duration) {
+	// Sort durations ascending
+	slices.SortFunc(durations, func(a, b time.Duration) int {
+		if a < b {
+			return -1 // a comes before b
+		} else if a > b {
+			return 1 // b comes before a
+		}
+		return 0 // a and b are equal
+	})
+	indexP99 := int(float64(len(durations)) * .99)
+	b.ReportMetric(float64(durations[indexP99].Nanoseconds()), "p99_ns/op")
+}
+
 // BenchmarkListObjects sets up an authorization model with various relationship weights:
 // weight one direct, weight one computed, weight two, weight three, and recursive (weight INF).
 // Each weight has 10k tuples written for that relation, and a benchmark is b.Run() specific to each weight.
@@ -650,20 +665,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightOneRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	b.Run("weight_one_direct", func(b *testing.B) {
 		query.optimizationsEnabled = false
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightOneRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
@@ -676,20 +699,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightOneComputedRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	b.Run("weight_one_computed", func(b *testing.B) {
 		query.optimizationsEnabled = false
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightOneComputedRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	weightTwoRequest := &openfgav1.ListObjectsRequest{
@@ -702,20 +733,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
 		query.optimizationsEnabled = true
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightTwoRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n) // probably don't even need these?
 		}
+		reportP99(b, durations)
 	})
 
 	b.Run("weight_two_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightTwoRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	weightThreeRequest := &openfgav1.ListObjectsRequest{
@@ -728,20 +767,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_three_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightThreeRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	b.Run("weight_three", func(b *testing.B) {
 		query.optimizationsEnabled = false
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, weightThreeRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 
 	recursiveRequest := &openfgav1.ListObjectsRequest{
@@ -764,11 +811,15 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("recursive_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
+		var durations []time.Duration
 		for i := 0; i < b.N; i++ {
+			start := time.Now()
 			res, err := query.Execute(ctx, recursiveRequest)
+			durations = append(durations, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
+		reportP99(b, durations)
 	})
 }
 
