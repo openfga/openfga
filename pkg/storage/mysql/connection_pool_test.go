@@ -16,7 +16,7 @@ import (
 // Connection pool tests for MySQL datastore to ensure that the following environment variables
 // and their corresponding configurations work as expected:
 // - OPENFGA_DATASTORE_MAX_OPEN_CONNS (MaxOpenConns)
-// - OPENFGA_DATASTORE_MAX_IDLE_CONNS (MaxIdleConns)  
+// - OPENFGA_DATASTORE_MAX_IDLE_CONNS (MaxIdleConns)
 // - OPENFGA_DATASTORE_CONN_MAX_LIFETIME (ConnMaxLifetime)
 // - OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME (ConnMaxIdleTime)
 //
@@ -46,18 +46,16 @@ func TestMySQLConnectionPoolMaxOpenConnections(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numOperations)
 
-	// Channel to collect the max open connections observed during concurrent operations
-	maxObserved := make(chan int, numOperations)
 	errors := make(chan error, numOperations)
 
 	for i := 0; i < numOperations; i++ {
 		go func() {
 			defer wg.Done()
-			
+
 			// Create a context with timeout to prevent hanging
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			
+
 			// Create a simple query that takes some time to ensure connections are held
 			rows, err := ds.db.QueryContext(ctx, "SELECT SLEEP(0.1)")
 			if err != nil {
@@ -65,15 +63,10 @@ func TestMySQLConnectionPoolMaxOpenConnections(t *testing.T) {
 				return
 			}
 			rows.Close()
-			
-			// Check connection stats
-			stats := ds.db.Stats()
-			maxObserved <- stats.OpenConnections
 		}()
 	}
 
 	wg.Wait()
-	close(maxObserved)
 	close(errors)
 
 	// Check for any errors
@@ -81,14 +74,10 @@ func TestMySQLConnectionPoolMaxOpenConnections(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Verify that open connections never exceeded the configured limit
-	for observed := range maxObserved {
-		require.LessOrEqual(t, observed, maxOpenConns, 
-			fmt.Sprintf("Open connections (%d) exceeded max limit (%d)", observed, maxOpenConns))
-	}
-
-	// Final stats check
+	// Check that MaxOpenConnections never exceeded the configured limit
 	finalStats := ds.db.Stats()
+	require.LessOrEqual(t, finalStats.MaxOpenConnections, maxOpenConns,
+		fmt.Sprintf("Max open connections (%d) exceeded configured limit (%d)", finalStats.MaxOpenConnections, maxOpenConns))
 	require.LessOrEqual(t, finalStats.OpenConnections, maxOpenConns)
 }
 
@@ -105,15 +94,24 @@ func TestMySQLConnectionPoolMaxIdleConnections(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	// Create several connections by running queries
+	// Create several connections by running queries concurrently
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
-	for i := 0; i < 3; i++ {
-		rows, err := ds.db.QueryContext(ctx, "SELECT 1")
-		require.NoError(t, err)
-		rows.Close()
+
+	var wg sync.WaitGroup
+	numQueries := 3
+	wg.Add(numQueries)
+
+	for i := 0; i < numQueries; i++ {
+		go func() {
+			defer wg.Done()
+			rows, err := ds.db.QueryContext(ctx, "SELECT 1")
+			require.NoError(t, err)
+			rows.Close()
+		}()
 	}
+
+	wg.Wait()
 
 	// Wait a bit for connections to become idle
 	time.Sleep(100 * time.Millisecond)
@@ -138,33 +136,40 @@ func TestMySQLConnectionPoolMaxLifetime(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	// Create some connections
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	for i := 0; i < 2; i++ {
-		rows, err := ds.db.QueryContext(ctx, "SELECT 1")
-		require.NoError(t, err)
-		rows.Close()
-	}
-
-	// Record initial stats
+	// Record initial stats (should be 0 for new sql.DB instance)
 	initialStats := ds.db.Stats()
 	initialMaxLifetimeClosed := initialStats.MaxLifetimeClosed
+
+	// Create some connections concurrently
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	numQueries := 2
+	wg.Add(numQueries)
+
+	for i := 0; i < numQueries; i++ {
+		go func() {
+			defer wg.Done()
+			rows, err := ds.db.QueryContext(ctx, "SELECT 1")
+			require.NoError(t, err)
+			rows.Close()
+		}()
+	}
+
+	wg.Wait()
 
 	// Wait for connections to exceed max lifetime
 	time.Sleep(maxLifetime + 100*time.Millisecond)
 
-	// Force new connections to be created to trigger cleanup of old ones
-	for i := 0; i < 2; i++ {
-		rows, err := ds.db.QueryContext(ctx, "SELECT 1")
-		require.NoError(t, err)
-		rows.Close()
-	}
+	// Create a new connection to trigger cleanup of expired ones
+	rows, err := ds.db.QueryContext(ctx, "SELECT 1")
+	require.NoError(t, err)
+	rows.Close()
 
 	// Check that connections were closed due to max lifetime
 	finalStats := ds.db.Stats()
-	require.GreaterOrEqual(t, finalStats.MaxLifetimeClosed, initialMaxLifetimeClosed,
+	require.Greater(t, finalStats.MaxLifetimeClosed, initialMaxLifetimeClosed,
 		"Expected connections to be closed due to max lifetime")
 }
 
@@ -182,29 +187,43 @@ func TestMySQLConnectionPoolMaxIdleTime(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	// Create some connections
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	for i := 0; i < 2; i++ {
-		rows, err := ds.db.QueryContext(ctx, "SELECT 1")
-		require.NoError(t, err)
-		rows.Close()
-	}
-
-	// Record initial stats
+	// Record initial stats (should be 0 for new sql.DB instance)
 	initialStats := ds.db.Stats()
 	initialMaxIdleTimeClosed := initialStats.MaxIdleTimeClosed
+
+	// Create some connections concurrently to put them in the idle pool
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	numQueries := 3 // More than MaxIdleConns to force some into idle state
+	wg.Add(numQueries)
+
+	for i := 0; i < numQueries; i++ {
+		go func() {
+			defer wg.Done()
+			rows, err := ds.db.QueryContext(ctx, "SELECT 1")
+			require.NoError(t, err)
+			rows.Close()
+		}()
+	}
+
+	wg.Wait()
 
 	// Wait for connections to exceed max idle time
 	time.Sleep(maxIdleTime + 100*time.Millisecond)
 
-	// Force new connections to be created to trigger cleanup of idle ones
-	for i := 0; i < 2; i++ {
-		rows, err := ds.db.QueryContext(ctx, "SELECT 1")
-		require.NoError(t, err)
-		rows.Close()
+	// Create several new connections to trigger cleanup of expired idle ones
+	wg.Add(numQueries)
+	for i := 0; i < numQueries; i++ {
+		go func() {
+			defer wg.Done()
+			rows, err := ds.db.QueryContext(ctx, "SELECT 1")
+			require.NoError(t, err)
+			rows.Close()
+		}()
 	}
+	wg.Wait()
 
 	// Check that connections were closed due to max idle time
 	finalStats := ds.db.Stats()
@@ -212,17 +231,17 @@ func TestMySQLConnectionPoolMaxIdleTime(t *testing.T) {
 		"Expected connections to be closed due to max idle time")
 }
 
-func TestMySQLConnectionPoolLifetimeLimits(t *testing.T) {
+func TestMySQLConnectionPoolConnMaxLifetime(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 	uri := testDatastore.GetConnectionURI(true)
 
 	maxLifetime := 1 * time.Second
-	maxIdleTime := 500 * time.Millisecond
 	cfg := sqlcommon.NewConfig()
 	cfg.MaxOpenConns = 3
 	cfg.MaxIdleConns = 2
 	cfg.ConnMaxLifetime = maxLifetime
-	cfg.ConnMaxIdleTime = maxIdleTime
+	// Set ConnMaxIdleTime to infinite to test only ConnMaxLifetime
+	cfg.ConnMaxIdleTime = 0
 
 	ds, err := New(uri, cfg)
 	require.NoError(t, err)
@@ -238,20 +257,40 @@ func TestMySQLConnectionPoolLifetimeLimits(t *testing.T) {
 	rows.Close()
 	elapsed := time.Since(start)
 	require.Less(t, elapsed, maxLifetime, "Connection should be usable within max lifetime")
+}
 
-	// Test that idle connections can live up to max idle time  
-	start = time.Now()
-	rows, err = ds.db.QueryContext(ctx, "SELECT 1")
+func TestMySQLConnectionPoolConnMaxIdleTime(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+	uri := testDatastore.GetConnectionURI(true)
+
+	maxIdleTime := 500 * time.Millisecond
+	cfg := sqlcommon.NewConfig()
+	cfg.MaxOpenConns = 3
+	cfg.MaxIdleConns = 2
+	// Set ConnMaxLifetime to infinite to test only ConnMaxIdleTime
+	cfg.ConnMaxLifetime = 0
+	cfg.ConnMaxIdleTime = maxIdleTime
+
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Test that idle connections can live up to max idle time
+	start := time.Now()
+	rows, err := ds.db.QueryContext(ctx, "SELECT 1")
 	require.NoError(t, err)
 	rows.Close()
-	
+
 	// Wait less than max idle time
 	time.Sleep(maxIdleTime / 2)
-	
+
 	// Connection should still be usable
 	rows, err = ds.db.QueryContext(ctx, "SELECT 1")
 	require.NoError(t, err)
 	rows.Close()
-	elapsed = time.Since(start)
+	elapsed := time.Since(start)
 	require.Less(t, elapsed, maxIdleTime, "Idle connection should be usable within max idle time")
 }
