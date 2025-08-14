@@ -19,6 +19,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const recursiveResolver = "recursive"
+
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
 	tuplesetRelation            string

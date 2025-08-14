@@ -15,6 +15,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const defaultResolver = "default"
+
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest
 	tk        *openfgav1.TupleKey

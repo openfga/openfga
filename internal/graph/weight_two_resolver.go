@@ -21,6 +21,7 @@ import (
 const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
+const weightTwoResolver = "weight2"
 
 var ErrShortCircuit = errors.New("short circuit")
 
