@@ -1377,7 +1377,10 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, iter)
+		}, iter, []*openfgav1.RelationReference{{
+			Type:               "group",
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
+		}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1448,7 +1451,10 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, iter)
+		}, iter, []*openfgav1.RelationReference{{
+			Type:               "group",
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
+		}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1520,7 +1526,10 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, iter)
+		}, iter, []*openfgav1.RelationReference{{
+			Type:               "group",
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
+		}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.True(t, val.GetAllowed())
@@ -1592,7 +1601,10 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, iter)
+		}, iter, []*openfgav1.RelationReference{{
+			Type:               "group",
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
+		}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, val)
 		require.False(t, val.GetAllowed())
@@ -1671,7 +1683,10 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, usersetIterator)
+		}, usersetIterator, []*openfgav1.RelationReference{{
+			Type:               "group",
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
+		}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())

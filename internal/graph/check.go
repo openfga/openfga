@@ -696,6 +696,78 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
+func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	reqTupleKey := req.GetTupleKey()
+
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
+			attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
+			attribute.String("resolver", "slow"),
+		))
+		defer span.End()
+
+		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+
+		objectType, relation := tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()
+		userType := tuple.GetType(reqTupleKey.GetUser())
+
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+
+		// if user in request is userset, we do not have additional strategies to apply
+		if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, directlyRelatedUsersetTypes)
+			if err != nil {
+				return nil, err
+			}
+			defer iter.Stop()
+
+			return union(ctx, c.concurrencyLimit, c.defaultUserset(ctx, req, iter))
+		}
+
+		// if the type#relation is resolvable recursively, then it can only be resolved recursively
+		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, directlyRelatedUsersetTypes)
+			if err != nil {
+				return nil, err
+			}
+			defer iter.Stop()
+
+			return union(ctx, c.concurrencyLimit, c.recursiveUserset(ctx, req, iter))
+		}
+
+		var resolvers []CheckHandlerFunc //
+		var remainingUsersetTypes []*openfgav1.RelationReference
+		for _, userset := range directlyRelatedUsersetTypes {
+			if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
+				usersets := []*openfgav1.RelationReference{userset}
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, usersets)
+				if err != nil {
+					return nil, err
+				}
+				defer iter.Stop()
+				resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, usersets))
+				continue
+			}
+			remainingUsersetTypes = append(remainingUsersetTypes, userset)
+
+		}
+
+		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
+		// they all resolved as a group rather than individually.
+		if len(remainingUsersetTypes) > 0 {
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, remainingUsersetTypes)
+			if err != nil {
+				return nil, err
+			}
+			defer iter.Stop()
+			resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
+		}
+
+		return union(ctx, c.concurrencyLimit, resolvers...)
+	}
+}
+
 // checkDirect composes three CheckHandlerFunc which evaluate direct relationships with the provided
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // the second handler looks up wildcard matches on the provided 'object#relation@user:*',
@@ -706,74 +778,14 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		ctx, span := tracer.Start(ctx, "checkDirect")
 		defer span.End()
 
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
-		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
-
-		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-
-		// TODO(jpadilla): can we lift this function up?
-		checkDirectUsersetTuples := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
-				attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
-				attribute.String("resolver", "slow"),
-			))
-			defer span.End()
-
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-
-			opts := storage.ReadUsersetTuplesOptions{
-				Consistency: storage.ConsistencyOptions{
-					Preference: req.GetConsistency(),
-				},
-			}
-
-			resolver := c.defaultUserset
-			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
-			userType := tuple.GetType(reqTupleKey.GetUser())
-
-			if !isUserset {
-				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
-					resolver = c.weight2Userset
-					span.SetAttributes(attribute.String("resolver", "weight2"))
-				} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
-					resolver = c.recursiveUserset
-					span.SetAttributes(attribute.String("resolver", "recursive"))
-				}
-			}
-
-			iter, err := ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      reqTupleKey.GetObject(),
-				Relation:                    reqTupleKey.GetRelation(),
-				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-			}, opts)
-			if err != nil {
-				return nil, err
-			}
-
-			filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-				storage.NewFilteredTupleKeyIterator(
-					storage.NewTupleKeyIteratorFromTupleIterator(iter),
-					validation.FilterInvalidTuples(typesys),
-				),
-				checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-			)
-			defer filteredIter.Stop()
-
-			return resolver(ctx, req, filteredIter)
-		}
 
 		var checkFuncs []CheckHandlerFunc
 
@@ -786,7 +798,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
-			checkFuncs = append(checkFuncs, checkDirectUsersetTuples)
+			checkFuncs = append(checkFuncs, c.checkDirectUsersetTuples(parentctx, req))
 		}
 
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)

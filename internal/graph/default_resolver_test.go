@@ -113,7 +113,7 @@ func TestDefaultUserset(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultUserset(ctx, req, iter)
+			resp, err := checker.defaultUserset(ctx, req, iter)(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
@@ -128,7 +128,7 @@ func TestDefaultUserset(t *testing.T) {
 			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 			RequestMetadata: NewCheckRequestMetadata(),
 		}
-		resp, err := checker.defaultUserset(ctx, req, iter)
+		resp, err := checker.defaultUserset(ctx, req, iter)(ctx)
 		require.ErrorContains(t, err, panicErr)
 		require.ErrorIs(t, err, ErrPanic)
 		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
