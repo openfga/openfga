@@ -734,31 +734,44 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			return union(ctx, c.concurrencyLimit, c.recursiveUserset(ctx, req, iter))
 		}
 
-		var resolvers []CheckHandlerFunc //
-		var remainingUsersetTypes []*openfgav1.RelationReference
-		for _, userset := range directlyRelatedUsersetTypes {
-			if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
-				usersets := []*openfgav1.RelationReference{userset}
-				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+		var resolvers []CheckHandlerFunc
+
+		if c.optimizationsEnabled {
+			var remainingUsersetTypes []*openfgav1.RelationReference
+			for _, userset := range directlyRelatedUsersetTypes {
+				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
+					usersets := []*openfgav1.RelationReference{userset}
+					iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+					if err != nil {
+						return nil, err
+					}
+					defer iter.Stop()
+					resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, usersets))
+					continue
+				}
+				remainingUsersetTypes = append(remainingUsersetTypes, userset)
+			}
+			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
+			// they all resolved as a group rather than individually.
+			if len(remainingUsersetTypes) > 0 {
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
 				if err != nil {
 					return nil, err
 				}
 				defer iter.Stop()
-				resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, usersets))
-				continue
+				resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
 			}
-			remainingUsersetTypes = append(remainingUsersetTypes, userset)
-		}
-
-		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
-		// they all resolved as a group rather than individually.
-		if len(remainingUsersetTypes) > 0 {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
+		} else {
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
 			defer iter.Stop()
-			resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
+			if len(directlyRelatedUsersetTypes) == 0 && typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes[0]) {
+				resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, directlyRelatedUsersetTypes))
+			} else {
+				resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
+			}
 		}
 
 		return union(ctx, c.concurrencyLimit, resolvers...)
