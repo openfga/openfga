@@ -33,7 +33,7 @@ type RemoteOidcAuthenticator struct {
 
 	JwksURI string
 	JWKs    keyfunc.Keyfunc
-	cancel context.CancelFunc
+	cancel  context.CancelFunc
 
 	httpClient *http.Client
 }
@@ -264,7 +264,7 @@ func KeyfuncWithFallback(authHeader string, jwks keyfunc.Keyfunc) jwt.Keyfunc {
 }
 
 func (oidc *RemoteOidcAuthenticator) Close() {
-    if oidc.cancel != nil {
-        oidc.cancel()
-    }
+	if oidc.cancel != nil {
+		oidc.cancel()
+	}
 }
