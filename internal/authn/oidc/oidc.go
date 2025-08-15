@@ -33,6 +33,7 @@ type RemoteOidcAuthenticator struct {
 
 	JwksURI string
 	JWKs    keyfunc.Keyfunc
+	cancel context.CancelFunc
 
 	httpClient *http.Client
 }
@@ -182,10 +183,13 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 }
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (keyfunc.Keyfunc, error) {
-	jwks, err := keyfunc.NewDefaultOverrideCtx(context.Background(), []string{oidc.JwksURI}, keyfunc.Override{
+	ctx, cancel := context.WithCancel(context.Background())
+	oidc.cancel = cancel
+	jwks, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{oidc.JwksURI}, keyfunc.Override{
 		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("error fetching keys from %v: %w", oidc.JwksURI, err)
 	}
 	return jwks, nil
@@ -260,4 +264,7 @@ func KeyfuncWithFallback(authHeader string, jwks keyfunc.Keyfunc) jwt.Keyfunc {
 }
 
 func (oidc *RemoteOidcAuthenticator) Close() {
+    if oidc.cancel != nil {
+        oidc.cancel()
+    }
 }
