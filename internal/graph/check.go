@@ -707,8 +707,6 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		))
 		defer span.End()
 
-		ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-
 		objectType, relation := tuple.GetType(reqTupleKey.GetObject()), reqTupleKey.GetRelation()
 		userType := tuple.GetType(reqTupleKey.GetUser())
 
@@ -716,7 +714,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		// if user in request is userset, we do not have additional strategies to apply
 		if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, directlyRelatedUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -727,7 +725,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
 		if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, directlyRelatedUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
 			}
@@ -741,7 +739,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		for _, userset := range directlyRelatedUsersetTypes {
 			if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 				usersets := []*openfgav1.RelationReference{userset}
-				iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, usersets)
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
 				if err != nil {
 					return nil, err
 				}
@@ -750,13 +748,12 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				continue
 			}
 			remainingUsersetTypes = append(remainingUsersetTypes, userset)
-
 		}
 
 		// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 		// they all resolved as a group rather than individually.
 		if len(remainingUsersetTypes) > 0 {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, typesys, ds, req, remainingUsersetTypes)
+			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
 			if err != nil {
 				return nil, err
 			}

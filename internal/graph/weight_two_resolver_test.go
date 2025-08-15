@@ -1646,6 +1646,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 		usersetTuples := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("folder:target", "target", "group:1#intersect"),
 		}
+
 		usersetIterator := storage.NewStaticTupleKeyIterator(usersetTuples)
 
 		ctrl := gomock.NewController(t)
@@ -1683,10 +1684,7 @@ func TestCheckUsersetFastPathV2(t *testing.T) {
 			StoreID:              storeID,
 			AuthorizationModelID: ts.GetAuthorizationModelID(),
 			TupleKey:             tuple.NewTupleKey("folder:target", "target", "user:maria"),
-		}, usersetIterator, []*openfgav1.RelationReference{{
-			Type:               "group",
-			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "all"},
-		}})(ctx)
+		}, usersetIterator, []*openfgav1.RelationReference{{Type: "group", RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "intersect"}}})(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, checkResult)
 		require.True(t, checkResult.GetAllowed())

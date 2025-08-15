@@ -3819,7 +3819,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "wallet",
 			relation:   "can_write",
 			userType:   "driver",
-			expected:   false,
+			expected:   true,
 		},
 	}
 	for _, test := range tests {

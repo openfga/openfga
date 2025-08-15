@@ -40,13 +40,7 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 			_ = pool.Wait()
 		}()
 		pool.Go(func(ctx context.Context) error {
-			recoveredError := panics.Try(func() {
-				c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
-			})
-
-			if recoveredError != nil {
-				return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-			}
+			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
 			return nil
 		})
 

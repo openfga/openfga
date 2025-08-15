@@ -66,8 +66,6 @@ type resolveCheckRequest interface {
 }
 
 func IteratorReadUsersetTuples(ctx context.Context,
-	typesys *typesystem.TypeSystem,
-	ds storage.RelationshipTupleReader,
 	req resolveCheckRequest,
 	allowedUserTypeRestrictions []*openfgav1.RelationReference) (storage.TupleKeyIterator, error) {
 
@@ -76,6 +74,9 @@ func IteratorReadUsersetTuples(ctx context.Context,
 			Preference: req.GetConsistency(),
 		},
 	}
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 
 	iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
