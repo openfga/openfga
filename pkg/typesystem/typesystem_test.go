@@ -3819,7 +3819,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "wallet",
 			relation:   "can_write",
 			userType:   "driver",
-			expected:   false,
+			expected:   true,
 		},
 	}
 	for _, test := range tests {
@@ -3829,8 +3829,14 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			require.NoError(t, err)
 			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
 			require.NoError(t, err)
-			result := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, directlyRelated)
-			require.NoError(t, err)
+			var result bool
+			for _, userset := range directlyRelated {
+				res := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, userset)
+				if res == true {
+					result = res
+				}
+			}
+
 			require.Equal(t, test.expected, result)
 		})
 	}

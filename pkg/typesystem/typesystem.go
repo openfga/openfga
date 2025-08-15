@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -424,71 +423,33 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
+func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, userset *openfgav1.RelationReference) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
-	objRel := tuple.ToObjectRelationString(objectType, relation)
-	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+
+	node, ok := t.authzWeightedGraph.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
+	if !ok {
+		return false
+	}
+	if w, ok := node.GetWeight(userType); !ok || w == graph.Infinite {
+		// if there is a tuple cycle, we have to go through default resolver (or recursive one)
+		return false
+	}
+
+	usersetNodeID := tuple.ToObjectRelationString(userset.GetType(), userset.GetRelation())
+	node, ok = t.authzWeightedGraph.GetNodeByID(usersetNodeID)
 	if !ok {
 		return false
 	}
 
-	// verifying weight here is not enough given the object#relation might be weight 2, but we do not explicitly know
-	// the userset given we aren't in the weighted graph as we traverse, thus having to fully inspect to match the context
-	// of what is being resolved.
-	_, ok = node.GetWeight(userType)
+	// the node itself has to be weight 1 (not 2, because its the userset node that we are verifying at this point). the edge pointing to it would be weight 2.
+	weight, ok := node.GetWeight(userType)
 	if !ok {
 		return false
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
-	if !ok {
-		return false
-	}
-
-	usersetEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
-
-	allowed := hashset.New()
-
-	for _, u := range allowedUsersets {
-		allowed.Add(tuple.ToObjectRelationString(u.GetType(), u.GetRelation()))
-	}
-
-	totalAllowed := allowed.Size()
-
-	// find all userset edges with valid weight
-	// but exit immediately if there is any above weight
-	for len(usersetEdges) != totalAllowed && len(edges) != 0 {
-		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
-		for _, edge := range edges {
-			// edge is a set operator thus we have to inspect each node of the operator
-			if edge.GetEdgeType() == graph.RewriteEdge {
-				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-				if !ok {
-					return false
-				}
-				innerEdges = append(innerEdges, operationalEdges...)
-			}
-
-			// each edge must belong to one of the directly assignable userset types AND each one of them
-			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
-			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
-				w, ok := edge.GetWeight(userType)
-				if ok {
-					if w > 2 {
-						return false
-					}
-					usersetEdges = append(usersetEdges, edge)
-				}
-			}
-		}
-		if len(innerEdges) == 0 {
-			break
-		}
-		edges = innerEdges
-	}
-	return len(usersetEdges) == totalAllowed
+	return weight == 1
 }
 
 func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
