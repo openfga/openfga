@@ -222,6 +222,30 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 			},
 			expectedError: "invalid claims",
 		},
+		{
+			testDescription: "when_jwt_header_lacks_kid_and_signed_with_different_key,_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				differentPriv, _ := generateJWTSignatureKeys()
+
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_1",
+					jwtKid:         "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
+					issuerAliases:  []string{"issuer_alias"},
+					subjects:       []string{"openfga client"},
+					clientIDClaims: []string{"azp"},
+					jwtClaims: jwt.MapClaims{
+						"iss": "issuer_alias",
+						"aud": "right_audience",
+						"sub": "openfga client",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: differentPriv,
+				})
+			},
+			expectedError: "invalid claims",
+		},
 	}
 
 	for _, testC := range errorTestCases {
