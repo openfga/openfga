@@ -3,7 +3,7 @@ package authn
 import (
 	"context"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -46,5 +46,5 @@ type OidcConfig struct {
 
 type OIDCAuthenticator interface {
 	GetConfiguration() (*OidcConfig, error)
-	GetKeys() (*keyfunc.JWKS, error)
+	GetKeys() (keyfunc.Keyfunc, error)
 }
