@@ -593,10 +593,39 @@ func reportLatencies(b *testing.B, latencies []time.Duration) {
 	worst := latencies[len(latencies)-1]
 
 	best := latencies[0]
+	b.ReportMetric(float64(best.Microseconds()), "min_us")
+	b.ReportMetric(float64(worst.Microseconds()), "max_us")
 	b.ReportMetric(float64(p95.Microseconds()), "p95_us")
 	b.ReportMetric(float64(p99.Microseconds()), "p99_us")
-	b.ReportMetric(float64(worst.Microseconds()), "max_us")
-	b.ReportMetric(float64(best.Microseconds()), "min_us")
+}
+
+func runOneBenchmark(
+	b *testing.B,
+	ctx context.Context,
+	name string,
+	optimizationsEnabled bool,
+	query ListObjectsQuery,
+	request *openfgav1.ListObjectsRequest,
+	expectedResultCount int,
+) {
+	if optimizationsEnabled {
+		name += "_with_optimization"
+		query.optimizationsEnabled = true
+	} else {
+		query.optimizationsEnabled = false
+	}
+	var latencies []time.Duration
+	b.Run(name, func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			start := time.Now()
+			res, err := query.Execute(ctx, request)
+			latencies = append(latencies, time.Since(start))
+			require.NoError(b, err)
+			require.Len(b, res.Objects, expectedResultCount)
+		}
+		reportLatencies(b, latencies)
+	})
+
 }
 
 // BenchmarkListObjects sets up an authorization model with various relationship weights:
@@ -667,31 +696,8 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
-	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightOneRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
-
-	b.Run("weight_one_direct", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightOneRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
+	runOneBenchmark(b, ctx, "weight_one_direct", true, *query, weightOneRequest, n)
+	runOneBenchmark(b, ctx, "weight_one_direct", false, *query, weightOneRequest, n)
 
 	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -701,31 +707,8 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
-	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightOneComputedRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
-
-	b.Run("weight_one_computed", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightOneComputedRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
+	runOneBenchmark(b, ctx, "weight_one_computed", true, *query, weightOneComputedRequest, n)
+	runOneBenchmark(b, ctx, "weight_one_computed", false, *query, weightOneComputedRequest, n)
 
 	weightTwoRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -734,32 +717,8 @@ func BenchmarkListObjects(b *testing.B) {
 		Relation:             "org_member",
 		User:                 "user:justin",
 	}
-
-	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightTwoRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n) // probably don't even need these?
-		}
-		reportLatencies(b, latencies)
-	})
-
-	b.Run("weight_two_ttu", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightTwoRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
+	runOneBenchmark(b, ctx, "weight_two_ttu", true, *query, weightTwoRequest, n)
+	runOneBenchmark(b, ctx, "weight_two_ttu", false, *query, weightTwoRequest, n)
 
 	weightThreeRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -769,31 +728,8 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
-	b.Run("weight_three_with_optimization", func(b *testing.B) {
-		query.optimizationsEnabled = true
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightThreeRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
-
-	b.Run("weight_three", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, weightThreeRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
+	runOneBenchmark(b, ctx, "weight_three", true, *query, weightThreeRequest, n)
+	runOneBenchmark(b, ctx, "weight_three", false, *query, weightThreeRequest, n)
 
 	recursiveRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -805,26 +741,9 @@ func BenchmarkListObjects(b *testing.B) {
 
 	// optimization currently falls back to non-optimized code when it's a recursive query
 	// Uncomment this when recursive listObjects work is underway
-	// b.Run("recursive_ttu_with_optimizations", func(b *testing.B) {
-	//	query.optimizationsEnabled = true
-	//	for i := 0; i < b.N; i++ {
-	//		_, err := query.Execute(ctx, recursiveRequest)
-	//		require.NoError(b, err)
-	//	}
-	// })
+	//runOneBenchmark(b, ctx, "recursive_ttu", true, *query, recursiveRequest, n)
 
-	b.Run("recursive_ttu", func(b *testing.B) {
-		query.optimizationsEnabled = false
-		var latencies []time.Duration
-		for i := 0; i < b.N; i++ {
-			start := time.Now()
-			res, err := query.Execute(ctx, recursiveRequest)
-			latencies = append(latencies, time.Since(start))
-			require.NoError(b, err)
-			require.Len(b, res.Objects, n)
-		}
-		reportLatencies(b, latencies)
-	})
+	runOneBenchmark(b, ctx, "recursive_ttu", false, *query, recursiveRequest, n)
 }
 
 // This helper writes tuples for user:justin with relation "member" to org:0...org:numTuples.
