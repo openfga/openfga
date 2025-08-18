@@ -589,10 +589,9 @@ func reportLatencies(b *testing.B, latencies []time.Duration) {
 
 	p95 := latencies[len(latencies)*95/100]
 	p99 := latencies[len(latencies)*99/100]
-
 	worst := latencies[len(latencies)-1]
-
 	best := latencies[0]
+
 	b.ReportMetric(float64(best.Microseconds()), "min_us")
 	b.ReportMetric(float64(worst.Microseconds()), "max_us")
 	b.ReportMetric(float64(p95.Microseconds()), "p95_us")
