@@ -2,7 +2,7 @@ package commands
 
 import (
 	"context"
-	"slices"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -581,18 +581,22 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
-func reportP99(b *testing.B, durations []time.Duration) {
-	// Sort durations ascending
-	slices.SortFunc(durations, func(a, b time.Duration) int {
-		if a < b {
-			return -1 // a comes before b
-		} else if a > b {
-			return 1 // b comes before a
-		}
-		return 0 // a and b are equal
+func reportLatencies(b *testing.B, latencies []time.Duration) {
+	// Sort latencies ascending
+	sort.Slice(latencies, func(i, j int) bool {
+		return latencies[i] < latencies[j]
 	})
-	indexP99 := int(float64(len(durations)) * .99)
-	b.ReportMetric(float64(durations[indexP99].Nanoseconds()), "p99_ns/op")
+
+	p95 := latencies[len(latencies)*95/100]
+	p99 := latencies[len(latencies)*99/100]
+
+	worst := latencies[len(latencies)-1]
+
+	best := latencies[0]
+	b.ReportMetric(float64(p95.Microseconds()), "p95_us")
+	b.ReportMetric(float64(p99.Microseconds()), "p99_us")
+	b.ReportMetric(float64(worst.Microseconds()), "max_us")
+	b.ReportMetric(float64(best.Microseconds()), "min_us")
 }
 
 // BenchmarkListObjects sets up an authorization model with various relationship weights:
@@ -665,28 +669,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_one_direct_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightOneRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	b.Run("weight_one_direct", func(b *testing.B) {
 		query.optimizationsEnabled = false
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightOneRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
@@ -699,28 +703,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_one_computed_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightOneComputedRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	b.Run("weight_one_computed", func(b *testing.B) {
 		query.optimizationsEnabled = false
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightOneComputedRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	weightTwoRequest := &openfgav1.ListObjectsRequest{
@@ -733,28 +737,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_two_ttu_with_optimizations", func(b *testing.B) {
 		query.optimizationsEnabled = true
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightTwoRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n) // probably don't even need these?
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	b.Run("weight_two_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightTwoRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	weightThreeRequest := &openfgav1.ListObjectsRequest{
@@ -767,28 +771,28 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("weight_three_with_optimization", func(b *testing.B) {
 		query.optimizationsEnabled = true
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightThreeRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	b.Run("weight_three", func(b *testing.B) {
 		query.optimizationsEnabled = false
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, weightThreeRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 
 	recursiveRequest := &openfgav1.ListObjectsRequest{
@@ -811,15 +815,15 @@ func BenchmarkListObjects(b *testing.B) {
 
 	b.Run("recursive_ttu", func(b *testing.B) {
 		query.optimizationsEnabled = false
-		var durations []time.Duration
+		var latencies []time.Duration
 		for i := 0; i < b.N; i++ {
 			start := time.Now()
 			res, err := query.Execute(ctx, recursiveRequest)
-			durations = append(durations, time.Since(start))
+			latencies = append(latencies, time.Since(start))
 			require.NoError(b, err)
 			require.Len(b, res.Objects, n)
 		}
-		reportP99(b, durations)
+		reportLatencies(b, latencies)
 	})
 }
 
