@@ -66,11 +66,11 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		req.GetStoreId(),
 		storage.Deletes{
 			Tuples:    req.GetDeletes().GetTupleKeys(),
-			OnMissing: req.GetDeletes().GetOnMissing(),
+			OnMissing: storage.OnMissingUnspecified,
 		},
 		storage.Writes{
 			Tuples:      req.GetWrites().GetTupleKeys(),
-			OnDuplicate: req.GetWrites().GetOnDuplicate(),
+			OnDuplicate: storage.OnDuplicateUnspecified,
 		},
 	)
 	if err != nil {

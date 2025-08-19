@@ -20,7 +20,6 @@ import (
 type MockCacheItem struct {
 	ctrl     *gomock.Controller
 	recorder *MockCacheItemMockRecorder
-	isgomock struct{}
 }
 
 // MockCacheItemMockRecorder is the mock recorder for MockCacheItem.
@@ -58,7 +57,6 @@ func (mr *MockCacheItemMockRecorder) CacheEntityType() *gomock.Call {
 type MockInMemoryCache[T any] struct {
 	ctrl     *gomock.Controller
 	recorder *MockInMemoryCacheMockRecorder[T]
-	isgomock struct{}
 }
 
 // MockInMemoryCacheMockRecorder is the mock recorder for MockInMemoryCache.

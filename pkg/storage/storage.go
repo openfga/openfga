@@ -137,16 +137,32 @@ type ReadStartingWithUserOptions struct {
 	WithResultsSortedAscending bool
 }
 
+type OnDuplicate int32
+
+const (
+	OnDuplicateUnspecified OnDuplicate = 0 // If set to 'OnDuplicateUnspecified' OR not set, the API will behave as if it was set to 'OnDuplicateError'.
+	OnDuplicateError       OnDuplicate = 1 // Return an error if a tuple already exists.
+	OnDuplicateIgnore      OnDuplicate = 2 // Treat identical writes as no-ops if all attributes (including the RelationshipCondition) match.
+)
+
 // Writes is a typesafe alias for Write arguments.
 type Writes struct {
 	Tuples      []*openfgav1.TupleKey
-	OnDuplicate openfgav1.OnDuplicate
+	OnDuplicate OnDuplicate
 }
+
+type OnMissing int32
+
+const (
+	OnMissingUnspecified OnMissing = 0 // If set to 'OnMissingUnspecified' or not set, the API behaves as if it were set to 'OnMissingError'.
+	OnMissingError       OnMissing = 1 // Return an error if a tuple does not exist.
+	OnMissingIgnore      OnMissing = 2 // Do not return an error if a tuple does not exist.
+)
 
 // Deletes is a typesafe alias for Delete arguments.
 type Deletes struct {
 	Tuples    []*openfgav1.TupleKeyWithoutCondition
-	OnMissing openfgav1.OnMissing
+	OnMissing OnMissing
 }
 
 // A TupleBackend provides a read/write interface for managing tuples.
