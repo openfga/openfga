@@ -298,7 +298,19 @@ func (c *ReverseExpandQuery) loopOverEdges(
 		}
 	}
 
-	return pool.Wait()
+	// In order to maintain the current ListObjects behavior, in the case of timeout in reverse_expand_weighted
+	// we will return partial results.
+	// For more detail, see here: https://openfga.dev/api/service#/Relationship%20Queries/ListObjects
+	err := pool.Wait()
+	if err != nil {
+		var executionError *ExecutionError
+		if errors.As(err, &executionError) {
+			if errors.Is(executionError.cause, context.Canceled) || errors.Is(executionError.cause, context.DeadlineExceeded) {
+				return nil
+			}
+		}
+	}
+	return err
 }
 
 // queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverEdges,
