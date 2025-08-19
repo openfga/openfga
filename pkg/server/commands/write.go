@@ -64,8 +64,14 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 	err := c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
-		req.GetDeletes().GetTupleKeys(),
-		req.GetWrites().GetTupleKeys(),
+		storage.Deletes{
+			Tuples:    req.GetDeletes().GetTupleKeys(),
+			OnMissing: req.GetDeletes().GetOnMissing(),
+		},
+		storage.Writes{
+			Tuples:      req.GetWrites().GetTupleKeys(),
+			OnDuplicate: req.GetWrites().GetOnDuplicate(),
+		},
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {

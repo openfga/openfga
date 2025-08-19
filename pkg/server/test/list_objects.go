@@ -481,7 +481,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 			// arrange: write tuples in random order
 			test.tuples = testutils.Shuffle(test.tuples)
-			err = ds.Write(context.Background(), storeID, nil, test.tuples)
+			err = ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: test.tuples})
 			require.NoError(t, err)
 
 			// act: run ListObjects
@@ -628,7 +628,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 
 		tuples = testutils.Shuffle(tuples)
 
-		err := ds.Write(context.Background(), storeID, nil, tuples)
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuples})
 		require.NoError(b, err)
 	}
 

@@ -1103,8 +1103,8 @@ func TestExpand(t *testing.T) {
 			err = datastore.Write(
 				ctx,
 				storeID,
-				[]*openfgav1.TupleKeyWithoutCondition{},
-				test.tuples,
+				storage.Deletes{},
+				storage.Writes{Tuples: test.tuples},
 			)
 			require.NoError(t, err)
 

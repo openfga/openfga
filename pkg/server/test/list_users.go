@@ -173,7 +173,7 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 				i++
 			}
 			tuplesToWrite = testutils.Shuffle(tuplesToWrite)
-			err = ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+			err = ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuplesToWrite})
 			require.NoError(b, err)
 		}
 

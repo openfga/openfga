@@ -260,7 +260,7 @@ func (s *Datastore) write(
 
 	deleteBuilder := s.stbl.Delete("tuple")
 
-	for _, tk := range deletes {
+	for _, tk := range deletes.Tuples {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
@@ -332,7 +332,7 @@ func (s *Datastore) write(
 			"inserted_at",
 		)
 
-	for _, tk := range writes {
+	for _, tk := range writes.Tuples {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
@@ -382,7 +382,7 @@ func (s *Datastore) write(
 		)
 	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if len(writes.Tuples) > 0 || len(deletes.Tuples) > 0 {
 		err := busyRetry(func() error {
 			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 			return err

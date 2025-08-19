@@ -828,10 +828,10 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			tuple.NewTupleKey("document:1", "restricted", "document:1#viewer"),
-		})
+		}})
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -865,10 +865,10 @@ func TestNonStratifiableCheckQueries(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			tuple.NewTupleKey("document:1", "restrictedb", "document:1#viewer"),
-		})
+		}})
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -912,10 +912,10 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:budget", "admin", "user:*"),
 			tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:maria", "condX", nil),
-		})
+		}})
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -959,9 +959,9 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 		storeID := ulid.Make().String()
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKeyWithCondition("document:budget", "admin", "user:maria", "condX", nil),
-		})
+		}})
 		require.NoError(t, err)
 
 		model := testutils.MustTransformDSLToProtoWithID(`
@@ -1006,7 +1006,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	storeID := ulid.Make().String()
 
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+	err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
 		tuple.NewTupleKey("document:1", "viewer", "group:2#member"),
 		tuple.NewTupleKey("group:1", "member", "group:1a#member"),
@@ -1014,7 +1014,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 		tuple.NewTupleKey("group:2", "member", "group:2a#member"),
 		tuple.NewTupleKey("group:2", "member", "group:2b#member"),
 		tuple.NewTupleKey("group:2b", "member", "user:jon"),
-	})
+	}})
 	require.NoError(t, err)
 
 	checker, checkResolverCloser, err := NewOrderedCheckResolvers(
@@ -1095,7 +1095,7 @@ func TestCheckConditions(t *testing.T) {
 		tuple.NewTupleKey("group:fga", "member", "user:jon"),
 	}
 
-	err = ds.Write(context.Background(), storeID, nil, tuples)
+	err = ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuples})
 	require.NoError(t, err)
 
 	checker, checkResolverCloser, err := NewOrderedCheckResolvers().Build()
@@ -1169,12 +1169,12 @@ func TestCheckDispatchCount(t *testing.T) {
 					define parent: [folder]
 			`)
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("folder:C", "viewer", "user:jon"),
 			tuple.NewTupleKey("folder:B", "parent", "folder:C"),
 			tuple.NewTupleKey("folder:A", "parent", "folder:B"),
 			tuple.NewTupleKey("doc:readme", "parent", "folder:A"),
-		})
+		}})
 		require.NoError(t, err)
 
 		checker := NewLocalChecker(WithMaxResolutionDepth(5))
@@ -1235,13 +1235,13 @@ func TestCheckDispatchCount(t *testing.T) {
 					define viewer: [group#member]
 			`)
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("group:1", "member", "user:jon"),
 			tuple.NewTupleKey("group:eng", "member", "group:1#member"),
 			tuple.NewTupleKey("group:eng", "member", "group:2#member"),
 			tuple.NewTupleKey("group:eng", "member", "group:3#member"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		})
+		}})
 		require.NoError(t, err)
 
 		checker := NewLocalChecker(WithMaxResolutionDepth(5))
@@ -1294,10 +1294,10 @@ func TestCheckDispatchCount(t *testing.T) {
 					define owner: [user]
 					define editor: [user] or owner`)
 
-		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			tuple.NewTupleKey("document:2", "editor", "user:will"),
-		})
+		}})
 		require.NoError(t, err)
 
 		checker := NewLocalChecker(WithMaxResolutionDepth(5))

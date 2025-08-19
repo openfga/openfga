@@ -341,7 +341,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
+	if err := validateTuples(s.tuples[store], deletes.Tuples, writes.Tuples); err != nil {
 		return err
 	}
 
@@ -351,7 +351,7 @@ Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
 		tk := t.GetKey()
-		for _, k := range deletes {
+		for _, k := range deletes.Tuples {
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
 				s.changes[store] = append(
 					s.changes[store],
@@ -371,7 +371,7 @@ Delete:
 	}
 
 Write:
-	for _, t := range writes {
+	for _, t := range writes.Tuples {
 		for _, et := range records {
 			if match(et, t) {
 				continue Write

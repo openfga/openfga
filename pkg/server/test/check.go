@@ -380,7 +380,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 				tuplesToWrite = append(tuplesToWrite, tuples[i])
 				i++
 			}
-			err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+			err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuplesToWrite})
 			require.NoError(b, err)
 		}
 
@@ -452,7 +452,7 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 			tuplesToWrite = append(tuplesToWrite, tuples[i])
 			i++
 		}
-		err := ds.Write(context.Background(), storeID, nil, tuplesToWrite)
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuplesToWrite})
 		require.NoError(b, err)
 	}
 

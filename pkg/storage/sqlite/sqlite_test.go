@@ -74,23 +74,23 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 			err = ds.write(ctx,
 				store,
-				[]*openfgav1.TupleKeyWithoutCondition{},
-				[]*openfgav1.TupleKey{firstTuple},
+				storage.Deletes{},
+				storage.Writes{Tuples: []*openfgav1.TupleKey{firstTuple}},
 				time.Now())
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = ds.write(ctx,
 				store,
-				[]*openfgav1.TupleKeyWithoutCondition{},
-				[]*openfgav1.TupleKey{secondTuple},
+				storage.Deletes{},
+				storage.Writes{Tuples: []*openfgav1.TupleKey{secondTuple}},
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
 			err = ds.write(ctx,
 				store,
-				[]*openfgav1.TupleKeyWithoutCondition{},
-				[]*openfgav1.TupleKey{thirdTuple},
+				storage.Deletes{},
+				storage.Writes{Tuples: []*openfgav1.TupleKey{thirdTuple}},
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
@@ -162,16 +162,16 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	err = ds.write(ctx,
 		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{firstTuple},
+		storage.Deletes{},
+		storage.Writes{Tuples: []*openfgav1.TupleKey{firstTuple}},
 		time.Now())
 	require.NoError(t, err)
 
 	// Tweak time so that ULID is smaller.
 	err = ds.write(ctx,
 		store,
-		[]*openfgav1.TupleKeyWithoutCondition{},
-		[]*openfgav1.TupleKey{secondTuple},
+		storage.Deletes{},
+		storage.Writes{Tuples: []*openfgav1.TupleKey{secondTuple}},
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 

@@ -138,10 +138,16 @@ type ReadStartingWithUserOptions struct {
 }
 
 // Writes is a typesafe alias for Write arguments.
-type Writes = []*openfgav1.TupleKey
+type Writes struct {
+	Tuples      []*openfgav1.TupleKey
+	OnDuplicate openfgav1.OnDuplicate
+}
 
 // Deletes is a typesafe alias for Delete arguments.
-type Deletes = []*openfgav1.TupleKeyWithoutCondition
+type Deletes struct {
+	Tuples    []*openfgav1.TupleKeyWithoutCondition
+	OnMissing openfgav1.OnMissing
+}
 
 // A TupleBackend provides a read/write interface for managing tuples.
 type TupleBackend interface {

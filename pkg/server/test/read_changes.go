@@ -39,7 +39,7 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 		for j := 0; j < len(tuples); j++ {
 			tuples[j] = tuple.NewTupleKey("doc:"+strconv.Itoa(i)+"_"+strconv.Itoa(j), "viewer", "user:maria")
 		}
-		err := ds.Write(ctx, storeID, nil, tuples)
+		err := ds.Write(ctx, storeID, storage.Deletes{}, storage.Writes{Tuples: tuples})
 		require.NoError(b, err)
 	}
 

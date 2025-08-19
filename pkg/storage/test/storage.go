@@ -72,7 +72,7 @@ func BootstrapFGAStore(
 	for batch := 0; batch < len(tuples); batch += batchSize {
 		batchEnd := min(batch+batchSize, len(tuples))
 
-		err := ds.Write(context.Background(), storeID, nil, tuples[batch:batchEnd])
+		err := ds.Write(context.Background(), storeID, storage.Deletes{}, storage.Writes{Tuples: tuples[batch:batchEnd]})
 		require.NoError(t, err)
 	}
 

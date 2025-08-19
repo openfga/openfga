@@ -27,9 +27,9 @@ func TestBoundedWrapper(t *testing.T) {
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
-	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
+	err := slowBackend.Write(context.Background(), store, storage.Deletes{}, storage.Writes{Tuples: []*openfgav1.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
-	})
+	}})
 	require.NoError(t, err)
 
 	t.Run("normal case", func(t *testing.T) {
