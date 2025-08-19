@@ -2505,7 +2505,7 @@ func TestIntersectionHandler(t *testing.T) {
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest, rewrite *openfgav1.Userset) graph.CheckHandlerFunc {
-				ctx, cancel := context.WithCancel(ctx)
+				_, cancel := context.WithCancel(ctx)
 				defer cancel()
 				return func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 					return nil, nil
