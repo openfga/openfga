@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.9.5] - 2025-08-15
+### Fixed
+- Do not run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2643](https://github.com/openfga/openfga/pull/2643)
+
 ## [1.9.4] - 2025-08-13
 ### Fixed
 - Fix breaking change introduced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
@@ -1389,7 +1393,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.5...HEAD
+[1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
 [1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
 [1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2

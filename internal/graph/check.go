@@ -745,7 +745,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			userType := tuple.GetType(reqTupleKey.GetUser())
 
 			if !isUserset {
-				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
+				if len(directlyRelatedUsersetTypes) < 2 && typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes) {
+					// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+					// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+					// on the relation as well.
 					resolver = c.weight2Userset
 					span.SetAttributes(attribute.String("resolver", "weight2"))
 				} else if typesys.UsersetUseRecursiveResolver(objectType, relation, userType) {
