@@ -629,7 +629,6 @@ func runOneBenchmark(
 
 // BenchmarkListObjects sets up an authorization model with various relationship weights:
 // weight one direct, weight one computed, weight two, weight three, and recursive (weight INF).
-// Each weight has 10k tuples written for that relation, and a benchmark is b.Run() specific to each weight.
 // The benchmarks are currently run 2x—once with optimizations enabled and once without.
 func BenchmarkListObjects(b *testing.B) {
 	datastore := memory.New()
@@ -695,6 +694,7 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
+	// once with optimizations enabled, once without
 	runOneBenchmark(b, ctx, "weight_one_direct", true, *query, weightOneRequest)
 	runOneBenchmark(b, ctx, "weight_one_direct", false, *query, weightOneRequest)
 
@@ -706,6 +706,7 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
+	// once with optimizations enabled, once without
 	runOneBenchmark(b, ctx, "weight_one_computed", true, *query, weightOneComputedRequest)
 	runOneBenchmark(b, ctx, "weight_one_computed", false, *query, weightOneComputedRequest)
 
@@ -716,6 +717,7 @@ func BenchmarkListObjects(b *testing.B) {
 		Relation:             "org_member",
 		User:                 "user:justin",
 	}
+	// once with optimizations enabled, once without
 	runOneBenchmark(b, ctx, "weight_two_ttu", true, *query, weightTwoRequest)
 	runOneBenchmark(b, ctx, "weight_two_ttu", false, *query, weightTwoRequest)
 
@@ -727,6 +729,7 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 
+	// once with optimizations enabled, once without
 	runOneBenchmark(b, ctx, "weight_three", true, *query, weightThreeRequest)
 	runOneBenchmark(b, ctx, "weight_three", false, *query, weightThreeRequest)
 
