@@ -450,9 +450,17 @@ func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType st
 	usersetEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 
 	allowed := hashset.New()
+	allowedType := hashset.New()
 
 	for _, u := range allowedUsersets {
 		allowed.Add(tuple.ToObjectRelationString(u.GetType(), u.GetRelation()))
+		if allowedType.Contains(u.GetType()) {
+			// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+			// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+			// on the relation as well.
+			return false
+		}
+		allowedType.Add(u.GetType())
 	}
 
 	totalAllowed := allowed.Size()

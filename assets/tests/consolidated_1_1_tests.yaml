@@ -10488,3 +10488,31 @@ tests:
               relation: access
               object: resource:1
             expectation: false
+  - name: weight_2_two_userset_assignable_diff_types
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type scopeA
+            relations
+              define public: [user:*]
+          type scopeB
+            relations
+              define verified: [user]
+          type resource
+            relations
+              define access: [scopeA#public, scopeB#verified]
+        tuples:
+          - user: scopeB:A#verified
+            relation: access
+            object: resource:1
+          - user: user:*
+            relation: public
+            object: scopeA:A
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: access
+              object: resource:1
+            expectation: false
