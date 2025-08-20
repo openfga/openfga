@@ -243,7 +243,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 
 	t.Run("invalid_dialect", func(t *testing.T) {
 		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
-			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
+			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect", nil)
 		})
 	})
 
