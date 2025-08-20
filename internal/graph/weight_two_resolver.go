@@ -26,25 +26,24 @@ var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersets []*openfgav1.RelationReference) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		cancellableCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, req.GetTupleKey().GetRelation())
+		leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc())
+		if err != nil {
+			return nil, err
+		}
 
-	leftChans, err := produceLeftChannels(cancellableCtx, req, directlyRelatedUsersetTypes, checkutil.BuildUsersetV2RelationFunc())
-	if err != nil {
-		return nil, err
+		if len(leftChans) == 0 {
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+
+		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
 	}
-
-	if len(leftChans) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
-	}
-	return c.weight2(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
 func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
@@ -81,6 +80,8 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
 func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "weight2")
+	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
