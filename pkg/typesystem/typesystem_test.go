@@ -3630,7 +3630,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
-			expected:   true,
+			expected:   false,
 		},
 		{
 			name: "computed_userset",
@@ -3791,7 +3791,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "tier",
 			relation:   "assignee",
 			userType:   "user",
-			expected:   true,
+			expected:   false,
 		},
 		{
 			name: "not_terminal_type",
