@@ -3630,6 +3630,384 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "folder",
 			relation:   "allowed",
 			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "nested_computed_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: owner
+						define viewable_member: member
+				type folder
+					relations
+						define allowed: [group#viewable_member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "parent_public_assignable",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [user, user:*]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "conditional_relation_parent",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member with x_less_than]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "conditional_relation_in_child",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user with x_less_than]
+				type folder
+					relations
+						define allowed: [group#member]
+				condition x_less_than(x: int) {
+					x < 100
+				}`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_ttu_mixture",
+			model: `
+				model
+				  schema 1.1
+				type user
+				type role
+				  	relations
+						define assignee: [user]
+				type permission
+					relations
+						define assignee: assignee from role
+						define role: [role]
+				type job
+					relations
+						define can_read: [permission#assignee]`,
+			objectType: "job",
+			relation:   "can_read",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "nested_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type employee
+				type group
+					relations
+						define testers: [employee]
+						define assignee: [user, group#testers]
+			    type folder
+				  	relations
+						define allowed: [group#assignee]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "employee",
+			expected:   false,
+		},
+		{
+			name: "multiple_parents_conditional_recursive_computed_with_conditionals",
+			model: `
+				model
+				  	schema 1.1
+				type user
+				type group
+				  	relations
+						define member: [user, user with x_bigger_than]
+						define user_in_context: [user]
+						define reader: member
+						define assignee: reader
+				type tier
+					relations
+						define assignee: [group#assignee, group#user_in_context, group#user_in_context with x_bigger_than]
+
+				condition x_bigger_than(x: int) {
+					x > 100
+                }
+				condition user_in_context(x: int) {
+					x > 100
+                }`,
+			objectType: "tier",
+			relation:   "assignee",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "not_terminal_type",
+			model: `
+				model
+  					schema 1.1	
+				type operator
+				type driver
+				type user_group
+  					relations
+    					define member: [operator]
+				type resource
+  					relations
+    					define can_write: [resource_group#writer, user_group#member]
+				type resource_group
+  					relations
+    					define writer: [user_group#member]
+				type account
+  					relations
+    					define member: [driver] or owner
+    					define owner: [driver]
+				type wallet
+  					relations
+    					define can_write: [resource#can_write, account#owner]`,
+			objectType: "wallet",
+			relation:   "can_write",
+			userType:   "driver",
+			expected:   true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := testutils.MustTransformDSLToProtoWithID(test.model)
+			typeSystem, err := NewAndValidate(context.Background(), model)
+			require.NoError(t, err)
+			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
+			require.NoError(t, err)
+			var result bool
+			for _, userset := range directlyRelated {
+				res := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, userset)
+				if res == true {
+					result = res
+				}
+			}
+
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestUsersetUseWeight2Resolvers(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		objectType string
+		relation   string
+		userType   string
+		expected   bool
+	}{
+		{
+			name: "simple_userset",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "multiple_userset_types",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type folder
+					relations
+						define member: [user]
+						define allowed: [group#member, folder#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "userset_reference_itself",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user,group#member]`,
+			objectType: "group",
+			relation:   "member",
+			userType:   "user",
+			expected:   false,
+		},
+		{
+			name: "complex_userset_member_is_public",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user, user:*]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_exclusion",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define exclude: [user]
+						define member: [user]
+						define complexMember: [user] but not exclude
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_union",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define owner: [user]
+						define member: [user]
+						define complexMember: [user] or owner
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "complex_userset_intersection",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define allowed: [user]
+						define member: [user]
+						define complexMember: [user] and allowed
+				type folder
+					relations
+						define allowed: [group#complexMember]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
+			expected:   true,
+		},
+		{
+			name: "multiple_assignment",
+			model: `
+				model
+					schema 1.1
+				type user1
+				type user2
+				type group
+					relations
+						define member: [user1, user2]
+				type folder
+					relations
+						define allowed: [group#member]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user1",
+			expected:   true,
+		},
+		{
+			name: "multiple_relation_references",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+						define owner: [user]
+				type folder
+					relations
+						define allowed: [group#member, group#owner]`,
+			objectType: "folder",
+			relation:   "allowed",
+			userType:   "user",
 			expected:   false,
 		},
 		{
@@ -3819,7 +4197,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			objectType: "wallet",
 			relation:   "can_write",
 			userType:   "driver",
-			expected:   true,
+			expected:   false, // resource#can_write is greater than weight 2
 		},
 	}
 	for _, test := range tests {
@@ -3829,14 +4207,7 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 			require.NoError(t, err)
 			directlyRelated, err := typeSystem.GetDirectlyRelatedUserTypes(test.objectType, test.relation)
 			require.NoError(t, err)
-			var result bool
-			for _, userset := range directlyRelated {
-				res := typeSystem.UsersetUseWeight2Resolver(test.objectType, test.relation, test.userType, userset)
-				if res == true {
-					result = res
-				}
-			}
-
+			result := typeSystem.UsersetUseWeight2Resolvers(test.objectType, test.relation, test.userType, directlyRelated)
 			require.Equal(t, test.expected, result)
 		})
 	}
