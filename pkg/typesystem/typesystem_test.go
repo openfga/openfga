@@ -3464,7 +3464,7 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 }
 
-func TestUsersetCanFastPathWeight2(t *testing.T) {
+func TestUsersetUseWeight2Resolver(t *testing.T) {
 	tests := []struct {
 		name       string
 		model      string
@@ -3809,17 +3809,13 @@ func TestUsersetCanFastPathWeight2(t *testing.T) {
 				type resource_group
   					relations
     					define writer: [user_group#member]
-				type account
-  					relations
-    					define member: [driver] or owner
-    					define owner: [driver]
 				type wallet
   					relations
-    					define can_write: [resource#can_write, account#owner]`,
+    					define can_write: [resource#can_write]`,
 			objectType: "wallet",
 			relation:   "can_write",
 			userType:   "driver",
-			expected:   true,
+			expected:   false,
 		},
 	}
 	for _, test := range tests {

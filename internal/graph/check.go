@@ -745,6 +745,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 					if err != nil {
 						return nil, err
 					}
+					// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
 					defer iter.Stop()
 					resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, usersets))
 					continue
