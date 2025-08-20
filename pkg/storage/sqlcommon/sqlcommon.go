@@ -481,7 +481,7 @@ func Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
-	_ storage.TupleWriteOptions,
+	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
@@ -492,6 +492,59 @@ func Write(
 		_ = txn.Rollback()
 	}()
 
+	// step 1: SELECT ... FOR UPDATE all rows to be deleted and written
+	// in order to validate current state for idempotence and lock for deletes
+	selectBuilder := dbInfo.stbl.
+		Select(
+			"store", "object_type", "object_id", "relation", "_user", "user_type",
+			"condition_name", "condition_context",
+		).Suffix("FOR UPDATE")
+
+	// Assume deletes is a slice of tuple keys (e.g., storage.Deletes)
+	var orConditions []sq.Sqlizer
+
+	for _, tk := range deletes {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		orConditions = append(orConditions, sq.Eq{
+			"store":       store,
+			"object_type": objectType,
+			"object_id":   objectID,
+			"relation":    tk.GetRelation(),
+			"_user":       tk.GetUser(),
+			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
+	}
+
+	for _, tk := range writes {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		orConditions = append(orConditions, sq.Eq{
+			"store":       store,
+			"object_type": objectType,
+			"object_id":   objectID,
+			"relation":    tk.GetRelation(),
+			"_user":       tk.GetUser(),
+			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
+	}
+
+	if len(orConditions) > 0 {
+		selectBuilder = selectBuilder.Where(sq.Or(orConditions))
+	}
+
+	iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
+	defer iter.Stop()
+
+	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(orConditions)})
+
+	if err != nil {
+		return err
+	}
+
+	existing := make(map[string]*openfgav1.Tuple, len(items))
+	for _, tuple := range items {
+		existing[tupleUtils.TupleKeyToString(tuple.Key)] = tuple
+	}
+
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
 		Columns(
@@ -501,11 +554,30 @@ func Write(
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
+	var deleteCount int64
+
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		res, err := deleteBuilder.
+		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
+			// If the tuple exists, we can delete it.
+			deleteCount++
+		} else {
+			// If the tuple does not exist, we should not delete it.
+			switch opts.OnMissingDelete {
+			case storage.OnMissingDeleteIgnore:
+				continue
+			case storage.OnMissingDeleteError:
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+				)
+			}
+		}
+
+		deleteBuilder = deleteBuilder.
 			Where(sq.Eq{
 				"store":       store,
 				"object_type": objectType,
@@ -513,24 +585,7 @@ func Write(
 				"relation":    tk.GetRelation(),
 				"_user":       tk.GetUser(),
 				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-			}).
-			RunWith(txn). // Part of a txn.
-			ExecContext(ctx)
-		if err != nil {
-			return dbInfo.HandleSQLError(err, tk)
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return dbInfo.HandleSQLError(err)
-		}
-
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(
-				tk,
-				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			)
-		}
+			})
 
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
@@ -541,12 +596,32 @@ func Write(
 		)
 	}
 
+	res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
+	if err != nil {
+		return dbInfo.HandleSQLError(err, nil /*tk*/) // FIXME - what to do here?
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return dbInfo.HandleSQLError(err)
+	}
+
+	if rowsAffected != deleteCount {
+		// If we hit this, this means that there is a race condition.
+		return storage.InvalidWriteInputError(
+			nil, // TODO: should we pass the tuple key here?
+			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+		)
+	}
+
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
 		Columns(
 			"store", "object_type", "object_id", "relation", "_user", "user_type",
 			"condition_name", "condition_context", "ulid", "inserted_at",
 		)
+
+	insertCount := 0
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -557,7 +632,31 @@ func Write(
 			return err
 		}
 
-		_, err = insertBuilder.
+		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
+			// If the tuple exists, we can delete it.
+			if existingTuple.Key.GetCondition() != tk.GetCondition() {
+				// TODO: whether this check is sufficient (or need to compare conditionContext as well).
+				// TODO: Is this the right error or we want to return 409?
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				)
+			}
+		} else {
+			// If the tuple does not exist, we should not delete it.
+			switch opts.OnDuplicateInsert {
+			case storage.OnDuplicateInsertIgnore:
+				// Need to check whether for condition
+			case storage.OnDuplicateInsertError:
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				)
+			}
+		}
+		insertCount++
+		insertBuilder = insertBuilder.
 			Values(
 				store,
 				objectType,
@@ -569,13 +668,7 @@ func Write(
 				conditionContext,
 				id,
 				sq.Expr("NOW()"),
-			).
-			RunWith(txn). // Part of a txn.
-			ExecContext(ctx)
-		if err != nil {
-			return dbInfo.HandleSQLError(err, tk)
-		}
-
+			)
 		changelogBuilder = changelogBuilder.Values(
 			store,
 			objectType,
@@ -589,8 +682,13 @@ func Write(
 			sq.Expr("NOW()"),
 		)
 	}
+	_, err = insertBuilder.RunWith(txn). // Part of a txn.
+						ExecContext(ctx)
+	if err != nil {
+		return dbInfo.HandleSQLError(err, nil /*tk*/) // FIXME - what to do here?
+	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if deleteCount > 0 || insertCount > 0 {
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
 			return dbInfo.HandleSQLError(err)
