@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -450,6 +451,24 @@ func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType st
 	}
 
 	return weight == 1
+}
+
+func (t *TypeSystem) UsersetUseWeight2Resolvers(objectType, relation, userType string, usersets []*openfgav1.RelationReference) bool {
+	allowedType := hashset.New()
+
+	for _, u := range usersets {
+		if allowedType.Contains(u.GetType()) {
+			// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+			// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+			// on the relation as well.
+			return false
+		}
+		if !t.UsersetUseWeight2Resolver(objectType, relation, userType, u) {
+			return false
+		}
+		allowedType.Add(u.GetType())
+	}
+	return true
 }
 
 func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {

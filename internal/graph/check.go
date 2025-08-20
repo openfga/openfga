@@ -767,7 +767,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				return nil, err
 			}
 			defer iter.Stop()
-			if len(directlyRelatedUsersetTypes) == 0 && typesys.UsersetUseWeight2Resolver(objectType, relation, userType, directlyRelatedUsersetTypes[0]) {
+			if typesys.UsersetUseWeight2Resolvers(objectType, relation, userType, directlyRelatedUsersetTypes) {
 				resolvers = append(resolvers, c.weight2Userset(ctx, req, iter, directlyRelatedUsersetTypes))
 			} else {
 				resolvers = append(resolvers, c.defaultUserset(ctx, req, iter))
