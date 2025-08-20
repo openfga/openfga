@@ -343,8 +343,8 @@ func (c *ReverseExpandQuery) queryForTuples(
 	queryJobQueue.enqueue(items...)
 
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
-	// Limit querying routines to 2 to avoid explosion of routines.
-	pool := concurrency.NewPool(ctx, 2)
+	// Limit querying routines to 5 to avoid explosion of routines.
+	pool := concurrency.NewPool(ctx, 5)
 
 	for !queryJobQueue.Empty() {
 		job, ok := queryJobQueue.dequeue()
