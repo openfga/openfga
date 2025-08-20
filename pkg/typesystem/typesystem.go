@@ -439,13 +439,13 @@ func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType st
 	}
 
 	usersetNodeID := tuple.ToObjectRelationString(userset.GetType(), userset.GetRelation())
-	node, ok = t.authzWeightedGraph.GetNodeByID(usersetNodeID)
+	usersetNode, ok := t.authzWeightedGraph.GetNodeByID(usersetNodeID)
 	if !ok {
 		return false
 	}
 
 	// the node itself has to be weight 1 (not 2, because its the userset node that we are verifying at this point). the edge pointing to it would be weight 2.
-	weight, ok := node.GetWeight(userType)
+	weight, ok := usersetNode.GetWeight(userType)
 	if !ok {
 		return false
 	}

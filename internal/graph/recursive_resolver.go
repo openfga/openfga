@@ -55,6 +55,8 @@ func (c *LocalChecker) recursiveTTU(ctx context.Context, req *ResolveCheckReques
 }
 
 func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveFastPath")
+	defer span.End()
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
 

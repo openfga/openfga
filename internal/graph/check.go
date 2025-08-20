@@ -703,7 +703,6 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(
 			attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.GetObject(), reqTupleKey.GetRelation())),
-			attribute.String("resolver", "slow"),
 		))
 		defer span.End()
 
@@ -720,7 +719,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			return union(ctx, c.concurrencyLimit, c.defaultUserset(ctx, req, iter))
+			return c.defaultUserset(ctx, req, iter)(ctx)
 		}
 
 		// if the type#relation is resolvable recursively, then it can only be resolved recursively
@@ -731,7 +730,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			return union(ctx, c.concurrencyLimit, c.recursiveUserset(ctx, req, iter))
+			return c.recursiveUserset(ctx, req, iter)(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc

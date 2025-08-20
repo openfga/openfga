@@ -30,6 +30,8 @@ type dispatchMsg struct {
 // This is the slow path as it requires dispatch on all its children.
 func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "defaultUserset")
+		defer span.End()
 		dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
 		cancellableCtx, cancelFunc := context.WithCancel(ctx)

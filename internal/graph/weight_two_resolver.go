@@ -80,6 +80,8 @@ func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest,
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
 func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "weight2")
+	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
