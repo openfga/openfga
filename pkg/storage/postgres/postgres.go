@@ -299,12 +299,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
-	_ ...storage.TupleWriteOptions,
+	opts ...storage.TupleWriteOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.

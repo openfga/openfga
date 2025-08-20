@@ -245,21 +245,21 @@ type TupleWriteOptions struct {
 	OnDuplicateInsert OnDuplicateInsert
 }
 
-type TupleWriteOptionsFunc func(*TupleWriteOptions)
+type TupleWriteOption func(*TupleWriteOptions)
 
-func WithOnMissingDelete(onMissingDelete OnMissingDelete) TupleWriteOptionsFunc {
+func WithOnMissingDelete(onMissingDelete OnMissingDelete) TupleWriteOption {
 	return func(opts *TupleWriteOptions) {
 		opts.OnMissingDelete = onMissingDelete
 	}
 }
 
-func WithOnDuplicateInsert(onDuplicateInsert OnDuplicateInsert) TupleWriteOptionsFunc {
+func WithOnDuplicateInsert(onDuplicateInsert OnDuplicateInsert) TupleWriteOption {
 	return func(opts *TupleWriteOptions) {
 		opts.OnDuplicateInsert = onDuplicateInsert
 	}
 }
 
-func NewTupleWriteOptions(opts ...TupleWriteOptionsFunc) TupleWriteOptions {
+func NewTupleWriteOptions(opts ...TupleWriteOption) TupleWriteOptions {
 	res := TupleWriteOptions{
 		OnMissingDelete:   OnMissingDeleteError,
 		OnDuplicateInsert: OnDuplicateInsertError,
@@ -279,7 +279,7 @@ type RelationshipTupleWriter interface {
 	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
 	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
 	// opts are optional and can be used to customize the behavior of the write operation.
-	Write(ctx context.Context, store string, d Deletes, w Writes, opts ...TupleWriteOptions) error
+	Write(ctx context.Context, store string, d Deletes, w Writes, opts ...TupleWriteOption) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
 	// allowed in a single write transaction.

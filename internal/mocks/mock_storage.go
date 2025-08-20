@@ -133,7 +133,7 @@ func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, filter, op
 }
 
 // Write mocks base method.
-func (m *MockTupleBackend) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOptions) error {
+func (m *MockTupleBackend) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, d, w}
 	for _, a := range opts {
@@ -290,7 +290,7 @@ func (mr *MockRelationshipTupleWriterMockRecorder) MaxTuplesPerWrite() *gomock.C
 }
 
 // Write mocks base method.
-func (m *MockRelationshipTupleWriter) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOptions) error {
+func (m *MockRelationshipTupleWriter) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, d, w}
 	for _, a := range opts {
@@ -998,7 +998,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter
 }
 
 // Write mocks base method.
-func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOptions) error {
+func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
 	varargs := []any{ctx, store, d, w}
 	for _, a := range opts {
