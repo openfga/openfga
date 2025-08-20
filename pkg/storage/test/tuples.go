@@ -693,7 +693,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				User:     "org:openfga#viewer",
 			},
 		}
-		expectedError := storage.InvalidWriteInputError(tks[2], openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+		expectedError := errors.New("transactional write failed due to conflict: one or more tuples to delete were deleted by another transaction")
 
 		// Write tks.
 		err := datastore.Write(ctx, storeID, nil, tks)

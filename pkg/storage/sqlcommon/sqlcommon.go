@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -229,6 +231,24 @@ type SQLTupleIterator struct {
 
 // Ensures that SQLTupleIterator implements the TupleIterator interface.
 var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
+
+// sqlIteratorColumns required for the SQL tuple iterator scanner.
+var sqlIteratorColumns = []string{
+	"store",
+	"object_type",
+	"object_id",
+	"relation",
+	"_user",
+	"condition_name",
+	"condition_context",
+	"ulid",
+	"inserted_at",
+}
+
+// SQLIteratorColumns returns the columns used in the SQL tuple iterator.
+func SQLIteratorColumns() []string {
+	return sqlIteratorColumns
+}
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
 func NewSQLTupleIterator(sb sq.SelectBuilder, errHandler errorHandlerFn) *SQLTupleIterator {
@@ -494,11 +514,12 @@ func Write(
 
 	// step 1: SELECT ... FOR UPDATE all rows to be deleted and written
 	// in order to validate current state for idempotence and lock for deletes
+
+	// select columns required for the SQLTupleIterator
 	selectBuilder := dbInfo.stbl.
-		Select(
-			"store", "object_type", "object_id", "relation", "_user", "user_type",
-			"condition_name", "condition_context",
-		).Suffix("FOR UPDATE")
+		Select(SQLIteratorColumns()...).
+		From("tuple").
+		Suffix("FOR UPDATE")
 
 	// Assume deletes is a slice of tuple keys (e.g., storage.Deletes)
 	var orConditions []sq.Sqlizer
@@ -542,7 +563,7 @@ func Write(
 
 	existing := make(map[string]*openfgav1.Tuple, len(items))
 	for _, tuple := range items {
-		existing[tupleUtils.TupleKeyToString(tuple.Key)] = tuple
+		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
 	}
 
 	changelogBuilder := dbInfo.stbl.
@@ -560,15 +581,13 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
-			// If the tuple exists, we can delete it.
-			deleteCount++
-		} else {
-			// If the tuple does not exist, we should not delete it.
+		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
+			// If the tuple does not exist, we can not delete it.
 			switch opts.OnMissingDelete {
 			case storage.OnMissingDeleteIgnore:
 				continue
 			case storage.OnMissingDeleteError:
+				fallthrough
 			default:
 				return storage.InvalidWriteInputError(
 					tk,
@@ -576,6 +595,8 @@ func Write(
 				)
 			}
 		}
+
+		deleteCount++
 
 		deleteBuilder = deleteBuilder.
 			Where(sq.Eq{
@@ -596,22 +617,22 @@ func Write(
 		)
 	}
 
-	res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
-	if err != nil {
-		return dbInfo.HandleSQLError(err, nil /*tk*/) // FIXME - what to do here?
-	}
+	if deleteCount > 0 {
+		res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
 
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return dbInfo.HandleSQLError(err)
-	}
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
 
-	if rowsAffected != deleteCount {
-		// If we hit this, this means that there is a race condition.
-		return storage.InvalidWriteInputError(
-			nil, // TODO: should we pass the tuple key here?
-			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-		)
+		if rowsAffected != deleteCount {
+			// If we hit this, this means that there is a race condition.
+			// TODO: this is where we should return a 409 Conflict error.
+			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
+		}
 	}
 
 	insertBuilder := dbInfo.stbl.
@@ -632,22 +653,22 @@ func Write(
 			return err
 		}
 
-		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
-			// If the tuple exists, we can delete it.
-			if existingTuple.Key.GetCondition() != tk.GetCondition() {
-				// TODO: whether this check is sufficient (or need to compare conditionContext as well).
+		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
+			// If the tuple exists, we can not write it.
+			switch opts.OnDuplicateInsert {
+			case storage.OnDuplicateInsertIgnore:
+				// If the tuple exists and the condition is the same, we can ignore it.
+				if reflect.DeepEqual(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+					continue
+				}
+				// If tuple conditions are different, we throw an error.
 				// TODO: Is this the right error or we want to return 409?
 				return storage.InvalidWriteInputError(
 					tk,
 					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 				)
-			}
-		} else {
-			// If the tuple does not exist, we should not delete it.
-			switch opts.OnDuplicateInsert {
-			case storage.OnDuplicateInsertIgnore:
-				// Need to check whether for condition
 			case storage.OnDuplicateInsertError:
+				fallthrough
 			default:
 				return storage.InvalidWriteInputError(
 					tk,
@@ -656,19 +677,18 @@ func Write(
 			}
 		}
 		insertCount++
-		insertBuilder = insertBuilder.
-			Values(
-				store,
-				objectType,
-				objectID,
-				tk.GetRelation(),
-				tk.GetUser(),
-				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-				conditionName,
-				conditionContext,
-				id,
-				sq.Expr("NOW()"),
-			)
+		insertBuilder = insertBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			tk.GetUser(),
+			tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			conditionName,
+			conditionContext,
+			id,
+			sq.Expr("NOW()"),
+		)
 		changelogBuilder = changelogBuilder.Values(
 			store,
 			objectType,
@@ -682,10 +702,18 @@ func Write(
 			sq.Expr("NOW()"),
 		)
 	}
-	_, err = insertBuilder.RunWith(txn). // Part of a txn.
-						ExecContext(ctx)
-	if err != nil {
-		return dbInfo.HandleSQLError(err, nil /*tk*/) // FIXME - what to do here?
+
+	if insertCount > 0 {
+		_, err = insertBuilder.RunWith(txn). // Part of a txn.
+							ExecContext(ctx)
+		if err != nil {
+			dberr := dbInfo.HandleSQLError(err)
+			if errors.Is(dberr, storage.ErrCollision) {
+				// If we hit this, this means that there's a real conflict, return 409 Conflict error.
+				return dberr // TODO : this is where we should return a 409 Conflict error.
+			}
+			return dberr
+		}
 	}
 
 	if deleteCount > 0 || insertCount > 0 {

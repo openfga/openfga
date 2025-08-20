@@ -71,6 +71,9 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 			return nil, status.Error(codes.Aborted, err.Error())
 		}
+		if errors.Is(err, storage.ErrCollision) { // FIXME : use proper error codes
+			return nil, status.Error(codes.AlreadyExists, err.Error())
+		}
 		if errors.Is(err, storage.ErrInvalidWriteInput) {
 			return nil, serverErrors.WriteFailedDueToInvalidInput(err)
 		}
