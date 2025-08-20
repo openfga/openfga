@@ -2468,6 +2468,81 @@ func TestIntersectionHandler(t *testing.T) {
 		require.ErrorAs(t, err, &execError)
 	})
 
+	// This is to maintain the same functionality as old ListObjects, which returns partial results
+	// in the case of a context cancellation or timeout.
+	t.Run("return_nil_when_context_is_canceled", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			  type user
+
+			  type document
+				relations
+				  define viewer: [user]
+				  define editor: [user]
+				  define admin: viewer and editor
+		`
+		tuples := []string{
+			"document:1#viewer@user:a",
+			"document:2#editor@user:a",
+		}
+		objectType := "document"
+		relation := "admin"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
+		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest, rewrite *openfgav1.Userset) graph.CheckHandlerFunc {
+				_, cancel := context.WithCancel(ctx)
+				defer cancel()
+				return func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
+					return nil, nil
+				}
+			})
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+		)
+		q.localCheckResolver = mockCheckResolver
+
+		node, ok := typesys.GetNode("document#admin")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNode(node, "user")
+		require.NoError(t, err)
+		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
+		require.NoError(t, err)
+
+		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
+
+		pool := concurrency.NewPool(ctx, 2)
+		err = q.intersectionHandler(pool, &ReverseExpandRequest{
+			StoreID:       storeID,
+			ObjectType:    objectType,
+			Relation:      relation,
+			User:          user,
+			relationStack: newStack,
+		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		require.NoError(t, err)
+		err = pool.Wait()
+		require.NoError(t, err)
+	})
+
 	t.Run("return_error_when_queryForTuples_errors", func(t *testing.T) {
 		model := `
 			model
