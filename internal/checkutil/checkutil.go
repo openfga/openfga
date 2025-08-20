@@ -68,7 +68,6 @@ type resolveCheckRequest interface {
 func IteratorReadUsersetTuples(ctx context.Context,
 	req resolveCheckRequest,
 	allowedUserTypeRestrictions []*openfgav1.RelationReference) (storage.TupleKeyIterator, error) {
-
 	opts := storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
@@ -94,7 +93,6 @@ func IteratorReadUsersetTuples(ctx context.Context,
 		),
 		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
 	), nil
-
 }
 
 // IteratorReadStartingFromUser returns storage iterator for
