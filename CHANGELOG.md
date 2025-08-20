@@ -9,6 +9,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+- Breaking: Changes to storage interface
+
+  > [!NOTE]
+  > The following breaking changes are related to the storage interface. If you are not implementing a storage adaptor, then there are these changes should not impact your usage of OpenFGA.
+
+  - Changed `RelationshipTupleWriter` Datastore interface to accept `TupleWriteOptions` param, enabling customizable behavior for write operations across all storage backends and mocks. [#2651](https://github.com/openfga/openfga/pull/2651)
+    Implementers will need to update the `Write` method signature to accept the new `TupleWriteOptions` parameter.
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
