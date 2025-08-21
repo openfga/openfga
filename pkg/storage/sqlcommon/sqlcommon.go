@@ -698,7 +698,6 @@ func Write(
 
 		if rowsAffected != deleteCount {
 			// If we hit this, this means that there is a race condition.
-			// TODO: this is where we should return a 409 Conflict error.
 			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
 		}
 	}
@@ -709,8 +708,7 @@ func Write(
 		if err != nil {
 			dberr := dbInfo.HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
-				// If we hit this, this means that there's a real conflict, return 409 Conflict error.
-				return dberr // TODO : this is where we should return a 409 Conflict error.
+				return fmt.Errorf("%w: one or more tuples to write were inserted by another transaction", storage.ErrTransactionalWriteFailed)
 			}
 			return dberr
 		}
