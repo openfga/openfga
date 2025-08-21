@@ -749,18 +749,13 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		// should not have any changes recorded
-		var expectedChanges []*openfgav1.TupleChange
 
 		// Ensure that there is only 1 insert reported
 		readChangesOpts := storage.ReadChangesOptions{
 			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
 		}
-		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
-		require.NoError(t, err)
-
-		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
-			t.Fatalf("mismatch (-want +got):\n%s", diff)
-		}
+		_, _, err = datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("delete_ignore_succeed_multiple_tuples", func(t *testing.T) {
