@@ -658,7 +658,7 @@ func TestRecursiveUserset(t *testing.T) {
 				})
 			}
 
-			result, err := checker.recursiveUserset(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+			result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -897,7 +897,7 @@ func TestRecursiveUserset(t *testing.T) {
 					})
 				}
 
-				result, err := checker.recursiveUserset(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+				result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -951,7 +951,7 @@ func TestRecursiveUserset(t *testing.T) {
 		checker := NewLocalChecker()
 		tupleKeys := []*openfgav1.TupleKey{{Object: "group:1", Relation: "member", User: "group:0#member"}}
 
-		result, err := checker.recursiveUserset(ctx, req, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+		result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
 		require.Nil(t, result)
 		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})

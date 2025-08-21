@@ -90,6 +90,8 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 // defaultTTU is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
 func (c *LocalChecker) defaultTTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "defaultTTU")
+	defer span.End()
 	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
 	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
