@@ -617,24 +617,6 @@ func Write(
 		)
 	}
 
-	if deleteCount > 0 {
-		res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
-		if err != nil {
-			return dbInfo.HandleSQLError(err)
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return dbInfo.HandleSQLError(err)
-		}
-
-		if rowsAffected != deleteCount {
-			// If we hit this, this means that there is a race condition.
-			// TODO: this is where we should return a 409 Conflict error.
-			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
-		}
-	}
-
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
 		Columns(
@@ -701,6 +683,24 @@ func Write(
 			id,
 			sq.Expr("NOW()"),
 		)
+	}
+
+	if deleteCount > 0 {
+		res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
+		if err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return dbInfo.HandleSQLError(err)
+		}
+
+		if rowsAffected != deleteCount {
+			// If we hit this, this means that there is a race condition.
+			// TODO: this is where we should return a 409 Conflict error.
+			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
+		}
 	}
 
 	if insertCount > 0 {
