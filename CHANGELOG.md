@@ -8,6 +8,25 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
+
+### Changed
+- Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+
+### Fixed
+- Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
+- Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
+
+## [1.9.5] - 2025-08-15
+### Fixed
+- Do not run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2643](https://github.com/openfga/openfga/pull/2643)
+
+## [1.9.4] - 2025-08-13
+### Fixed
+- Fix breaking change introduced after upgrading the JWT dependency from v5.2.2 to v.5.3.0. [#2636](https://github.com/openfga/openfga/pull/2636)
+
+## [1.9.3] - 2025-08-11
+### Added
 - Add `check_count` grpc tag to list objects requests. [#2515](https://github.com/openfga/openfga/pull/2515)
 - Promote the Check fast path v2 implementations to no longer being behind the `enable-check-optimizations` config flag. [#2609](https://github.com/openfga/openfga/pull/2609)
 
@@ -1383,7 +1402,10 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.5...HEAD
+[1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
+[1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
+[1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/openfga/openfga/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/openfga/openfga/compare/v1.8.16...v1.9.0

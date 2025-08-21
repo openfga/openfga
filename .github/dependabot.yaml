@@ -1,13 +1,16 @@
+# yaml-language-server: $schema=https://json.schemastore.org/dependabot-2.0.json
 version: 2
+
 updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
-     dependencies:
+      dependencies:
         patterns:
           - "*"
+
   - package-ecosystem: "gomod"
     directory: "/tools"
     schedule:
@@ -16,19 +19,21 @@ updates:
       dependencies:
         patterns:
           - "*"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
-     dependencies:
+      dependencies:
         patterns:
           - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     groups:
-     dependencies:
+      dependencies:
         patterns:
           - "*"
