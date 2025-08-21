@@ -699,12 +699,6 @@
                     "type": "boolean",
                     "default": false,
                     "x-env-variable": "OPENFGA_SHARED_ITERATOR_ENABLED"
-                },
-                "limit": {
-                    "description": "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.",
-                    "type": "integer",
-                    "default": "1000000",
-                    "x-env-variable": "OPENFGA_SHARED_ITERATOR_LIMIT"
                 }
             }
         },

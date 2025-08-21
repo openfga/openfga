@@ -77,9 +77,11 @@ func NewRequestStorageWrapperWithCache(
 		)
 	}
 	if dataResourceConfiguration.CacheSettings.SharedIteratorEnabled {
-		tupleReader = sharediterator.NewSharedIteratorDatastore(tupleReader, dataResourceConfiguration.Resources.SharedIteratorStorage,
+		tupleReader = sharediterator.NewSharedIteratorDatastore(
+			tupleReader,
 			sharediterator.WithSharedIteratorDatastoreLogger(dataResourceConfiguration.Resources.Logger),
-			sharediterator.WithMethod(string(op.Method)))
+			sharediterator.WithMethod(string(op.Method)),
+		)
 	}
 	combinedTupleReader := NewCombinedTupleReader(tupleReader, requestContextualTuples) // to read the contextual tuples
 

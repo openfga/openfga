@@ -258,9 +258,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("sharedIterator.enabled", flags.Lookup("shared-iterator-enabled"))
 		util.MustBindEnv("sharedIterator.enabled", "OPENFGA_SHARED_ITERATOR_ENABLED")
 
-		util.MustBindPFlag("sharedIterator.limit", flags.Lookup("shared-iterator-limit"))
-		util.MustBindEnv("sharedIterator.limit", "OPENFGA_SHARED_ITERATOR_LIMIT")
-
 		util.MustBindPFlag("requestDurationDatastoreQueryCountBuckets", flags.Lookup("request-duration-datastore-query-count-buckets"))
 		util.MustBindEnv("requestDurationDatastoreQueryCountBuckets", "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS")
 

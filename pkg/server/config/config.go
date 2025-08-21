@@ -94,11 +94,7 @@ const (
 	DefaultRequestTimeout     = 3 * time.Second
 	additionalUpstreamTimeout = 3 * time.Second
 
-	DefaultSharedIteratorEnabled          = false
-	DefaultSharedIteratorLimit            = 1000000
-	DefaultSharedIteratorTTL              = 4 * time.Minute
-	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
-	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
+	DefaultSharedIteratorEnabled = false
 )
 
 type DatastoreMetricsConfig struct {
@@ -258,7 +254,6 @@ type IteratorCacheConfig struct {
 // SharedIteratorConfig defines configuration to share storage iterator.
 type SharedIteratorConfig struct {
 	Enabled bool
-	Limit   uint32
 }
 
 // CacheControllerConfig defines configuration to manage cache invalidation dynamically by observing whether
@@ -761,7 +756,6 @@ func DefaultConfig() *Config {
 		},
 		SharedIterator: SharedIteratorConfig{
 			Enabled: DefaultSharedIteratorEnabled,
-			Limit:   DefaultSharedIteratorLimit,
 		},
 		CacheController: CacheControllerConfig{
 			Enabled: DefaultCacheControllerConfigEnabled,
