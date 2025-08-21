@@ -35,6 +35,12 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 	return tracer.Start(ctx, "sqlite."+name)
 }
 
+var tupleColumns = []string{
+	"store", "object_type", "object_id", "relation",
+	"user_object_type", "user_object_id", "user_relation", /* TODO: "user_type"?, what is the difference */
+	"condition_name", "condition_context", "ulid", "inserted_at",
+}
+
 // Datastore provides a SQLite based implementation of [storage.OpenFGADatastore].
 type Datastore struct {
 	stbl                   sq.StatementBuilderType
@@ -213,12 +219,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
-	_ ...storage.TupleWriteOption,
+	opts ...storage.TupleWriteOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return s.write(ctx, store, deletes, writes, time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
 // Write provides the common method for writing to database across sql storage.
@@ -227,6 +233,7 @@ func (s *Datastore) write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
 	var txn *sql.Tx
@@ -241,6 +248,67 @@ func (s *Datastore) write(
 	defer func() {
 		_ = txn.Rollback()
 	}()
+
+	// step 1: SELECT ... FOR UPDATE all rows to be deleted and written
+	// in order to validate current state for idempotence and lock for deletes
+
+	// select columns required for the SQLTupleIterator
+	selectBuilder := s.stbl.
+		Select(tupleColumns...).
+		From("tuple")
+	// TODO: Clarify if we need to use FOR UPDATE here as SQLite does not support select * FOR UPDATE
+
+	// Assume deletes is a slice of tuple keys (e.g., storage.Deletes)
+	var orConditions []sq.Sqlizer
+
+	for _, tk := range deletes {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+		orConditions = append(orConditions, sq.Eq{
+			"store":            store,
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tk.GetRelation(),
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
+	}
+
+	for _, tk := range writes {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+		orConditions = append(orConditions, sq.Eq{
+			"store":            store,
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tk.GetRelation(),
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
+	}
+	if len(orConditions) == 0 {
+		// Nothing to do.
+		return nil
+	}
+	selectBuilder = selectBuilder.Where(sq.Or(orConditions))
+
+	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
+	defer iter.Stop()
+
+	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(orConditions)})
+
+	if err != nil {
+		return err
+	}
+
+	existing := make(map[string]*openfgav1.Tuple, len(items))
+	for _, tuple := range items {
+		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+	}
 
 	changelogBuilder := s.stbl.
 		Insert("changelog").
@@ -260,45 +328,40 @@ func (s *Datastore) write(
 		)
 
 	deleteBuilder := s.stbl.Delete("tuple")
+	var deleteCount int64
 
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
-		var res sql.Result
-		var err error
-		err = busyRetry(func() error {
-			res, err = deleteBuilder.
-				Where(sq.Eq{
-					"store":            store,
-					"object_type":      objectType,
-					"object_id":        objectID,
-					"relation":         tk.GetRelation(),
-					"user_object_type": userObjectType,
-					"user_object_id":   userObjectID,
-					"user_relation":    userRelation,
-					"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-				}).
-				RunWith(txn). // Part of a txn.
-				ExecContext(ctx)
-			return err
-		})
-		if err != nil {
-			return HandleSQLError(err, tk)
+		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
+			// If the tuple does not exist, we can not delete it.
+			switch opts.OnMissingDelete {
+			case storage.OnMissingDeleteIgnore:
+				continue
+			case storage.OnMissingDeleteError:
+				fallthrough
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+				)
+			}
 		}
 
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return HandleSQLError(err)
-		}
-
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(
-				tk,
-				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			)
-		}
+		deleteCount++
+		deleteBuilder = deleteBuilder.
+			Where(sq.Eq{
+				"store":            store,
+				"object_type":      objectType,
+				"object_id":        objectID,
+				"relation":         tk.GetRelation(),
+				"user_object_type": userObjectType,
+				"user_object_id":   userObjectID,
+				"user_relation":    userRelation,
+				"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			})
 
 		changelogBuilder = changelogBuilder.Values(
 			store,
@@ -332,6 +395,7 @@ func (s *Datastore) write(
 			"ulid",
 			"inserted_at",
 		)
+	insertCount := 0
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -342,31 +406,46 @@ func (s *Datastore) write(
 		if err != nil {
 			return err
 		}
-
-		err = busyRetry(func() error {
-			_, err = insertBuilder.
-				Values(
-					store,
-					objectType,
-					objectID,
-					tk.GetRelation(),
-					userObjectType,
-					userObjectID,
-					userRelation,
-					tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-					conditionName,
-					conditionContext,
-					id,
-					sq.Expr("datetime('subsec')"),
-				).
-				RunWith(txn). // Part of a txn.
-				ExecContext(ctx)
-			return err
-		})
-		if err != nil {
-			return HandleSQLError(err, tk)
+		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
+			// If the tuple exists, we can not write it.
+			switch opts.OnDuplicateInsert {
+			case storage.OnDuplicateInsertIgnore:
+				// If the tuple exists and the condition is the same, we can ignore it.
+				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
+				if existingTuple.GetKey().GetCondition().String() == tk.GetCondition().String() {
+					continue
+				}
+				// If tuple conditions are different, we throw an error.
+				// TODO: Is this the right error or we want to return 409?
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				)
+			case storage.OnDuplicateInsertError:
+				fallthrough
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				)
+			}
 		}
-
+		insertCount++
+		insertBuilder = insertBuilder.
+			Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				userObjectType,
+				userObjectID,
+				userRelation,
+				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName,
+				conditionContext,
+				id,
+				sq.Expr("datetime('subsec')"),
+			)
 		changelogBuilder = changelogBuilder.Values(
 			store,
 			objectType,
@@ -383,7 +462,45 @@ func (s *Datastore) write(
 		)
 	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if deleteCount > 0 {
+		var res sql.Result
+
+		err = busyRetry(func() error {
+			res, err = deleteBuilder.
+				RunWith(txn). // Part of a txn.
+				ExecContext(ctx)
+			return err
+		})
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return HandleSQLError(err)
+		}
+
+		if rowsAffected != deleteCount {
+			// If we hit this, this means that there is a race condition.
+			// TODO: this is where we should return a 409 Conflict error.
+			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
+		}
+	}
+
+	if insertCount > 0 {
+		err = busyRetry(func() error {
+			_, err = insertBuilder.RunWith(txn). // Part of a txn.
+								ExecContext(ctx)
+			return err
+		})
+		if err != nil {
+			dberr := HandleSQLError(err)
+			if errors.Is(dberr, storage.ErrCollision) {
+				// If we hit this, this means that there's a real conflict, return 409 Conflict error.
+				return dberr // TODO : this is where we should return a 409 Conflict error.
+			}
+			return dberr
+		}
+	}
+
+	if insertCount > 0 || deleteCount > 0 {
 		err := busyRetry(func() error {
 			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 			return err
