@@ -24,8 +24,15 @@ import (
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 	t.Run("fails_on_invalid_oidc_issuer_url", func(t *testing.T) {
 		_, err := NewRemoteOidcAuthenticator("https://does-not-exist.invalid", nil, "", nil, nil)
-		require.Error(t, err, "Expected an error for an invalid OIDC issuer URL")
-		require.Contains(t, err.Error(), "error fetching OIDC configuration", "Error message should indicate a configuration fetching problem")
+
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error getting OIDC")
+	})
+	t.Run("fails_on_malformed_oidc_issuer_url", func(t *testing.T) {
+		_, err := NewRemoteOidcAuthenticator(":", nil, "", nil, nil)
+
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error forming request to get OIDC")
 	})
 	t.Run("when_the_authorization_header_is_missing_from_the_gRPC_metadata_of_the_request,_returns_'missing_bearer_token'_error", func(t *testing.T) {
 		authenticator := &RemoteOidcAuthenticator{}
