@@ -55,7 +55,9 @@ var _ CheckResolver = (*ShadowResolver)(nil)
 
 func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	ctxClone := context.WithoutCancel(ctx) // needs typesystem and datastore etc
+	mainStart := time.Now()
 	res, err := s.main.ResolveCheck(ctx, req)
+	mainDuration := time.Since(mainStart)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +86,9 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 
 			ctx, cancel := context.WithTimeout(ctxClone, s.shadowTimeout)
 			defer cancel()
+			shadowStart := time.Now()
 			shadowRes, err := s.shadow.ResolveCheck(ctx, reqClone)
+			shadowDuration := time.Since(shadowStart)
 			if err != nil {
 				s.logger.WarnWithContext(ctx, "shadow check errored",
 					zap.String("resolver", s.name),
@@ -103,8 +107,15 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
 					zap.Bool("main", resClone.GetAllowed()),
 					zap.Bool("main-cycle", resClone.GetCycleDetected()),
+					zap.Int64("main_latency_us", mainDuration.Microseconds()),
 					zap.Bool("shadow", shadowRes.GetAllowed()),
 					zap.Bool("shadow-cycle", shadowRes.GetCycleDetected()),
+					zap.Int64("shadow_latency_us", shadowDuration.Microseconds()),
+				)
+			} else {
+				s.logger.InfoWithContext(ctx, "shadow check match",
+					zap.Int64("main_latency_us", mainDuration.Microseconds()),
+					zap.Int64("shadow_latency_us", shadowDuration.Microseconds()),
 				)
 			}
 		}()
