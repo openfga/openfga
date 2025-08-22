@@ -53,3 +53,26 @@ func TestProfiler_Update(t *testing.T) {
 	require.Greater(t, counts["fast"], 90)
 	require.Less(t, counts["slow"], 10)
 }
+
+func BenchmarkKeyPlan(b *testing.B) {
+	p := New(10 * time.Millisecond)
+	kp := p.GetKeyPlan("test|store123|objectType|relation|userType")
+	resolvers := []string{"resolver1", "resolver2", "resolver3"}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			if i%2 == 0 {
+				_ = kp.SelectResolver(resolvers)
+			} else {
+				resolver := resolvers[i%len(resolvers)]
+				duration := time.Duration(10+i%50) * time.Millisecond
+				kp.UpdateStats(resolver, duration)
+			}
+			i++
+		}
+	})
+}

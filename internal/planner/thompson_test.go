@@ -10,16 +10,16 @@ import (
 
 func TestThompsonStats_Update(t *testing.T) {
 	stats := NewThompsonStats(1 * time.Second)
-	initialMu := stats.Mu
+	initialMu := stats.mu
 
-	require.Zero(t, stats.Runs)
+	require.Zero(t, stats.runs)
 
 	stats.Update(100 * time.Millisecond)
-	require.Equal(t, int64(1), stats.Runs)
-	require.NotEqual(t, initialMu, stats.Mu)
+	require.Equal(t, int64(1), stats.runs)
+	require.NotEqual(t, initialMu, stats.mu)
 
 	stats.Update(200 * time.Millisecond)
-	require.Equal(t, int64(2), stats.Runs)
+	require.Equal(t, int64(2), stats.runs)
 }
 
 func TestThompsonStats_Sample(t *testing.T) {
@@ -60,5 +60,24 @@ func TestThompsonStats_Sample(t *testing.T) {
 
 		// 4. Verify that the average of the samples has increased.
 		require.Greater(t, avgAfter, avgBefore)
+	})
+}
+
+func BenchmarkThompsonStats_SampleParallel(b *testing.B) {
+	ts := NewThompsonStats(10 * time.Millisecond)
+
+	// Add some sample data
+	for i := 0; i < 1000; i++ {
+		ts.Update(time.Duration(5+i) * time.Millisecond)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		for pb.Next() {
+			_ = ts.Sample(rng)
+		}
 	})
 }
