@@ -9,7 +9,7 @@ import (
 )
 
 func TestThompsonStats_Update(t *testing.T) {
-	stats := NewThompsonStats()
+	stats := NewThompsonStats(1 * time.Second)
 	initialMu := stats.Mu
 
 	require.Zero(t, stats.Runs)
@@ -24,7 +24,7 @@ func TestThompsonStats_Update(t *testing.T) {
 
 func TestThompsonStats_Sample(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		stats := NewThompsonStats()
+		stats := NewThompsonStats(1 * time.Second)
 		r := rand.New(rand.NewSource(1)) // Use a fixed seed for reproducibility
 
 		sample1 := stats.Sample(r)
@@ -34,7 +34,7 @@ func TestThompsonStats_Sample(t *testing.T) {
 		require.NotEqual(t, sample1, sample2)
 	})
 	t.Run("complete", func(t *testing.T) {
-		stats := NewThompsonStats()
+		stats := NewThompsonStats(50 * time.Millisecond)
 		r := rand.New(rand.NewSource(42))
 		numSamples := 100
 

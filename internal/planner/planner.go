@@ -9,11 +9,14 @@ import (
 type Planner struct {
 	// ttu|storeID|objectType|relation|userType|tuplesetRelation|tuplesetComputedRelation
 	// userset|storeID|objectType|relation|userType
-	keys sync.Map
+	keys         sync.Map
+	initialGuess time.Duration
 }
 
-func New() *Planner {
-	return &Planner{}
+func New(initialGuess time.Duration) *Planner {
+	return &Planner{
+		initialGuess: initialGuess,
+	}
 }
 
 func (p *Planner) GetKeyPlan(key string) *KeyPlan {
@@ -27,9 +30,10 @@ func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 }
 
 type KeyPlan struct {
-	mu    sync.Mutex
-	stats map[string]*ThompsonStats
-	rng   *rand.Rand
+	initialGuess time.Duration
+	mu           sync.Mutex
+	stats        map[string]*ThompsonStats
+	rng          *rand.Rand
 }
 
 // SelectResolver implements the Thompson Sampling decision rule.
@@ -45,7 +49,7 @@ func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 	for _, name := range resolvers {
 		// Ensure stats exist for this key for all resolvers.
 		if _, ok := kp.stats[name]; !ok {
-			kp.stats[name] = NewThompsonStats()
+			kp.stats[name] = NewThompsonStats(kp.initialGuess)
 		}
 		ts := kp.stats[name]
 		// We use the global rng, but the lock ensures that the read of the stats
@@ -66,8 +70,12 @@ func (kp *KeyPlan) UpdateStats(resolver string, duration time.Duration) {
 	defer kp.mu.Unlock()
 
 	if _, ok := kp.stats[resolver]; !ok {
-		kp.stats[resolver] = NewThompsonStats()
+		kp.stats[resolver] = NewThompsonStats(kp.initialGuess)
 	}
 
 	kp.stats[resolver].Update(duration)
+}
+
+func (kp *KeyPlan) GetStats() map[string]*ThompsonStats {
+	return kp.stats
 }

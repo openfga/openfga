@@ -111,7 +111,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
-		planner:            planner.New(),
+		planner:            planner.New(10 * time.Millisecond), // TODO: make initial duration configurable
 	}
 	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker

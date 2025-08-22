@@ -57,9 +57,9 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 
 // NewThompsonStats creates a new stats object with a diffuse prior,
 // representing our initial uncertainty about a strategy's performance.
-func NewThompsonStats() *ThompsonStats {
+func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
 	return &ThompsonStats{
-		Mu: 7.0, // Guess for mean execution time (in ms) for each call to "Update".
+		Mu: float64(initialGuess.Milliseconds()), // Guess for mean execution time (in ms) for each call to "Update".
 		// From the context of Check, each subproblem of userset or TTU will get an individual call to "Update".
 		Lambda: 1.0,  // Low confidence in the initial mean
 		Alpha:  1.0,  // Diffuse prior for the shape

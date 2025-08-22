@@ -8,12 +8,12 @@ import (
 )
 
 func TestPlanner_New(t *testing.T) {
-	p := New()
+	p := New(1 * time.Second)
 	require.NotNil(t, p)
 }
 
 func TestPlanner_SelectResolver(t *testing.T) {
-	p := New()
+	p := New(1 * time.Second)
 	key := "test_key"
 	resolvers := []string{"fast", "slow"}
 
@@ -27,7 +27,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 }
 
 func TestProfiler_Update(t *testing.T) {
-	p := New()
+	p := New(10 * time.Millisecond)
 	key := "test_convergence"
 	resolvers := []string{"fast", "slow"}
 
@@ -39,7 +39,7 @@ func TestProfiler_Update(t *testing.T) {
 	}
 	// Heavily penalize the "slow" strategy
 	for i := 0; i < 150; i++ {
-		kp.UpdateStats("slow", 500*time.Millisecond)
+		kp.UpdateStats("slow", 50*time.Millisecond)
 	}
 
 	// After sufficient updates, Thompson sampling should almost always choose the better option.
