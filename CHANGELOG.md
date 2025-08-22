@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
+- Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
 
 ## [1.9.5] - 2025-08-15
 ### Fixed
