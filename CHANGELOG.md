@@ -9,7 +9,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 ### Added
 - Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
-- Add microsecond latency numbers in shadow check resolver. [#2658](https://github.com/openfga/openfga/pull/2658)
+- Add microsecond latency numbers and datastore query count in shadow check resolver. [#2658](https://github.com/openfga/openfga/pull/2658)
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
