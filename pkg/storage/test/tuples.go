@@ -873,6 +873,41 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
+	t.Run("inserting_a_tuple_twice_ignore_duplicate_with_cond", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		// Second write of the same tuple should not fail.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
+		require.NoError(t, err)
+
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+
+		// Ensure that there is only 1 insert reported
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
 	t.Run("fail_when_ignore_insert_duplicate_cond_delta", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
