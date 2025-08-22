@@ -948,6 +948,46 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
+	t.Run("fail_when_ignore_insert_duplicate_context_delta", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "bad"}),
+		}}
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		// Second write of the same tuple should fail.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
+			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
+		require.Error(t, err)
+		// TODO: Assert this is the 409 error
+
+		// ensure only 1 write is recorded
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk1,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+
+		// Ensure that there is only 1 insert reported
+		readChangesOpts := storage.ReadChangesOptions{
+			Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
+		}
+		changes, _, err := datastore.ReadChanges(ctx, storeID, storage.ReadChangesFilter{}, readChangesOpts)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
 	t.Run("inserting_a_tuple_twice_ignore_duplicate_batch", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}

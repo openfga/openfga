@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -640,7 +639,8 @@ func Write(
 			switch opts.OnDuplicateInsert {
 			case storage.OnDuplicateInsertIgnore:
 				// If the tuple exists and the condition is the same, we can ignore it.
-				if reflect.DeepEqual(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
+				if existingTuple.GetKey().GetCondition().String() == tk.GetCondition().String() {
 					continue
 				}
 				// If tuple conditions are different, we throw an error.
@@ -708,6 +708,8 @@ func Write(
 		if err != nil {
 			dberr := dbInfo.HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
+				// FIXME - this does not seem to be the right error to return here.
+				// once we wrap the error via fmt.Errorf, it loses the original error type.
 				return fmt.Errorf("%w: one or more tuples to write were inserted by another transaction", storage.ErrTransactionalWriteFailed)
 			}
 			return dberr
