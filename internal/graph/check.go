@@ -775,8 +775,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 			resolver := c.defaultUserset
-			switch resolverName {
-			case recursiveResolver:
+			if resolverName == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
 			return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
@@ -806,8 +805,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 					resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 					resolver := c.defaultUserset
-					switch resolverName {
-					case weightTwoResolver:
+					if resolverName == weightTwoResolver {
 						resolver = c.weight2Userset
 					}
 
@@ -909,12 +907,8 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkTTU", trace.WithAttributes(attribute.String("resolver", defaultResolver)))
+		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
-
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
 
 		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
@@ -968,9 +962,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		resolver := c.defaultTTU
 
 		possibleResolvers := []string{defaultResolver}
-		// TODO: optimize the case where user is an userset.
-		// If the user is a userset, we will not be able to use the shortcut because the algo
-		// will look up the objects associated with user.
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
