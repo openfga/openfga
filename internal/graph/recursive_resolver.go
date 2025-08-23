@@ -19,13 +19,15 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const recursiveResolver = "recursive"
+
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
 	tuplesetRelation            string
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 

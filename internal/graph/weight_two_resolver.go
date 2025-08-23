@@ -21,12 +21,13 @@ import (
 const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
+const weightTwoResolver = "weight2"
 
 var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersets []*openfgav1.RelationReference) CheckHandlerFunc {
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
