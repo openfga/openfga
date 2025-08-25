@@ -23,6 +23,12 @@ var (
 	// already existed or the tuple to be deleted did not exist.
 	ErrInvalidWriteInput = errors.New("tuple to be written already existed or the tuple to be deleted did not exist")
 
+	// ErrWriteConflictOnInsert is returned when two writes attempt to insert the same tuple at the same time.
+	ErrWriteConflictOnInsert = fmt.Errorf("%w: one or more tuples to write were inserted by another transaction", ErrTransactionalWriteFailed)
+
+	// ErrWriteConflictOnDelete is returned when two writes attempt to delete the same tuple at the same time.
+	ErrWriteConflictOnDelete = fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", ErrTransactionalWriteFailed)
+
 	// ErrTransactionalWriteFailed is returned when two writes attempt to write the same tuple at the same time.
 	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
 
@@ -59,4 +65,14 @@ func InvalidWriteInputError(tk tuple.TupleWithoutCondition, operation openfgav1.
 	default:
 		return nil
 	}
+}
+
+func TupleConditionConflictError(tk tuple.TupleWithoutCondition) error {
+	return fmt.Errorf(
+		"%w: attempted to write a tuple which already exists with a different condition: user: '%s', relation: '%s', object: '%s'",
+		ErrTransactionalWriteFailed, // mapped to 409 Conflict in the API layer
+		tk.GetUser(),
+		tk.GetRelation(),
+		tk.GetObject(),
+	)
 }
