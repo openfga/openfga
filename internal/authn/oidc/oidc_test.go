@@ -28,6 +28,14 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "error getting OIDC")
 	})
+	t.Run("fails_on_malformed_jwks_url", func(t *testing.T) {
+		oidc := &RemoteOidcAuthenticator{
+			JwksURI: "://malformed-url",
+		}
+		_, err := oidc.GetKeys()
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error fetching keys from ://malformed-url")
+	})
 	t.Run("fails_on_malformed_oidc_issuer_url", func(t *testing.T) {
 		_, err := NewRemoteOidcAuthenticator(":", nil, "", nil, nil)
 
