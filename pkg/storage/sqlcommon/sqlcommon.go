@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -644,11 +643,7 @@ func Write(
 					continue
 				}
 				// If tuple conditions are different, we throw an error.
-				// TODO: Is this the right error or we want to return 409?
-				return storage.InvalidWriteInputError(
-					tk,
-					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-				)
+				return storage.TupleConditionConflictError(tk)
 			case storage.OnDuplicateInsertError:
 				fallthrough
 			default:
@@ -697,8 +692,8 @@ func Write(
 		}
 
 		if rowsAffected != deleteCount {
-			// If we hit this, this means that there is a race condition.
-			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
+			// If we deleted fewer rows than planned (after read before write), means we hit a race condition - someone else deleted the same row(s).
+			return storage.ErrWriteConflictOnDelete
 		}
 	}
 
@@ -708,9 +703,8 @@ func Write(
 		if err != nil {
 			dberr := dbInfo.HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
-				// FIXME - this does not seem to be the right error to return here.
-				// once we wrap the error via fmt.Errorf, it loses the original error type.
-				return fmt.Errorf("%w: one or more tuples to write were inserted by another transaction", storage.ErrTransactionalWriteFailed)
+				// ErrCollision is returned on duplicate write (constraint violation), meaning we hit a race condition - someone else inserted the same row(s).
+				return storage.ErrWriteConflictOnInsert
 			}
 			return dberr
 		}
