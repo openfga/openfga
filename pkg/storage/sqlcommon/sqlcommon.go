@@ -516,6 +516,7 @@ func Write(
 	// select columns required for the SQLTupleIterator
 	selectBuilder := dbInfo.stbl.
 		Select(SQLIteratorColumns()...).
+		Where(sq.Eq{"store": store}).
 		From("tuple").
 		Suffix("FOR UPDATE")
 
@@ -525,7 +526,6 @@ func Write(
 	for _, tk := range deletes {
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		orConditions = append(orConditions, sq.Eq{
-			"store":       store,
 			"object_type": objectType,
 			"object_id":   objectID,
 			"relation":    tk.GetRelation(),
@@ -537,7 +537,6 @@ func Write(
 	for _, tk := range writes {
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		orConditions = append(orConditions, sq.Eq{
-			"store":       store,
 			"object_type": objectType,
 			"object_id":   objectID,
 			"relation":    tk.GetRelation(),
