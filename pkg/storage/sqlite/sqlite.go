@@ -255,8 +255,8 @@ func (s *Datastore) write(
 	// select columns required for the SQLTupleIterator
 	selectBuilder := s.stbl.
 		Select(tupleColumns...).
+		Where(sq.Eq{"store": store}).
 		From("tuple")
-	// TODO: Clarify if we need to use FOR UPDATE here as SQLite does not support select * FOR UPDATE
 
 	// Assume deletes is a slice of tuple keys (e.g., storage.Deletes)
 	var orConditions []sq.Sqlizer
@@ -265,7 +265,6 @@ func (s *Datastore) write(
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 		orConditions = append(orConditions, sq.Eq{
-			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
 			"relation":         tk.GetRelation(),
@@ -280,7 +279,6 @@ func (s *Datastore) write(
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 		orConditions = append(orConditions, sq.Eq{
-			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
 			"relation":         tk.GetRelation(),
@@ -416,11 +414,7 @@ func (s *Datastore) write(
 					continue
 				}
 				// If tuple conditions are different, we throw an error.
-				// TODO: Is this the right error or we want to return 409?
-				return storage.InvalidWriteInputError(
-					tk,
-					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-				)
+				return storage.TupleConditionConflictError(tk)
 			case storage.OnDuplicateInsertError:
 				fallthrough
 			default:
@@ -478,9 +472,8 @@ func (s *Datastore) write(
 		}
 
 		if rowsAffected != deleteCount {
-			// If we hit this, this means that there is a race condition.
-			// TODO: this is where we should return a 409 Conflict error.
-			return fmt.Errorf("%w: one or more tuples to delete were deleted by another transaction", storage.ErrTransactionalWriteFailed)
+			// If we deleted fewer rows than planned (after read before write), means we hit a race condition - someone else deleted the same row(s).
+			return storage.ErrWriteConflictOnDelete
 		}
 	}
 
@@ -493,8 +486,8 @@ func (s *Datastore) write(
 		if err != nil {
 			dberr := HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
-				// If we hit this, this means that there's a real conflict, return 409 Conflict error.
-				return dberr // TODO : this is where we should return a 409 Conflict error.
+				// ErrCollision is returned on duplicate write (constraint violation), meaning we hit a race condition - someone else inserted the same row(s).
+				return storage.ErrWriteConflictOnInsert
 			}
 			return dberr
 		}
