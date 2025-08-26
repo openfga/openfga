@@ -106,11 +106,11 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 					zap.String("store_id", reqClone.GetStoreID()),
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
 					zap.Bool("main", resClone.GetAllowed()),
-					zap.Bool("main-cycle", resClone.GetCycleDetected()),
+					zap.Bool("main_cycle", resClone.GetCycleDetected()),
 					zap.Int64("main_latency_us", mainDuration.Microseconds()),
 					zap.Uint32("main_query_count", resClone.GetResolutionMetadata().DatastoreQueryCount),
 					zap.Bool("shadow", shadowRes.GetAllowed()),
-					zap.Bool("shadow-cycle", shadowRes.GetCycleDetected()),
+					zap.Bool("shadow_cycle", shadowRes.GetCycleDetected()),
 					zap.Int64("shadow_latency_us", shadowDuration.Microseconds()),
 					zap.Uint32("shadow_query_count", shadowRes.GetResolutionMetadata().DatastoreQueryCount),
 				)
