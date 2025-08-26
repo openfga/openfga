@@ -959,20 +959,23 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
+		resolver := c.defaultTTU
 		possibleResolvers := []string{defaultResolver}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleResolvers = append(possibleResolvers, weightTwoResolver)
+				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleResolvers = append(possibleResolvers, recursiveResolver)
+				resolver = c.recursiveTTU
 			}
 		}
 
 		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
-			return c.defaultTTU(ctx, req, rewrite, filteredIter)
+			return resolver(ctx, req, rewrite, filteredIter)
 		}
 
 		var b strings.Builder
@@ -992,8 +995,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		keyPlan := c.planner.GetKeyPlan(planKey)
 		resolverName := keyPlan.SelectResolver(possibleResolvers)
 
-		resolver := c.defaultTTU
 		switch resolverName {
+		case defaultResolver:
+			resolver = c.defaultTTU
 		case weightTwoResolver:
 			resolver = c.weight2TTU
 		case recursiveResolver:
