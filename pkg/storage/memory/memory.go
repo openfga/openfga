@@ -462,7 +462,7 @@ func sanitizeTuplesWriteDelete(
 }
 
 // find returns tuple if *storage.TupleRecord [*storage.TupleRecord] returns true.
-// return nil otherwise
+// Return nil otherwise.
 func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) *storage.TupleRecord {
 	for _, tr := range records {
 		if match(tr, tupleKey) {
