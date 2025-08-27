@@ -89,30 +89,10 @@ The Cache Controller manages cache invalidation by monitoring data changes and p
 
 #### Cache Controller
 
-The Cache Controller TTL has a critical relationship with other cache TTLs that affects invalidation behavior:
+With the Cache Controller enabled, the controller TTL sets the maximum staleness window. Cache TTLs primarily affect hit rate and memory usage, not freshness. Choose:
 
-- **Purpose**: Controls how often the cache controller checks for data changes that might invalidate cached entries
-- **Detection Window**: The cache controller only detects changes that occurred within its TTL window
-- **Invalidation Effectiveness**: If cache controller TTL is too long relative to other caches, stale data may persist
-
-**Important Rule**: Cache Controller TTL should be **shorter than or equal to** other cache TTLs for optimal invalidation:
-
-```bash
-# Good configuration - Controller checks more frequently than cache expiry
-export OPENFGA_CACHE_CONTROLLER_TTL=10s           # Controller checks every 10s
-export OPENFGA_CHECK_QUERY_CACHE_TTL=30s          # Query cache expires after 30s
-export OPENFGA_CHECK_ITERATOR_CACHE_TTL=60s       # Iterator cache expires after 60s
-
-# Problematic configuration - Controller checks less frequently
-export OPENFGA_CACHE_CONTROLLER_TTL=60s           # Controller checks every 60s
-export OPENFGA_CHECK_QUERY_CACHE_TTL=10s          # Query cache expires after 10s (too short!)
-```
-
-**Why this relationship matters**:
-
-1. **Change Detection**: The controller only looks for changes within its TTL window
-2. **Stale Data Risk**: If controller TTL > cache TTL, changes might be missed during the cache's lifetime
-3. **Invalidation Lag**: Longer controller TTL means longer time before invalidation occurs
+- Controller TTL ≤ your maximum acceptable staleness (e.g., 10–60s).
+- Cache TTLs as long as your memory budget and workload allow.
 
 ## Recommended Configuration
 
@@ -125,12 +105,12 @@ export OPENFGA_CACHE_CONTROLLER_TTL=10s
 # Enable Check query caching
 export OPENFGA_CHECK_QUERY_CACHE_ENABLED=true
 export OPENFGA_CHECK_CACHE_LIMIT=25000
-export OPENFGA_CHECK_QUERY_CACHE_TTL=30s
+export OPENFGA_CHECK_QUERY_CACHE_TTL=3600s
 
 # Enable ListObjects query caching
 export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_ENABLED=true
 export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_MAX_RESULTS=25000
-export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL=45s
+export OPENFGA_LIST_OBJECTS_ITERATOR_CACHE_TTL=3600s
 ```
 
 ## Cache Invalidation and Consistency
@@ -186,22 +166,6 @@ OpenFGA provides comprehensive metrics for cache monitoring:
 - `openfga_cachecontroller_cache_invalidation_count`: Number of invalidations performed
 - `openfga_cachecontroller_invalidation_duration_ms`: Time spent on invalidation operations
 
-### Request Logging
-
-Cached requests include additional context in logs:
-
-```json
-{
-  "level": "info",
-  "msg": "Check request completed",
-  "request_id": "...",
-  "store_id": "...",
-  "cache_hit": true,
-  "cache_type": "check_query",
-  "response_time_ms": 2
-}
-```
-
 ## Performance Tuning Guidelines
 
 ### Cache Hit Rate Optimization
@@ -216,16 +180,6 @@ Cached requests include additional context in logs:
 2. **Monitor eviction rates**: High evictions indicate undersized caches
 3. **Balance cache types**: Allocate memory across different cache types based on workload
 4. **Use iterator result limits**: Prevent large iterators from consuming excessive memory
-
-#### TTL Relationship Rules
-
-1. **Controller First**: Set Cache Controller TTL based on how quickly you need to detect changes
-2. **Maximize Cache TTLs**: With Cache Controller enabled, set cache TTLs as high as practical for maximum performance
-3. **Balance Performance vs Freshness**: With Cache Controller enabled, **only Controller TTL affects staleness** - longer cache TTLs improve performance without affecting data freshness
-
-**Important**: When Cache Controller is enabled, individual cache TTLs only affect performance (cache hit rates), not data staleness. The Cache Controller will proactively invalidate stale entries regardless of their TTL, so you can safely use **very long cache TTLs** (hours or even days) for maximum performance without sacrificing data consistency.
-
-**Without Cache Controller**: Cache TTLs directly control staleness, so keep them shorter (30s-300s) to balance performance and freshness.
 
 ## Best Practices
 
@@ -249,13 +203,6 @@ Cached requests include additional context in logs:
    - Query cache: 60-70% of cache memory
    - Iterator caches: 30-40% of cache memory
 3. **Scaling**: Increase cache sizes proportionally with traffic growth
-
-### Security Considerations
-
-1. **Cache isolation**: Caches are isolated per store by design
-2. **No cross-store leakage**: Cache keys include store ID to prevent data leaks
-3. **Memory protection**: Cached data is encrypted in memory if using encrypted storage
-4. **Audit logging**: Cache hits/misses are included in audit logs
 
 ## Troubleshooting
 
@@ -285,10 +232,8 @@ Cached requests include additional context in logs:
 
 1. **Check Configuration**: Verify environment variables and CLI flags
 2. **Monitor Metrics**: Review cache hit rates and eviction counts
-3. **Analyze Logs**: Look for cache-related log entries
-4. **Test Cache Behavior**: Use identical requests to verify caching
-5. **Review Memory Usage**: Ensure adequate memory allocation
-
+3. **Test Cache Behavior**: Use identical requests to verify caching
+4. **Review Memory Usage**: Ensure adequate memory allocation
 
 ## Cache Architecture Details
 

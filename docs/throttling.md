@@ -191,7 +191,6 @@ OpenFGA provides several metrics to monitor throttling behavior:
 
 - `openfga_throttling_delay_ms`: Time spent waiting for dispatch throttling (histogram)
  - Labels: `grpc_service`, `grpc_method`, `throttler_name`
-- `openfga_request_throttled`: Boolean indicating if the request was throttled
 - `openfga_throttled_requests_count`: Count of throttled requests per operation
 
 ### Request Logging
@@ -205,8 +204,7 @@ Throttled requests are logged with additional context:
  "request_id": "...",
  "store_id": "...",
  "dispatch_count": 45,
- "request.throttled": true,
- "throttled_requests_count": 3
+ "request.throttled": true
 }
 ```
 
