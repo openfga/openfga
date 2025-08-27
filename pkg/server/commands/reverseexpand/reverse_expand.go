@@ -755,8 +755,6 @@ func (c *ReverseExpandQuery) trySendCandidate(
 		ok = concurrency.TrySendThroughChannel(ctx, result, candidateChan)
 		if ok {
 			span.SetAttributes(attribute.Bool("sent", true))
-		} else {
-			c.logger.ErrorWithContext(ctx, "failed to send candidate object", zap.String("object", candidateObject))
 		}
 	}
 }
