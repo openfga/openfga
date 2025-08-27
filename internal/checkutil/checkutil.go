@@ -65,6 +65,36 @@ type resolveCheckRequest interface {
 	GetContext() *structpb.Struct
 }
 
+func IteratorReadUsersetTuples(ctx context.Context,
+	req resolveCheckRequest,
+	allowedUserTypeRestrictions []*openfgav1.RelationReference) (storage.TupleKeyIterator, error) {
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+
+	iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		Object:                      req.GetTupleKey().GetObject(),
+		Relation:                    req.GetTupleKey().GetRelation(),
+		AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	), nil
+}
+
 // IteratorReadStartingFromUser returns storage iterator for
 // user with request's type and relation with specified objectIDs as
 // filter.

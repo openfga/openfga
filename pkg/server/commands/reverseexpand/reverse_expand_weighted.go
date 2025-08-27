@@ -339,12 +339,12 @@ func (c *ReverseExpandQuery) queryForTuples(
 		return err
 	}
 
-	// stack.Populate the jobQueue with the initial jobs
+	// Populate the jobQueue with the initial jobs
 	queryJobQueue.enqueue(items...)
 
 	// We could potentially have c.resolveNodeBreadthLimit active routines reaching this point.
-	// Limit querying routines to 2 to avoid explosion of routines.
-	pool := concurrency.NewPool(ctx, 2)
+	// Limit querying routines to avoid explosion of routines.
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
 	for !queryJobQueue.Empty() {
 		job, ok := queryJobQueue.dequeue()
