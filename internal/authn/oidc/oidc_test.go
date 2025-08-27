@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"log"
+	"math/big"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc/v3"
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -18,6 +22,26 @@ import (
 )
 
 func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
+	t.Run("fails_on_invalid_oidc_issuer_url", func(t *testing.T) {
+		_, err := NewRemoteOidcAuthenticator("https://does-not-exist.invalid", nil, "", nil, nil)
+
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error getting OIDC")
+	})
+	t.Run("fails_on_malformed_jwks_url", func(t *testing.T) {
+		oidc := &RemoteOidcAuthenticator{
+			JwksURI: "://malformed-url",
+		}
+		_, err := oidc.GetKeys()
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error fetching keys from ://malformed-url")
+	})
+	t.Run("fails_on_malformed_oidc_issuer_url", func(t *testing.T) {
+		_, err := NewRemoteOidcAuthenticator(":", nil, "", nil, nil)
+
+		require.Error(t, err)
+		require.ErrorContains(t, err, "error forming request to get OIDC")
+	})
 	t.Run("when_the_authorization_header_is_missing_from_the_gRPC_metadata_of_the_request,_returns_'missing_bearer_token'_error", func(t *testing.T) {
 		authenticator := &RemoteOidcAuthenticator{}
 		_, err := authenticator.Authenticate(context.Background())
@@ -214,6 +238,30 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 						"exp": time.Now().Add(10 * time.Minute).Unix(),
 					},
 					privateKeyOverride: nil,
+				})
+			},
+			expectedError: "invalid claims",
+		},
+		{
+			testDescription: "when_jwt_header_lacks_kid_and_signed_with_different_key,_return_'invalid_bearer_token'",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				differentPriv, _ := generateJWTSignatureKeys()
+
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_1",
+					jwtKid:         "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
+					issuerAliases:  []string{"issuer_alias"},
+					subjects:       []string{"openfga client"},
+					clientIDClaims: []string{"azp"},
+					jwtClaims: jwt.MapClaims{
+						"iss": "issuer_alias",
+						"aud": "right_audience",
+						"sub": "openfga client",
+						"exp": time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: differentPriv,
 				})
 			},
 			expectedError: "invalid claims",
@@ -426,6 +474,29 @@ func TestRemoteOidcAuthenticator_Authenticate(t *testing.T) {
 				})
 			},
 		},
+		{
+			testDescription: "verify_token_successfully_when_jwt_header_lacks_kid",
+			testSetup: func() (*RemoteOidcAuthenticator, context.Context, Config, error) {
+				return quickConfigSetup(Config{
+					jwkKid:         "kid_2",
+					jwtKid:         "",
+					issuerURL:      "right_issuer",
+					audience:       "right_audience",
+					issuerAliases:  []string{"issuer_alias"},
+					subjects:       []string{"openfga client"},
+					clientIDClaims: customClientIDClaims,
+					jwtClaims: jwt.MapClaims{
+						"iss":       "issuer_alias",
+						"aud":       "right_audience",
+						"sub":       "openfga client",
+						"custom-id": customClientID,
+						"scope":     scopes,
+						"exp":       time.Now().Add(10 * time.Minute).Unix(),
+					},
+					privateKeyOverride: nil,
+				})
+			},
+		},
 	}
 
 	for _, testC := range successTestCases {
@@ -515,15 +586,29 @@ func generateJWTSignatureKeys() (*rsa.PrivateKey, *rsa.PublicKey) {
 
 // fetchKeysMock returns a function that sets up a mock JWKS.
 func fetchKeysMock(publicKey *rsa.PublicKey, kid string) func(oidc *RemoteOidcAuthenticator) error {
-	// Create a keyfunc with the given RSA public key and RS256 algorithm
-	givenKeys := keyfunc.NewGivenCustom(publicKey, keyfunc.GivenKeyOptions{
-		Algorithm: "RS256",
-	})
 	// Return a function that sets up the mock JWKS with the provided kid
 	return func(oidc *RemoteOidcAuthenticator) error {
-		jwks := keyfunc.NewGiven(map[string]keyfunc.GivenKey{
-			kid: givenKeys,
-		})
+		// Create a JWK Set JSON with the RSA public key
+		n := base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(publicKey.E)).Bytes())
+
+		jwkSetJSON := fmt.Sprintf(`{
+			"keys": [{
+				"kty": "RSA",
+				"kid": "%s",
+				"use": "sig",
+				"alg": "RS256",
+				"n": "%s",
+				"e": "%s"
+			}]
+		}`, kid, n, e)
+
+		// Create keyfunc from JWK Set JSON
+		jwks, err := keyfunc.NewJWKSetJSON(json.RawMessage(jwkSetJSON))
+		if err != nil {
+			log.Fatalf("failed to create keyfunc from JWK Set: %v", err)
+		}
+
 		oidc.JWKs = jwks
 		return nil
 	}
