@@ -545,9 +545,14 @@ func Write(
 		})
 	}
 
-	if len(orConditions) > 0 {
-		selectBuilder = selectBuilder.Where(sq.Or(orConditions))
+	if len(orConditions) == 0 {
+		// Nothing to do.
+		return nil
 	}
+
+	selectBuilder = selectBuilder.
+		Where(sq.Or(orConditions)).
+		RunWith(txn) // make sure to run in the same transaction
 
 	iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
 	defer iter.Stop()
