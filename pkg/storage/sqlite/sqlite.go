@@ -240,7 +240,7 @@ func (s *Datastore) write(
 	var txn *sql.Tx
 	err := busyRetry(func() error {
 		var err error
-		txn, err = s.db.BeginTx(ctx, nil)
+		txn, err = s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 		return err
 	})
 	if err != nil {
