@@ -295,7 +295,6 @@ func (s *Datastore) write(
 	// 3. If list compiled in step 2 is not empty, execute SELECT statement
 	selectBuilder = selectBuilder.
 		Where(sq.Or(orConditions)).
-		OrderBy("store", "object_type", "object_id", "relation", "_user", "user_type").
 		RunWith(txn) // make sure to run in the same transaction
 
 	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
