@@ -7,12 +7,13 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
