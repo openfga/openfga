@@ -502,7 +502,8 @@ func Write(
 	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
-	txn, err := dbInfo.db.BeginTx(ctx, nil)
+	// 1. Begin Transaction ( Isolation Level = READ COMMITTED )
+	txn, err := dbInfo.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return dbInfo.HandleSQLError(err)
 	}
@@ -510,10 +511,7 @@ func Write(
 		_ = txn.Rollback()
 	}()
 
-	// step 1: SELECT ... FOR UPDATE all rows to be deleted and written
-	// in order to validate current state for idempotence and lock for deletes
-
-	// select columns required for the SQLTupleIterator
+	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
 	selectBuilder := dbInfo.stbl.
 		Select(SQLIteratorColumns()...).
 		Where(sq.Eq{"store": store}).
@@ -550,8 +548,10 @@ func Write(
 		return nil
 	}
 
+	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 	selectBuilder = selectBuilder.
-		Where(sq.Or(orConditions)).
+		Where(sq.Or(orConditions)). // Add ORDER BY to ensure consistent lock acquisition order
+		OrderBy("store", "object_type", "object_id", "relation", "_user", "user_type").
 		RunWith(txn) // make sure to run in the same transaction
 
 	iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
@@ -577,12 +577,22 @@ func Write(
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
+	// ensures increasingly unique values within a single thread
+	entropy := ulid.DefaultEntropy()
+
 	var deleteCount int64
 
+	// 4. For deletes
+	// a. If on_missing: error ( default behavior ):
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return an error
+	// b. If on_missing: ignore use the result from Step 3.a.
+	// - Based on the results from step 3.a, which identified and locked existing rows,
+	//   the system will generate DELETE tuple and INSERT changelog statements only for those specific tuples
+	// - For rows that don’t exist in DB - ignore, no-op
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return a HTTP 409 Conflict error
 	for _, tk := range deletes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
 		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
 			// If the tuple does not exist, we can not delete it.
 			switch opts.OnMissingDelete {
@@ -599,6 +609,9 @@ func Write(
 		}
 
 		deleteCount++
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
 		deleteBuilder = deleteBuilder.
 			Where(sq.Eq{
@@ -628,15 +641,17 @@ func Write(
 
 	insertCount := 0
 
+	// 5. For writes
+	// a. If on_duplicate: error ( default behavior )
+	// - Execute INSERTs as a single statement.
+	//   On duplicate insert we’d get a CONSTRAINT VIOLATION error, return 400 Bad Request
+	// b. If on_duplicate: ignore
+	// - Based on the results from step 3.a, which identified and locked existing rows, the system will compare values to the ones we’re trying to insert
+	// - On conflict ( values not identical ) - return an error 409 Conflict
+	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
+	// c. Execute INSERTs as a single statement
+	//   On error, return 409 Conflict
 	for _, tk := range writes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
-		if err != nil {
-			return err
-		}
-
 		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
 			// If the tuple exists, we can not write it.
 			switch opts.OnDuplicateInsert {
@@ -657,6 +672,15 @@ func Write(
 				)
 			}
 		}
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
+		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
+		if err != nil {
+			return err
+		}
+
 		insertCount++
 		insertBuilder = insertBuilder.Values(
 			store,
@@ -714,6 +738,7 @@ func Write(
 		}
 	}
 
+	// 6. Execute INSERT changelog statements
 	if deleteCount > 0 || insertCount > 0 {
 		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
@@ -721,6 +746,7 @@ func Write(
 		}
 	}
 
+	// 7. Commit Transaction
 	if err := txn.Commit(); err != nil {
 		return dbInfo.HandleSQLError(err)
 	}
