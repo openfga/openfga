@@ -571,8 +571,16 @@ func Write(
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
 		Columns(
-			"store", "object_type", "object_id", "relation", "_user",
-			"condition_name", "condition_context", "operation", "ulid", "inserted_at",
+			"store",
+			"object_type",
+			"object_id",
+			"relation",
+			"_user",
+			"condition_name",
+			"condition_context",
+			"operation",
+			"ulid",
+			"inserted_at",
 		)
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
@@ -624,19 +632,32 @@ func Write(
 			})
 
 		changelogBuilder = changelogBuilder.Values(
-			store, objectType, objectID,
-			tk.GetRelation(), tk.GetUser(),
-			"", nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			tk.GetUser(),
+			"",
+			nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			id, sq.Expr("NOW()"),
+			id,
+			sq.Expr("NOW()"),
 		)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
 		Columns(
-			"store", "object_type", "object_id", "relation", "_user", "user_type",
-			"condition_name", "condition_context", "ulid", "inserted_at",
+			"store",
+			"object_type",
+			"object_id",
+			"relation",
+			"_user",
+			"user_type",
+			"condition_name",
+			"condition_context",
+			"ulid",
+			"inserted_at",
 		)
 
 	insertCount := 0
