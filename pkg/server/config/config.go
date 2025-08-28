@@ -581,26 +581,26 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 func (cfg *Config) VerifyDatabaseThrottlesConfig() error {
 	if cfg.CheckDatastoreThrottle.Enabled {
 		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'checkDatabaseThrottler.threshold' must be greater than zero")
+			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
 		}
 		if cfg.CheckDatastoreThrottle.Duration <= 0 {
-			return errors.New("'checkDatabaseThrottler.duration' must be greater than zero")
+			return errors.New("'checkDatastoreThrottler.duration' must be greater than zero")
 		}
 	}
 	if cfg.ListObjectsDatastoreThrottle.Enabled {
 		if cfg.ListObjectsDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listObjectsDatabaseThrottler.threshold' must be greater than zero")
+			return errors.New("'listObjectsDatastoreThrottler.threshold' must be greater than zero")
 		}
 		if cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listObjectsDatabaseThrottler.duration' must be greater than zero")
+			return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero")
 		}
 	}
 	if cfg.ListUsersDatastoreThrottle.Enabled {
 		if cfg.ListUsersDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listUsersDatabaseThrottler.threshold' must be greater than zero")
+			return errors.New("'listUsersDatastoreThrottler.threshold' must be greater than zero")
 		}
 		if cfg.ListUsersDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listUsersDatabaseThrottler.duration' must be greater than zero")
+			return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero")
 		}
 	}
 	return nil
