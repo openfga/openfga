@@ -236,6 +236,7 @@ func (s *Datastore) write(
 	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
+	// 1. Begin Transaction ( Isolation Level = READ COMMITTED )
 	var txn *sql.Tx
 	err := busyRetry(func() error {
 		var err error
@@ -249,10 +250,7 @@ func (s *Datastore) write(
 		_ = txn.Rollback()
 	}()
 
-	// step 1: SELECT ... FOR UPDATE all rows to be deleted and written
-	// in order to validate current state for idempotence and lock for deletes
-
-	// select columns required for the SQLTupleIterator
+	// 2. Compile a SELECT statement to read the tuples for writes and deletes
 	selectBuilder := s.stbl.
 		Select(tupleColumns...).
 		Where(sq.Eq{"store": store}).
@@ -288,11 +286,16 @@ func (s *Datastore) write(
 			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
 	}
+
 	if len(orConditions) == 0 {
 		// Nothing to do.
 		return nil
 	}
-	selectBuilder = selectBuilder.Where(sq.Or(orConditions))
+
+	// 3. If list compiled in step 2 is not empty, execute SELECT statement
+	selectBuilder = selectBuilder.
+		Where(sq.Or(orConditions)).
+		RunWith(txn) // make sure to run in the same transaction
 
 	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
 	defer iter.Stop()
@@ -326,13 +329,23 @@ func (s *Datastore) write(
 		)
 
 	deleteBuilder := s.stbl.Delete("tuple")
+
+	// ensures increasingly unique values within a single thread
+	entropy := ulid.DefaultEntropy()
+
 	var deleteCount int64
 
+	// 4. For deletes
+	// a. If on_missing: error ( default behavior ):
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return an error
+	// b. If on_missing: ignore use the result from Step 3.a.
+	// - Based on the results from step 3.a, which identified and locked existing rows,
+	//   the system will generate DELETE tuple and INSERT changelog statements only for those specific tuples
+	// - For rows that don’t exist in DB - ignore, no-op
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return a HTTP 409 Conflict error
 	for _, tk := range deletes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
-
 		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
 			// If the tuple does not exist, we can not delete it.
 			switch opts.OnMissingDelete {
@@ -349,6 +362,11 @@ func (s *Datastore) write(
 		}
 
 		deleteCount++
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
 		deleteBuilder = deleteBuilder.
 			Where(sq.Eq{
 				"store":            store,
@@ -393,17 +411,20 @@ func (s *Datastore) write(
 			"ulid",
 			"inserted_at",
 		)
+
 	insertCount := 0
 
+	// 5. For writes
+	// a. If on_duplicate: error ( default behavior )
+	// - Execute INSERTs as a single statement.
+	//   On duplicate insert we’d get a CONSTRAINT VIOLATION error, return 400 Bad Request
+	// b. If on_duplicate: ignore
+	// - Based on the results from step 3.a, which identified and locked existing rows, the system will compare values to the ones we’re trying to insert
+	// - On conflict ( values not identical ) - return an error 409 Conflict
+	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
+	// c. Execute INSERTs as a single statement
+	//   On error, return 409 Conflict
 	for _, tk := range writes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
-
-		conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
-		if err != nil {
-			return err
-		}
 		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
 			// If the tuple exists, we can not write it.
 			switch opts.OnDuplicateInsert {
@@ -424,22 +445,31 @@ func (s *Datastore) write(
 				)
 			}
 		}
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
+		conditionName, conditionContext, err := sqlcommon.MarshalRelationshipCondition(tk.GetCondition())
+		if err != nil {
+			return err
+		}
+
 		insertCount++
-		insertBuilder = insertBuilder.
-			Values(
-				store,
-				objectType,
-				objectID,
-				tk.GetRelation(),
-				userObjectType,
-				userObjectID,
-				userRelation,
-				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-				conditionName,
-				conditionContext,
-				id,
-				sq.Expr("datetime('subsec')"),
-			)
+		insertBuilder = insertBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			userObjectType,
+			userObjectID,
+			userRelation,
+			tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			conditionName,
+			conditionContext,
+			id,
+			sq.Expr("datetime('subsec')"),
+		)
 		changelogBuilder = changelogBuilder.Values(
 			store,
 			objectType,
@@ -493,7 +523,8 @@ func (s *Datastore) write(
 		}
 	}
 
-	if insertCount > 0 || deleteCount > 0 {
+	// 6. Execute INSERT changelog statements
+	if deleteCount > 0 || insertCount > 0 {
 		err := busyRetry(func() error {
 			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 			return err
