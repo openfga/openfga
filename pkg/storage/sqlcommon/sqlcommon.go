@@ -517,7 +517,13 @@ func makeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []tupleLo
 			user:       tk.GetUser(),
 			userType:   string(tupleUtils.GetUserTypeFromUser(tk.GetUser())),
 		}
-		s := strings.Join([]string{k.objectType, k.objectID, k.relation, k.user, k.userType}, "\x00")
+		s := strings.Join([]string{
+			k.objectType,
+			k.objectID,
+			k.relation,
+			k.user,
+			k.userType,
+		}, "\x00")
 		if _, ok := seen[s]; ok {
 			return
 		}
@@ -559,7 +565,7 @@ func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
 		return "", nil
 	}
 	var sb strings.Builder
-	args := make([]interface{}, 0, len(keys)*6)
+	args := make([]interface{}, 0, len(keys)*5)
 	sb.WriteByte('(')
 	for i, k := range keys {
 		if i > 0 {
