@@ -16,10 +16,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Breaking: Changes to storage interface
 
   > [!NOTE]
-  > The following breaking changes are related to the storage interface. If you are not implementing a storage adaptor, then there are these changes should not impact your usage of OpenFGA.
+  > The following breaking changes are related to the storage interface. If you are not implementing a storage adapter, then these changes should not impact your usage of OpenFGA.
 
-  - Changed `RelationshipTupleWriter` Datastore interface to accept `TupleWriteOptions` param, enabling customizable behavior for write operations across all storage backends and mocks. [#2651](https://github.com/openfga/openfga/pull/2651)
-    Implementers will need to update the `Write` method signature to accept the new `TupleWriteOptions` parameter.
+  - Changed the `RelationshipTupleWriter` datastore interface to accept variadic write options (`opts ...TupleWriteOption`) to customize behavior on duplicate inserts and missing deletes. [#2663](https://github.com/openfga/openfga/pull/2663)
+    Implementers must update the `Write` method signature to include `opts ...TupleWriteOption`. Defaults preserve prior behavior (error on duplicates and on missing deletes). Example:
+    `Write(ctx, store, deletes, writes, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))`
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
