@@ -344,7 +344,8 @@ func TestFindTupleKey(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.found, find(test.records, test.tupleKey))
+			found := find(test.records, test.tupleKey) != nil
+			require.Equal(t, test.found, found)
 		})
 	}
 }

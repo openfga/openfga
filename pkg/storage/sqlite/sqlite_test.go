@@ -76,6 +76,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
+				storage.TupleWriteOptions{},
 				time.Now())
 			require.NoError(t, err)
 
@@ -84,6 +85,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
+				storage.TupleWriteOptions{},
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
@@ -91,6 +93,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
+				storage.TupleWriteOptions{},
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
@@ -164,6 +167,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
+		storage.TupleWriteOptions{},
 		time.Now())
 	require.NoError(t, err)
 
@@ -172,6 +176,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
+		storage.TupleWriteOptions{},
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
