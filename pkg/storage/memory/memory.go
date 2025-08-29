@@ -453,7 +453,7 @@ func sanitizeTuplesWriteDelete(
 					duplicateWrites = append(duplicateWrites, i)
 					continue
 				}
-				// TODO: Is this the right error or we want to return 409?
+				return nil, nil, storage.TupleConditionConflictError(tk)
 			}
 			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 		}

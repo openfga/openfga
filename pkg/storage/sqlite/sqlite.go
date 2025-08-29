@@ -38,7 +38,7 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 
 var tupleColumns = []string{
 	"store", "object_type", "object_id", "relation",
-	"user_object_type", "user_object_id", "user_relation", /* TODO: "user_type"?, what is the difference */
+	"user_object_type", "user_object_id", "user_relation",
 	"condition_name", "condition_context", "ulid", "inserted_at",
 }
 

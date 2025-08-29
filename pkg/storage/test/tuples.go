@@ -926,7 +926,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
 			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
 		require.Error(t, err)
-		// TODO: Assert this is the 409 error
+		// 409 Conflict should be returned
+		require.ErrorIs(t, err, storage.ErrTransactionalWriteFailed)
 
 		// ensure only 1 write is recorded
 		expectedChanges := []*openfgav1.TupleChange{
@@ -966,8 +967,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
 			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
 		require.Error(t, err)
-		// TODO: Assert this is the 409 error
-
+		// 409 Conflict should be returned
+		require.ErrorIs(t, err, storage.ErrTransactionalWriteFailed)
 		// ensure only 1 write is recorded
 		expectedChanges := []*openfgav1.TupleChange{
 			{
