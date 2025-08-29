@@ -801,6 +801,85 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		if diff := cmp.Diff(expectedChanges, changes, cmpIgnoreTimestamp...); diff != "" {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
+
+		// Ensure it is not there.
+		_, err = datastore.ReadUserTuple(ctx, storeID, tk1, storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
+
+	t.Run("delete_ignore_succeed_multiple_stores", func(t *testing.T) {
+		store1 := ulid.Make().String()
+		store2 := ulid.Make().String()
+		tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "11"}
+
+		// First write should succeed.
+		require.NoError(t, datastore.Write(ctx, store1, nil, []*openfgav1.TupleKey{tk1, tk2}))
+		require.NoError(t, datastore.Write(ctx, store2, nil, []*openfgav1.TupleKey{tk1, tk2}))
+		// Delete from store1
+		require.NoError(t, datastore.Write(
+			ctx,
+			store1,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				tuple.TupleKeyToTupleKeyWithoutCondition(tk1),
+				tuple.TupleKeyToTupleKeyWithoutCondition(tk2),
+			},
+			nil,
+			storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore),
+		))
+
+		// Ensure delete worked only on store1
+		_, err := datastore.ReadUserTuple(ctx, store1, tk1, storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		_, err = datastore.ReadUserTuple(ctx, store1, tk2, storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
+
+		// Ensure store2 is unaffected
+		tk1fromDB, err := datastore.ReadUserTuple(ctx, store2, tk1, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		assert.Equalf(t, tk1.String(), tk1fromDB.GetKey().String(), "expected %s, got %s", tk1.String(), tk1fromDB.String())
+		tk2fromDB, err := datastore.ReadUserTuple(ctx, store2, tk2, storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		assert.Equalf(t, tk2.String(), tk2fromDB.GetKey().String(), "expected %s, got %s", tk2.String(), tk2fromDB.String())
+	})
+
+	t.Run("write_and_delete_thousands_of_tuples", func(t *testing.T) {
+		// TODO : this test fails with 1000+ tuples on SQLite due to SQLite, 10_000+ on Postgres
+		numTuples := 500
+
+		storeID := ulid.Make().String()
+		// Write a lot of tuples to both stores to ensure that the delete logic is not
+		// affected by the number of tuples in the database.
+		tuplesToWrite := make([]*openfgav1.TupleKey, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tuplesToWrite[i] = &openfgav1.TupleKey{
+				Object:   fmt.Sprintf("doc:readme%d", i),
+				Relation: "owner",
+				User:     fmt.Sprintf("user:%d", i),
+			}
+		}
+		require.NoError(t, datastore.Write(ctx, storeID, nil, tuplesToWrite))
+		require.NoError(t, datastore.Write(ctx, storeID, nil, tuplesToWrite, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore)))
+
+		tk1, err := datastore.ReadUserTuple(ctx, storeID, tuplesToWrite[1], storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, tk1.GetKey().String(), tuplesToWrite[1].String())
+		tkLast, err := datastore.ReadUserTuple(ctx, storeID, tuplesToWrite[len(tuplesToWrite)-1], storage.ReadUserTupleOptions{})
+		require.NoError(t, err)
+		require.Equal(t, tkLast.GetKey().String(), tuplesToWrite[len(tuplesToWrite)-1].String())
+
+		tuplesToDelete := make([]*openfgav1.TupleKeyWithoutCondition, numTuples)
+		for i := 0; i < numTuples; i++ {
+			tuplesToDelete[i] = tuple.TupleKeyToTupleKeyWithoutCondition(tuplesToWrite[i])
+		}
+		require.NoError(t, datastore.Write(ctx, storeID, tuplesToDelete, nil))
+		require.NoError(t, datastore.Write(ctx, storeID, tuplesToDelete, nil, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore)))
+
+		// Ensure all tuple deleted
+		_, err = datastore.ReadUserTuple(ctx, storeID, tuplesToWrite[1], storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
+		_, err = datastore.ReadUserTuple(ctx, storeID, tuplesToWrite[len(tuplesToWrite)-1], storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("deleting_a_tuple_which_exists_succeeds", func(t *testing.T) {
@@ -1194,6 +1273,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		err = datastore.Write(ctx, storeID, deletes, nil)
 		require.NoError(t, err)
+
+		// Ensure it is not there.
+		_, err = datastore.ReadUserTuple(ctx, storeID, tk, storage.ReadUserTupleOptions{})
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("reading_a_tuple_that_exists_succeeds", func(t *testing.T) {

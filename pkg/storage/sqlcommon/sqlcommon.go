@@ -657,12 +657,14 @@ func Write(
 			"inserted_at",
 		)
 
-	deleteBuilder := dbInfo.stbl.Delete("tuple")
+	deleteBuilder := dbInfo.stbl.Delete("tuple").Where(sq.Eq{"store": store})
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
 
 	var deleteCount int64
+
+	deleteConditions := sq.Or{}
 
 	// 4. For deletes
 	// a. If on_missing: error ( default behavior ):
@@ -695,15 +697,13 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		deleteBuilder = deleteBuilder.
-			Where(sq.Eq{
-				"store":       store,
-				"object_type": objectType,
-				"object_id":   objectID,
-				"relation":    tk.GetRelation(),
-				"_user":       tk.GetUser(),
-				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-			})
+		deleteConditions = append(deleteConditions, sq.Eq{
+			"object_type": objectType,
+			"object_id":   objectID,
+			"relation":    tk.GetRelation(),
+			"_user":       tk.GetUser(),
+			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
 
 		changelogBuilder = changelogBuilder.Values(
 			store,
@@ -753,7 +753,7 @@ func Write(
 			case storage.OnDuplicateInsertIgnore:
 				// If the tuple exists and the condition is the same, we can ignore it.
 				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
-				if existingTuple.GetKey().GetCondition().String() == tk.GetCondition().String() {
+				if proto.Equal(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
 					continue
 				}
 				// If tuple conditions are different, we throw an error.
@@ -804,7 +804,10 @@ func Write(
 	}
 
 	if deleteCount > 0 {
-		res, err := deleteBuilder.RunWith(txn).ExecContext(ctx)
+		res, err := deleteBuilder.
+			Where(deleteConditions).
+			RunWith(txn). // Part of a txn.
+			ExecContext(ctx)
 		if err != nil {
 			return dbInfo.HandleSQLError(err)
 		}

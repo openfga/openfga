@@ -228,15 +228,6 @@ func (s *Datastore) Write(
 	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
-/*
-	"object_type":      objectType,
-	"object_id":        objectID,
-	"relation":         tk.GetRelation(),
-	"user_object_type": userObjectType,
-	"user_object_id":   userObjectID,
-	"user_relation":    userRelation,
-	"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-*/
 // tupleLockKey represents the composite key we lock on.
 type tupleLockKey struct {
 	objectType     string
@@ -428,12 +419,14 @@ func (s *Datastore) write(
 			"inserted_at",
 		)
 
-	deleteBuilder := s.stbl.Delete("tuple")
+	deleteBuilder := s.stbl.Delete("tuple").Where(sq.Eq{"store": store})
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
 
 	var deleteCount int64
+
+	deleteConditions := sq.Or{}
 
 	// 4. For deletes
 	// a. If on_missing: error ( default behavior ):
@@ -467,17 +460,15 @@ func (s *Datastore) write(
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
-		deleteBuilder = deleteBuilder.
-			Where(sq.Eq{
-				"store":            store,
-				"object_type":      objectType,
-				"object_id":        objectID,
-				"relation":         tk.GetRelation(),
-				"user_object_type": userObjectType,
-				"user_object_id":   userObjectID,
-				"user_relation":    userRelation,
-				"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-			})
+		deleteConditions = append(deleteConditions, sq.Eq{
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tk.GetRelation(),
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		})
 
 		changelogBuilder = changelogBuilder.Values(
 			store,
@@ -531,7 +522,7 @@ func (s *Datastore) write(
 			case storage.OnDuplicateInsertIgnore:
 				// If the tuple exists and the condition is the same, we can ignore it.
 				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
-				if existingTuple.GetKey().GetCondition().String() == tk.GetCondition().String() {
+				if proto.Equal(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
 					continue
 				}
 				// If tuple conditions are different, we throw an error.
@@ -591,6 +582,7 @@ func (s *Datastore) write(
 
 		err = busyRetry(func() error {
 			res, err = deleteBuilder.
+				Where(deleteConditions).
 				RunWith(txn). // Part of a txn.
 				ExecContext(ctx)
 			return err
