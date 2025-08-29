@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -492,6 +494,84 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, errorHandler errorHandl
 	}
 }
 
+// tupleLockKey represents the composite key we lock on.
+type tupleLockKey struct {
+	objectType string
+	objectID   string
+	relation   string
+	user       string
+	userType   string
+}
+
+// makeTupleLockKeys flattens deletes+writes into a deduped, sorted slice to ensure stable lock order.
+func makeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []tupleLockKey {
+	keys := make([]tupleLockKey, 0, len(deletes)+len(writes))
+
+	seen := make(map[string]struct{}, cap(keys))
+	add := func(tk *openfgav1.TupleKey) {
+		ot, oid := tupleUtils.SplitObject(tk.GetObject())
+		k := tupleLockKey{
+			objectType: ot,
+			objectID:   oid,
+			relation:   tk.GetRelation(),
+			user:       tk.GetUser(),
+			userType:   string(tupleUtils.GetUserTypeFromUser(tk.GetUser())),
+		}
+		s := strings.Join([]string{k.objectType, k.objectID, k.relation, k.user, k.userType}, "\x00")
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		keys = append(keys, k)
+	}
+
+	for _, tk := range deletes {
+		add(tupleUtils.TupleKeyWithoutConditionToTupleKey(tk))
+	}
+	for _, tk := range writes {
+		add(tk)
+	}
+
+	// Sort deterministically by the composite key to keep lock order stable.
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.objectType != b.objectType {
+			return a.objectType < b.objectType
+		}
+		if a.objectID != b.objectID {
+			return a.objectID < b.objectID
+		}
+		if a.relation != b.relation {
+			return a.relation < b.relation
+		}
+		if a.user != b.user {
+			return a.user < b.user
+		}
+		return a.userType < b.userType
+	})
+
+	return keys
+}
+
+// buildRowConstructorIN builds "((?,?,?,?,?),(?,?,?,?,?),...)" and arg list for row-constructor IN.
+func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
+	if len(keys) == 0 {
+		return "", nil
+	}
+	var sb strings.Builder
+	args := make([]interface{}, 0, len(keys)*6)
+	sb.WriteByte('(')
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString("(?,?,?,?,?)")
+		args = append(args, k.objectType, k.objectID, k.relation, k.user, k.userType)
+	}
+	sb.WriteByte(')')
+	return sb.String(), args
+}
+
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
@@ -507,65 +587,53 @@ func Write(
 	if err != nil {
 		return dbInfo.HandleSQLError(err)
 	}
-	defer func() {
-		_ = txn.Rollback()
-	}()
+	defer func() { _ = txn.Rollback() }()
 
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
-	selectBuilder := dbInfo.stbl.
-		Select(SQLIteratorColumns()...).
-		Where(sq.Eq{"store": store}).
-		From("tuple").
-		Suffix("FOR UPDATE")
-
-	// Assume deletes is a slice of tuple keys (e.g., storage.Deletes)
-	var orConditions []sq.Sqlizer
-
-	for _, tk := range deletes {
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		orConditions = append(orConditions, sq.Eq{
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tk.GetRelation(),
-			"_user":       tk.GetUser(),
-			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-		})
-	}
-
-	for _, tk := range writes {
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		orConditions = append(orConditions, sq.Eq{
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tk.GetRelation(),
-			"_user":       tk.GetUser(),
-			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-		})
-	}
-
-	if len(orConditions) == 0 {
+	// Build a deduped, sorted list of keys to lock.
+	lockKeys := makeTupleLockKeys(deletes, writes)
+	if len(lockKeys) == 0 {
 		// Nothing to do.
 		return nil
 	}
 
+	existing := make(map[string]*openfgav1.Tuple, len(lockKeys))
+
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
-	selectBuilder = selectBuilder.
-		Where(sq.Or(orConditions)). // Add ORDER BY to ensure consistent lock acquisition order
-		OrderBy("store", "object_type", "object_id", "relation", "_user", "user_type").
-		RunWith(txn) // make sure to run in the same transaction
 
-	iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
-	defer iter.Stop()
+	// Efficient, deterministic locking: probe existing rows using a row-constructor IN on the composite key.
+	// Batch to keep SQL size reasonable.
+	const lockBatchSize = 128
 
-	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(orConditions)})
+	for i := 0; i < len(lockKeys); i += lockBatchSize {
+		j := i + lockBatchSize
+		if j > len(lockKeys) {
+			j = len(lockKeys)
+		}
+		keys := lockKeys[i:j]
 
-	if err != nil {
-		return err
-	}
+		inExpr, args := buildRowConstructorIN(keys)
 
-	existing := make(map[string]*openfgav1.Tuple, len(items))
-	for _, tuple := range items {
-		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+		selectBuilder := dbInfo.stbl.
+			Select(SQLIteratorColumns()...).
+			From("tuple").
+			Where(sq.Eq{"store": store}).
+			// Row-constructor IN on full composite key for precise point locks.
+			Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
+			Suffix("FOR UPDATE").
+			RunWith(txn) // make sure to run in the same transaction
+
+		iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
+		defer iter.Stop()
+
+		items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
+
+		if err != nil {
+			return err
+		}
+		for _, tuple := range items {
+			existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+		}
 	}
 
 	changelogBuilder := dbInfo.stbl.
