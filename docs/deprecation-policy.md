@@ -28,26 +28,26 @@ While we *can* introduce breaking changes in minor versions due to our 0.x.x sta
    - Introduce new APIs alongside deprecated ones
    - Rename old methods (e.g., `batchCheck` → `clientBatchCheck`)
    - Provide clear documentation on moving to new patterns
-4. **Ship breaking changes in minor versions**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
+4. **Ship breaking changes in minor features**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
 
 ### Recent Breaking Change Examples
 
 #### Go SDK
-- **v0.7.0 (April 2025)**: BatchCheck API changes
+- **[v0.7.0 (April 2025)](https://github.com/openfga/go-sdk/releases/tag/v0.7.0)**: BatchCheck API changes
   - `BatchCheck` method renamed to `ClientBatchCheck`
   - `BatchCheckResponse` renamed to `ClientBatchCheckResponse`
   - Required OpenFGA v1.8.0+ server
   
-- **v0.6.0 (August 2024)**: Enum handling changes
+- **[v0.6.0 (August 2024)](https://github.com/openfga/go-sdk/releases/tag/v0.6.0)**: Enum handling changes
   - Added class name prefixes to avoid collisions (e.g., `INT` → `TYPENAME_INT`)
 
 #### Python SDK
-- **v0.9.0 (December 2024)**: BatchCheck method changes
+- **[v0.9.0 (December 2024)](https://github.com/openfga/python-sdk/releases/tag/v0.9.0)**: BatchCheck method changes
   - `batch_check` renamed to `client_batch_check`
   - `BatchCheckResponse` renamed to `ClientBatchCheckClientResponse`
 
 #### JavaScript/TypeScript SDK
-- **v0.8.0 (January 2025)**: BatchCheck and Node.js requirements
+- **[v0.8.0 (January 2025)](https://github.com/openfga/js-sdk/releases/tag/v0.8.0)**: BatchCheck and Node.js requirements
   - Minimum Node.js version raised to v16.15.0
   - BatchCheck API changes similar to other SDKs
 
