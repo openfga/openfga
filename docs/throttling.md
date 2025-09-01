@@ -66,6 +66,9 @@ Dispatch throttling can be configured separately for each API operation:
 | `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD` | `--listUsers-dispatch-throttling-max-threshold` | `0` | Maximum threshold allowed for per-request overrides (0 = use default threshold) |
 | `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY` | `--listUsers-dispatch-throttling-frequency` | `10µs` | How often throttled requests are processed |
 
+
+The `*MAX_THRESHOLD` settings should keep the default value unless you are using OpenFGA as a library and plan to set the throttling per request. In that case, the `MAX_THRESHOLD` will act as an upper limit regardless of the value specified in the request.
+
 ## Datastore Throttling
 
 Datastore throttling limits the number of concurrent database operations to prevent overwhelming your database. This is particularly important for high-throughput scenarios where many requests could cause database connection exhaustion or performance degradation.
@@ -106,9 +109,7 @@ Datastore throttling can be configured for each API operation:
 
 ## Configuration Examples
 
-### Basic Dispatch Throttling Setup
-
-Enable dispatch throttling for all operations with conservative settings:
+Enable dispatch throttling for all operations:
 
 ```bash
 # Enable throttling for all APIs
@@ -117,14 +118,14 @@ export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED=true
 export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED=true
 
 # Set dispatch thresholds
-export OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD=50
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD=25
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD=25
+export OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD=3000
+export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD=3000
+export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD=3000
 
 # Configure processing frequency (how often throttled requests are processed)
-export OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY=100ms
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY=100ms
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY=100ms
+export OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY=50ms
+export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY=50ms
+export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY=50ms
 ```
 
 ### Datastore Throttling Setup
@@ -146,41 +147,6 @@ export OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD=10
 export OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION=1s
 export OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION=2s
 export OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION=2s
-```
-
-### Production Configuration Example
-
-A balanced configuration for production environments:
-
-```bash
-# Dispatch Throttling - Moderate settings
-export OPENFGA_CHECK_DISPATCH_THROTTLING_ENABLED=true
-export OPENFGA_CHECK_DISPATCH_THROTTLING_THRESHOLD=75
-export OPENFGA_CHECK_DISPATCH_THROTTLING_MAX_THRESHOLD=200
-export OPENFGA_CHECK_DISPATCH_THROTTLING_FREQUENCY=50ms
-
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_ENABLED=true
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_THRESHOLD=50
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_MAX_THRESHOLD=150
-export OPENFGA_LIST_OBJECTS_DISPATCH_THROTTLING_FREQUENCY=100ms
-
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED=true
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD=50
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_MAX_THRESHOLD=150
-export OPENFGA_LIST_USERS_DISPATCH_THROTTLING_FREQUENCY=100ms
-
-# Datastore Throttling - Database protection
-export OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED=true
-export OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD=30
-export OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION=500ms
-
-export OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED=true
-export OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD=15
-export OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION=1s
-
-export OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED=true
-export OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD=15
-export OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION=1s
 ```
 
 ## Monitoring and Observability
