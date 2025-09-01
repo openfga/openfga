@@ -28,7 +28,7 @@ While we *can* introduce breaking changes in minor versions due to our 0.x.x sta
    - Introduce new APIs alongside deprecated ones
    - Rename old methods (e.g., `batchCheck` → `clientBatchCheck`)
    - Provide clear documentation on moving to new patterns
-4. **Ship breaking changes in minor features**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
+4. **Ship breaking changes in minor versions**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
 
 ### Recent Breaking Change Examples
 
