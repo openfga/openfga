@@ -2,6 +2,7 @@ package planner
 
 import (
 	"math/rand"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,13 +11,15 @@ import (
 
 func TestThompsonStats_Update(t *testing.T) {
 	stats := NewThompsonStats(1 * time.Second)
-	initialMu := stats.mu
+	params := (*samplingParams)(atomic.LoadPointer(&stats.params))
+	initialMu := params.mu
 
 	require.Zero(t, stats.runs)
 
 	stats.Update(100 * time.Millisecond)
 	require.Equal(t, int64(1), stats.runs)
-	require.NotEqual(t, initialMu, stats.mu)
+	params = (*samplingParams)(atomic.LoadPointer(&stats.params))
+	require.NotEqual(t, initialMu, params.mu)
 
 	stats.Update(200 * time.Millisecond)
 	require.Equal(t, int64(2), stats.runs)

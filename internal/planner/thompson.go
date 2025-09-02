@@ -13,15 +13,8 @@ import (
 // ThompsonStats holds the parameters for the Normal-gamma distribution,
 // which models our belief about the performance (execution time) of a strategy.
 type ThompsonStats struct {
-	// All internal atomic values for lock-free concurrent access
-	mu     atomic.Value // float64
-	lambda atomic.Value // float64
-	alpha  atomic.Value // float64
-	beta   atomic.Value // float64
-	runs   int64        // atomic access via atomic.AddInt64/LoadInt64
-
-	// Cache frequently accessed values to avoid repeated atomic loads
-	cachedParams unsafe.Pointer // *samplingParams - atomic access
+	runs   int64          // atomic access via atomic.AddInt64/LoadInt64
+	params unsafe.Pointer // *samplingParams - atomic access
 }
 
 type samplingParams struct {
@@ -34,16 +27,8 @@ type samplingParams struct {
 // Sample draws a random execution time from the learned distribution.
 // This is the core of Thompson Sampling: we sample from our belief and act greedily on that sample.
 func (ts *ThompsonStats) Sample(r *rand.Rand) float64 {
-	// Load cached parameters atomically for best performance
-	params := (*samplingParams)(atomic.LoadPointer(&ts.cachedParams))
-	if params == nil {
-		// Fallback to individual atomic loads if cache not ready (rare case)
-		mu := ts.mu.Load().(float64)
-		lambda := ts.lambda.Load().(float64)
-		alpha := ts.alpha.Load().(float64)
-		beta := ts.beta.Load().(float64)
-		params = &samplingParams{mu, lambda, alpha, beta}
-	}
+	// Load parameters atomically for best performance
+	params := (*samplingParams)(atomic.LoadPointer(&ts.params))
 
 	// Fast path gamma sampling using acceptance-rejection
 	tau := ts.fastGammaSample(r, params.alpha, params.beta)
@@ -95,35 +80,33 @@ func (ts *ThompsonStats) fastGammaSample(r *rand.Rand, alpha, beta float64) floa
 func (ts *ThompsonStats) Update(duration time.Duration) {
 	x := float64(duration.Nanoseconds()) / 1e6 // Convert to milliseconds with higher precision
 
-	// Load current values atomically
-	currentMu := ts.mu.Load().(float64)
-	currentLambda := ts.lambda.Load().(float64)
-	currentAlpha := ts.alpha.Load().(float64)
-	currentBeta := ts.beta.Load().(float64)
+	for {
+		// 1. Atomically load the current parameters
+		oldPtr := atomic.LoadPointer(&ts.params)
+		currentParams := (*samplingParams)(oldPtr)
 
-	// Standard Bayesian update rules for a Normal-gamma distribution.
-	newLambda := currentLambda + 1
-	newMu := (currentLambda*currentMu + x) / newLambda
-	newAlpha := currentAlpha + 0.5
-	diff := x - currentMu
-	newBeta := currentBeta + (currentLambda*diff*diff)/(2*newLambda)
+		// 2. Calculate the new parameters based on the old ones
+		newLambda := currentParams.lambda + 1
+		newMu := (currentParams.lambda*currentParams.mu + x) / newLambda
+		newAlpha := currentParams.alpha + 0.5
+		diff := x - currentParams.mu
+		newBeta := currentParams.beta + (currentParams.lambda*diff*diff)/(2*newLambda)
 
-	// Store new values atomically
-	ts.mu.Store(newMu)
-	ts.lambda.Store(newLambda)
-	ts.alpha.Store(newAlpha)
-	ts.beta.Store(newBeta)
+		newParams := &samplingParams{
+			mu:     newMu,
+			lambda: newLambda,
+			alpha:  newAlpha,
+			beta:   newBeta,
+		}
 
-	// Update cached parameters atomically for concurrent sampling
-	newParams := &samplingParams{
-		mu:     newMu,
-		lambda: newLambda,
-		alpha:  newAlpha,
-		beta:   newBeta,
+		// 3. Try to atomically swap the old pointer with the new one.
+		// If another goroutine changed the pointer in the meantime, this will fail,
+		// and we will loop again to retry the whole operation.
+		if atomic.CompareAndSwapPointer(&ts.params, oldPtr, unsafe.Pointer(newParams)) {
+			atomic.AddInt64(&ts.runs, 1)
+			return
+		}
 	}
-	atomic.StorePointer(&ts.cachedParams, unsafe.Pointer(newParams))
-
-	atomic.AddInt64(&ts.runs, 1)
 }
 
 // NewThompsonStats creates a new stats object with a diffuse prior,
@@ -133,20 +116,14 @@ func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
 
 	ts := &ThompsonStats{}
 
-	// Initialize atomic values
-	ts.mu.Store(initialMs)
-	ts.lambda.Store(1.0) // Low confidence in the initial mean
-	ts.alpha.Store(1.0)  // Diffuse prior for the shape
-	ts.beta.Store(10.0)  // Diffuse prior for the rate (encourages higher variance initially)
-
-	// Initialize cached parameters for concurrent access
+	// Create the initial immutable parameter snapshot.
 	params := &samplingParams{
 		mu:     initialMs,
 		lambda: 1.0,
 		alpha:  1.0,
 		beta:   10.0,
 	}
-	atomic.StorePointer(&ts.cachedParams, unsafe.Pointer(params))
+	atomic.StorePointer(&ts.params, unsafe.Pointer(params))
 
 	return ts
 }

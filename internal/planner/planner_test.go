@@ -22,8 +22,10 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	require.Contains(t, resolvers, choice)
 
 	require.NotNil(t, kp)
-	require.NotNil(t, kp.stats["fast"])
-	require.NotNil(t, kp.stats["slow"])
+	_, ok := kp.stats.Load("fast")
+	require.True(t, ok)
+	_, ok = kp.stats.Load("slow")
+	require.True(t, ok)
 }
 
 func TestProfiler_Update(t *testing.T) {
