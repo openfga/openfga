@@ -46,7 +46,11 @@ func (ts *ThompsonStats) Sample(r *rand.Rand) float64 {
 	return mean
 }
 
-// fastGammaSample implements a fast gamma sampler for common cases.
+// fastGammaSample implements the highly efficient Marsaglia and Tsang acceptance-rejection
+// method for generating gamma-distributed random variables for alpha >= 1.
+// This avoids the overhead of the more general gonum library for our specific high-performance use case.
+// See: G. Marsaglia and W. W. Tsang, "A simple method for generating gamma variables,"
+// ACM Trans. Math. Softw. 26, 3 (Sept. 2000), 363-372.
 func (ts *ThompsonStats) fastGammaSample(r *rand.Rand, alpha, beta float64) float64 {
 	// For alpha >= 1, use acceptance-rejection method (faster than gonum)
 	if alpha >= 1.0 {
