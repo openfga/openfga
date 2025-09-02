@@ -733,9 +733,10 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		userType := tuple.GetType(reqTupleKey.GetUser())
 
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+		isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 
 		// if user in request is userset, we do not have additional strategies to apply
-		if tuple.IsObjectRelation(reqTupleKey.GetUser()) {
+		if isUserset {
 			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
 			if err != nil {
 				return nil, err
