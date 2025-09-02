@@ -90,7 +90,8 @@ func (ts *ThompsonStats) fastGammaSample(r *rand.Rand, alpha, beta float64) floa
 }
 
 // Update performs a Bayesian update on the distribution's parameters
-// using the new data point (the observed execution duration).
+// using the new data point (the observed execution duration). It is the responsibility of the caller
+// to enforce synchronization if multiple goroutines may call Update concurrently.
 func (ts *ThompsonStats) Update(duration time.Duration) {
 	x := float64(duration.Nanoseconds()) / 1e6 // Convert to milliseconds with higher precision
 
