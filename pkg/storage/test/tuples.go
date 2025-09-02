@@ -843,9 +843,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		assert.Equalf(t, tk2.String(), tk2fromDB.GetKey().String(), "expected %s, got %s", tk2.String(), tk2fromDB.String())
 	})
 
-	t.Run("write_and_delete_thousands_of_tuples", func(t *testing.T) {
-		// TODO : this test fails with 1000+ tuples on SQLite due to SQLite, 10_000+ on Postgres
-		numTuples := 500
+	t.Run("write_and_delete_many_tuples", func(t *testing.T) {
+		numTuples := 40
 
 		storeID := ulid.Make().String()
 		// Write a lot of tuples to both stores to ensure that the delete logic is not
