@@ -29,11 +29,9 @@ func New(initialGuess time.Duration) *Planner {
 
 // GetKeyPlan retrieves the plan for a specific key, creating it if it doesn't exist.
 func (p *Planner) GetKeyPlan(key string) *KeyPlan {
-	// LoadOrStore atomically handles the check-and-create logic.
 	kp, _ := p.keys.LoadOrStore(key, &KeyPlan{
 		initialGuess: p.initialGuess,
 		planner:      p,
-		// The stats map is now a sync.Map, so no pre-allocation is needed.
 	})
 	return kp.(*KeyPlan)
 }
@@ -42,8 +40,7 @@ func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 // This struct is now entirely lock-free, using a sync.Map to manage its stats.
 type KeyPlan struct {
 	initialGuess time.Duration
-	// By replacing the RWMutex and standard map with a sync.Map, we eliminate
-	// a major contention point. Operations on different resolvers within the same
+	// Operations on different resolvers within the same
 	// key (e.g., updating "fast-path" and "standard-path") can now run in parallel.
 	stats   sync.Map // Stores map[string]*ThompsonStats
 	planner *Planner
@@ -52,7 +49,6 @@ type KeyPlan struct {
 // SelectResolver implements the Thompson Sampling decision rule.
 // It is the main entry point for getting a decision and is safe for concurrent use.
 func (kp *KeyPlan) SelectResolver(resolvers []string) string {
-	// No more RWMutex! The logic is simpler and faster.
 	rng := kp.planner.rngPool.Get().(*rand.Rand)
 	defer kp.planner.rngPool.Put(rng)
 
@@ -77,21 +73,15 @@ func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 }
 
 // UpdateStats performs the Bayesian update for the given resolver's statistics.
-// This method is now lock-free and highly concurrent.
 func (kp *KeyPlan) UpdateStats(resolver string, duration time.Duration) {
-	// No more mutex lock!
-
-	// Get or create the stats object for this resolver atomically.
 	ts, _ := kp.stats.LoadOrStore(resolver, NewThompsonStats(kp.initialGuess))
 
-	// Call the lock-free Update method on the ThompsonStats object.
 	// Concurrent updates to different resolvers for the same key will not block each other.
 	ts.(*ThompsonStats).Update(duration)
 }
 
 // GetStats returns a snapshot of the current statistics for all resolvers of this key.
 func (kp *KeyPlan) GetStats() map[string]*ThompsonStats {
-	// No more RLock. We iterate over the sync.Map to create a copy.
 	result := make(map[string]*ThompsonStats)
 	kp.stats.Range(func(key, value interface{}) bool {
 		result[key.(string)] = value.(*ThompsonStats)
