@@ -13,6 +13,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+- Bumped the version of `openfga/language/pkg`. [#2677](https://github.com/openfga/openfga/pull/2677)
+
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
