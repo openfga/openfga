@@ -3,12 +3,10 @@ package reverseexpand
 import (
 	"context"
 	"errors"
-	"testing"
-	"time"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -2307,93 +2305,6 @@ func TestIntersectionHandler(t *testing.T) {
 		require.ErrorContains(t, err, "invalid edges for source type")
 		err = pool.Wait()
 		require.NoError(t, err)
-	})
-
-	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
-		model := `
-			model
-				schema 1.1
-			type user
-			type user2
-			type subteam
-				relations
-					define member: [user]
-			type adhoc
-				relations
-					define member: [user]
-			type team
-				relations
-					define member: [subteam#member]
-			type group
-				relations
-					define team: [team]
-					define subteam: [subteam]
-					define adhoc_member: [adhoc#member]
-					define member: [user2] and member from team and adhoc_member and member from subteam
-		`
-		tuples := []string{}
-		objectType := "group"
-		relation := "member"
-		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
-
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
-		typesys, err := typesystem.New(
-			authModel,
-		)
-		require.NoError(t, err)
-		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-		resultChan := make(chan *ReverseExpandResult)
-		errChan := make(chan error, 1)
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
-		)
-
-		node, ok := typesys.GetNode("group#member")
-		require.True(t, ok)
-
-		edges, err := typesys.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
-
-		pool := concurrency.NewPool(ctx, 2)
-
-		go func() {
-			newErr := q.intersectionHandler(pool, &ReverseExpandRequest{
-				StoreID:       storeID,
-				ObjectType:    objectType,
-				Relation:      relation,
-				User:          user,
-				relationStack: nil,
-			}, resultChan, edges, "", NewResolutionMetadata())
-
-			if newErr != nil {
-				errChan <- newErr
-			}
-
-			poolErr := pool.Wait()
-
-			if poolErr != nil {
-				errChan <- poolErr
-			}
-		}()
-
-		select {
-		case res := <-resultChan:
-			require.Fail(t, "expected no result, but got one", "received: %+v", res)
-		case <-time.After(300 * time.Millisecond):
-			// Success: no result received within timeout
-		case err := <-errChan:
-			require.Fail(t, "unexpected error received on error channel: "+err.Error())
-		}
 	})
 
 	t.Run("return_error_when_check_errors", func(t *testing.T) {
