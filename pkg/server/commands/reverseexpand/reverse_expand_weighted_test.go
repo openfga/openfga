@@ -86,35 +86,35 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"repo:fga"},
 			expectedUnoptimizedObjects: []string{"repo:fga"},
 		},
-		//{
-		//	name: "ttu_from_union_broken",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type organization
-		//		  relations
-		//			define member: [user]
-		//			define repo_admin: [user, organization#member]
-		//		type repo
-		//		  relations
-		//			define admin: [user, team#member] or repo_admin from owner
-		//			define owner: [organization]
-		//		type team
-		//		  relations
-		//			define member: [user, team#member]
-		//
-		//		type user
-		// `,
-		//	tuples: []string{
-		//		"repo:fga#owner@organization:justin_and_zee",
-		//		"organization:justin_and_zee#repo_admin@user:justin",
-		//	},
-		//	objectType:                 "repo",
-		//	relation:                   "admin",
-		//	user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-		//	expectedOptimizedObjects:   []string{"repo:fga"},
-		//	expectedUnoptimizedObjects: []string{"repo:fga"},
-		//},
+		{
+			name: "ttu_from_union",
+			model: `model
+				  schema 1.1
+		
+				type organization
+				  relations
+					define member: [user]
+					define repo_admin: [user, organization#member]
+				type repo
+				  relations
+					define admin: [user, team#member] or repo_admin from owner
+					define owner: [organization]
+				type team
+				  relations
+					define member: [user, team#member]
+		
+				type user
+		`,
+			tuples: []string{
+				"repo:fga#owner@organization:justin_and_zee",
+				"organization:justin_and_zee#repo_admin@user:justin",
+			},
+			objectType:                 "repo",
+			relation:                   "admin",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedOptimizedObjects:   []string{"repo:fga"},
+			expectedUnoptimizedObjects: []string{"repo:fga"},
+		},
 		{
 			name: "ttu_multiple_types_with_rewrites",
 			model: `model
@@ -242,38 +242,38 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4"},
 			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4"},
 		},
-		//{
-		//	name: "recursive_relation_and_tuple_cycle_broken",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type entity
-		//		  relations
-		//			define member: [user] or viewer from parent or member from parent
-		//		  	define parent: [entity]
-		//		  	define viewer: [user] or member
-		//`,
-		//	tuples: []string{
-		//		"entity:1#member@user:bob",
-		//		"entity:2#parent@entity:2a",
-		//		"entity:2a#viewer@entity:1",
-		//		"entity:3#parent@entity:4",
-		//		"entity:4#member@user:bob",
-		//		"entity:5#parent@entity:6",
-		//		"entity:6#parent@entity:7",
-		//		"entity:7#parent@entity:7a",
-		//		"entity:7a#viewer@user:bob",
-		//		"entity:8#parent@entity:9",
-		//		"entity:9#parent@entity:10",
-		//		"entity:10#member@user:bob",
-		//	},
-		//	objectType:                 "entity",
-		//	relation:                   "member",
-		//	user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
-		//	expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
-		//},
+		{
+			name: "recursive_relation_and_tuple_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type entity
+				  relations
+					define member: [user] or viewer from parent or member from parent
+				  	define parent: [entity]
+				  	define viewer: [user] or member
+		`,
+			tuples: []string{
+				"entity:1#member@user:bob",
+				"entity:2#parent@entity:2a",
+				"entity:2a#viewer@entity:1",
+				"entity:3#parent@entity:4",
+				"entity:4#member@user:bob",
+				"entity:5#parent@entity:6",
+				"entity:6#parent@entity:7",
+				"entity:7#parent@entity:7a",
+				"entity:7a#viewer@user:bob",
+				"entity:8#parent@entity:9",
+				"entity:9#parent@entity:10",
+				"entity:10#member@user:bob",
+			},
+			objectType:                 "entity",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
+			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
+		},
 		{
 			name: "recursive_tuple_cycle",
 			model: `model
@@ -304,73 +304,71 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
 			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
 		},
-		// TODO:
-		// fix tuple cycles
-		//{
-		//	name: "ttu_with_cycle_broken",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type org
-		//		  relations
-		//			define org_to_company: [company]
-		//			define org_cycle: [user] or company_cycle from org_to_company
-		//		type company
-		//		  relations
-		//			define company_to_org: [org]
-		//			define company_cycle: [user] or org_cycle from company_to_org
-		// `,
-		//	tuples: []string{
-		//		"company:b#company_to_org@org:a",
-		//		"org:a#org_to_company@company:b",
-		//		"company:b#company_to_org@org:b",
-		//		"org:b#org_to_company@company:c",
-		//		"company:c#company_cycle@user:bob",
-		//	},
-		//	objectType:                 "org",
-		//	relation:                   "org_cycle",
-		//	user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedOptimizedObjects:   []string{"org:a", "org:b"},
-		//	expectedUnoptimizedObjects: []string{"org:a", "org:b"},
-		//},
-		//{
-		//	name: "ttu_with_3_model_cycle_broken",
-		//	model: `model
-		//		  schema 1.1
-		//
-		//		type user
-		//		type team
-		//		  relations
-		//			define team_to_company: [company]
-		//			define can_access: [user] or can_access from team_to_company
-		//		type org
-		//		  relations
-		//			define org_to_team: [team]
-		//			define can_access: [user] or can_access from org_to_team
-		//		type company
-		//		  relations
-		//			define company_to_org: [org]
-		//			define can_access: [user] or can_access from company_to_org
-		//`,
-		//	tuples: []string{
-		//		// Tuples to create a long cycle
-		//		"company:a_corp#company_to_org@org:a_org",
-		//		"org:a_org#org_to_team@team:a_team",
-		//		"team:a_team#team_to_company@company:b_corp",
-		//		"company:b_corp#company_to_org@org:b_org",
-		//		"org:b_org#org_to_team@team:b_team",
-		//		"team:b_team#team_to_company@company:a_corp",
-		//
-		//		// Tuple to grant user:bob access into the cycle
-		//		"company:a_corp#can_access@user:bob",
-		//	},
-		//	objectType:                 "org",
-		//	relation:                   "can_access",
-		//	user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-		//	expectedOptimizedObjects:   []string{"org:a_org", "org:b_org"},
-		//	expectedUnoptimizedObjects: []string{"org:a_org", "org:b_org"},
-		//},
+		{
+			name: "ttu_with_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define org_to_company: [company]
+					define org_cycle: [user] or company_cycle from org_to_company
+				type company
+				  relations
+					define company_to_org: [org]
+					define company_cycle: [user] or org_cycle from company_to_org
+		`,
+			tuples: []string{
+				"company:b#company_to_org@org:a",
+				"org:a#org_to_company@company:b",
+				"company:b#company_to_org@org:b",
+				"org:b#org_to_company@company:c",
+				"company:c#company_cycle@user:bob",
+			},
+			objectType:                 "org",
+			relation:                   "org_cycle",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "ttu_with_3_model_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type team
+				  relations
+					define team_to_company: [company]
+					define can_access: [user] or can_access from team_to_company
+				type org
+				  relations
+					define org_to_team: [team]
+					define can_access: [user] or can_access from org_to_team
+				type company
+				  relations
+					define company_to_org: [org]
+					define can_access: [user] or can_access from company_to_org
+		`,
+			tuples: []string{
+				// Tuples to create a long cycle
+				"company:a_corp#company_to_org@org:a_org",
+				"org:a_org#org_to_team@team:a_team",
+				"team:a_team#team_to_company@company:b_corp",
+				"company:b_corp#company_to_org@org:b_org",
+				"org:b_org#org_to_team@team:b_team",
+				"team:b_team#team_to_company@company:a_corp",
+
+				// Tuple to grant user:bob access into the cycle
+				"company:a_corp#can_access@user:bob",
+			},
+			objectType:                 "org",
+			relation:                   "can_access",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a_org", "org:b_org"},
+			expectedUnoptimizedObjects: []string{"org:a_org", "org:b_org"},
+		},
 		{
 			name: "intersection_with_multiple_directs",
 			model: `model

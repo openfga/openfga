@@ -153,6 +153,13 @@ func (c *ReverseExpandQuery) loopOverEdges(
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
+		// In the case of a cycle, we need to skip the weighted graph.
+		// This is temporary, as tuple cycles are currently in development.
+		if toNode.IsPartOfTupleCycle() {
+			req.skipWeightedGraph = true
+			return c.dispatch(ctx, req, resultChan, false, resolutionMetadata)
+		}
+
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
 		isRecursive := toNode.GetRecursiveRelation() != "" // TODO: don't forget to exclude tuple cycles
 
