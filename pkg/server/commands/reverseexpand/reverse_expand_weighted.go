@@ -145,17 +145,15 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	resultChan chan<- *ReverseExpandResult,
 	sourceUserType string,
 ) error {
-	//pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
-	pool := concurrency.NewPool(ctx, 1)
+	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 
-	fmt.Printf("the stack at the start: %s\n", stack.String(req.relationStack))
 	for _, edge := range edges {
 		newReq := req.clone()
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
-		isRecursive := toNode.GetRecursiveRelation() != ""
+		isRecursive := toNode.GetRecursiveRelation() != "" // TODO: don't forget to exclude tuple cycles
 
 		// Going to a userset presents risk of infinite loop. Checking the edge and the traversal stack
 		// ensures we don't perform the same traversal multiple times.
@@ -170,7 +168,6 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				continue
 			}
 		}
-		fmt.Printf("%s --> %s – isRecursive %t\n", edge.GetFrom().GetUniqueLabel(), toNode.GetUniqueLabel(), isRecursive)
 
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -188,15 +185,11 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				}
 				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
-				if isRecursive {
-					entry.isRecursive = true
-				}
+				entry.isRecursive = isRecursive
 
 				newStack = stack.Push(newStack, entry)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
-
-				fmt.Printf("stack after userset stuff: %s\n", stack.String(newReq.relationStack))
 
 				// Now continue traversing
 				pool.Go(func(ctx context.Context) error {
@@ -260,7 +253,6 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			newReq.relationStack = newStack
 
-			fmt.Printf("the stack after TTU: %s\n", stack.String(newReq.relationStack))
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			})
@@ -453,10 +445,6 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	}
 	defer filteredIter.Stop()
 
-	fmt.Printf("querying for: %s#%s@%v\n", objectType, relation, userFilter[0])
-	fmt.Printf("entry at that point: %v\n", entry)
-	fmt.Printf("remainder at that point: %v\n", stack.String(newStack))
-
 	var nextJobs []queryJob
 
 	for {
@@ -487,6 +475,8 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// the evaluation one level higher up the tree with the `foundObject`.
 		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
 
+		// We may still have a recursive request waiting if the recursive relation was
+		// in the middle of the branch
 		if recursiveReq != nil {
 			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
 		}
