@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,17 +56,51 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 	return cmd
 }
 
+func validateWritesOptions(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicateInsert, error) {
+	switch strings.ToLower(wr.GetOnDuplicate()) {
+	case "", "error":
+		return storage.OnDuplicateInsertError, nil
+	case "ignore":
+		return storage.OnDuplicateInsertIgnore, nil
+	default:
+		return storage.OnDuplicateInsertError, serverErrors.ValidationError(fmt.Errorf("invalid on_duplicate option: %s", wr.GetOnDuplicate()))
+	}
+}
+
+func validateDeletesOption(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingDelete, error) {
+	switch strings.ToLower(wr.GetOnMissing()) {
+	case "", "error":
+		return storage.OnMissingDeleteError, nil
+	case "ignore":
+		return storage.OnMissingDeleteIgnore, nil
+	default:
+		return storage.OnMissingDeleteError, serverErrors.ValidationError(fmt.Errorf("invalid on_missing option: %s", wr.GetOnMissing()))
+	}
+}
+
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
 
-	err := c.datastore.Write(
+	onDuplicateInsert, err := validateWritesOptions(req.GetWrites())
+	if err != nil {
+		return nil, err
+	}
+
+	onEmptyDelete, err := validateDeletesOption(req.GetDeletes())
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
 		req.GetDeletes().GetTupleKeys(),
 		req.GetWrites().GetTupleKeys(),
+		storage.WithOnMissingDelete(onEmptyDelete),
+		storage.WithOnDuplicateInsert(onDuplicateInsert),
 	)
 	if err != nil {
 		if errors.Is(err, storage.ErrTransactionalWriteFailed) {
