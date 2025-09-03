@@ -3,10 +3,11 @@ package reverseexpand
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
-	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 

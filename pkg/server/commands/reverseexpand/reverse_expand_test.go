@@ -779,8 +779,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 	}
 }
 
-// TODO:
-// deprecate models with disconnected types
+// deprecate models with disconnected types.
 func TestReverseExpandSkipWeighted(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
@@ -837,7 +836,6 @@ func TestReverseExpandSkipWeighted(t *testing.T) {
 
 	err = reverseExpandQuery.Execute(ctx, request, resultChan, NewResolutionMetadata())
 	require.NoError(t, err)
-
 }
 
 func TestReverseExpandHonorsConsistency(t *testing.T) {
