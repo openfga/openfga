@@ -148,7 +148,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	//pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
 	pool := concurrency.NewPool(ctx, 1)
 
-	fmt.Printf("the stack at the start TTU: %s\n", stack.String(req.relationStack))
+	fmt.Printf("the stack at the start: %s\n", stack.String(req.relationStack))
 	for _, edge := range edges {
 		newReq := req.clone()
 		newReq.weightedEdge = edge
@@ -170,7 +170,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				continue
 			}
 		}
-		//fmt.Printf("%s --> %s – isRecursive %t\n", edge.GetFrom().GetUniqueLabel(), toNode.GetUniqueLabel(), isRecursive)
+		fmt.Printf("%s --> %s – isRecursive %t\n", edge.GetFrom().GetUniqueLabel(), toNode.GetUniqueLabel(), isRecursive)
 
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -188,10 +188,15 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				}
 				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+				if isRecursive {
+					entry.isRecursive = true
+				}
 
 				newStack = stack.Push(newStack, entry)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
+
+				fmt.Printf("stack after userset stuff: %s\n", stack.String(newReq.relationStack))
 
 				// Now continue traversing
 				pool.Go(func(ctx context.Context) error {
@@ -450,7 +455,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 
 	fmt.Printf("querying for: %s#%s@%v\n", objectType, relation, userFilter[0])
 	fmt.Printf("entry at that point: %v\n", entry)
-	fmt.Printf("remained at that point: %v\n", stack.String(newStack))
+	fmt.Printf("remainder at that point: %v\n", stack.String(newStack))
 
 	var nextJobs []queryJob
 
