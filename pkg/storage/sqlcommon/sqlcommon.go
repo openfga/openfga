@@ -481,6 +481,7 @@ func Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	_ storage.TupleWriteOptions,
 	now time.Time,
 ) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
