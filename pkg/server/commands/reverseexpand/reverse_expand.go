@@ -387,6 +387,7 @@ func (c *ReverseExpandQuery) execute(
 
 	if c.optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
+		isRecursive := false
 		if req.weightedEdge != nil {
 			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()
 		} else { // true on first call to ReverseExpand
@@ -399,6 +400,7 @@ func (c *ReverseExpandQuery) execute(
 				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("node_id", typeRel))
 				req.skipWeightedGraph = true
 			} else {
+				isRecursive = node.GetRecursiveRelation() != ""
 				weight, _ := node.GetWeight(sourceUserType)
 				if weight == weightedGraph.Infinite {
 					//c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("node_id", typeRel))
@@ -409,7 +411,7 @@ func (c *ReverseExpandQuery) execute(
 
 		if !req.skipWeightedGraph {
 			if req.weightedEdge == nil { // true on the first invocation only
-				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel})
+				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel, isRecursive: isRecursive})
 			}
 
 			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
