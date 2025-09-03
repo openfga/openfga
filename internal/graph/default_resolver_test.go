@@ -232,7 +232,7 @@ func TestDefaultTTU(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)
+			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})

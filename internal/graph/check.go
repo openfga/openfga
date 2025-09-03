@@ -976,7 +976,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
-			return resolver(ctx, req, rewrite, filteredIter)
+			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
 
 		var b strings.Builder
@@ -1005,13 +1005,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		start := time.Now()
-		res, err := resolver(ctx, req, rewrite, filteredIter)
-		if err != nil {
-			return nil, err
-		}
-		keyPlan.UpdateStats(resolverName, time.Since(start))
-		return res, nil
+		return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 
