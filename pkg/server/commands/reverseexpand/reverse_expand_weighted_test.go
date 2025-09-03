@@ -90,7 +90,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			name: "ttu_from_union",
 			model: `model
 				  schema 1.1
-
+		
 				type organization
 				  relations
 					define member: [user]
@@ -102,7 +102,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				type team
 				  relations
 					define member: [user, team#member]
-
+		
 				type user
 		`,
 			tuples: []string{
@@ -145,7 +145,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"repo:fga"},
 		},
 		{
-			name: "ttu_recursive",
+			name: "ttu_recursive_working",
 			model: `model
 				  schema 1.1
 
@@ -160,18 +160,155 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				"org:b#parent@org:a", // org:a is parent of b
 				"org:c#parent@org:b", // org:b is parent of org:c
 				"org:d#parent@org:c", // org:c is parent of org:d
+				"org:e#parent@org:d", // org:d is parent of org:e
+				"org:f#parent@org:e", // org:e is parent of org:f
 			},
 			objectType:                 "org",
 			relation:                   "ttu_recursive",
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expectedOptimizedObjects:   []string{"org:a", "org:b", "org:c", "org:d"},
-			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c", "org:d"},
+			expectedOptimizedObjects:   []string{"org:a", "org:b", "org:c", "org:d", "org:e", "org:f"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c", "org:d", "org:e", "org:f"},
+		},
+		{
+			name: "ttu_recursive",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type org
+				  relations
+					define parent: [org]
+					define ttu_recursive: [user] or ttu_recursive from parent
+		`,
+			tuples: []string{
+				"org:a#ttu_recursive@user:justin",
+				"org:b#parent@org:a", // org:a is parent of b
+				"org:c#parent@org:b", // org:b is parent of org:c
+				"org:d#parent@org:c", // org:c is parent of org:d
+				"org:e#parent@org:d", // org:d is parent of org:e
+				"org:f#parent@org:e", // org:e is parent of org:f
+				"org:a#parent@org:f", // org:f is parent of org:a <--- loops back around
+			},
+			objectType:                 "org",
+			relation:                   "ttu_recursive",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:b", "org:c", "org:d", "org:e", "org:f"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c", "org:d", "org:e", "org:f"},
+		},
+		{
+			name: "recursive_dependency",
+			model: `model
+				  schema 1.1
+
+				type user
+				type entity
+				relations
+					define admin: [user] but not owner
+					define owner: [user, entity#owner]
+		`,
+			tuples: []string{
+				"entity:1#admin@user:bob",
+				"entity:2#admin@user:bob",
+				"entity:2#owner@user:bob",
+				"entity:3#admin@user:bob",
+				"entity:3#owner@entity:4#owner",
+				"entity:4#owner@user:bob",
+			},
+			objectType:                 "entity",
+			relation:                   "admin",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"entity:1"},
+			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3"},
+		},
+		{
+			name: "recursive_relation",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type entity
+				  relations
+					define owner: [user, entity#owner]
+		`,
+			tuples: []string{
+				"entity:1#owner@user:bob",
+				"entity:2#owner@entity:1#owner",
+				"entity:3#owner@entity:2#owner",
+				"entity:4#owner@entity:3#owner",
+			},
+			objectType:                 "entity",
+			relation:                   "owner",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4"},
+			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4"},
+		},
+		{
+			name: "recursive_relation_and_tuple_cycle",
+			model: `model
+				  schema 1.1
+		
+				type user
+				type entity
+				  relations
+					define member: [user] or viewer from parent or member from parent
+				  	define parent: [entity]
+				  	define viewer: [user] or member
+		`,
+			tuples: []string{
+				"entity:1#member@user:bob",
+				"entity:2#parent@entity:2a",
+				"entity:2a#viewer@entity:1",
+				"entity:3#parent@entity:4",
+				"entity:4#member@user:bob",
+				"entity:5#parent@entity:6",
+				"entity:6#parent@entity:7",
+				"entity:7#parent@entity:7a",
+				"entity:7a#viewer@user:bob",
+				"entity:8#parent@entity:9",
+				"entity:9#parent@entity:10",
+				"entity:10#member@user:bob",
+			},
+			objectType:                 "entity",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
+			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
+		},
+		{
+			name: "recursive_tuple_cycle",
+			model: `model
+				  schema 1.1
+
+				type user
+				type entity
+				  relations
+					define member: [user] or viewer from parent or member from parent
+				  	define parent: [entity]
+				  	define viewer: [user] or member
+		`,
+			tuples: []string{
+				"entity:1#viewer@user:bob",
+				"entity:2#member@user:bob",
+				"entity:3#parent@entity:4",
+				"entity:4#parent@entity:5",
+				"entity:5#parent@entity:6",
+				"entity:6#viewer@user:bob",
+				"entity:7#parent@entity:8",
+				"entity:8#parent@entity:9",
+				"entity:9#parent@entity:10",
+				"entity:10#member@user:bob",
+			},
+			objectType:                 "entity",
+			relation:                   "viewer",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
+			expectedUnoptimizedObjects: []string{"entity:1", "entity:2", "entity:3", "entity:4", "entity:5", "entity:6", "entity:7", "entity:8", "entity:9", "entity:10"},
 		},
 		{
 			name: "ttu_with_cycle",
 			model: `model
 				  schema 1.1
-
+		
 				type user
 				type org
 				  relations
@@ -199,7 +336,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			name: "ttu_with_3_model_cycle",
 			model: `model
 				  schema 1.1
-
+		
 				type user
 				type team
 				  relations
@@ -315,7 +452,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			name: "recursive_userset",
 			model: `model
 				  schema 1.1
-
+		
 				type user
 				type team
 				  relations
@@ -2353,7 +2490,7 @@ func TestIntersectionHandler(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			// WithListObjectOptimizationsEnabled(false),
 		)
 
 		node, ok := typesys.GetNode("group#member")

@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -61,6 +62,8 @@ type typeRelEntry struct {
 	// Only present for userset relations. Will be the userset relation string itself.
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
+
+	isRecursive bool
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -150,12 +153,23 @@ func (c *ReverseExpandQuery) loopOverEdges(
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
+		// In the case of a cycle, we need to skip the weighted graph.
+		// This is temporary, as tuple cycles are currently in development.
+		if toNode.IsPartOfTupleCycle() {
+			req.skipWeightedGraph = true
+			return c.dispatch(ctx, req, resultChan, false, resolutionMetadata)
+		}
+
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
+		isRecursive := toNode.GetRecursiveRelation() != "" // TODO: don't forget to exclude tuple cycles
 
 		// Going to a userset presents risk of infinite loop. Checking the edge and the traversal stack
 		// ensures we don't perform the same traversal multiple times.
 		if goingToUserset {
-			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.String(newReq.relationStack)
+			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation()
+			if !isRecursive {
+				key += stack.String(newReq.relationStack)
+			}
 			_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
 			if loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
@@ -179,6 +193,7 @@ func (c *ReverseExpandQuery) loopOverEdges(
 				}
 				entry, newStack := stack.Pop(newReq.relationStack)
 				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+				entry.isRecursive = isRecursive
 
 				newStack = stack.Push(newStack, entry)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
@@ -238,6 +253,8 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+			tuplesetRel.isRecursive = isRecursive
+
 			newStack = stack.Push(newStack, tuplesetRel)
 
 			// stack.Push target type#rel (`folder#admin`)
@@ -331,9 +348,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 	span := trace.SpanFromContext(ctx)
 
 	queryJobQueue := newJobQueue()
+	dedupeMap := &sync.Map{}
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, dedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -365,7 +383,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, dedupeMap)
 				if err != nil {
 					return err
 				}
@@ -399,6 +417,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
+	dedupeMap *sync.Map,
 ) ([]queryJob, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -420,9 +439,27 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	entry, newStack := stack.Pop(currentReq.relationStack)
 	typeRel := entry.typeRel
 
+	var recursiveReq *ReverseExpandRequest
+	if entry.isRecursive {
+		recursiveReq = currentReq.clone()
+		recursiveReq.relationStack = currentReq.relationStack
+	}
+
 	currentReq.relationStack = newStack
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	userFilterString := utils.Reduce(userFilter, "", func(acc string, curr *openfgav1.ObjectRelation) string {
+		return acc + curr.String()
+	})
+	uniqueKey := objectType + relation + userFilterString
+	dedupeMap.Range(func(k, v interface{}) bool {
+		return true
+	})
+	_, loaded := dedupeMap.LoadOrStore(uniqueKey, struct{}{})
+	if loaded {
+		return nil, nil
+	}
 
 	filteredIter, err := c.buildFilteredIterator(ctx, currentReq, objectType, relation, userFilter)
 	if err != nil {
@@ -448,12 +485,23 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+
+			// Special case where the final element in the stack is a recursive relation
+			if recursiveReq != nil {
+				nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+			}
 			continue
 		}
 
 		// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 		// the evaluation one level higher up the tree with the `foundObject`.
 		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
+
+		// We may still have a recursive request waiting if the recursive relation was
+		// in the middle of the branch
+		if recursiveReq != nil {
+			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+		}
 	}
 
 	return nextJobs, err
