@@ -333,6 +333,29 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
 		},
 		{
+			name: "recursive_userset_as_initial_relation_with_union_and_intersection",
+			model: `model
+				  schema 1.1
+
+				type user
+				type object
+				  relations
+					define rel2: [user]
+					define rel3: [user]
+					define recursive: [user, object#recursive] or (rel2 and rel3)
+		`,
+			tuples: []string{
+				"object:1#recursive@user:bob",
+				"object:2#rel2@user:bob",
+				"object:2#rel3@user:bob",
+			},
+			objectType:                 "object",
+			relation:                   "recursive",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"object:1", "object:2"},
+			expectedUnoptimizedObjects: []string{"object:1", "object:2"},
+		},
+		{
 			name: "ttu_with_3_model_cycle",
 			model: `model
 				  schema 1.1
