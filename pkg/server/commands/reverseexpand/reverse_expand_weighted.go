@@ -61,6 +61,8 @@ type typeRelEntry struct {
 	// Only present for userset relations. Will be the userset relation string itself.
 	// For `rel admin: [team#member]`, usersetRelation is "member"
 	usersetRelation string
+
+	isRecursive bool
 }
 
 // queryJob represents a single task in the reverse expansion process.
@@ -143,25 +145,32 @@ func (c *ReverseExpandQuery) loopOverEdges(
 	resultChan chan<- *ReverseExpandResult,
 	sourceUserType string,
 ) error {
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	//pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+	pool := concurrency.NewPool(ctx, 1)
 
+	fmt.Printf("the stack at the start TTU: %s\n", stack.String(req.relationStack))
 	for _, edge := range edges {
 		newReq := req.clone()
 		newReq.weightedEdge = edge
 
 		toNode := edge.GetTo()
 		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
+		isRecursive := toNode.GetRecursiveRelation() != ""
 
 		// Going to a userset presents risk of infinite loop. Checking the edge and the traversal stack
 		// ensures we don't perform the same traversal multiple times.
 		if goingToUserset {
-			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.String(newReq.relationStack)
+			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation()
+			if !isRecursive {
+				key += stack.String(newReq.relationStack)
+			}
 			_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
 			if loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				continue
 			}
 		}
+		//fmt.Printf("%s --> %s – isRecursive %t\n", edge.GetFrom().GetUniqueLabel(), toNode.GetUniqueLabel(), isRecursive)
 
 		switch edge.GetEdgeType() {
 		case weightedGraph.DirectEdge:
@@ -238,12 +247,15 @@ func (c *ReverseExpandQuery) loopOverEdges(
 
 			// stack.Push tupleset relation (`document#parent`)
 			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+			tuplesetRel.isRecursive = isRecursive
+
 			newStack = stack.Push(newStack, tuplesetRel)
 
 			// stack.Push target type#rel (`folder#admin`)
 			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 			newReq.relationStack = newStack
 
+			fmt.Printf("the stack after TTU: %s\n", stack.String(newReq.relationStack))
 			pool.Go(func(ctx context.Context) error {
 				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
 			})
@@ -420,6 +432,12 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	entry, newStack := stack.Pop(currentReq.relationStack)
 	typeRel := entry.typeRel
 
+	var recursiveReq *ReverseExpandRequest
+	if entry.isRecursive {
+		recursiveReq = currentReq.clone()
+		recursiveReq.relationStack = currentReq.relationStack
+	}
+
 	currentReq.relationStack = newStack
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
@@ -429,6 +447,10 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		return nil, err
 	}
 	defer filteredIter.Stop()
+
+	fmt.Printf("querying for: %s#%s@%v\n", objectType, relation, userFilter[0])
+	fmt.Printf("entry at that point: %v\n", entry)
+	fmt.Printf("remained at that point: %v\n", stack.String(newStack))
 
 	var nextJobs []queryJob
 
@@ -448,12 +470,21 @@ func (c *ReverseExpandQuery) executeQueryJob(
 		// and this object is a candidate for return to the user.
 		if currentReq.relationStack == nil {
 			c.trySendCandidate(ctx, needsCheck, foundObject, resultChan)
+
+			// Special case where the final element in the stack is a recursive relation
+			if recursiveReq != nil {
+				nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+			}
 			continue
 		}
 
 		// For non-recursive relations (majority of cases), if there are more items on the stack, we continue
 		// the evaluation one level higher up the tree with the `foundObject`.
 		nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: currentReq})
+
+		if recursiveReq != nil {
+			nextJobs = append(nextJobs, queryJob{foundObject: foundObject, req: recursiveReq})
+		}
 	}
 
 	return nextJobs, err

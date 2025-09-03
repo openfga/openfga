@@ -401,8 +401,8 @@ func (c *ReverseExpandQuery) execute(
 			} else {
 				weight, _ := node.GetWeight(sourceUserType)
 				if weight == weightedGraph.Infinite {
-					c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("node_id", typeRel))
-					req.skipWeightedGraph = true
+					//c.logger.InfoWithContext(ctx, "reverse_expand graph may contain cycle, skipping weighted graph", zap.String("node_id", typeRel))
+					//req.skipWeightedGraph = true
 				}
 			}
 		}
