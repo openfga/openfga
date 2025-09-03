@@ -779,6 +779,67 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 	}
 }
 
+// TODO:
+// deprecate models with disconnected types
+func TestReverseExpandSkipWeighted(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	store := ulid.Make().String()
+
+	model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+		type user
+		type user2
+		type subteam
+			relations
+				define member: [user]
+		type adhoc
+			relations
+				define member: [user]
+		type team
+			relations
+				define member: [subteam#member]
+		type group
+			relations
+				define team: [team]
+				define subteam: [subteam]
+				define adhoc_member: [adhoc#member]
+				define member: [user2] and member from team and adhoc_member and member from subteam
+	`)
+
+	typeSystem, err := typesystem.New(model)
+	require.NoError(t, err)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := context.Background()
+	mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+
+	request := &ReverseExpandRequest{
+		StoreID:    store,
+		ObjectType: "group",
+		Relation:   "member",
+		User: &UserRefObject{
+			Object: &openfgav1.Object{
+				Type: "user",
+				Id:   "a",
+			},
+		},
+		ContextualTuples: []*openfgav1.TupleKey{},
+	}
+
+	logger := mocks.NewMockLogger(ctrl)
+	logger.EXPECT().InfoWithContext(gomock.Any(), "unable to find node in weighted graph", gomock.Any())
+
+	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithListObjectOptimizationsEnabled(true), WithLogger(logger))
+	resultChan := make(chan *ReverseExpandResult)
+
+	err = reverseExpandQuery.Execute(ctx, request, resultChan, NewResolutionMetadata())
+	require.NoError(t, err)
+
+}
+
 func TestReverseExpandHonorsConsistency(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
