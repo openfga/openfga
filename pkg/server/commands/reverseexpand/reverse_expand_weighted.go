@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -340,9 +341,10 @@ func (c *ReverseExpandQuery) queryForTuples(
 	span := trace.SpanFromContext(ctx)
 
 	queryJobQueue := newJobQueue()
+	dedupeMap := &sync.Map{}
 
 	// Now kick off the chain of queries
-	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck)
+	items, err := c.executeQueryJob(ctx, queryJob{req: req, foundObject: foundObject}, resultChan, needsCheck, dedupeMap)
 	if err != nil {
 		telemetry.TraceError(span, err)
 		return err
@@ -374,7 +376,7 @@ func (c *ReverseExpandQuery) queryForTuples(
 				if !ok {
 					break
 				}
-				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck)
+				newItems, err := c.executeQueryJob(ctx, nextJob, resultChan, needsCheck, dedupeMap)
 				if err != nil {
 					return err
 				}
@@ -408,6 +410,7 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	job queryJob,
 	resultChan chan<- *ReverseExpandResult,
 	needsCheck bool,
+	dedupeMap *sync.Map,
 ) ([]queryJob, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -438,6 +441,18 @@ func (c *ReverseExpandQuery) executeQueryJob(
 	currentReq.relationStack = newStack
 
 	objectType, relation := tuple.SplitObjectRelation(typeRel)
+
+	userFilterString := utils.Reduce(userFilter, "", func(acc string, curr *openfgav1.ObjectRelation) string {
+		return acc + curr.String()
+	})
+	uniqueKey := objectType + relation + userFilterString
+	dedupeMap.Range(func(k, v interface{}) bool {
+		return true
+	})
+	_, loaded := dedupeMap.LoadOrStore(uniqueKey, struct{}{})
+	if loaded {
+		return nil, nil
+	}
 
 	filteredIter, err := c.buildFilteredIterator(ctx, currentReq, objectType, relation, userFilter)
 	if err != nil {

@@ -104,7 +104,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		//			define member: [user, team#member]
 		//
 		//		type user
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"repo:fga#owner@organization:justin_and_zee",
 		//		"organization:justin_and_zee#repo_admin@user:justin",
@@ -322,7 +322,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		//		  relations
 		//			define company_to_org: [org]
 		//			define company_cycle: [user] or org_cycle from company_to_org
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"company:b#company_to_org@org:a",
 		//		"org:a#org_to_company@company:b",
@@ -461,7 +461,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		//		type team
 		//		  relations
 		//			define member: [user, team#member]
-		//`,
+		// `,
 		//	tuples: []string{
 		//		"team:fga#member@user:justin",
 		//		"team:cncf#member@team:fga#member",
@@ -2494,7 +2494,7 @@ func TestIntersectionHandler(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			//WithListObjectOptimizationsEnabled(false),
+			// WithListObjectOptimizationsEnabled(false),
 		)
 
 		node, ok := typesys.GetNode("group#member")
