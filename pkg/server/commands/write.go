@@ -56,7 +56,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 	return cmd
 }
 
-func validateWritesOptions(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicateInsert, error) {
+func parseOptionOnDuplicate(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicateInsert, error) {
 	switch strings.ToLower(wr.GetOnDuplicate()) {
 	case "", "error":
 		return storage.OnDuplicateInsertError, nil
@@ -67,7 +67,7 @@ func validateWritesOptions(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicat
 	}
 }
 
-func validateDeletesOption(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingDelete, error) {
+func parseOptionOnMissing(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingDelete, error) {
 	switch strings.ToLower(wr.GetOnMissing()) {
 	case "", "error":
 		return storage.OnMissingDeleteError, nil
@@ -84,12 +84,12 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	onDuplicateInsert, err := validateWritesOptions(req.GetWrites())
+	onDuplicateInsert, err := parseOptionOnDuplicate(req.GetWrites())
 	if err != nil {
 		return nil, err
 	}
 
-	onEmptyDelete, err := validateDeletesOption(req.GetDeletes())
+	onEmptyDelete, err := parseOptionOnMissing(req.GetDeletes())
 	if err != nil {
 		return nil, err
 	}
