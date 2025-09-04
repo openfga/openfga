@@ -356,6 +356,47 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"object:1", "object:2"},
 		},
 		{
+			name: "recursive_ttu_something",
+			model: `model
+					schema 1.1
+				
+				type user
+				type directs
+				  relations
+					define direct: [user] # this
+				
+				type ttus
+				  relations
+					define direct_parent: [directs] # this
+					define ttu_direct: direct from direct_parent # this
+					define user_rel1: [user, user:*] # this
+					define user_rel2: [user] # this
+					define user_rel3: [user] # this
+					define user_rel4: user_rel1 or user_rel5
+					define user_rel5: user_rel2 and user_rel3
+					define ttu_parent: [ttus] # this
+					define ttu_recursive_alg_combined_w2: ([user] or ttu_recursive_alg_combined from ttu_parent) or (user_rel1 or (user_rel2 and ttu_direct)) 
+					define ttu_recursive_alg_combined: ttu_recursive_alg_combined from ttu_parent or user_rel4 # this
+			`,
+			tuples: []string{
+				"ttus:2_1#ttu_recursive_alg_combined_w2@user:bob",
+
+				// attach bob to w2_1_parent, satisfies user_rel5
+				"ttus:w2_1_parent#user_rel2@user:bob",
+				"ttus:w2_1_parent#user_rel3@user:bob",
+
+				// now make it parent of 2_2
+				"ttus:2_2#ttu_parent@ttus:w2_1_parent",
+				// And add another in the chain
+				"ttus:2_3#ttu_parent@ttus:2_2",
+			},
+			objectType:                 "ttus",
+			relation:                   "ttu_recursive_alg_combined_w2",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"ttus:2_1", "ttus:2_2", "ttus:2_3"},
+			expectedUnoptimizedObjects: []string{"ttus:2_1", "ttus:2_2", "ttus:2_3"},
+		},
+		{
 			name: "ttu_with_3_model_cycle",
 			model: `model
 				  schema 1.1
