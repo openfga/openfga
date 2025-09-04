@@ -38,6 +38,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: s.serviceName,
 		Method:  apimethod.Check.String(),
@@ -46,12 +52,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
 	if err != nil {
 		return nil, err
-	}
-
-	if !validator.RequestIsValidatedFromContext(ctx) {
-		if err := req.Validate(); err != nil {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
 	}
 
 	storeID := req.GetStoreId()
