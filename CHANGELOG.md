@@ -16,10 +16,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+- Upgraded `keyfunc` library from v2 to v3 to enable access to all keys for JWT verification. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
 - Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
+- Support for verifying JWTs without a `kid` header by checking against all available keys in the JWK Set. [#2309](https://github.com/openfga/openfga/issues/2309)
+- Upgraded `keyfunc` library from v2 to v3 to enable access to all keys for JWT verification. [#2309](https://github.com/openfga/openfga/issues/2309)
 
 ## [1.9.5] - 2025-08-15
 ### Fixed

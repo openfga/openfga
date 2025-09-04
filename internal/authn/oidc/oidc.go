@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc/v3"
 	jwt "github.com/golang-jwt/jwt/v5"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
@@ -32,7 +32,8 @@ type RemoteOidcAuthenticator struct {
 	ClientIDClaims []string
 
 	JwksURI string
-	JWKs    *keyfunc.JWKS
+	JWKs    keyfunc.Keyfunc
+	cancel  context.CancelFunc
 
 	httpClient *http.Client
 }
@@ -93,9 +94,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 
 	jwtParser := jwt.NewParser(options...)
 
-	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
-		return oidc.JWKs.Keyfunc(token)
-	})
+	token, err := jwtParser.Parse(authHeader, KeyfuncWithFallback(authHeader, oidc.JWKs))
 	if err != nil || !token.Valid {
 		return nil, errInvalidClaims
 	}
@@ -183,12 +182,14 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 	return nil
 }
 
-func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
-	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          oidc.httpClient,
+func (oidc *RemoteOidcAuthenticator) GetKeys() (keyfunc.Keyfunc, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	oidc.cancel = cancel
+	jwks, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{oidc.JwksURI}, keyfunc.Override{
 		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("error fetching keys from %v: %w", oidc.JwksURI, err)
 	}
 	return jwks, nil
@@ -205,6 +206,7 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 	if err != nil {
 		return nil, fmt.Errorf("error getting OIDC: %w", err)
 	}
+
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
@@ -231,6 +233,38 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 	return oidcConfig, nil
 }
 
+func KeyfuncWithFallback(authHeader string, jwks keyfunc.Keyfunc) jwt.Keyfunc {
+	return func(t *jwt.Token) (interface{}, error) {
+		kid, _ := t.Header["kid"].(string)
+
+		if kid != "" {
+			return jwks.Keyfunc(t)
+		}
+
+		var allKeys jwt.VerificationKeySet
+		allKeys, err := jwks.VerificationKeySet(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch all keys: %w", err)
+		}
+
+		var lastErr error
+		for _, key := range allKeys.Keys {
+			tk := jwt.NewParser()
+			_, err := tk.Parse(authHeader, func(_ *jwt.Token) (interface{}, error) {
+				return key, nil
+			})
+			if err == nil {
+				return key, nil
+			}
+			lastErr = err
+		}
+
+		return nil, fmt.Errorf("verification failed using all keys: %w", lastErr)
+	}
+}
+
 func (oidc *RemoteOidcAuthenticator) Close() {
-	oidc.JWKs.EndBackground()
+	if oidc.cancel != nil {
+		oidc.cancel()
+	}
 }
