@@ -165,6 +165,8 @@ func (p *Planner) evictStaleKeys() {
 	evictionThresholdNano := p.evictionThreshold.Nanoseconds()
 	nowNano := time.Now().UnixNano()
 
+	// NOTE: Consider also bounding the total number of keys stored.
+
 	p.keys.Range(func(key, value interface{}) bool {
 		kp := value.(*KeyPlan)
 		lastAccessed := kp.lastAccessed.Load()
