@@ -104,6 +104,11 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 		return nil, fmt.Errorf("initialize sqlite connection: %w", err)
 	}
 
+	return NewWithDB(db, cfg)
+}
+
+// NewWithDB creates a new [Datastore] storage with the provided database connection.
+func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	var collector prometheus.Collector
 	if cfg.ExportMetrics {
 		collector = collectors.NewDBStatsCollector(db, "openfga")
