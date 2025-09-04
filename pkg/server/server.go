@@ -754,6 +754,13 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
+func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ShadowCheckCacheEnabled = enabled
+	}
+}
+
 // WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
 // Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
