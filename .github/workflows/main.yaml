@@ -23,7 +23,7 @@ jobs:
         run: make test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        uses: codecov/codecov-action@fdcc8476540edceab3de004e990f80d881c6cc00 # v5.5.0
         with:
           files: ./coverageunit.out
           verbose: true
@@ -49,7 +49,7 @@ jobs:
           make test-bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
-        uses: benchmark-action/github-action-benchmark@d48d326b4ca9ba73ca0cd0d59f108f9e02a381c7 # v1.20.4
+        uses: benchmark-action/github-action-benchmark@4e0b38bc48375986542b13c0d8976b7b80c60c00 # v1.20.5
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
