@@ -8,12 +8,12 @@ import (
 )
 
 func TestPlanner_New(t *testing.T) {
-	p := New(1 * time.Second)
+	p := New(&Config{InitialGuess: 1 * time.Second})
 	require.NotNil(t, p)
 }
 
 func TestPlanner_SelectResolver(t *testing.T) {
-	p := New(1 * time.Second)
+	p := New(&Config{InitialGuess: 1 * time.Second})
 	key := "test_key"
 	resolvers := []string{"fast", "slow"}
 
@@ -29,7 +29,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 }
 
 func TestProfiler_Update(t *testing.T) {
-	p := New(10 * time.Millisecond)
+	p := New(&Config{InitialGuess: 10 * time.Millisecond})
 	key := "test_convergence"
 	resolvers := []string{"fast", "slow"}
 
@@ -57,7 +57,7 @@ func TestProfiler_Update(t *testing.T) {
 }
 
 func BenchmarkKeyPlan(b *testing.B) {
-	p := New(10 * time.Millisecond)
+	p := New(&Config{InitialGuess: 10 * time.Millisecond})
 	kp := p.GetKeyPlan("test|store123|objectType|relation|userType")
 	resolvers := []string{"resolver1", "resolver2", "resolver3"}
 

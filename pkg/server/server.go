@@ -241,6 +241,8 @@ type Server struct {
 
 	// singleflightGroup can be shared across caches, deduplicators, etc.
 	singleflightGroup *singleflight.Group
+
+	planner *planner.Planner
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -592,6 +594,12 @@ func WithContextPropagationToDatastore(enable bool) OpenFGAServiceV1Option {
 	}
 }
 
+func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.planner = planner
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -878,6 +886,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
+		planner: planner.New(&planner.Config{
+			InitialGuess:      serverconfig.DefaultPlannerInitialGuess,
+			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
+			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
+		}),
 	}
 
 	for _, opt := range opts {
@@ -965,20 +978,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	queryPlanner := planner.New(7 * time.Millisecond)
-
 	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(queryPlanner),
+			graph.WithPlanner(s.planner),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(queryPlanner),
+			graph.WithPlanner(s.planner),
 		}...),
 		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
@@ -1041,6 +1052,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	s.checkResolverCloser()
+	s.planner.StopCleanup()
 	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
