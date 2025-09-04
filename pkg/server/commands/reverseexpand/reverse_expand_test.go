@@ -779,7 +779,7 @@ func TestReverseExpandDispatchCount(t *testing.T) {
 	}
 }
 
-// deprecate models with disconnected types.
+// TODO: deprecate models with disconnected types.
 func TestReverseExpandSkipWeighted(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
