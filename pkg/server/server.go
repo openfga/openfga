@@ -1059,7 +1059,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	s.checkResolverCloser()
-	s.planner.StopCleanup()
+	if s.planner != nil {
+		s.planner.StopCleanup()
+	}
 	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
