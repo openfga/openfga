@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add microsecond latency numbers and datastore query count in shadow check resolver. [#2658](https://github.com/openfga/openfga/pull/2658)
 - Add `NewWithDB` support for sqlite storage. [#2679](https://github.com/openfga/openfga/pull/2679)
 - Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
+- Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
