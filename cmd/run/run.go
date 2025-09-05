@@ -52,6 +52,7 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -310,6 +311,10 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("listUsers-datastore-throttle-duration", defaultConfig.ListUsersDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
+
+	flags.Duration("planner-initial-guess", defaultConfig.Planner.InitialGuess, "the starting performance assumption for a new resolver")
+	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
+	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -628,7 +633,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
 
 			if err := profilerServer.ListenAndServe(); err != nil {
-				if err != http.ErrServerClosed {
+				if !errors.Is(err, http.ErrServerClosed) {
 					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
 				}
 			}
@@ -646,7 +651,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		go func() {
 			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 			if err := metricsServer.ListenAndServe(); err != nil {
-				if err != http.ErrServerClosed {
+				if !errors.Is(err, http.ErrServerClosed) {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
 			}
@@ -704,6 +709,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
+		server.WithPlanner(planner.New(&planner.Config{
+			InitialGuess:      config.Planner.InitialGuess,
+			EvictionThreshold: config.Planner.EvictionThreshold,
+			CleanupInterval:   config.Planner.CleanupInterval,
+		})),
 		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
 		// to provide a small buffer for operations that might slightly exceed the request timeout.
 		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),

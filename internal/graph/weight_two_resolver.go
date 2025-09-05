@@ -21,12 +21,13 @@ import (
 const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
+const weightTwoResolver = "weight2"
 
 var ErrShortCircuit = errors.New("short circuit")
 
 type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
 
-func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, usersets []*openfgav1.RelationReference) CheckHandlerFunc {
+func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckRequest, usersets []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		cancellableCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -46,32 +47,34 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 	}
 }
 
-func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
+		objectType := tuple.GetType(req.GetTupleKey().GetObject())
+		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
+		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-	possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
-	if err != nil {
-		return nil, err
+		possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+		if err != nil {
+			return nil, err
+		}
+
+		cancellableCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
+		if err != nil {
+			return nil, err
+		}
+
+		if len(leftChans) == 0 {
+			return &ResolveCheckResponse{
+				Allowed: false,
+			}, nil
+		}
+
+		return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 	}
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(leftChans) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
-	}
-
-	return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
 }
 
 // weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
