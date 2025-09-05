@@ -658,6 +658,54 @@ func TestWriteCommand(t *testing.T) {
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
 		},
 		{
+			name: "error_transactional_write_failed_from_database_when_writing_wrapped_error",
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+			},
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnInsert)
+			},
+			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
+		},
+		{
+			name: "error_transactional_write_failed_from_database_when_writing_wrapped_conflict",
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+			},
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.TupleConditionConflictError(&openfgav1.TupleKey{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}))
+			},
+			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
+		},
+		{
+			name: "error_transactional_write_failed_from_database_when_deleting_wrapped_error",
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:maria",
+				}},
+			},
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnDelete)
+			},
+			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
+		},
+		{
 			name: "error_invalid_write_input_from_database_when_writing",
 			writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{{
