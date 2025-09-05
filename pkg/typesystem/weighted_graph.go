@@ -73,14 +73,6 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 		}
 	}
 
-	if lowestWeight == 0 {
-		if edges[0].GetEdgeType() == graph.DirectEdge {
-			// this means that all the direct edges are not connected.
-			// In reality, should not happen because the caller should have trimmed
-			// the parent node already.
-			return IntersectionEdges{}, nil
-		}
-	}
 	for edgeNum, edge := range nonDirectEdges {
 		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && len(directEdges) == 0) {
 			// in the case of the first edge, we need to initialize as the least weight
@@ -101,10 +93,6 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	// be valid.
 	for _, edge := range edges {
 		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
-			if !hasPathTo(edge, sourceType) {
-				// In reality, should never happen because the edge should have been trimmed
-				return IntersectionEdges{}, nil
-			}
 			siblings = append(siblings, edge)
 		}
 	}

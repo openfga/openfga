@@ -234,45 +234,6 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.Equal(t, graph.TTUEdge, comparator.Siblings[1].GetEdgeType())
 	})
 
-	t.Run("direct_assignment_not_connected", func(t *testing.T) {
-		model := `
-		model
-			schema 1.1
-		type user
-		type user2
-		type subteam
-			relations
-				define member: [user]
-		type adhoc
-			relations
-				define member: [user]
-		type team
-			relations
-				define member: [subteam#member]
-		type group
-			relations
-				define team: [team]
-				define subteam: [subteam]
-				define adhoc_member: [adhoc#member]
-				define member: [user2] and member from team and adhoc_member and member from subteam
-		`
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
-		require.NoError(t, err)
-
-		require.Len(t, edges, 1)
-		rootIntersectionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
-		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
-		require.True(t, ok)
-		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
-		require.NoError(t, err)
-		require.Equal(t, IntersectionEdges{}, comparator)
-	})
-
 	t.Run("nested_operator", func(t *testing.T) {
 		model := `
 		model
@@ -317,43 +278,6 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.Equal(t, graph.OperatorNode, comparator.Siblings[0].GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, comparator.Siblings[0].GetEdgeType())
 		require.Equal(t, graph.IntersectionOperator, comparator.Siblings[0].GetTo().GetLabel())
-	})
-	t.Run("non_directed_assignment_no_path", func(t *testing.T) {
-		model := `
-		model
-			schema 1.1
-		type user
-		type user2
-		type subteam
-			relations
-				define member: [user,user2]
-				define member2: [user2]
-		type adhoc
-			relations
-				define member: [user]
-		type team
-			relations
-				define member: [subteam#member]
-		type group
-			relations
-				define subteam: [subteam]
-				define adhoc_member: [adhoc#member]
-				define member: [team#member, user, user:*] and member2 from subteam and adhoc_member
-		`
-		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
-		require.NoError(t, err)
-
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
-		require.NoError(t, err)
-		require.Len(t, edges, 1)
-		rootIntersectionNode := edges[0].GetTo()
-		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
-		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
-		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
-		require.True(t, ok)
-		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
-		require.NoError(t, err)
-		require.Equal(t, IntersectionEdges{}, comparator)
 	})
 
 	t.Run("error_non_intersection_node", func(t *testing.T) {

@@ -682,11 +682,6 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
-		// no need to go further because list objects must return empty
-		return nil
-	}
-
 	lowestWeightEdges := []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
 
 	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
