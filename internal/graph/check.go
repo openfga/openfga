@@ -805,7 +805,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				k.WriteString("userset|")
 				k.WriteString(userset.String())
 
-				keyPlan := c.planner.GetKeyPlan(b.String())
+				keyPlan := c.planner.GetKeyPlan(k.String())
 				resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 				resolver := c.defaultUserset
