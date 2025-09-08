@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
@@ -240,6 +241,8 @@ type Server struct {
 
 	// singleflightGroup can be shared across caches, deduplicators, etc.
 	singleflightGroup *singleflight.Group
+
+	planner *planner.Planner
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -591,6 +594,12 @@ func WithContextPropagationToDatastore(enable bool) OpenFGAServiceV1Option {
 	}
 }
 
+func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.planner = planner
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -745,6 +754,13 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
+func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ShadowCheckCacheEnabled = enabled
+	}
+}
+
 // WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
 // Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -877,6 +893,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
+		planner: planner.New(&planner.Config{
+			InitialGuess:      serverconfig.DefaultPlannerInitialGuess,
+			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
+			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
+		}),
 	}
 
 	for _, opt := range opts {
@@ -969,11 +990,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
 		}...),
 		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
@@ -1036,6 +1059,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	s.checkResolverCloser()
+	if s.planner != nil {
+		s.planner.StopCleanup()
+	}
 	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
