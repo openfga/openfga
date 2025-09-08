@@ -677,48 +677,48 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
+
+	intersectionEdges, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
-		// no need to go further because list objects must return empty
+	// if no edges to call LO, return nill
+	if len(intersectionEdges.LowestEdges) == 0 {
 		return nil
 	}
 
-	lowestWeightEdges := []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
-
-	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
-	}
-
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
-
-	siblings := intersectionEdgeComparison.Siblings
-	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
-
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
-		// direct weight is not the lowest edge. Therefore, need to call check against directly assigned types.
-		usersets = append(usersets, typesystem.This())
-	}
-
-	for _, sibling := range siblings {
-		userset, err := c.typesystem.ConstructUserset(sibling)
+	intersectEdges := intersectionEdges.SiblingEdges
+	usersets := make([]*openfgav1.Userset, 0, len(intersectEdges))
+	for _, edges := range intersectEdges {
+		// no matter how many direct edges, for typesystem only required this
+		if edges[0].GetEdgeType() == weightedGraph.DirectEdge {
+			usersets = append(usersets, typesystem.This())
+			continue
+		}
+		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
+		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
+		userset, err := c.typesystem.ConstructUserset(edges[0])
 		if err != nil {
-			// This should never happen.
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
 	}
-	userset := &openfgav1.Userset{
-		Userset: &openfgav1.Userset_Intersection{
-			Intersection: &openfgav1.Usersets{
-				Child: usersets,
-			}}}
+
+	var userset *openfgav1.Userset
+	if len(usersets) > 1 {
+		userset = &openfgav1.Userset{
+			Userset: &openfgav1.Userset_Intersection{
+				Intersection: &openfgav1.Usersets{
+					Child: usersets,
+				}}}
+	} else {
+		userset = usersets[0]
+	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, intersectionEdges.LowestEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true, resolutionMetadata)
 
 	return nil

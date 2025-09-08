@@ -2,8 +2,10 @@ package typesystem
 
 import (
 	"fmt"
+	"math"
 	"slices"
 
+	"github.com/google/uuid"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
@@ -23,14 +25,8 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 }
 
 type IntersectionEdges struct {
-	LowestEdge *graph.WeightedAuthorizationModelEdge   // nil if direct is lowest, otherwise lowest edge
-	Siblings   []*graph.WeightedAuthorizationModelEdge // all non lowest and excluding direct edges siblings
-	// We need to separate out the direct edges from the other edges so that in the case of direct edges are not the lowest weight,
-	// the check against these direct edges do not require checking against these individual directly assigned edges.
-	// Instead, these directly assigned edges should be treated as a group such that if one of these edges satisfy,
-	// the intersection satisfy.
-	DirectEdges               []*graph.WeightedAuthorizationModelEdge
-	DirectEdgesAreLeastWeight bool // whether direct edges are the lowest weight edges
+	LowestEdges  []*graph.WeightedAuthorizationModelEdge   // lowest edges to apply list objects
+	SiblingEdges [][]*graph.WeightedAuthorizationModelEdge // the rest of the edges to apply intersection
 }
 
 // GetEdgesForIntersection returns the lowest weighted edge and
@@ -44,76 +40,64 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 		return IntersectionEdges{}, fmt.Errorf("invalid edges for source type %s", sourceType)
 	}
 
-	directEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
-	var lowestEdge *graph.WeightedAuthorizationModelEdge
-	directEdgesAreLowest := false
-	lowestWeight := 0
+	// Group edges by type
+	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge)
+	directEdgesKey := "direct_edges"
 
-	// Process all edges first to separate direct from non-direct
-	nonDirectEdges := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
-
-	// It is assumed that direct edge always appear first.
 	for _, edge := range edges {
-		weight, ok := edge.GetWeight(sourceType)
+		var key string
+		_, ok := edge.GetWeight(sourceType)
 		if !ok {
-			// can ignore this edge as there is no path
+			// Skip edges that don't have a path to the source type
 			continue
 		}
-		if edge.GetEdgeType() != graph.DirectEdge {
-			// the nonDirectEdges will be handled as next step
-			nonDirectEdges = append(nonDirectEdges, edge)
-			continue
+
+		switch edge.GetEdgeType() {
+		case graph.DirectEdge:
+			key = directEdgesKey
+		case graph.TTUEdge:
+			objtype, parent := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+			_, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+			key = objtype + "#" + parent + "#" + relation
+		default:
+			// Other edge types are treated individually
+			key = "other_" + uuid.New().String()
 		}
-		// We want to establish the largest weight for all the direct edges as they need to be
-		// treated as a group. This weight will serve as the baseline for other siblings to compare against.
-		directEdges = append(directEdges, edge)
-		if weight > lowestWeight {
-			directEdgesAreLowest = true
-			lowestWeight = weight
-		}
+
+		groupedEdges[key] = append(groupedEdges[key], edge)
 	}
 
-	if lowestWeight == 0 {
-		if edges[0].GetEdgeType() == graph.DirectEdge {
-			// this means that all the direct edges are not connected.
-			// In reality, should not happen because the caller should have trimmed
-			// the parent node already.
-			return IntersectionEdges{}, nil
-		}
-	}
-	for edgeNum, edge := range nonDirectEdges {
-		if weight, _ := edge.GetWeight(sourceType); weight < lowestWeight || (edgeNum == 0 && len(directEdges) == 0) {
-			// in the case of the first edge, we need to initialize as the least weight
-			// for other edges to compare against it.
-			// For non-first edges, only replace if it has the lowest weight.
-			lowestEdge = edge
-			lowestWeight = weight
-			directEdgesAreLowest = false
-		}
-	}
+	// Find the group with the lowest maximum weight
+	lowestWeight := math.MaxInt32
+	lowestKey := ""
+	intersectionEdges := make([][]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
-	siblings := make([]*graph.WeightedAuthorizationModelEdge, 0, len(edges)-len(directEdges))
-
-	// Now, assign all the non directly assigned edges that are not the lowest
-	// weight to the sibling edges. Even if the directly assigned edges are not the lowest
-	// weight, we want to treat these directly assigned edges separately. The reason is that
-	// if one of these directly assigned edge satisfy, the list objects candidate may still
-	// be valid.
-	for _, edge := range edges {
-		if edge.GetEdgeType() != graph.DirectEdge && edge != lowestEdge {
-			if !hasPathTo(edge, sourceType) {
-				// In reality, should never happen because the edge should have been trimmed
-				return IntersectionEdges{}, nil
+	for key, group := range groupedEdges {
+		maxWeight := 0
+		for _, edge := range group {
+			weight, _ := edge.GetWeight(sourceType)
+			// get the max weight of the grouping
+			if weight > maxWeight {
+				maxWeight = weight
 			}
-			siblings = append(siblings, edge)
+		}
+		// if the max weight of the grouping is bigger than 0 and it is lower than the lowest weight found so far
+		// take the lowest weight or in the case of direct edges have more priority if there are others with the same weight
+		if maxWeight < lowestWeight || (key == directEdgesKey && maxWeight == lowestWeight) {
+			if lowestKey != "" {
+				// verify the intersection edges
+				intersectionEdges = append(intersectionEdges, groupedEdges[lowestKey])
+			}
+			lowestWeight = maxWeight
+			lowestKey = key
+		} else {
+			intersectionEdges = append(intersectionEdges, group)
 		}
 	}
 
 	return IntersectionEdges{
-		LowestEdge:                lowestEdge,
-		Siblings:                  siblings,
-		DirectEdges:               directEdges,
-		DirectEdgesAreLeastWeight: directEdgesAreLowest,
+		LowestEdges:  groupedEdges[lowestKey],
+		SiblingEdges: intersectionEdges,
 	}, nil
 }
 
@@ -154,15 +138,7 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 		switch edgeType {
 		case graph.DirectEdge:
 			// userset use case
-			object, relation := tuple.SplitObjectRelation(uniqueLabel)
-			return &openfgav1.Userset{
-				Userset: &openfgav1.Userset_ComputedUserset{
-					ComputedUserset: &openfgav1.ObjectRelation{
-						Object:   object,
-						Relation: relation,
-					},
-				},
-			}, nil
+			return This(), nil
 		case graph.RewriteEdge, graph.ComputedEdge:
 			_, relation := tuple.SplitObjectRelation(uniqueLabel)
 			return &openfgav1.Userset{
@@ -179,10 +155,10 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: &openfgav1.TupleToUserset{
 						Tupleset: &openfgav1.ObjectRelation{
-							Relation: parent,
+							Relation: parent, //parent
 						},
 						ComputedUserset: &openfgav1.ObjectRelation{
-							Relation: relation,
+							Relation: relation, // rel2
 						},
 					},
 				},
