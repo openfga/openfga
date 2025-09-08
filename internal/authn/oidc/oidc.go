@@ -34,7 +34,7 @@ type RemoteOidcAuthenticator struct {
 	JwksURI string
 	JWKs    *keyfunc.JWKS
 
-	httpClient *http.Client
+	httpClient *retryablehttp.Client
 }
 
 var (
@@ -55,7 +55,7 @@ func NewRemoteOidcAuthenticator(mainIssuer string, issuerAliases []string, audie
 		IssuerAliases:  issuerAliases,
 		Audience:       audience,
 		Subjects:       subjects,
-		httpClient:     client.StandardClient(),
+		httpClient:     client,
 		ClientIDClaims: clientIDClaims,
 	}
 
@@ -185,7 +185,7 @@ func fetchJWK(oidc *RemoteOidcAuthenticator) error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          oidc.httpClient,
+		Client:          oidc.httpClient.HTTPClient,
 		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
@@ -196,7 +196,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 
 func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
 	wellKnown := strings.TrimSuffix(oidc.MainIssuer, "/") + "/.well-known/openid-configuration"
-	req, err := http.NewRequest("GET", wellKnown, nil)
+	req, err := retryablehttp.NewRequest("GET", wellKnown, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)
 	}
