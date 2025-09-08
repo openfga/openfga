@@ -738,7 +738,7 @@ func TestWriteCommand(t *testing.T) {
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
-				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnInsert)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnInsert)
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
 		},
@@ -753,7 +753,7 @@ func TestWriteCommand(t *testing.T) {
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(model, nil)
-				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.TupleConditionConflictError(&openfgav1.TupleKey{
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.TupleConditionConflictError(&openfgav1.TupleKey{
 					Object:   "document:1",
 					Relation: "viewer",
 					User:     "user:maria",
@@ -771,7 +771,7 @@ func TestWriteCommand(t *testing.T) {
 				}},
 			},
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnDelete)
+				mockDatastore.EXPECT().Write(gomock.Any(), storeID, gomock.Any(), gomock.Any(), gomock.Any()).Return(storage.ErrWriteConflictOnDelete)
 			},
 			expectedError: "rpc error: code = Aborted desc = transactional write failed due to conflict",
 		},
