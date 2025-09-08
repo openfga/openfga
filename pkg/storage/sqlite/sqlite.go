@@ -218,6 +218,7 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	_ ...storage.TupleWriteOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
