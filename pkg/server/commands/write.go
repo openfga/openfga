@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,7 +56,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 }
 
 func parseOptionOnDuplicate(wr *openfgav1.WriteRequestWrites) (storage.OnDuplicateInsert, error) {
-	switch strings.ToLower(wr.GetOnDuplicate()) {
+	switch wr.GetOnDuplicate() {
 	case "", "error":
 		return storage.OnDuplicateInsertError, nil
 	case "ignore":
@@ -68,7 +67,7 @@ func parseOptionOnDuplicate(wr *openfgav1.WriteRequestWrites) (storage.OnDuplica
 }
 
 func parseOptionOnMissing(wr *openfgav1.WriteRequestDeletes) (storage.OnMissingDelete, error) {
-	switch strings.ToLower(wr.GetOnMissing()) {
+	switch wr.GetOnMissing() {
 	case "", "error":
 		return storage.OnMissingDeleteError, nil
 	case "ignore":
