@@ -72,11 +72,7 @@ func TestFanChannels(t *testing.T) {
 		makeIterChan(ctrl, "5"),
 	)
 
-	out = FanInChannels[*iterator.Msg](cancellable, chans, func(msg *iterator.Msg) {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	})
+	out = FanInChannels[*iterator.Msg](cancellable, chans, iterator.CleanMsg)
 	iterations = 0
 	for msg := range out {
 		id, err := msg.Iter.Next(ctx)
