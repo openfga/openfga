@@ -107,7 +107,7 @@ func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator
 	ctx, span := tracer.Start(ctx, "weight2")
 	defer span.End()
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
+	leftChan := concurrency.FanInChannels[*iterator.Msg](cancellableCtx, leftChans, iterator.CleanMsg)
 	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
 	rightOpen := true
 	leftOpen := true
@@ -118,7 +118,7 @@ func (c *LocalChecker) weight2(ctx context.Context, leftChans []<-chan *iterator
 		if !leftOpen {
 			return
 		}
-		iterator.Drain(leftChan)
+		concurrency.Drain[*iterator.Msg](leftChan, iterator.CleanMsg)
 	}()
 
 	res := &ResolveCheckResponse{
@@ -225,7 +225,7 @@ func produceLeftChannels(
 		if err != nil {
 			// if the resolver already started it needs to be drained
 			if len(leftChans) > 0 {
-				iterator.Drain(iterator.FanInIteratorChannels(ctx, leftChans))
+				concurrency.Drain[*iterator.Msg](concurrency.FanInChannels[*iterator.Msg](ctx, leftChans, iterator.CleanMsg), iterator.CleanMsg)
 			}
 			return nil, err
 		}

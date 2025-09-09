@@ -107,7 +107,7 @@ func iteratorsToUserset(ctx context.Context, chans []<-chan *iterator.Msg, out c
 			open := true
 			defer func() {
 				if open {
-					iterator.Drain(c)
+					concurrency.Drain[*iterator.Msg](c, iterator.CleanMsg)
 				}
 			}()
 			for {
