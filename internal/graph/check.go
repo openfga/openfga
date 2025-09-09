@@ -279,11 +279,7 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		Allowed: false,
 	}
 
-ConsumerLoop:
-	for {
-		if baseDone && subDone {
-			break ConsumerLoop
-		}
+	for !baseDone || !subDone {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -297,17 +293,13 @@ ConsumerLoop:
 				continue
 			}
 
-			if baseResult.resp.GetCycleDetected() {
+			if baseResult.resp.GetCycleDetected() || !baseResult.resp.GetAllowed() {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
+						CycleDetected: baseResult.resp.GetCycleDetected(),
 					},
-				}, ctx.Err()
-			}
-
-			if !baseResult.resp.GetAllowed() {
-				return finalResult, ctx.Err()
+				}, nil
 			}
 
 		case subResult, ok := <-subChan:
@@ -326,11 +318,11 @@ ConsumerLoop:
 					ResolutionMetadata: ResolveCheckResponseMetadata{
 						CycleDetected: true,
 					},
-				}, ctx.Err()
+				}, nil
 			}
 
 			if subResult.resp.GetAllowed() {
-				return finalResult, ctx.Err()
+				return finalResult, nil
 			}
 		}
 	}
@@ -346,7 +338,7 @@ ConsumerLoop:
 
 	return &ResolveCheckResponse{
 		Allowed: true,
-	}, ctx.Err()
+	}, nil
 }
 
 // Close is a noop.
