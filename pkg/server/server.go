@@ -134,7 +134,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"require_authorize_check"})
+	}, []string{"require_authorize_check", "on_duplicate_write", "on_missing_delete"})
 
 	checkDurationHistogramName = "check_duration_ms"
 	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -160,7 +160,6 @@ type Server struct {
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
-	usersetBatchSize                 uint32
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
@@ -313,30 +312,6 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
-	}
-}
-
-// WithUsersetBatchSize in Check requests, configures how many usersets are collected
-// before we start processing them.
-//
-// For example in this model:
-// type user
-// type folder
-//
-//	relations
-//	   define viewer: [user]
-//
-// type doc
-//
-//	relations
-//	   define viewer: viewer from parent
-//	   define parent: [folder]
-//
-// If the Check(user:maria, viewer,doc:1) and this setting is 100,
-// we will find 100 parent folders of doc:1 and immediately start processing them.
-func WithUsersetBatchSize(usersetBatchSize uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.usersetBatchSize = usersetBatchSize
 	}
 }
 
