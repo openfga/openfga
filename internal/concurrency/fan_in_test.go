@@ -1,4 +1,4 @@
-package iterator
+package concurrency
 
 import (
 	"context"
@@ -9,22 +9,23 @@ import (
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-func makeIterChan(ctrl *gomock.Controller, id string) chan *Msg {
-	iterChan := make(chan *Msg, 1)
+func makeIterChan(ctrl *gomock.Controller, id string) chan *iterator.Msg {
+	iterChan := make(chan *iterator.Msg, 1)
 	iter := mocks.NewMockIterator[string](ctrl)
 	iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(id, nil)
 	iter.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", storage.ErrIteratorDone)
 	iter.EXPECT().Stop().MinTimes(1)
-	iterChan <- &Msg{Iter: iter}
+	iterChan <- &iterator.Msg{Iter: iter}
 	close(iterChan)
 	return iterChan
 }
 
-func TestFanInIteratorChannels(t *testing.T) {
+func TestFanChannels(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -32,7 +33,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
-	chans := make([]<-chan *Msg, 0, 9)
+	chans := make([]<-chan *iterator.Msg, 0, 9)
 	chans = append(chans,
 		makeIterChan(ctrl, "1"),
 		makeIterChan(ctrl, "2"),
@@ -44,7 +45,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 		makeIterChan(ctrl, "8"),
 		makeIterChan(ctrl, "9"))
 
-	out := FanInIteratorChannels(ctx, chans)
+	out := FanInChannels[*iterator.Msg](ctx, chans, iterator.CleanMsg)
 
 	iterations := 0
 	for msg := range out {
@@ -62,7 +63,7 @@ func TestFanInIteratorChannels(t *testing.T) {
 	require.Equal(t, 9, iterations)
 	cancellable, cancel := context.WithCancel(ctx)
 	cancel() // Stop would still be called in all entries even tho its been cancelled
-	chans = make([]<-chan *Msg, 0, 5)
+	chans = make([]<-chan *iterator.Msg, 0, 5)
 	chans = append(chans,
 		makeIterChan(ctrl, "1"),
 		makeIterChan(ctrl, "2"),
@@ -70,7 +71,12 @@ func TestFanInIteratorChannels(t *testing.T) {
 		makeIterChan(ctrl, "4"),
 		makeIterChan(ctrl, "5"),
 	)
-	out = FanInIteratorChannels(cancellable, chans)
+
+	out = FanInChannels[*iterator.Msg](cancellable, chans, func(msg *iterator.Msg) {
+		if msg.Iter != nil {
+			msg.Iter.Stop()
+		}
+	})
 	iterations = 0
 	for msg := range out {
 		id, err := msg.Iter.Next(ctx)

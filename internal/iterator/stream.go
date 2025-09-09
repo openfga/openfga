@@ -14,6 +14,12 @@ type Msg struct {
 	Err  error
 }
 
+func CleanMsg(msg *Msg) {
+	if msg.Iter != nil {
+		msg.Iter.Stop()
+	}
+}
+
 // Stream aggregates multiple iterators that are sent to a source channel into one iterator.
 type Stream struct {
 	idx            int

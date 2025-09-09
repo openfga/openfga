@@ -1,44 +1,40 @@
-package iterator
+package concurrency
 
 import (
 	"context"
 	"sync"
-
-	"github.com/openfga/openfga/internal/concurrency"
 )
 
-func Drain(ch <-chan *Msg) *sync.WaitGroup {
+func Drain[T any](ch <-chan T, drain func(T)) *sync.WaitGroup {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		for msg := range ch {
-			if msg.Iter != nil {
-				msg.Iter.Stop()
-			}
+			drain(msg)
 		}
 		wg.Done()
 	}()
 	return wg
 }
 
-func FanInIteratorChannels(ctx context.Context, chans []<-chan *Msg) <-chan *Msg {
+func FanInChannels[T any](ctx context.Context, chans []<-chan T, onFail func(T)) <-chan T {
 	limit := len(chans)
 
-	out := make(chan *Msg, limit)
+	out := make(chan T, limit)
 
 	if limit == 0 {
 		close(out)
 		return out
 	}
 
-	pool := concurrency.NewPool(ctx, limit)
+	pool := NewPool(ctx, limit)
 
 	for _, c := range chans {
 		pool.Go(func(ctx context.Context) error {
 			for v := range c {
-				if !concurrency.TrySendThroughChannel(ctx, v, out) {
-					if v.Iter != nil {
-						v.Iter.Stop()
+				if !TrySendThroughChannel(ctx, v, out) {
+					if onFail != nil {
+						onFail(v)
 					}
 				}
 			}
