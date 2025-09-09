@@ -10,7 +10,9 @@ func Drain[T any](ch <-chan T, drain func(T)) *sync.WaitGroup {
 	wg.Add(1)
 	go func() {
 		for msg := range ch {
-			drain(msg)
+			if drain != nil {
+				drain(msg)
+			}
 		}
 		wg.Done()
 	}()
