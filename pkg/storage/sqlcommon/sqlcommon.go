@@ -578,6 +578,34 @@ func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
 	return sb.String(), args
 }
 
+// selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
+// The existing rows are added to the existing map.
+func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store string, keys []tupleLockKey, txn *sql.Tx, existing map[string]*openfgav1.Tuple) error {
+	inExpr, args := buildRowConstructorIN(keys)
+
+	selectBuilder := dbInfo.stbl.
+		Select(SQLIteratorColumns()...).
+		From("tuple").
+		Where(sq.Eq{"store": store}).
+		// Row-constructor IN on full composite key for precise point locks.
+		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
+		Suffix("FOR UPDATE").
+		RunWith(txn) // make sure to run in the same transaction
+
+	iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
+	defer iter.Stop()
+
+	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
+
+	if err != nil {
+		return err
+	}
+	for _, tuple := range items {
+		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+	}
+	return nil
+}
+
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
@@ -598,71 +626,32 @@ func Write(
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
 	// Build a deduped, sorted list of keys to lock.
 	lockKeys := makeTupleLockKeys(deletes, writes)
-	if len(lockKeys) == 0 {
+	total := len(lockKeys)
+	if total == 0 {
 		// Nothing to do.
 		return nil
 	}
 
-	existing := make(map[string]*openfgav1.Tuple, len(lockKeys))
+	existing := make(map[string]*openfgav1.Tuple, total)
 
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
-	// Efficient, deterministic locking: probe existing rows using a row-constructor IN on the composite key.
-	// Batch to keep SQL size reasonable.
-	const lockBatchSize = 128
-
-	for i := 0; i < len(lockKeys); i += lockBatchSize {
-		j := i + lockBatchSize
-		if j > len(lockKeys) {
-			j = len(lockKeys)
+	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > total {
+			end = total
 		}
-		keys := lockKeys[i:j]
+		keys := lockKeys[start:end]
 
-		inExpr, args := buildRowConstructorIN(keys)
-
-		selectBuilder := dbInfo.stbl.
-			Select(SQLIteratorColumns()...).
-			From("tuple").
-			Where(sq.Eq{"store": store}).
-			// Row-constructor IN on full composite key for precise point locks.
-			Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
-			Suffix("FOR UPDATE").
-			RunWith(txn) // make sure to run in the same transaction
-
-		iter := NewSQLTupleIterator(selectBuilder, dbInfo.HandleSQLError)
-		defer iter.Stop()
-
-		items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
-
-		if err != nil {
+		if err = selectExistingRowsForWrite(ctx, dbInfo, store, keys, txn, existing); err != nil {
 			return err
-		}
-		for _, tuple := range items {
-			existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
 		}
 	}
 
-	changelogBuilder := dbInfo.stbl.
-		Insert("changelog").
-		Columns(
-			"store",
-			"object_type",
-			"object_id",
-			"relation",
-			"_user",
-			"condition_name",
-			"condition_context",
-			"operation",
-			"ulid",
-			"inserted_at",
-		)
-
-	deleteBuilder := dbInfo.stbl.Delete("tuple").Where(sq.Eq{"store": store})
+	changeLogItems := make([][]interface{}, 0, len(deletes)+len(writes))
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
-
-	var deleteCount int64
 
 	deleteConditions := sq.Or{}
 
@@ -692,8 +681,6 @@ func Write(
 			}
 		}
 
-		deleteCount++
-
 		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
@@ -705,7 +692,7 @@ func Write(
 			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
 
-		changelogBuilder = changelogBuilder.Values(
+		changeLogItems = append(changeLogItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -716,25 +703,10 @@ func Write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id,
 			sq.Expr("NOW()"),
-		)
+		})
 	}
 
-	insertBuilder := dbInfo.stbl.
-		Insert("tuple").
-		Columns(
-			"store",
-			"object_type",
-			"object_id",
-			"relation",
-			"_user",
-			"user_type",
-			"condition_name",
-			"condition_context",
-			"ulid",
-			"inserted_at",
-		)
-
-	insertCount := 0
+	writeItems := make([][]interface{}, 0, len(writes))
 
 	// 5. For writes
 	// a. If on_duplicate: error ( default behavior )
@@ -776,8 +748,7 @@ func Write(
 			return err
 		}
 
-		insertCount++
-		insertBuilder = insertBuilder.Values(
+		writeItems = append(writeItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -788,8 +759,9 @@ func Write(
 			conditionContext,
 			id,
 			sq.Expr("NOW()"),
-		)
-		changelogBuilder = changelogBuilder.Values(
+		})
+
+		changeLogItems = append(changeLogItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -800,12 +772,21 @@ func Write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
 			sq.Expr("NOW()"),
-		)
+		})
 	}
 
-	if deleteCount > 0 {
-		res, err := deleteBuilder.
-			Where(deleteConditions).
+	totalDeletes := len(deleteConditions)
+
+	for start := 0; start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalDeletes {
+			end = totalDeletes
+		}
+
+		deleteConditionsBatch := deleteConditions[start:end]
+
+		res, err := dbInfo.stbl.Delete("tuple").Where(sq.Eq{"store": store}).
+			Where(deleteConditionsBatch).
 			RunWith(txn). // Part of a txn.
 			ExecContext(ctx)
 		if err != nil {
@@ -817,15 +798,44 @@ func Write(
 			return dbInfo.HandleSQLError(err)
 		}
 
-		if rowsAffected != deleteCount {
+		if rowsAffected != int64(len(deleteConditionsBatch)) {
 			// If we deleted fewer rows than planned (after read before write), means we hit a race condition - someone else deleted the same row(s).
 			return storage.ErrWriteConflictOnDelete
 		}
 	}
 
-	if insertCount > 0 {
-		_, err = insertBuilder.RunWith(txn). // Part of a txn.
-							ExecContext(ctx)
+	totalWrites := len(writeItems)
+
+	for start := 0; start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalWrites {
+			end = totalWrites
+		}
+
+		writesBatch := writeItems[start:end]
+
+		insertBuilder := dbInfo.stbl.
+			Insert("tuple").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"_user",
+				"user_type",
+				"condition_name",
+				"condition_context",
+				"ulid",
+				"inserted_at",
+			)
+
+		for _, item := range writesBatch {
+			insertBuilder = insertBuilder.Values(item...)
+		}
+
+		_, err = insertBuilder.
+			RunWith(txn). // Part of a txn.
+			ExecContext(ctx)
 		if err != nil {
 			dberr := dbInfo.HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
@@ -837,8 +847,35 @@ func Write(
 	}
 
 	// 6. Execute INSERT changelog statements
-	if deleteCount > 0 || insertCount > 0 {
-		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
+	totalItems := len(changeLogItems)
+	for start := 0; start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalItems {
+			end = totalItems
+		}
+
+		changeLogBatch := changeLogItems[start:end]
+
+		changelogBuilder := dbInfo.stbl.
+			Insert("changelog").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"_user",
+				"condition_name",
+				"condition_context",
+				"operation",
+				"ulid",
+				"inserted_at",
+			)
+
+		for _, item := range changeLogBatch {
+			changelogBuilder = changelogBuilder.Values(item...)
+		}
+
+		_, err = changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
 			return dbInfo.HandleSQLError(err)
 		}
