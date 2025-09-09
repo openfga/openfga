@@ -53,7 +53,6 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
-	usersetBatchSize     int // TODO: delete this, its not used.
 	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -81,13 +80,6 @@ func WithPlanner(p *planner.Planner) LocalCheckerOption {
 	}
 }
 
-// WithUsersetBatchSize see server.WithUsersetBatchSize.
-func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.usersetBatchSize = int(usersetBatchSize)
-	}
-}
-
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
@@ -108,7 +100,6 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
-		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
