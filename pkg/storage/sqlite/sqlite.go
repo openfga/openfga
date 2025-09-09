@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,12 @@ var tracer = otel.Tracer("openfga/pkg/storage/sqlite")
 
 func startTrace(ctx context.Context, name string) (context.Context, trace.Span) {
 	return tracer.Start(ctx, "sqlite."+name)
+}
+
+var tupleColumns = []string{
+	"store", "object_type", "object_id", "relation",
+	"user_object_type", "user_object_id", "user_relation",
+	"condition_name", "condition_context", "ulid", "inserted_at",
 }
 
 // Datastore provides a SQLite based implementation of [storage.OpenFGADatastore].
@@ -218,11 +225,117 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	opts ...storage.TupleWriteOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return s.write(ctx, store, deletes, writes, time.Now().UTC())
+	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+}
+
+// tupleLockKey represents the composite key we lock on.
+type tupleLockKey struct {
+	objectType     string
+	objectID       string
+	relation       string
+	userObjectType string
+	userObjectID   string
+	userRelation   string
+	userType       tupleUtils.UserType
+}
+
+// makeTupleLockKeys flattens deletes+writes into a deduped, sorted slice to ensure stable lock order.
+func makeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []tupleLockKey {
+	keys := make([]tupleLockKey, 0, len(deletes)+len(writes))
+
+	seen := make(map[string]struct{}, cap(keys))
+	add := func(tk *openfgav1.TupleKey) {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+		k := tupleLockKey{
+			objectType:     objectType,
+			objectID:       objectID,
+			relation:       tk.GetRelation(),
+			userObjectType: userObjectType,
+			userObjectID:   userObjectID,
+			userRelation:   userRelation,
+			userType:       tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		}
+		s := strings.Join([]string{
+			k.objectType,
+			k.objectID,
+			k.relation,
+			k.userObjectType,
+			k.userObjectID,
+			k.userRelation,
+			string(k.userType),
+		}, "\x00")
+		if _, ok := seen[s]; ok {
+			return
+		}
+		seen[s] = struct{}{}
+		keys = append(keys, k)
+	}
+
+	for _, tk := range deletes {
+		add(tupleUtils.TupleKeyWithoutConditionToTupleKey(tk))
+	}
+	for _, tk := range writes {
+		add(tk)
+	}
+
+	// Sort deterministically by the composite key to keep lock order stable.
+	sort.Slice(keys, func(i, j int) bool {
+		a, b := keys[i], keys[j]
+		if a.objectType != b.objectType {
+			return a.objectType < b.objectType
+		}
+		if a.objectID != b.objectID {
+			return a.objectID < b.objectID
+		}
+		if a.relation != b.relation {
+			return a.relation < b.relation
+		}
+		if a.userObjectType != b.userObjectType {
+			return a.userObjectType < b.userObjectType
+		}
+		if a.userObjectID != b.userObjectID {
+			return a.userObjectID < b.userObjectID
+		}
+		if a.userRelation != b.userRelation {
+			return a.userRelation < b.userRelation
+		}
+		return a.userType < b.userType
+	})
+
+	return keys
+}
+
+// buildRowConstructorIN builds "((?,?,?,?,?,?,?),(?,?,?,?,?,?,?),...)" and arg list for row-constructor IN.
+func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
+	if len(keys) == 0 {
+		return "", nil
+	}
+	var sb strings.Builder
+	args := make([]interface{}, 0, len(keys)*7)
+	sb.WriteByte('(')
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString("(?,?,?,?,?,?,?)")
+		args = append(args,
+			k.objectType,
+			k.objectID,
+			k.relation,
+			k.userObjectType,
+			k.userObjectID,
+			k.userRelation,
+			k.userType,
+		)
+	}
+	sb.WriteByte(')')
+	return sb.String(), args
 }
 
 // Write provides the common method for writing to database across sql storage.
@@ -231,12 +344,14 @@ func (s *Datastore) write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	opts storage.TupleWriteOptions,
 	now time.Time,
 ) error {
+	// 1. Begin Transaction ( Isolation Level = READ COMMITTED )
 	var txn *sql.Tx
 	err := busyRetry(func() error {
 		var err error
-		txn, err = s.db.BeginTx(ctx, nil)
+		txn, err = s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 		return err
 	})
 	if err != nil {
@@ -245,6 +360,52 @@ func (s *Datastore) write(
 	defer func() {
 		_ = txn.Rollback()
 	}()
+
+	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
+	// Build a deduped, sorted list of keys to lock.
+	lockKeys := makeTupleLockKeys(deletes, writes)
+	if len(lockKeys) == 0 {
+		// Nothing to do.
+		return nil
+	}
+
+	existing := make(map[string]*openfgav1.Tuple, len(lockKeys))
+
+	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
+
+	// Efficient, deterministic locking: probe existing rows using a row-constructor IN on the composite key.
+	// Batch to keep SQL size reasonable.
+	const lockBatchSize = 128
+
+	for i := 0; i < len(lockKeys); i += lockBatchSize {
+		j := i + lockBatchSize
+		if j > len(lockKeys) {
+			j = len(lockKeys)
+		}
+		keys := lockKeys[i:j]
+
+		inExpr, args := buildRowConstructorIN(keys)
+
+		selectBuilder := s.stbl.
+			Select(tupleColumns...).
+			Where(sq.Eq{"store": store}).
+			From("tuple").
+			// Row-constructor IN on full composite key for precise point locks.
+			Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...)).
+			RunWith(txn) // make sure to run in the same transaction
+
+		iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
+		defer iter.Stop()
+
+		items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
+
+		if err != nil {
+			return err
+		}
+		for _, tuple := range items {
+			existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+		}
+	}
 
 	changelogBuilder := s.stbl.
 		Insert("changelog").
@@ -263,46 +424,56 @@ func (s *Datastore) write(
 			"inserted_at",
 		)
 
-	deleteBuilder := s.stbl.Delete("tuple")
+	deleteBuilder := s.stbl.Delete("tuple").Where(sq.Eq{"store": store})
 
+	// ensures increasingly unique values within a single thread
+	entropy := ulid.DefaultEntropy()
+
+	var deleteCount int64
+
+	deleteConditions := sq.Or{}
+
+	// 4. For deletes
+	// a. If on_missing: error ( default behavior ):
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return an error
+	// b. If on_missing: ignore use the result from Step 3.a.
+	// - Based on the results from step 3.a, which identified and locked existing rows,
+	//   the system will generate DELETE tuple and INSERT changelog statements only for those specific tuples
+	// - For rows that don’t exist in DB - ignore, no-op
+	// - Execute DELETEs as a single statement.
+	//   On conflict ( row count != delete count ) - rollback & return a HTTP 409 Conflict error
 	for _, tk := range deletes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
+			// If the tuple does not exist, we can not delete it.
+			switch opts.OnMissingDelete {
+			case storage.OnMissingDeleteIgnore:
+				continue
+			case storage.OnMissingDeleteError:
+				fallthrough
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+				)
+			}
+		}
+
+		deleteCount++
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
-		var res sql.Result
-		var err error
-		err = busyRetry(func() error {
-			res, err = deleteBuilder.
-				Where(sq.Eq{
-					"store":            store,
-					"object_type":      objectType,
-					"object_id":        objectID,
-					"relation":         tk.GetRelation(),
-					"user_object_type": userObjectType,
-					"user_object_id":   userObjectID,
-					"user_relation":    userRelation,
-					"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-				}).
-				RunWith(txn). // Part of a txn.
-				ExecContext(ctx)
-			return err
+		deleteConditions = append(deleteConditions, sq.Eq{
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tk.GetRelation(),
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
+			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
-		if err != nil {
-			return HandleSQLError(err, tk)
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return HandleSQLError(err)
-		}
-
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(
-				tk,
-				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
-			)
-		}
 
 		changelogBuilder = changelogBuilder.Values(
 			store,
@@ -337,8 +508,41 @@ func (s *Datastore) write(
 			"inserted_at",
 		)
 
+	insertCount := 0
+
+	// 5. For writes
+	// a. If on_duplicate: error ( default behavior )
+	// - Execute INSERTs as a single statement.
+	//   On duplicate insert we’d get a CONSTRAINT VIOLATION error, return 400 Bad Request
+	// b. If on_duplicate: ignore
+	// - Based on the results from step 3.a, which identified and locked existing rows, the system will compare values to the ones we’re trying to insert
+	// - On conflict ( values not identical ) - return an error 409 Conflict
+	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
+	// c. Execute INSERTs as a single statement
+	//   On error, return 409 Conflict
 	for _, tk := range writes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
+			// If the tuple exists, we can not write it.
+			switch opts.OnDuplicateInsert {
+			case storage.OnDuplicateInsertIgnore:
+				// If the tuple exists and the condition is the same, we can ignore it.
+				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
+				if proto.Equal(existingTuple.GetKey().GetCondition(), tk.GetCondition()) {
+					continue
+				}
+				// If tuple conditions are different, we throw an error.
+				return storage.TupleConditionConflictError(tk)
+			case storage.OnDuplicateInsertError:
+				fallthrough
+			default:
+				return storage.InvalidWriteInputError(
+					tk,
+					openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				)
+			}
+		}
+
+		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
@@ -347,30 +551,21 @@ func (s *Datastore) write(
 			return err
 		}
 
-		err = busyRetry(func() error {
-			_, err = insertBuilder.
-				Values(
-					store,
-					objectType,
-					objectID,
-					tk.GetRelation(),
-					userObjectType,
-					userObjectID,
-					userRelation,
-					tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-					conditionName,
-					conditionContext,
-					id,
-					sq.Expr("datetime('subsec')"),
-				).
-				RunWith(txn). // Part of a txn.
-				ExecContext(ctx)
-			return err
-		})
-		if err != nil {
-			return HandleSQLError(err, tk)
-		}
-
+		insertCount++
+		insertBuilder = insertBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			userObjectType,
+			userObjectID,
+			userRelation,
+			tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			conditionName,
+			conditionContext,
+			id,
+			sq.Expr("datetime('subsec')"),
+		)
 		changelogBuilder = changelogBuilder.Values(
 			store,
 			objectType,
@@ -387,7 +582,46 @@ func (s *Datastore) write(
 		)
 	}
 
-	if len(writes) > 0 || len(deletes) > 0 {
+	if deleteCount > 0 {
+		var res sql.Result
+
+		err = busyRetry(func() error {
+			res, err = deleteBuilder.
+				Where(deleteConditions).
+				RunWith(txn). // Part of a txn.
+				ExecContext(ctx)
+			return err
+		})
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return HandleSQLError(err)
+		}
+
+		if rowsAffected != deleteCount {
+			// If we deleted fewer rows than planned (after read before write), means we hit a race condition - someone else deleted the same row(s).
+			return storage.ErrWriteConflictOnDelete
+		}
+	}
+
+	if insertCount > 0 {
+		err = busyRetry(func() error {
+			_, err = insertBuilder.RunWith(txn). // Part of a txn.
+								ExecContext(ctx)
+			return err
+		})
+		if err != nil {
+			dberr := HandleSQLError(err)
+			if errors.Is(dberr, storage.ErrCollision) {
+				// ErrCollision is returned on duplicate write (constraint violation), meaning we hit a race condition - someone else inserted the same row(s).
+				return storage.ErrWriteConflictOnInsert
+			}
+			return dberr
+		}
+	}
+
+	// 6. Execute INSERT changelog statements
+	if deleteCount > 0 || insertCount > 0 {
 		err := busyRetry(func() error {
 			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 			return err
