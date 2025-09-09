@@ -49,13 +49,12 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	const directEdgesKey = "direct_edges"
 
 	for _, edge := range edges {
-		var key string
 		_, ok := edge.GetWeight(sourceType)
 		if !ok {
 			// Skip edges that don't have a path to the source type
 			continue
 		}
-
+		var key string
 		switch edge.GetEdgeType() {
 		case graph.DirectEdge:
 			key = directEdgesKey
@@ -201,7 +200,7 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 							Relation: parent, // parent
 						},
 						ComputedUserset: &openfgav1.ObjectRelation{
-							Relation: relation, // rel2
+							Relation: relation,
 						},
 					},
 				},

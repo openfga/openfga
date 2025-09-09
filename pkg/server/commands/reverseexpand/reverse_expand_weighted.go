@@ -669,7 +669,6 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-
 	if intersectionNode == nil || intersectionNode.GetNodeType() != weightedGraph.OperatorNode || intersectionNode.GetLabel() != weightedGraph.IntersectionOperator {
 		return fmt.Errorf("%w: operation: intersection: %s", errors.ErrUnsupported, "invalid intersection node")
 	}
@@ -695,11 +694,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	intersectEdges := intersectionEdges.SiblingEdges
 	usersets := make([]*openfgav1.Userset, 0, len(intersectEdges))
 	for _, edges := range intersectEdges {
-		// no matter how many direct edges, for typesystem only required this
-		if edges[0].GetEdgeType() == weightedGraph.DirectEdge {
-			usersets = append(usersets, typesystem.This())
-			continue
-		}
+		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
 		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
 		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
 		userset, err := c.typesystem.ConstructUserset(edges[0])
@@ -710,15 +705,13 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		usersets = append(usersets, userset)
 	}
 
-	var userset *openfgav1.Userset
+	userset := usersets[0]
 	if len(usersets) > 1 {
 		userset = &openfgav1.Userset{
 			Userset: &openfgav1.Userset_Intersection{
 				Intersection: &openfgav1.Usersets{
 					Child: usersets,
 				}}}
-	} else {
-		userset = usersets[0]
 	}
 
 	// Concurrently find candidates and call check on them as they are found
@@ -743,7 +736,6 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-
 	if exclusionNode == nil || exclusionNode.GetNodeType() != weightedGraph.OperatorNode || exclusionNode.GetLabel() != weightedGraph.ExclusionOperator {
 		return fmt.Errorf("%w: operation: exclusion: %s", errors.ErrUnsupported, "invalid exclusion node")
 	}
