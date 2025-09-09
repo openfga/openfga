@@ -962,8 +962,12 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.NoError(t, err)
 
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
+			Name:    "condition1",
+			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+		}}
 		// Second write of the same tuple should not fail.
-		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk},
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk2},
 			storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
 		require.NoError(t, err)
 
