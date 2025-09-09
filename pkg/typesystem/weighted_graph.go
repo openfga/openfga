@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
@@ -41,8 +42,8 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	}
 
 	// Group edges by type
-	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge)
-	directEdgesKey := "direct_edges"
+	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge, len(edges))
+	const directEdgesKey = "direct_edges"
 
 	for _, edge := range edges {
 		var key string
@@ -155,7 +156,7 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 				Userset: &openfgav1.Userset_TupleToUserset{
 					TupleToUserset: &openfgav1.TupleToUserset{
 						Tupleset: &openfgav1.ObjectRelation{
-							Relation: parent, //parent
+							Relation: parent, // parent
 						},
 						ComputedUserset: &openfgav1.ObjectRelation{
 							Relation: relation, // rel2

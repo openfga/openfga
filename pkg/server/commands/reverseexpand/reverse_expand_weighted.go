@@ -677,7 +677,6 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-
 	intersectionEdges, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
@@ -701,6 +700,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
 		userset, err := c.typesystem.ConstructUserset(edges[0])
 		if err != nil {
+			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)

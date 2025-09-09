@@ -194,7 +194,6 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.Equal(t, graph.RewriteEdge, comparator.LowestEdges[0].GetEdgeType())
 		require.Equal(t, "group#adhoc_member", comparator.LowestEdges[0].GetTo().GetUniqueLabel())
 		require.Len(t, comparator.SiblingEdges, 2)
-
 	})
 
 	t.Run("nested_operator", func(t *testing.T) {
@@ -300,6 +299,49 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		require.Equal(t, "adhoc#member", comparator.LowestEdges[0].GetTo().GetUniqueLabel())
 		require.Equal(t, graph.TTUEdge, comparator.SiblingEdges[0][0].GetEdgeType())
 		require.Len(t, comparator.SiblingEdges[0], 3)
+	})
+
+	t.Run("ttu_multiple_with_lowest_weight", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			type user
+			type subteam1
+				relations
+					define member: [user]
+			type subteam2
+				relations
+					define member: [user]
+			type adhoc
+				relations
+					define member: [subteam1#member]
+			type group
+				relations
+					define parent: [subteam1, subteam2]
+					define member: [adhoc#member] and member from parent
+			`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+
+		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		require.NoError(t, err)
+
+		require.Len(t, edges, 1)
+		rootIntersectionNode := edges[0].GetTo()
+		require.Equal(t, graph.IntersectionOperator, rootIntersectionNode.GetLabel())
+		require.Equal(t, graph.OperatorNode, rootIntersectionNode.GetNodeType())
+		actualIntersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootIntersectionNode)
+		require.True(t, ok)
+		comparator, err := GetEdgesForIntersection(actualIntersectionEdges, "user")
+		require.NoError(t, err)
+		require.Len(t, comparator.LowestEdges, 2)
+		require.Equal(t, graph.TTUEdge, comparator.LowestEdges[0].GetEdgeType())
+		require.Equal(t, "subteam1#member", comparator.LowestEdges[0].GetTo().GetUniqueLabel())
+		require.Equal(t, graph.TTUEdge, comparator.LowestEdges[1].GetEdgeType())
+		require.Equal(t, "subteam2#member", comparator.LowestEdges[1].GetTo().GetUniqueLabel())
+		require.Equal(t, graph.DirectEdge, comparator.SiblingEdges[0][0].GetEdgeType())
+		require.Len(t, comparator.SiblingEdges[0], 1)
+		require.Equal(t, "adhoc#member", comparator.SiblingEdges[0][0].GetTo().GetUniqueLabel())
 	})
 }
 
