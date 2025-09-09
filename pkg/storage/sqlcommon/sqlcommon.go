@@ -775,9 +775,7 @@ func Write(
 		})
 	}
 
-	totalDeletes := len(deleteConditions)
-
-	for start := 0; start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
+	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
 		if end > totalDeletes {
 			end = totalDeletes
@@ -804,9 +802,7 @@ func Write(
 		}
 	}
 
-	totalWrites := len(writeItems)
-
-	for start := 0; start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
+	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
 		if end > totalWrites {
 			end = totalWrites
@@ -847,8 +843,7 @@ func Write(
 	}
 
 	// 6. Execute INSERT changelog statements
-	totalItems := len(changeLogItems)
-	for start := 0; start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
+	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
 		if end > totalItems {
 			end = totalItems
