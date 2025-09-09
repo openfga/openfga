@@ -269,20 +269,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// If the edge is an operator node, we need to handle it differently.
 			switch toNode.GetLabel() {
 			case weightedGraph.IntersectionOperator:
-				intersectionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				err := c.intersectionHandler(pool, newReq, resultChan, toNode, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
 			case weightedGraph.ExclusionOperator:
-				exclusionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				err := c.exclusionHandler(ctx, pool, newReq, resultChan, toNode, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -673,17 +665,29 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	intersectionNode *weightedGraph.WeightedAuthorizationModelNode,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+
+	if intersectionNode == nil || intersectionNode.GetNodeType() != weightedGraph.OperatorNode || intersectionNode.GetLabel() != weightedGraph.IntersectionOperator {
+		return fmt.Errorf("%w: operation: intersection: %s", errors.ErrUnsupported, "invalid intersection node")
+	}
+
+	// verify if the node has weight to the sourceUserType
+	edges, err := c.typesystem.GetEdgesFromNode(intersectionNode, sourceUserType)
+	if err != nil {
+		return err
+	}
+
+	// when the intersection node has a weight to the sourceUserType then it means all the group edges has weight to the sourceUserType
 	intersectionEdges, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	// if no edges to call LO, return nill
-	if len(intersectionEdges.LowestEdges) == 0 {
+	// if no edges to call LO or call check, return nill
+	if len(intersectionEdges.LowestEdges) == 0 || len(intersectionEdges.SiblingEdges) == 0 {
 		return nil
 	}
 
@@ -735,24 +739,34 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	exclusionNode *weightedGraph.WeightedAuthorizationModelNode,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
+
+	if exclusionNode == nil || exclusionNode.GetNodeType() != weightedGraph.OperatorNode || exclusionNode.GetLabel() != weightedGraph.ExclusionOperator {
+		return fmt.Errorf("%w: operation: exclusion: %s", errors.ErrUnsupported, "invalid exclusion node")
+	}
+
+	// verify if the node has weight to the sourceUserType
+	exclusionEdges, err := c.typesystem.GetEdgesFromNode(exclusionNode, sourceUserType)
+	if err != nil {
+		return err
+	}
+	edges, err := typesystem.GetEdgesForExclusion(exclusionEdges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
 	// e.g. `B` in `A but not B` is not relevant to this query.
-	if excludedEdge == nil {
+	if edges.ExcludedEdges == nil {
 		newReq := req.clone()
 
 		return c.shallowClone().loopOverEdges(
 			ctx,
 			newReq,
-			baseEdges,
+			edges.BaseEdges,
 			false,
 			resolutionMetadata,
 			resultChan,
@@ -762,14 +776,14 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
-	userset, err := c.typesystem.ConstructUserset(excludedEdge)
+	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0])
 	if err != nil {
 		// This should never happen.
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, edges.BaseEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false, resolutionMetadata)
 
 	return nil

@@ -3,14 +3,12 @@ package typesystem
 import (
 	"fmt"
 	"math"
-	"slices"
 
 	"github.com/google/uuid"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
@@ -28,6 +26,11 @@ func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 type IntersectionEdges struct {
 	LowestEdges  []*graph.WeightedAuthorizationModelEdge   // lowest edges to apply list objects
 	SiblingEdges [][]*graph.WeightedAuthorizationModelEdge // the rest of the edges to apply intersection
+}
+
+type ExclusionEdges struct {
+	BaseEdges     []*graph.WeightedAuthorizationModelEdge // base edges to apply list objects
+	ExcludedEdges []*graph.WeightedAuthorizationModelEdge // excluded edges to apply exclusion
 }
 
 // GetEdgesForIntersection returns the lowest weighted edge and
@@ -107,22 +110,61 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 func GetEdgesForExclusion(
 	edges []*graph.WeightedAuthorizationModelEdge,
 	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, *graph.WeightedAuthorizationModelEdge, error) {
+) (ExclusionEdges, error) {
 	if len(edges) < 2 {
-		return nil, nil, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
+		return ExclusionEdges{}, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
 	}
 
-	butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-	// Filter to only return edges which have a path to the sourceType
-	relevantEdges := slices.Collect(utils.Filter(edges[:len(edges)-1], func(edge *graph.WeightedAuthorizationModelEdge) bool {
-		return hasPathTo(edge, sourceType)
-	}))
-	if !hasPathTo(butNotEdge, sourceType) {
-		// if the but not path is not connected, there is no butNotEdge because
-		// all list objects candidates are true.
-		return relevantEdges, nil, nil
+	// Group edges by type
+	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge, 2)
+	baseKey := ""
+	exclusionKey := ""
+	const directEdgesKey = "direct_edges"
+
+	for _, edge := range edges {
+		var key string
+		_, ok := edge.GetWeight(sourceType)
+		if !ok {
+			// Skip edges that don't have a path to the source type
+			continue
+		}
+
+		switch edge.GetEdgeType() {
+		case graph.DirectEdge:
+			key = directEdgesKey
+		case graph.TTUEdge:
+			objtype, parent := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+			_, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+			key = objtype + "#" + parent + "#" + relation
+		default:
+			// Other edge types are treated individually
+			key = "other_" + uuid.New().String()
+		}
+		if len(baseKey) == 0 {
+			baseKey = key
+		} else if baseKey != key {
+			exclusionKey = key
+		}
+		groupedEdges[key] = append(groupedEdges[key], edge)
 	}
-	return relevantEdges, butNotEdge, nil
+
+	if len(groupedEdges) > 2 || len(baseKey) == 0 {
+		return ExclusionEdges{}, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
+	}
+
+	// for the case of exclusion, we can have that the exlusion part does not have any edge that lead to
+	// the user type in question, so no need to run check over it, as it will never negate it the results of the base
+	if exclusionKey == "" {
+		return ExclusionEdges{
+			BaseEdges:     groupedEdges[baseKey],
+			ExcludedEdges: nil,
+		}, nil
+	}
+
+	return ExclusionEdges{
+		BaseEdges:     groupedEdges[baseKey],
+		ExcludedEdges: groupedEdges[exclusionKey],
+	}, nil
 }
 
 // ConstructUserset returns the openfgav1.Userset to run CheckRewrite against list objects candidate when

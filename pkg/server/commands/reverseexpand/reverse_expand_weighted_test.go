@@ -2335,9 +2335,6 @@ func TestIntersectionHandler(t *testing.T) {
 		node, ok := typesys2.GetNode("document#admin")
 		require.True(t, ok)
 
-		edges, err := typesys2.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
 			StoreID:       storeID,
@@ -2345,9 +2342,9 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
-		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
-		require.ErrorContains(t, err, "invalid edges for source type")
+		require.ErrorContains(t, err, "invalid intersection node")
 		err = pool.Wait()
 		require.NoError(t, err)
 	})
@@ -2404,8 +2401,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		pool := concurrency.NewPool(ctx, 2)
 
@@ -2416,7 +2411,7 @@ func TestIntersectionHandler(t *testing.T) {
 				Relation:      relation,
 				User:          user,
 				relationStack: nil,
-			}, resultChan, edges, "", NewResolutionMetadata())
+			}, resultChan, edges[0].GetTo(), "", NewResolutionMetadata())
 
 			if newErr != nil {
 				errChan <- newErr
@@ -2433,9 +2428,10 @@ func TestIntersectionHandler(t *testing.T) {
 		case res := <-resultChan:
 			require.Fail(t, "expected no result, but got one", "received: %+v", res)
 		case <-time.After(300 * time.Millisecond):
+			require.Fail(t, "should not succeed, not a valid intersection for terminal type")
 			// Success: no result received within timeout
 		case err := <-errChan:
-			require.Fail(t, "unexpected error received on error channel: "+err.Error())
+			require.ErrorContains(t, err, "invalid edges for source type")
 		}
 	})
 
@@ -2491,8 +2487,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2503,7 +2497,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorContains(t, err, "test")
@@ -2568,8 +2562,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2580,7 +2572,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.NoError(t, err)
@@ -2638,8 +2630,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2650,7 +2640,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorIs(t, err, errorRet)
@@ -2712,9 +2702,6 @@ func TestExclusionHandler(t *testing.T) {
 		node, ok := typesys2.GetNode("document#admin")
 		require.True(t, ok)
 
-		edges, err := typesys2.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
 			StoreID:       storeID,
@@ -2722,9 +2709,9 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
-		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
-		require.ErrorContains(t, err, "invalid exclusion edges for source type")
+		require.ErrorContains(t, err, "invalid exclusion node")
 		err = pool.Wait()
 		require.NoError(t, err)
 	})
@@ -2781,8 +2768,6 @@ func TestExclusionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2793,7 +2778,7 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorContains(t, err, "test")
@@ -2853,8 +2838,6 @@ func TestExclusionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2865,7 +2848,7 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorIs(t, err, errorRet)
