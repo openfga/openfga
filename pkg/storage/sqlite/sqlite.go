@@ -338,6 +338,33 @@ func buildRowConstructorIN(keys []tupleLockKey) (string, []interface{}) {
 	return sb.String(), args
 }
 
+// selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
+// The existing rows are added to the existing map.
+func (s *Datastore) selectExistingRowsForWrite(ctx context.Context, store string, keys []tupleLockKey, txn *sql.Tx, existing map[string]*openfgav1.Tuple) error {
+	inExpr, args := buildRowConstructorIN(keys)
+
+	selectBuilder := s.stbl.
+		Select(tupleColumns...).
+		Where(sq.Eq{"store": store}).
+		From("tuple").
+		// Row-constructor IN on full composite key for precise point locks.
+		Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...)).
+		RunWith(txn) // make sure to run in the same transaction
+
+	iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
+	defer iter.Stop()
+
+	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
+
+	if err != nil {
+		return err
+	}
+	for _, tuple := range items {
+		existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
+	}
+	return nil
+}
+
 // Write provides the common method for writing to database across sql storage.
 func (s *Datastore) write(
 	ctx context.Context,
@@ -364,72 +391,32 @@ func (s *Datastore) write(
 	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
 	// Build a deduped, sorted list of keys to lock.
 	lockKeys := makeTupleLockKeys(deletes, writes)
-	if len(lockKeys) == 0 {
+	total := len(lockKeys)
+	if total == 0 {
 		// Nothing to do.
 		return nil
 	}
 
-	existing := make(map[string]*openfgav1.Tuple, len(lockKeys))
+	existing := make(map[string]*openfgav1.Tuple, total)
 
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
-	// Efficient, deterministic locking: probe existing rows using a row-constructor IN on the composite key.
-	// Batch to keep SQL size reasonable.
-	const lockBatchSize = 128
-
-	for i := 0; i < len(lockKeys); i += lockBatchSize {
-		j := i + lockBatchSize
-		if j > len(lockKeys) {
-			j = len(lockKeys)
+	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > total {
+			end = total
 		}
-		keys := lockKeys[i:j]
+		keys := lockKeys[start:end]
 
-		inExpr, args := buildRowConstructorIN(keys)
-
-		selectBuilder := s.stbl.
-			Select(tupleColumns...).
-			Where(sq.Eq{"store": store}).
-			From("tuple").
-			// Row-constructor IN on full composite key for precise point locks.
-			Where(sq.Expr("(object_type, object_id, relation, user_object_type, user_object_id, user_relation, user_type) IN "+inExpr, args...)).
-			RunWith(txn) // make sure to run in the same transaction
-
-		iter := NewSQLTupleIterator(selectBuilder, HandleSQLError)
-		defer iter.Stop()
-
-		items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
-
-		if err != nil {
+		if err = s.selectExistingRowsForWrite(ctx, store, keys, txn, existing); err != nil {
 			return err
-		}
-		for _, tuple := range items {
-			existing[tupleUtils.TupleKeyToString(tuple.GetKey())] = tuple
 		}
 	}
 
-	changelogBuilder := s.stbl.
-		Insert("changelog").
-		Columns(
-			"store",
-			"object_type",
-			"object_id",
-			"relation",
-			"user_object_type",
-			"user_object_id",
-			"user_relation",
-			"condition_name",
-			"condition_context",
-			"operation",
-			"ulid",
-			"inserted_at",
-		)
-
-	deleteBuilder := s.stbl.Delete("tuple").Where(sq.Eq{"store": store})
+	changeLogItems := make([][]interface{}, 0, len(deletes)+len(writes))
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
-
-	var deleteCount int64
 
 	deleteConditions := sq.Or{}
 
@@ -459,8 +446,6 @@ func (s *Datastore) write(
 			}
 		}
 
-		deleteCount++
-
 		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
@@ -475,7 +460,7 @@ func (s *Datastore) write(
 			"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 		})
 
-		changelogBuilder = changelogBuilder.Values(
+		changeLogItems = append(changeLogItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -488,27 +473,10 @@ func (s *Datastore) write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id,
 			sq.Expr("datetime('subsec')"),
-		)
+		})
 	}
 
-	insertBuilder := s.stbl.
-		Insert("tuple").
-		Columns(
-			"store",
-			"object_type",
-			"object_id",
-			"relation",
-			"user_object_type",
-			"user_object_id",
-			"user_relation",
-			"user_type",
-			"condition_name",
-			"condition_context",
-			"ulid",
-			"inserted_at",
-		)
-
-	insertCount := 0
+	writeItems := make([][]interface{}, 0, len(writes))
 
 	// 5. For writes
 	// a. If on_duplicate: error ( default behavior )
@@ -551,8 +519,7 @@ func (s *Datastore) write(
 			return err
 		}
 
-		insertCount++
-		insertBuilder = insertBuilder.Values(
+		writeItems = append(writeItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -565,8 +532,9 @@ func (s *Datastore) write(
 			conditionContext,
 			id,
 			sq.Expr("datetime('subsec')"),
-		)
-		changelogBuilder = changelogBuilder.Values(
+		})
+
+		changeLogItems = append(changeLogItems, []interface{}{
 			store,
 			objectType,
 			objectID,
@@ -579,37 +547,68 @@ func (s *Datastore) write(
 			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			id,
 			sq.Expr("datetime('subsec')"),
-		)
+		})
 	}
 
-	if deleteCount > 0 {
-		var res sql.Result
+	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalDeletes {
+			end = totalDeletes
+		}
 
-		err = busyRetry(func() error {
-			res, err = deleteBuilder.
-				Where(deleteConditions).
-				RunWith(txn). // Part of a txn.
-				ExecContext(ctx)
-			return err
-		})
+		deleteConditionsBatch := deleteConditions[start:end]
+
+		res, err := s.stbl.Delete("tuple").Where(sq.Eq{"store": store}).
+			Where(deleteConditionsBatch).
+			RunWith(txn). // Part of a txn.
+			ExecContext(ctx)
+		if err != nil {
+			return HandleSQLError(err)
+		}
 
 		rowsAffected, err := res.RowsAffected()
 		if err != nil {
 			return HandleSQLError(err)
 		}
 
-		if rowsAffected != deleteCount {
+		if rowsAffected != int64(len(deleteConditionsBatch)) {
 			// If we deleted fewer rows than planned (after read before write), means we hit a race condition - someone else deleted the same row(s).
 			return storage.ErrWriteConflictOnDelete
 		}
 	}
 
-	if insertCount > 0 {
-		err = busyRetry(func() error {
-			_, err = insertBuilder.RunWith(txn). // Part of a txn.
-								ExecContext(ctx)
-			return err
-		})
+	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalWrites {
+			end = totalWrites
+		}
+
+		writesBatch := writeItems[start:end]
+
+		insertBuilder := s.stbl.
+			Insert("tuple").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"user_object_type",
+				"user_object_id",
+				"user_relation",
+				"user_type",
+				"condition_name",
+				"condition_context",
+				"ulid",
+				"inserted_at",
+			)
+
+		for _, item := range writesBatch {
+			insertBuilder = insertBuilder.Values(item...)
+		}
+
+		_, err = insertBuilder.
+			RunWith(txn). // Part of a txn.
+			ExecContext(ctx)
 		if err != nil {
 			dberr := HandleSQLError(err)
 			if errors.Is(dberr, storage.ErrCollision) {
@@ -621,11 +620,36 @@ func (s *Datastore) write(
 	}
 
 	// 6. Execute INSERT changelog statements
-	if deleteCount > 0 || insertCount > 0 {
-		err := busyRetry(func() error {
-			_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
-			return err
-		})
+	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
+		end := start + storage.DefaultMaxTuplesPerWrite
+		if end > totalItems {
+			end = totalItems
+		}
+
+		changeLogBatch := changeLogItems[start:end]
+
+		changelogBuilder := s.stbl.
+			Insert("changelog").
+			Columns(
+				"store",
+				"object_type",
+				"object_id",
+				"relation",
+				"user_object_type",
+				"user_object_id",
+				"user_relation",
+				"condition_name",
+				"condition_context",
+				"operation",
+				"ulid",
+				"inserted_at",
+			)
+
+		for _, item := range changeLogBatch {
+			changelogBuilder = changelogBuilder.Values(item...)
+		}
+
+		_, err = changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn.
 		if err != nil {
 			return HandleSQLError(err)
 		}
