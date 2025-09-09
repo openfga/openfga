@@ -449,7 +449,7 @@ func sanitizeTuplesWriteDelete(
 		if record != nil {
 			if opts.OnDuplicateInsert == storage.OnDuplicateInsertIgnore {
 				// need to validate against condition and context
-				if record.ConditionName == tk.GetCondition().GetName() && record.ConditionContext == tk.GetCondition().GetContext() {
+				if record.ConditionName == tk.GetCondition().GetName() && record.ConditionContext.String() == tk.GetCondition().GetContext().String() {
 					duplicateWrites = append(duplicateWrites, i)
 					continue
 				}
