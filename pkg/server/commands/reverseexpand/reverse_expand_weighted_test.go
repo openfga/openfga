@@ -1466,6 +1466,41 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"org:a", "org:c", "org:b"},
 		},
 		{
+			name: "exclusion_ttu_multipleparents",
+			model: `model
+				  schema 1.1
+			    type user
+				type subteam
+		          relations
+		            define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [user]
+				type org
+				  relations
+					define parent: [team, subteam]
+					define member: [user, team#dept_member] but not member from parent
+		`,
+			tuples: []string{
+				"org:b#member@user:bob",
+				"org:a#member@team:t1#dept_member",
+				"team:t1#dept_member@user:bob",
+				"org:c#member@team:t2#dept_member",
+				"team:t2#dept_member@user:bob",
+				"org:b#parent@team:t1",
+				"org:b#parent@team:t2",
+				"org:a#parent@subteam:st1",
+				"org:a#parent@subteam:st2",
+				"team:t1#member@user:bob",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:c"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
+		},
+		{
 			name: "lowest_weight_is_TTU_intersection_with_intersections",
 			model: `model
 				  schema 1.1
