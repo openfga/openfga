@@ -134,7 +134,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"require_authorize_check"})
+	}, []string{"require_authorize_check", "on_duplicate_write", "on_missing_delete"})
 
 	checkDurationHistogramName = "check_duration_ms"
 	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
