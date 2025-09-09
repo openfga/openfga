@@ -962,7 +962,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.NoError(t, err)
 
-		tk2:= &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
+		tk2 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10", Condition: &openfgav1.RelationshipCondition{
 			Name:    "condition1",
 			Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
 		}}
