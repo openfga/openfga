@@ -52,7 +52,7 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	// Find the group with the lowest maximum weight
 	lowestWeight := math.MaxInt32
 	lowestKey := ""
-	intersectionEdges := make([][]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
+	siblingEdges := make([][]*graph.WeightedAuthorizationModelEdge, 0, len(edges))
 
 	for key, group := range groupedEdges {
 		maxWeight := 0
@@ -63,26 +63,28 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 				maxWeight = weight
 			}
 		}
-		// if the max weight of the grouping is bigger than 0 and it is lower than the lowest weight found so far
+		// if the max weight of the grouping is lower than the lowest weight found so far
 		// take the lowest weight or in the case of direct edges have more priority if there are others with the same weight
 		if maxWeight < lowestWeight || (key == directEdgesKey && maxWeight == lowestWeight) {
 			if lowestKey != "" {
 				// verify the intersection edges
-				intersectionEdges = append(intersectionEdges, groupedEdges[lowestKey])
+				siblingEdges = append(siblingEdges, groupedEdges[lowestKey])
 			}
 			lowestWeight = maxWeight
 			lowestKey = key
 		} else {
-			intersectionEdges = append(intersectionEdges, group)
+			siblingEdges = append(siblingEdges, group)
 		}
 	}
 
 	return IntersectionEdges{
 		LowestEdges:  groupedEdges[lowestKey],
-		SiblingEdges: intersectionEdges,
+		SiblingEdges: siblingEdges,
 	}, nil
 }
 
+// GetGroupedEdges groups edges for direct edge or TTU edges by their type and parent relation.
+// Other edge types are treated individually.
 func GetGroupedEdges(edges []*graph.WeightedAuthorizationModelEdge, sourceType string) map[string][]*graph.WeightedAuthorizationModelEdge {
 	// Group edges by type
 	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge, len(edges))

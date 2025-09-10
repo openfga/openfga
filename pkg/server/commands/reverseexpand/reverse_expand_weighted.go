@@ -685,19 +685,20 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	// if no edges to call LO or call check, return nill
+	// if no edges to call LO or call check, return nil
 	if len(intersectionEdges.LowestEdges) == 0 || len(intersectionEdges.SiblingEdges) == 0 {
+		// this should never happen because typesystem.GetEdgesFromNode should have returned an error
 		return nil
 	}
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	intersectEdges := intersectionEdges.SiblingEdges
 	usersets := make([]*openfgav1.Userset, 0, len(intersectEdges))
-	for _, edges := range intersectEdges {
+	for _, intersectEdge := range intersectEdges {
 		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
 		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
 		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
-		userset, err := c.typesystem.ConstructUserset(edges[0], sourceUserType)
+		userset, err := c.typesystem.ConstructUserset(intersectEdge[0], sourceUserType)
 		if err != nil {
 			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
@@ -705,13 +706,14 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		usersets = append(usersets, userset)
 	}
 
-	userset := usersets[0]
-	if len(usersets) > 1 {
-		userset = &openfgav1.Userset{
-			Userset: &openfgav1.Userset_Intersection{
-				Intersection: &openfgav1.Usersets{
-					Child: usersets,
-				}}}
+	var userset *openfgav1.Userset
+	switch len(usersets) {
+	case 0:
+		return fmt.Errorf("%w: empty connected edges", ErrConstructUsersetFail) // defensive; should be handled by the early return above
+	case 1:
+		userset = usersets[0]
+	default:
+		userset = typesystem.Intersection(usersets...)
 	}
 
 	// Concurrently find candidates and call check on them as they are found

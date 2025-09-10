@@ -1094,3 +1094,82 @@ func TestConstructUserset(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+func TestGetGroupedEdges(t *testing.T) {
+	t.Run("group_direct_assign_edges", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type group
+			relations
+				define allowed: [user]
+				define member: [user:*, team#member] and allowed
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 3)
+		groupedEdges := GetGroupedEdges(intersectionEdges, "user")
+		require.Len(t, groupedEdges, 2)
+		_, ok = groupedEdges[directEdgesKey]
+		require.True(t, ok)
+	})
+	t.Run("group_multiple_ttus", func(t *testing.T) {
+		model := `
+		model
+			schema 1.1
+		type user
+		type team
+			relations
+				define member: [user]
+		type cell
+			relations
+				define member: [user]
+		type org
+			relations
+				define member: [user]
+		type other
+			relations
+				define owner: [user]
+		type group
+			relations
+				define parent: [team, cell, org]
+				define other: [other]
+				define allowed: [user]
+				define member: owner from other and allowed and member from parent
+		`
+		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
+		require.NoError(t, err)
+		rootNode, ok := typeSystem.authzWeightedGraph.GetNodeByID("group#member")
+		require.True(t, ok)
+		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
+		require.True(t, ok)
+		require.Len(t, rootEdges, 1)
+		intersectionNode := rootEdges[0].GetTo()
+		require.NotNil(t, intersectionNode)
+		require.Equal(t, graph.IntersectionOperator, rootEdges[0].GetTo().GetLabel())
+		intersectionEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(intersectionNode)
+		require.True(t, ok)
+		require.Len(t, intersectionEdges, 5)
+		groupedEdges := GetGroupedEdges(intersectionEdges, "user")
+		require.Len(t, groupedEdges, 3)
+		_, ok = groupedEdges[directEdgesKey]
+		require.False(t, ok)
+		_, ok = groupedEdges["group#other#owner"]
+		require.True(t, ok)
+		_, ok = groupedEdges["group#parent#member"]
+		require.True(t, ok)
+	})
+}
