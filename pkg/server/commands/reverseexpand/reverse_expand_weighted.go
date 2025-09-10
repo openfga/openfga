@@ -697,7 +697,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
 		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
 		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
-		userset, err := c.typesystem.ConstructUserset(edges[0])
+		userset, err := c.typesystem.ConstructUserset(edges[0], sourceUserType)
 		if err != nil {
 			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
@@ -768,7 +768,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
-	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0])
+	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0], sourceUserType)
 	if err != nil {
 		// This should never happen.
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())

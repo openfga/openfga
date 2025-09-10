@@ -1561,7 +1561,6 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	}
 
 	wg := t.authzWeightedGraph
-
 	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
 	if !ok {
 		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
@@ -1582,6 +1581,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 	if currentNode.GetNodeType() == graph.OperatorNode {
 		switch currentNode.GetLabel() {
 		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
+
 			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
 
 			// if the 'b' in BUT NOT b can reach the source type we're seeking

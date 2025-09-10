@@ -665,7 +665,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, "group#allowed", dut.GetTo().GetLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
 			Userset: &openfgav1.Userset_ComputedUserset{
@@ -705,7 +705,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, "team#member", dut.GetTo().GetLabel())
 		require.Equal(t, graph.SpecificTypeAndRelation, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.TTUEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
 			Userset: &openfgav1.Userset_TupleToUserset{
@@ -750,7 +750,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, "user", dut.GetTo().GetLabel())
 		require.Equal(t, graph.SpecificType, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.DirectEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, This(), userset)
 	})
@@ -784,7 +784,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, "user:*", dut.GetTo().GetLabel())
 		require.Equal(t, graph.SpecificTypeWildcard, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.DirectEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, This(), userset)
 	})
@@ -819,7 +819,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, graph.UnionOperator, dut.GetTo().GetLabel())
 		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
 			Userset: &openfgav1.Userset_Union{
@@ -873,7 +873,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, graph.IntersectionOperator, dut.GetTo().GetLabel())
 		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
 			Userset: &openfgav1.Userset_Intersection{
@@ -927,7 +927,7 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, graph.ExclusionOperator, dut.GetTo().GetLabel())
 		require.Equal(t, graph.OperatorNode, dut.GetTo().GetNodeType())
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
-		userset, err := typeSystem.ConstructUserset(dut)
+		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
 		require.Equal(t, &openfgav1.Userset{
 			Userset: &openfgav1.Userset_Difference{
@@ -967,7 +967,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 	t.Run("unknown_edge_type_SpecificTypeAndRelation", func(t *testing.T) {
@@ -988,7 +988,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 	t.Run("unknown_edge_type_OperatorNode", func(t *testing.T) {
@@ -1015,7 +1015,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 	t.Run("bad_exclusion_child", func(t *testing.T) {
@@ -1040,7 +1040,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 	t.Run("no_edge_intersection", func(t *testing.T) {
@@ -1063,7 +1063,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 	t.Run("operator_children_error", func(t *testing.T) {
@@ -1090,7 +1090,7 @@ func TestConstructUserset(t *testing.T) {
 		rootEdges, ok := typeSystem.authzWeightedGraph.GetEdgesFromNode(rootNode)
 		require.True(t, ok)
 		require.Len(t, rootEdges, 1)
-		_, err = typeSystem.ConstructUserset(rootEdges[0])
+		_, err = typeSystem.ConstructUserset(rootEdges[0], "user")
 		require.Error(t, err)
 	})
 }
