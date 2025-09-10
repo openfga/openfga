@@ -237,7 +237,7 @@ var ttus = []matrixTest{
 			{Object: "ttus:ttu3", Relation: "direct_parent", User: "directs:d3"},
 			{Object: "ttus:ttu4", Relation: "direct_parent", User: "directs:d4"},
 
-			//set assignation for bob
+			// set assignation for bob
 			{Object: "directs:d1", Relation: "direct", User: "user:bob"},
 			{Object: "directs:d2", Relation: "direct", User: "user:bob"},
 			{Object: "directs:d3", Relation: "direct", User: "user:bob"},
