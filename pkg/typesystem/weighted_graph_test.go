@@ -25,7 +25,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -63,7 +63,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 			`
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -101,7 +101,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -141,7 +141,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -179,7 +179,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -220,7 +220,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -283,7 +283,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -323,7 +323,7 @@ func TestGetEdgesForIntersection(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -360,7 +360,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -399,7 +399,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -441,7 +441,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -479,7 +479,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -517,7 +517,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -551,7 +551,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#not_relation", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#not_relation", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)
@@ -592,7 +592,7 @@ func TestGetEdgesForExclusion(t *testing.T) {
 		typeSystem, err := New(testutils.MustTransformDSLToProtoWithID(model))
 		require.NoError(t, err)
 
-		edges, _, err := typeSystem.GetEdgesForListObjects("group#member", "user")
+		edges, err := typeSystem.GetConnectedEdges("group#member", "user")
 		require.NoError(t, err)
 
 		require.Len(t, edges, 1)

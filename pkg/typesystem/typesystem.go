@@ -1534,82 +1534,16 @@ func (t *TypeSystem) GetEdgesFromNode(
 	return edges, nil
 }
 
-// GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
-// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
-// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
-// return all relevant edges from an OR.
-// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
-//
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
-// it will return the first edge encountered.
-//
-// For BUT NOT relations, GetEdgesForListObjects first checks if the BUT NOT applies to the source type, and if it
-// does it will mark this result as "requires check".
-// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
-// we do not mark as "requires check".
-// After determining whether this result will require check, GetEdgesForListObjects will prune off the last edge of the
-// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
-//
-// GetEdgesForListObjects returns a list of edges, boolean indicating whether Check is needed, and an error.
-func (t *TypeSystem) GetEdgesForListObjects(
-	targetTypeRelation string,
-	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, false, fmt.Errorf("weighted graph is nil")
-	}
-
-	wg := t.authzWeightedGraph
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+// GetConnectedEdges returns all edges which have a path to the source type.
+func (t *TypeSystem) GetConnectedEdges(targetTypeRelation string, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	currentNode, ok := t.GetNode(targetTypeRelation)
 	if !ok {
-		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
 	edges, err := t.GetEdgesFromNode(currentNode, sourceType)
 	if err != nil {
-		return nil, false, err
-	}
-	if len(edges) == 0 {
-		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
-	}
-
-	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
-	// to remove Check from that workflow entirely, but until that's complete we need this information.
-	var needsCheck bool
-
-	if currentNode.GetNodeType() == graph.OperatorNode {
-		switch currentNode.GetLabel() {
-		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
-
-			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-
-			// if the 'b' in BUT NOT b can reach the source type we're seeking
-			// we need to run check at the end
-			if hasPathTo(butNotEdge, sourceType) {
-				needsCheck = true
-			}
-
-			// prune off the "BUT NOT b" portion of these edges and keep going
-			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
-			edges = edges[:len(edges)-1]
-		case graph.IntersectionOperator:
-			// For now, all intersections will require check
-			needsCheck = true
-
-			// Find all direct edges which can reach the sourceType
-			directEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
-				return edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType)
-			}))
-
-			// If there are any direct edges which reach destination, we have to take them all
-			if len(directEdges) > 0 {
-				edges = directEdges
-			} else {
-				// Otherwise take the lowest weight edge
-				edges = []*graph.WeightedAuthorizationModelEdge{cheapestEdgeTo(edges, sourceType)}
-			}
-		}
+		return nil, err
 	}
 
 	// Filter to only return edges which have a path to the sourceType
@@ -1617,7 +1551,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 		return hasPathTo(edge, sourceType)
 	}))
 
-	return relevantEdges, needsCheck, nil
+	return relevantEdges, nil
 }
 
 func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {
