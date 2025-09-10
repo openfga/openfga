@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -134,183 +135,199 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 //   - ComputedEdge, RewriteEdge, and TTUEdge: These represent indirections in the authorization model.
 //     The function modifies the traversal 'stack' to reflect the next relationship that needs to be resolved.
 //     It then calls `dispatch` to continue traversing the graph with this new state until it reaches a DirectEdge.
+
+type Edge = weightedGraph.WeightedAuthorizationModelEdge
+type Node = weightedGraph.WeightedAuthorizationModelNode
+
 func (c *ReverseExpandQuery) loopOverEdges(
 	ctx context.Context,
 	req *ReverseExpandRequest,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
-	needsCheck bool,
+	node *Node,
 	resolutionMetadata *ResolutionMetadata,
-	resultChan chan<- *ReverseExpandResult,
 	sourceUserType string,
-) error {
-	pool := concurrency.NewPool(ctx, int(c.resolveNodeBreadthLimit))
+) iter.Seq[stack.Stack[*Edge]] {
+	
 
-	for _, edge := range edges {
-		newReq := req.clone()
-		newReq.weightedEdge = edge
+	ch := make(chan stack.Stack[*Edge], 10)
 
-		toNode := edge.GetTo()
-		goingToUserset := toNode.GetNodeType() == weightedGraph.SpecificTypeAndRelation
-
-		// Going to a userset presents risk of infinite loop. Checking the edge and the traversal stack
-		// ensures we don't perform the same traversal multiple times.
-		if goingToUserset {
-			key := edge.GetFrom().GetUniqueLabel() + toNode.GetUniqueLabel() + edge.GetTuplesetRelation() + stack.String(newReq.relationStack)
-			_, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{})
-			if loaded {
-				// we've already visited this userset through this edge, exit to avoid an infinite cycle
-				continue
-			}
+	edger := func(ch chan stack.Stack[*Edge], edgeStack stack.Stack[*Edge], toNode *Node) {
+		if toNode.GetLabel() == sourceUserType {
+			ch <- edgeStack
+			return
 		}
 
-		switch edge.GetEdgeType() {
-		case weightedGraph.DirectEdge:
-			if goingToUserset {
-				// Attach the userset relation to the previous stack entry
-				//  type team:
-				//		define member: [user]
-				//	type org:
-				//		define teammate: [team#member]
-				// A direct edge here is org#teammate --> team#member
-				// so if we find team:fga for this user, we need to know to check for
-				// team:fga#member when we check org#teammate
-				if newReq.relationStack == nil {
-					return ErrEmptyStack
+		edges, err := c.typesystem.GetEdgesFromNode(node, sourceUserType)
+		if err != nil {
+			panic("invalid node")
+		}
+
+		for _, edge := range edges {
+			newReq := req.clone()
+			newReq.weightedEdge = edge
+
+			toNode := edge.GetTo()
+			edgeStack = stack.Push(edgeStack, edge)
+
+			switch edge.GetEdgeType() {
+			case weightedGraph.DirectEdge:
+				if goingToUserset {
+					// Attach the userset relation to the previous stack entry
+					//  type team:
+					//		define member: [user]
+					//	type org:
+					//		define teammate: [team#member]
+					// A direct edge here is org#teammate --> team#member
+					// so if we find team:fga for this user, we need to know to check for
+					// team:fga#member when we check org#teammate
+					if newReq.relationStack == nil {
+						return ErrEmptyStack
+					}
+					entry, newStack := stack.Pop(newReq.relationStack)
+					entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
+
+					newStack = stack.Push(newStack, entry)
+					newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+					newReq.relationStack = newStack
+
+					// Now continue traversing
+					pool.Go(func(ctx context.Context) error {
+						return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+					})
+					continue
 				}
-				entry, newStack := stack.Pop(newReq.relationStack)
-				entry.usersetRelation = tuple.GetRelation(toNode.GetUniqueLabel())
 
-				newStack = stack.Push(newStack, entry)
-				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				newReq.relationStack = newStack
+				if toNode.GetLabel() == sourceUserType {
+					ch <- newStack
+					continue
+				}
 
-				// Now continue traversing
+				// We have reached a leaf node in the graph (e.g. `user` or `user:*`),
+				// and the traversal for this path is complete. Now we use the stack of relations
+				// we've built to query the datastore for matching tuples.
 				pool.Go(func(ctx context.Context) error {
-					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+					return c.queryForTuples(
+						ctx,
+						newReq,
+						needsCheck,
+						resultChan,
+						"",
+					)
 				})
-				continue
-			}
+			case weightedGraph.ComputedEdge:
 
-			// We have reached a leaf node in the graph (e.g. `user` or `user:*`),
-			// and the traversal for this path is complete. Now we use the stack of relations
-			// we've built to query the datastore for matching tuples.
-			pool.Go(func(ctx context.Context) error {
-				return c.queryForTuples(
-					ctx,
-					newReq,
-					needsCheck,
-					resultChan,
-					"",
-				)
-			})
-		case weightedGraph.ComputedEdge:
-			// A computed edge is an alias (e.g., `define viewer: editor`).
-			// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
-			// as tuples are only written against `editor`.
-			if toNode.GetNodeType() != weightedGraph.OperatorNode {
+				// A computed edge is an alias (e.g., `define viewer: editor`).
+				// We replace the current relation on the stack (`viewer`) with the computed one (`editor`),
+				// as tuples are only written against `editor`.
+				edger(ch, edgeStack)	
+			case weightedGraph.TTUEdge:
+				// Replace the existing type#rel on the stack with the tuple-to-userset relation:
+				//
+				// 	type document
+				//		define parent: [folder]
+				//		define viewer: admin from parent
+				//
+				// We need to remove document#viewer from the stack and replace it with the tupleset relation (`document#parent`).
+				// Then we have to add the .To() relation `folder#admin`.
+				// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
+				// query for folder#admin, then if folders exist we will see if they are related to
+				// any documents as #parent.
 				if newReq.relationStack == nil {
 					return ErrEmptyStack
 				}
 				_, newStack := stack.Pop(newReq.relationStack)
+
+				// stack.Push tupleset relation (`document#parent`)
+				tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
+				newStack = stack.Push(newStack, tuplesetRel)
+
+				// stack.Push target type#rel (`folder#admin`)
 				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
 				newReq.relationStack = newStack
-			}
 
-			pool.Go(func(ctx context.Context) error {
-				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			})
-		case weightedGraph.TTUEdge:
-			// Replace the existing type#rel on the stack with the tuple-to-userset relation:
-			//
-			// 	type document
-			//		define parent: [folder]
-			//		define viewer: admin from parent
-			//
-			// We need to remove document#viewer from the stack and replace it with the tupleset relation (`document#parent`).
-			// Then we have to add the .To() relation `folder#admin`.
-			// The stack becomes `[document#parent, folder#admin]`, and on evaluation we will first
-			// query for folder#admin, then if folders exist we will see if they are related to
-			// any documents as #parent.
-			if newReq.relationStack == nil {
-				return ErrEmptyStack
-			}
-			_, newStack := stack.Pop(newReq.relationStack)
+				func 
 
-			// stack.Push tupleset relation (`document#parent`)
-			tuplesetRel := typeRelEntry{typeRel: edge.GetTuplesetRelation()}
-			newStack = stack.Push(newStack, tuplesetRel)
+				
+			case weightedGraph.RewriteEdge:
+				// Behaves just like ComputedEdge above
+				// Operator nodes (union, intersection, exclusion) are not real types, they never get added
+				// to the stack.
+				if toNode.GetNodeType() != weightedGraph.OperatorNode {
+					if newReq.relationStack == nil {
+						return ErrEmptyStack
+					}
+					_, newStack := stack.Pop(newReq.relationStack)
+					newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
+					newReq.relationStack = newStack
 
-			// stack.Push target type#rel (`folder#admin`)
-			newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-			newReq.relationStack = newStack
-
-			pool.Go(func(ctx context.Context) error {
-				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-			})
-		case weightedGraph.RewriteEdge:
-			// Behaves just like ComputedEdge above
-			// Operator nodes (union, intersection, exclusion) are not real types, they never get added
-			// to the stack.
-			if toNode.GetNodeType() != weightedGraph.OperatorNode {
-				if newReq.relationStack == nil {
-					return ErrEmptyStack
+					pool.Go(func(ctx context.Context) error {
+						return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+					})
+					// continue to the next edge
+					break
 				}
-				_, newStack := stack.Pop(newReq.relationStack)
-				newStack = stack.Push(newStack, typeRelEntry{typeRel: toNode.GetUniqueLabel()})
-				newReq.relationStack = newStack
 
-				pool.Go(func(ctx context.Context) error {
-					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-				})
-				// continue to the next edge
+				// If the edge is an operator node, we need to handle it differently.
+				switch toNode.GetLabel() {
+				case weightedGraph.IntersectionOperator:
+					intersectionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
+					if err != nil {
+						return err
+					}
+					err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+					if err != nil {
+						return err
+					}
+				case weightedGraph.ExclusionOperator:
+					exclusionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
+					if err != nil {
+						return err
+					}
+					err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+					if err != nil {
+						return err
+					}
+				case weightedGraph.UnionOperator:
+					pool.Go(func(ctx context.Context) error {
+						return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+					})
+				default:
+					return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
+				}
+			default:
+				return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
+			}
+		}
+	}
+
+	go edger(ch, nil)
+
+	return func(yield func(stack.Stack[*Edge]) bool) {
+		for stack := range ch {
+			if !yield(stack) {
 				break
 			}
-
-			// If the edge is an operator node, we need to handle it differently.
-			switch toNode.GetLabel() {
-			case weightedGraph.IntersectionOperator:
-				intersectionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
-				if err != nil {
-					return err
-				}
-			case weightedGraph.ExclusionOperator:
-				exclusionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
-				if err != nil {
-					return err
-				}
-			case weightedGraph.UnionOperator:
-				pool.Go(func(ctx context.Context) error {
-					return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
-				})
-			default:
-				return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
-			}
-		default:
-			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
 	}
 
-	// In order to maintain the current ListObjects behavior, in the case of timeout in reverse_expand_weighted
-	// we will return partial results.
-	// For more detail, see here: https://openfga.dev/api/service#/Relationship%20Queries/ListObjects
-	err := pool.Wait()
-	if err != nil {
-		var executionError *ExecutionError
-		if errors.As(err, &executionError) {
-			if errors.Is(executionError.cause, context.Canceled) || errors.Is(executionError.cause, context.DeadlineExceeded) {
-				return nil
+}
+
+func Start(ctx context.Context) {
+	n := wg.GetNode(objectRelation)
+	seq := req.loopOverEdges(ctx, n, resolutionMetadata, sourceUserType)
+	var wg sync.WaitGroup
+	ch := make(chan string)
+	for st := range seq {
+		go func() {
+			defer wg.Done()
+			seq := consume(st)
+			for item := range seq {
+				ch <- item
 			}
-		}
+		}()
 	}
-	return err
+
+	for 
+	wg.Wait()
 }
 
 // queryForTuples performs all datastore-related reverse expansion logic. After a leaf node has been found in loopOverEdges,
