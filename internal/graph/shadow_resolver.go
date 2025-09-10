@@ -107,15 +107,15 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 					zap.String("model_id", reqClone.GetAuthorizationModelID()),
 					zap.Bool("main", resClone.GetAllowed()),
 					zap.Bool("main_cycle", resClone.GetCycleDetected()),
-					zap.Int64("main_latency_us", mainDuration.Milliseconds()),
+					zap.Int64("main_latency", mainDuration.Milliseconds()),
 					zap.Bool("shadow", shadowRes.GetAllowed()),
 					zap.Bool("shadow_cycle", shadowRes.GetCycleDetected()),
-					zap.Int64("shadow_latency_us", shadowDuration.Milliseconds()),
+					zap.Int64("shadow_latency", shadowDuration.Milliseconds()),
 				)
 			} else {
 				s.logger.InfoWithContext(ctx, "shadow check match",
-					zap.Int64("main_latency_us", mainDuration.Milliseconds()),
-					zap.Int64("shadow_latency_us", shadowDuration.Milliseconds()),
+					zap.Int64("main_latency", mainDuration.Milliseconds()),
+					zap.Int64("shadow_latency", shadowDuration.Milliseconds()),
 				)
 			}
 		}()
