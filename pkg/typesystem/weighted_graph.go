@@ -19,7 +19,8 @@ type weightedGraphItem interface {
 }
 
 // hasPathTo returns a boolean indicating if a path exists from a node or edge to a terminal type. E.g
-// can we reach "user" from "document".
+// hasPathTo reports whether the given nodeOrEdge has a path to destinationType.
+// It returns true when GetWeight(destinationType) indicates a valid path (weight present).
 func hasPathTo(nodeOrEdge weightedGraphItem, destinationType string) bool {
 	_, ok := nodeOrEdge.GetWeight(destinationType)
 	return ok
@@ -39,7 +40,18 @@ type ExclusionEdges struct {
 // its siblings edges for intersection based via the weighted graph.
 // If the direct edges have equal weight as its sibling edges, it will choose
 // the direct edges as preference.
-// If any of the children are not connected, it will return empty IntersectionEdges.
+// GetEdgesForIntersection groups the provided weighted edges and selects the lowest-weight group
+// to use as the primary intersection operands.
+//
+// GetEdgesForIntersection requires at least two edges and will return a non-nil error if fewer
+// are provided. It groups edges by their computed group key, computes each group's maximum weight,
+// and selects the group whose maximum weight is the smallest as LowestEdges. All other groups are
+// returned in SiblingEdges. When a tie occurs between groups with equal maximum weights, the group
+// whose key equals directEdgesKey is preferred.
+//
+// If no valid grouping can be constructed (for example, if children are not connected and thus
+// filtered out by GetGroupedEdges), the returned IntersectionEdges will contain zero-valued slices
+// (empty LowestEdges and/or SiblingEdges); no error is returned in that case.
 func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sourceType string) (IntersectionEdges, error) {
 	if len(edges) < 2 {
 		// Intersection by definition must have at least 2 children
@@ -83,6 +95,7 @@ func GetEdgesForIntersection(edges []*graph.WeightedAuthorizationModelEdge, sour
 	}, nil
 }
 
+//   - "other_<ulid>" for all other edge types (each such edge gets its own unique key).
 func GetGroupedEdges(edges []*graph.WeightedAuthorizationModelEdge, sourceType string) map[string][]*graph.WeightedAuthorizationModelEdge {
 	// Group edges by type
 	groupedEdges := make(map[string][]*graph.WeightedAuthorizationModelEdge, len(edges))
@@ -112,7 +125,19 @@ func GetGroupedEdges(edges []*graph.WeightedAuthorizationModelEdge, sourceType s
 }
 
 // GetEdgesForExclusion returns the base edges (i.e., edge A in "A but not B") and
-// excluded edge (edge B in "A but not B") based on weighted graph for exclusion.
+// GetEdgesForExclusion determines the base and excluded edge groups for an exclusion operator
+// ("A but not B") from a weighted graph.
+//
+// It groups the provided edges by their effective type (direct edges grouped under
+// `directEdgesKey`, TTU edges grouped by their tupleset and destination relation, and other
+// edge kinds treated individually). Edges that have no path to the given sourceType are
+// ignored. The function returns an ExclusionEdges value where BaseEdges is the first group
+// encountered and ExcludedEdges is a different group when present.
+//
+// Errors are returned when fewer than two input edges are provided, when no valid base group
+// exists after filtering, or when more than two distinct groups are found (invalid exclusion
+// shape). If an exclusion group contains no edges that reach the source type, ExcludedEdges
+// will be nil.
 func GetEdgesForExclusion(
 	edges []*graph.WeightedAuthorizationModelEdge,
 	sourceType string,
