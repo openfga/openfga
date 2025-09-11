@@ -125,7 +125,7 @@ func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
 		mu:     initialMs,
 		lambda: 1.0,
 		alpha:  1.0,
-		beta:   10.0,
+		beta:   1.0,
 	}
 	atomic.StorePointer(&ts.params, unsafe.Pointer(params))
 
