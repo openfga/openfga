@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"strings"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -112,6 +114,210 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	}
 
 	return job, true
+}
+
+var emptySequence = func(yield func(Item) bool) {
+	return
+}
+
+type (
+	Graph = weightedGraph.WeightedAuthorizationModelGraph
+	Node  = weightedGraph.WeightedAuthorizationModelNode
+	Edge  = weightedGraph.WeightedAuthorizationModelEdge
+)
+
+var (
+	EdgeTypeDirect   = weightedGraph.DirectEdge
+	EdgeTypeComputed = weightedGraph.ComputedEdge
+	EdgeTypeRewrite  = weightedGraph.RewriteEdge
+	EdgeTypeTTU      = weightedGraph.TTUEdge
+
+	NodeTypeSpecificType            = weightedGraph.SpecificType
+	NodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
+	NodeTypeSpecificTypeAndRelation = weightedGraph.SpecificTypeAndRelation
+	NodeTypeOperator                = weightedGraph.OperatorNode
+)
+
+type Item struct {
+	Value string
+	Err   error
+}
+
+func (i *Item) Error() string {
+	return i.Err.Error()
+}
+
+func (c *ReverseExpandQuery) processEdge(g *Graph, ctx context.Context, edge *Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+
+	_, ok := edge.GetWeight(targetNode.GetLabel())
+	if !ok {
+		panic("bad edge weight")
+	}
+
+	ch := make(chan Item)
+
+	go func() {
+		defer close(ch)
+
+		toNode := edge.GetTo()
+
+		switch edge.GetEdgeType() {
+		case EdgeTypeDirect:
+			if toNode != targetNode {
+				panic("to node should be equal to target node")
+			}
+			relation := edge.GetRelation()
+			toLabel := toNode.GetLabel()
+
+			object := strings.Split(relation, "#")
+			if len(object) != 2 {
+				panic("direct edge relation is malformed")
+			}
+			objectType := object[0]
+			objectRelation := object[1]
+
+			var userObject openfgav1.ObjectRelation
+
+			switch toNode.GetNodeType() {
+			case NodeTypeSpecificType:
+				userObject = openfgav1.ObjectRelation{
+					Object:   toNode.GetLabel() + ":" + targetIdentifier,
+					Relation: "",
+				}
+			case NodeTypeSpecificTypeWildcard:
+				userObject = openfgav1.ObjectRelation{
+					Object:   toNode.GetLabel(),
+					Relation: "",
+				}
+			case NodeTypeSpecificTypeAndRelation:
+				seq := processNode(g, ctx, toNode, targetNode, targetIdentifier)
+				parts := strings.Split(toLabel, "#")
+				userRelation := parts[1]
+
+				for item := range seq {
+					if item.Err != nil {
+						ch <- Item
+						return
+					}
+
+					user := item.Value
+					userObject = openfgav1.ObjectRelation{
+						Object:   user,
+						Relation: userRelation,
+					}
+				}
+
+			case NodeTypeOperator:
+				panic("operator node should not be a target of direct edge")
+			default:
+				panic("unknown node type for direct edge")
+			}
+
+			it, err := c.datastore.ReadStartingWithUser(ctx, c.StoreID, storage.ReadStartingWithUserFilter{
+				ObjectType: objectType,
+				Relation:   objectRelation,
+				UserFilter: []*openfgav1.ObjectRelation{&userObject},
+			})
+
+			if err != nil {
+				ch <- Item{Err: err}
+				return
+			}
+
+			defer it.Stop()
+
+			for {
+				t, err := it.Next(ctx)
+
+				if err != nil {
+					if err == storage.ErrIteratorDone {
+						break
+					}
+					ch <- Item{Err: err}
+					return
+				}
+				if t == nil {
+					continue
+				}
+				ch <- Item{Value: t.GetKey().Object}
+			}
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNode *Node, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+	_, ok := sourceNode.GetWeight(targetNode.GetLabel())
+	if !ok {
+		return emptySequence
+	}
+
+	edges, ok := g.GetEdgesFromNode(sourceNode)
+	if !ok {
+		panic("given node not a member of graph")
+	}
+
+	results := make([]iter.Seq[Item], 0, len(edges))
+
+	for _, edge := range edges {
+		seq := c.processEdge(g, ctx, edge, targetNode, targetIdentifier)
+		results = append(results, seq)
+	}
+
+	ch := make(chan Item, 1)
+
+	var wg sync.WaitGroup
+
+	for _, seq := range results {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			seq.Iter(func(item Item) bool {
+				ch <- item
+				return true
+			})
+		}()
+	}
+
+	return func(yield func(Item) bool) {
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
