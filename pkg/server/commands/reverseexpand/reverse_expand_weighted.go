@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"maps"
+	"strings"
 	"sync"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -112,6 +115,575 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	}
 
 	return job, true
+}
+
+var emptySequence = func(yield func(Item) bool) {}
+
+type (
+	Graph = weightedGraph.WeightedAuthorizationModelGraph
+	Node  = weightedGraph.WeightedAuthorizationModelNode
+	Edge  = weightedGraph.WeightedAuthorizationModelEdge
+
+	EdgeType = weightedGraph.EdgeType
+)
+
+var (
+	EdgeTypeDirect   = weightedGraph.DirectEdge
+	EdgeTypeComputed = weightedGraph.ComputedEdge
+	EdgeTypeRewrite  = weightedGraph.RewriteEdge
+	EdgeTypeTTU      = weightedGraph.TTUEdge
+
+	NodeTypeSpecificType            = weightedGraph.SpecificType
+	NodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
+	NodeTypeSpecificTypeAndRelation = weightedGraph.SpecificTypeAndRelation
+	NodeTypeOperator                = weightedGraph.OperatorNode
+
+	ErrNoSuchNode = errors.New("no such node in graph")
+	ErrNoSuchPath = errors.New("no path between source and target nodes")
+)
+
+var ErrTupleCycle = errors.New("cycle detected in tuples")
+
+type Item struct {
+	Value string
+	Err   error
+}
+
+type element struct {
+	node *Node
+	next *element
+}
+
+func contains(e *element, node *Node) bool {
+	if e == nil {
+		return false
+	}
+
+	next := e
+
+	for next != nil {
+		if next.node == node {
+			return true
+		}
+		next = next.next
+	}
+	return false
+}
+
+func sequence[T any](items ...T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, item := range items {
+			if !yield(item) {
+				return
+			}
+		}
+	}
+}
+
+func mergeOrdered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, seq := range seqs {
+			for item := range seq {
+				if !yield(item) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func mergeUnordered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan T)
+
+	var wg sync.WaitGroup
+
+	for _, seq := range seqs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for item := range seq {
+				select {
+				case ch <- item:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	var wg2 sync.WaitGroup
+
+	wg2.Add(1)
+	go func() {
+		defer wg2.Done()
+		defer close(ch)
+		wg.Wait()
+	}()
+
+	return func(yield func(T) bool) {
+		defer wg2.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
+	return func(yield func(U) bool) {
+		for item := range seq {
+			yield(fn(item))
+		}
+	}
+}
+
+func dedup[T comparable](seq iter.Seq[T]) iter.Seq[T] {
+	seen := make(map[T]struct{})
+
+	return func(yield func(T) bool) {
+		for item := range seq {
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			yield(item)
+		}
+	}
+}
+
+type Traversal struct {
+	graph     *Graph
+	datastore storage.RelationshipTupleReader
+	storeId   string
+}
+
+type Target *Node
+type Source *Node
+
+func (t *Traversal) Target(name string) (Target, bool) {
+	targetNode, ok := t.graph.GetNodeByID(name)
+	return (Target)(targetNode), ok
+}
+
+func (t *Traversal) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := t.graph.GetNodeByID(name + "#" + relation)
+	return (Source)(sourceNode), ok
+}
+
+func (t *Traversal) Traverse(target Target, targetIdentifiers ...string) Path {
+	return Path{
+		traversal:         t,
+		target:            (*Node)(target),
+		targetIdentifiers: targetIdentifiers,
+	}
+}
+
+func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
+	return transform(p.resolve(ctx, source), func(item Item) Item {
+		if item.Err != nil {
+			return item
+		}
+		parts := strings.Split(item.Value, "#")
+		item.Value = parts[0]
+		return item
+	})
+}
+
+func (t Traversal) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer close(ch)
+		defer wg.Done()
+
+		it, err := t.datastore.ReadStartingWithUser(
+			ctx,
+			t.storeId,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: objectType,
+				Relation:   objectRelation,
+				UserFilter: userFilter,
+			},
+			storage.ReadStartingWithUserOptions{},
+		)
+
+		if err != nil {
+			select {
+			case <-ctx.Done():
+			case ch <- Item{Err: err}:
+			}
+			return
+		}
+
+		defer it.Stop()
+
+		for {
+			t, err := it.Next(ctx)
+
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				select {
+				case <-ctx.Done():
+				case ch <- Item{Err: err}:
+				}
+				return
+			}
+
+			if t == nil {
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- Item{Value: t.GetKey().Object}:
+			}
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
+type Path struct {
+	traversal         *Traversal
+	target            *Node
+	targetIdentifiers []string
+	breadcrumb        *element
+	cycle             bool
+	cycleBegin        *Node
+	cycleIdentifiers  []string
+}
+
+func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
+	groups := make(map[EdgeType][]*Edge, 4)
+
+	edges, ok := p.traversal.graph.GetEdgesFromNode(n)
+	if !ok {
+		panic("given node not a member of graph")
+	}
+
+	for _, edge := range edges {
+		_, ok := edge.GetWeight(p.target.GetLabel())
+		if !ok {
+			continue
+		}
+		groups[edge.GetEdgeType()] = append(groups[edge.GetEdgeType()], edge)
+	}
+	return groups
+}
+
+func extractObject(item Item) Item {
+	if item.Err != nil {
+		return item
+	}
+	parts := strings.Split(item.Value, "#")
+	item.Value = parts[0]
+	return item
+}
+
+func intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
+	if len(seqs) == 0 {
+		return emptySequence
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(ch)
+
+		var errs []Item
+		objects := make(map[string]struct{})
+
+		for item := range seqs[0] {
+			if item.Err != nil {
+				errs = append(errs, item)
+				continue
+			}
+			objects[item.Value] = struct{}{}
+		}
+
+		for i := 1; i < len(seqs); i++ {
+			seq := seqs[i]
+
+			found := make(map[string]struct{})
+
+			for item := range seq {
+				if item.Err != nil {
+					errs = append(errs, item)
+					continue
+				}
+
+				if _, ok := objects[item.Value]; ok {
+					found[item.Value] = struct{}{}
+				}
+			}
+			objects = found
+		}
+
+		keys := maps.Keys(objects)
+
+		items := mergeOrdered(sequence(errs...), transform(keys, func(o string) Item { return Item{Value: o} }))
+
+		for item := range items {
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- item:
+			}
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
+	// if graph traversal has encountered the target node, we can return the target identifiers.
+	if source == p.target {
+		// the target identifiers are typeless, we need to append the target type to the values.
+		targetType := strings.Split(p.target.GetLabel(), "#")[0]
+		return transform(sequence(p.targetIdentifiers...), func(id string) Item {
+			return Item{Value: targetType + ":" + id}
+		})
+	}
+
+	// if we have already traversed this node on the current path.
+	if contains(p.breadcrumb, source) {
+		if p.cycleBegin == source {
+			return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
+				return Item{Value: id}
+			})
+		}
+		p.cycleBegin = source
+		p.breadcrumb = nil
+	}
+
+	// does the current node have a path to the target node?
+	_, ok := source.GetWeight(p.target.GetLabel())
+	if !ok {
+		return emptySequence
+	}
+
+	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
+	if !ok {
+		panic("given node not a member of graph")
+	}
+
+	p.breadcrumb = &element{node: source, next: p.breadcrumb} // add the current node to our breadcrumb trail
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(ch)
+
+		for {
+			var results []iter.Seq[Item]
+
+			for _, edge := range edges {
+				// if currently traversing a tuple cycle, but the edge is not part of a tuple cycle, skip it.
+				// otherwise, all edges will be processed.
+				if p.cycle && !edge.GetTo().IsPartOfTupleCycle() {
+					continue
+				}
+
+				switch edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					switch edge.GetTo().GetNodeType() {
+					case NodeTypeSpecificTypeAndRelation:
+						outcome := p.resolve(ctx, edge.GetTo())
+
+						// for our upcoming query, we need the type and relation off of the specific type and relation ancestor node.
+						parts := strings.Split(edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						userParts := strings.Split(edge.GetTo().GetLabel(), "#")
+
+						var userRelation string
+
+						if len(userParts) > 1 {
+							userRelation = userParts[1]
+						}
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						for item := range outcome {
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: userRelation,
+							})
+						}
+						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+					case NodeTypeSpecificType, NodeTypeSpecificTypeWildcard:
+						outcome := p.resolve(ctx, edge.GetTo())
+
+						parts := strings.Split(edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						for item := range outcome {
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: "",
+							})
+						}
+						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+					default:
+						panic("unexpected node type in direct edge resolve")
+					}
+				case EdgeTypeRewrite:
+					results = append(results, p.resolve(ctx, edge.GetTo()))
+				case EdgeTypeComputed:
+					results = append(results, p.resolve(ctx, edge.GetTo()))
+				case EdgeTypeTTU:
+					panic("unexpected TTU edge in resolve")
+				default:
+					panic("unexpected edge type in resolve")
+				}
+			}
+
+			var objects iter.Seq[Item]
+
+			switch source.GetNodeType() {
+			case NodeTypeOperator:
+				switch source.GetLabel() {
+				case weightedGraph.IntersectionOperator:
+					objects = intersection(ctx, results...)
+				case weightedGraph.UnionOperator:
+					var seq iter.Seq[Item]
+
+					if len(results) < 1 {
+						seq = emptySequence
+					} else if len(results) > 1 {
+						seq = mergeUnordered(results...)
+					} else {
+						seq = results[0]
+					}
+					objects = dedup(seq)
+				}
+			default:
+				var seq iter.Seq[Item]
+
+				if len(results) < 1 {
+					seq = emptySequence
+				} else if len(results) > 1 {
+					seq = mergeUnordered(results...)
+				} else {
+					seq = results[0]
+				}
+				objects = dedup(seq)
+			}
+
+			var values []string
+
+			for item := range objects {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- item:
+				}
+
+				values = append(values, item.Value)
+			}
+
+			if len(values) == 0 || p.cycleBegin != source {
+				break
+			}
+
+			p.cycle = true
+			p.cycleIdentifiers = values
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,

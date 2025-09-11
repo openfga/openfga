@@ -23,6 +23,442 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type testcase struct {
+	model      string
+	tuples     []string
+	objectType string
+	relation   string
+	user       *UserRefObject
+	expected   []string
+}
+
+func TestProcessDirectEdge(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	evaluate := func(t *testing.T, test testcase) {
+		defer goleak.VerifyNone(t)
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+		require.NoError(t, err)
+
+		g := typesys.GetWeightedGraph()
+
+		traversal := &Traversal{
+			graph:     g,
+			datastore: ds,
+			storeId:   storeID,
+		}
+
+		ctx := context.Background()
+
+		target, ok := traversal.Target(test.user.GetObjectType())
+		require.True(t, ok)
+
+		source, ok := traversal.Source(test.objectType, test.relation)
+		require.True(t, ok)
+
+		path := traversal.Traverse(target, test.user.Object.GetId())
+
+		seq := path.Objects(ctx, source)
+
+		var results []string
+
+		for item := range seq {
+			require.NoError(t, item.Err)
+			results = append(results, item.Value)
+		}
+		require.ElementsMatch(t, test.expected, results)
+	}
+
+	t.Run("computed", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member]
+
+				type team
+					relations
+						define rel1: [user]
+						define rel2: rel1
+						define rel3: rel2
+						define member: rel3
+			`,
+			tuples: []string{
+				"team:1#rel1@user:justin",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:1#member",
+				"document:3#viewer@team:2#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("union", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define rel1: [user]
+						define rel2: [user]
+						define rel3: [user]
+						define viewer: rel1 or rel2 or rel3
+			`,
+			tuples: []string{
+				"document:1#rel1@user:justin",
+				"document:1#rel2@user:justin",
+				"document:1#rel3@user:justin",
+				"document:1#rel1@user:bob",
+				"document:1#rel2@user:bob",
+				"document:1#rel3@user:bob",
+				"document:2#rel1@user:justin",
+				"document:2#rel2@user:justin",
+				"document:2#rel1@user:bob",
+				"document:2#rel2@user:bob",
+				"document:2#rel3@user:bob",
+				"document:3#rel1@user:justin",
+				"document:3#rel2@user:justin",
+				"document:3#rel3@user:justin",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("intersection", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define rel1: [user]
+						define rel2: [user]
+						define rel3: [user]
+						define viewer: rel1 and rel2 and rel3
+			`,
+			tuples: []string{
+				"document:1#rel1@user:justin",
+				"document:1#rel2@user:justin",
+				"document:1#rel3@user:justin",
+				"document:1#rel1@user:bob",
+				"document:1#rel2@user:bob",
+				"document:1#rel3@user:bob",
+				"document:2#rel1@user:justin",
+				"document:2#rel2@user:justin",
+				"document:2#rel1@user:bob",
+				"document:2#rel2@user:bob",
+				"document:2#rel3@user:bob",
+				"document:3#rel1@user:justin",
+				"document:3#rel2@user:justin",
+				"document:3#rel3@user:justin",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:3"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("direct_userset", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member]
+
+				type team
+					relations
+						define member: [user]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:1#member",
+				"document:3#viewer@team:2#member",
+				"document:4#viewer@team:2#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3", "document:4"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("beast_mode", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member, org#employee]
+
+				type team
+					relations
+						define member: [user, document#viewer, org#employee]
+			
+				type org
+					relations
+						define employee: [user, document#viewer, team#member]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"org:3#employee@document:1#viewer",
+				"org:4#employee@document:2#viewer",
+				"team:3#member@document:3#viewer",
+				"document:3#viewer@team:4#member",
+				"team:4#member@user:justin",
+				"document:5#viewer@team:3#member",
+				"document:1#viewer@org:4#employee",
+				"document:8#viewer@org:3#employee",
+				"org:4#employee@user:justin",
+
+				"document:a#viewer@team:a#member",
+				"team:a#member@user:justin",
+				"document:b#viewer@org:b#employee",
+				"org:b#employee@document:a#viewer",
+				// expect document:a, document:b
+
+				"document:c#viewer@org:c#employee",
+				"org:c#employee@user:justin",
+				"document:d#viewer@team:b#member",
+				"team:b#member@document:c#viewer",
+				// expect document:c, document:d
+
+				"document:e#viewer@team:e#member",
+				"team:e#member@org:e#employee",
+				"org:e#employee@user:justin",
+				"document:f#viewer@org:f#employee",
+				"org:f#employee@document:e#viewer",
+				"document:g#viewer@team:g#member",
+				"team:g#member@org:g#employee",
+				"org:g#employee@document:f#viewer",
+				// expect document:e, document:f, document:g
+
+				"document:h#viewer@org:h#employee",
+				"org:h#employee@team:h#member",
+				"team:h#member@user:justin",
+				"document:i#viewer@team:i#member",
+				"team:i#member@document:h#viewer",
+				"document:j#viewer@org:i#employee",
+				"org:i#employee@team:j#member",
+				"team:j#member@document:i#viewer",
+				// expect document:h, document:i, document:j
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("mean_tuple_cycle", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member, org#employee]
+
+				type team
+					relations
+						define member: [user, document#viewer, org#employee]
+			
+				type org
+					relations
+						define employee: [user, document#viewer, team#member]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"org:3#employee@document:1#viewer",
+				"org:4#employee@document:2#viewer",
+				"team:3#member@document:3#viewer",
+				"document:3#viewer@team:4#member",
+				"team:4#member@user:justin",
+				"document:5#viewer@team:3#member",
+				"document:1#viewer@org:4#employee",
+				"document:8#viewer@org:3#employee",
+				"org:4#employee@user:justin",
+				"document:0#viewer@org:0#employee",
+				"org:0#employee@team:0#member",
+				"team:0#member@org:00#employee",
+				"org:00#employee@team:00#member",
+				"team:00#member@document:8#viewer",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("indirect_userset", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member]
+
+				type team
+					relations
+						define member: [user, org#employee]
+			
+				type org
+					relations
+						define employee: [user, team#member]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:22#employee@team:2#member",
+				"team:22#member@org:22#employee",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"team:3#member@org:1#employee",
+				"team:4#member@org:2#employee",
+				"org:3#employee@team:3#member",
+				"org:4#employee@team:4#member",
+				"team:5#member@org:3#employee",
+				"team:6#member@org:4#employee",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:2#member",
+				"document:3#viewer@team:3#member",
+				"document:4#viewer@team:4#member",
+				"document:5#viewer@team:5#member",
+				"document:6#viewer@team:6#member",
+				"document:7#viewer@team:0#member",
+				"document:22#viewer@team:22#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("recursive", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+				  schema 1.1
+
+				type user
+
+				type team
+					relations
+						define member: [user, team#member]
+
+				type group
+					relations
+						define member: [user, team#member, group#member]
+				
+				type document
+					relations
+						define viewer: [group#member]
+			`,
+			tuples: []string{
+				"team:fga#member@user:justin",
+				"team:xyz#member@team:fga#member",
+				"group:abc#member@team:xyz#member",
+				"group:xyz#member@group:abc#member",
+				"group:fga#member@group:xyz#member",
+				"group:cncf#member@group:fga#member",
+				"document:1#viewer@group:cncf#member",
+				"team:1#member@user:justin",
+				"team:2#member@team:1#member",
+				"team:3#member@team:2#member",
+				"group:2#member@team:3#member",
+				"document:2#viewer@group:2#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("tuple_cycle", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+				  schema 1.1
+
+				type user
+				
+				type team
+					relations
+						define member: [user, team#member]
+			`,
+			tuples: []string{
+				"team:fga#member@user:justin",
+				"team:cncf#member@team:fga#member",
+				"team:lnf#member@team:cncf#member",
+			},
+			objectType: "team",
+			relation:   "member",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"team:fga", "team:cncf", "team:lnf"},
+		}
+
+		evaluate(t, tc)
+	})
+}
+
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)
