@@ -25,6 +25,15 @@ func TestSQLiteDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
+
+	// Run tests with a custom large max_tuples_per_write value.
+	dsCustom, err := New(uri, sqlcommon.NewConfig(
+		sqlcommon.WithMaxTuplesPerWrite(5000),
+	))
+	require.NoError(t, err)
+	defer dsCustom.Close()
+
+	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {
