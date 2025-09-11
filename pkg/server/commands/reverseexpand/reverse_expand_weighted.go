@@ -160,6 +160,7 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 
 	_, ok := edge.GetWeight(targetNode.GetLabel())
 	if !ok {
+		defer cancel()
 		return emptySequence
 	}
 
@@ -170,7 +171,8 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 
 		toNode := edge.GetTo()
 
-		fromRelation := edge.GetRelation() // TODO: weighted graph needs implementation for edge relation
+		// fromRelation := edge.GetRelation() // TODO: weighted graph needs implementation for edge relation
+		fromRelation := edge.GetFrom().GetLabel()
 
 		object := strings.Split(fromRelation, "#")
 		if len(object) != 2 {
@@ -179,19 +181,19 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 		objectType := object[0]
 		objectRelation := object[1]
 
-		var userObject openfgav1.ObjectRelation
+		var userFilter []*openfgav1.ObjectRelation
 
 		switch toNode.GetNodeType() {
 		case NodeTypeSpecificType:
-			userObject = openfgav1.ObjectRelation{
+			userFilter = []*openfgav1.ObjectRelation{{
 				Object:   toNode.GetLabel() + ":" + targetIdentifier,
 				Relation: "",
-			}
+			}}
 		case NodeTypeSpecificTypeWildcard:
-			userObject = openfgav1.ObjectRelation{
+			userFilter = []*openfgav1.ObjectRelation{{
 				Object:   toNode.GetLabel(),
 				Relation: "",
-			}
+			}}
 		case NodeTypeSpecificTypeAndRelation:
 			seq := c.processNode(g, ctx, toNode, targetNode, targetIdentifier)
 			parts := strings.Split(toNode.GetLabel(), "#")
@@ -204,10 +206,10 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 				}
 
 				user := item.Value
-				userObject = openfgav1.ObjectRelation{
+				userFilter = append(userFilter, &openfgav1.ObjectRelation{
 					Object:   user,
 					Relation: userRelation,
-				}
+				})
 			}
 
 		case NodeTypeOperator:
@@ -222,7 +224,7 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 			storage.ReadStartingWithUserFilter{
 				ObjectType: objectType,
 				Relation:   objectRelation,
-				UserFilter: []*openfgav1.ObjectRelation{&userObject},
+				UserFilter: userFilter,
 			},
 			storage.ReadStartingWithUserOptions{},
 		)
@@ -286,8 +288,10 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 
 func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNode *Node, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
+
 	_, ok := sourceNode.GetWeight(targetNode.GetLabel())
 	if !ok {
+		defer cancel()
 		return emptySequence
 	}
 

@@ -23,6 +23,94 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+func TestProcessDirectEdge(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		tuples     []string
+		objectType string
+		relation   string
+		user       *UserRefObject
+		expected   []string
+	}{
+		{
+			name: "direct_and_algebraic",
+			model: `model
+			  schema 1.1
+
+			type user
+
+			type document
+				relations
+					define viewer: [team#member]
+
+			type team
+				relations
+					define member: [user]
+		`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:1#member",
+				"document:3#viewer@team:2#member",
+				"document:4#viewer@team:2#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3", "document:4"},
+		},
+	}
+
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+
+			typesys, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+			require.NoError(t, err)
+			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+			q := NewReverseExpandQuery(
+				ds,
+				typesys,
+
+				// turn on weighted graph functionality
+				WithListObjectOptimizationsEnabled(true),
+				WithStoreID(storeID),
+			)
+
+			g := typesys.GetWeightedGraph()
+
+			sourceNode, ok := g.GetNodeByID(test.objectType + "#" + test.relation)
+			require.True(t, ok, "could not find source node")
+
+			targetNode, ok := g.GetNodeByID(test.user.Object.Type)
+			require.True(t, ok, "could not find target node")
+
+			targetIdentifier := test.user.Object.Id
+
+			seq := q.processNode(g, ctx, sourceNode, targetNode, targetIdentifier)
+
+			var results []string
+
+			for item := range seq {
+				require.NoError(t, item.Err)
+				results = append(results, item.Value)
+			}
+			require.ElementsMatch(t, test.expected, results)
+		})
+	}
+}
+
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	ds := memory.New()
 	t.Cleanup(ds.Close)

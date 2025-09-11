@@ -184,6 +184,10 @@ type TypeSystem struct {
 	authzWeightedGraph      *graph.WeightedAuthorizationModelGraph
 }
 
+func (t *TypeSystem) GetWeightedGraph() *graph.WeightedAuthorizationModelGraph {
+	return t.authzWeightedGraph
+}
+
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgav1.AuthorizationModel) (*TypeSystem, error) {
