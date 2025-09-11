@@ -13,9 +13,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add `NewWithDB` support for sqlite storage. [#2679](https://github.com/openfga/openfga/pull/2679)
 - Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
 - Add `server.WithShadowCheckCacheEnabled` to enable creation of a separate cache for shadow check resolver. [#2683](https://github.com/openfga/openfga/pull/2683)
+- Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+- Breaking: Changes to storage interface
+
+  > [!NOTE]
+  > The following breaking changes are related to the storage interface. If you are not implementing a storage adapter, then these changes should not impact your usage of OpenFGA.
+
+  - Changed the `RelationshipTupleWriter` datastore interface to accept variadic write options (`opts ...TupleWriteOption`) to customize behavior on duplicate inserts and missing deletes. [#2663](https://github.com/openfga/openfga/pull/2663)
+    Implementers must update the `Write` method signature to include `opts ...TupleWriteOption`. Defaults preserve prior behavior (error on duplicates and on missing deletes). Example:
+    `Write(ctx, store, deletes, writes, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))`
 
 ### Fixed
 - Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)

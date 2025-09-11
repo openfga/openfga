@@ -53,7 +53,6 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
-	usersetBatchSize     int // TODO: delete this, its not used.
 	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -81,13 +80,6 @@ func WithPlanner(p *planner.Planner) LocalCheckerOption {
 	}
 }
 
-// WithUsersetBatchSize see server.WithUsersetBatchSize.
-func WithUsersetBatchSize(usersetBatchSize uint32) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.usersetBatchSize = int(usersetBatchSize)
-	}
-}
-
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
@@ -108,7 +100,6 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
-		usersetBatchSize:   serverconfig.DefaultUsersetBatchSize,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
@@ -712,6 +703,9 @@ func profiledCheckHandler(keyPlan *planner.KeyPlan, resolverName string, resolve
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
+			}
 			return nil, err
 		}
 		keyPlan.UpdateStats(resolverName, time.Since(start))
@@ -789,31 +783,30 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			keyPlanPrefix := b.String()
 			possibleResolvers = append(possibleResolvers, weightTwoResolver)
 			for _, userset := range directlyRelatedUsersetTypes {
-				if typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
-					usersets := []*openfgav1.RelationReference{userset}
-					iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
-					if err != nil {
-						return nil, err
-					}
-					// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
-					defer iter.Stop()
-					var k strings.Builder
-					k.WriteString(keyPlanPrefix)
-					k.WriteString("userset|")
-					k.WriteString(userset.String())
-
-					keyPlan := c.planner.GetKeyPlan(b.String())
-					resolverName := keyPlan.SelectResolver(possibleResolvers)
-
-					resolver := c.defaultUserset
-					if resolverName == weightTwoResolver {
-						resolver = c.weight2Userset
-					}
-
-					resolvers = append(resolvers, profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
+				if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
+					remainingUsersetTypes = append(remainingUsersetTypes, userset)
 					continue
 				}
-				remainingUsersetTypes = append(remainingUsersetTypes, userset)
+				usersets := []*openfgav1.RelationReference{userset}
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+				if err != nil {
+					return nil, err
+				}
+				// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
+				defer iter.Stop()
+				var k strings.Builder
+				k.WriteString(keyPlanPrefix)
+				k.WriteString("userset|")
+				k.WriteString(userset.String())
+
+				keyPlan := c.planner.GetKeyPlan(k.String())
+				resolverName := keyPlan.SelectResolver(possibleResolvers)
+
+				resolver := c.defaultUserset
+				if resolverName == weightTwoResolver {
+					resolver = c.weight2Userset
+				}
+				resolvers = append(resolvers, profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -826,15 +819,30 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter))
 			}
 		} else {
-			iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, directlyRelatedUsersetTypes)
-			if err != nil {
-				return nil, err
+			var remainingUsersetTypes []*openfgav1.RelationReference
+			for _, userset := range directlyRelatedUsersetTypes {
+				if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
+					remainingUsersetTypes = append(remainingUsersetTypes, userset)
+					continue
+				}
+				usersets := []*openfgav1.RelationReference{userset}
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, usersets)
+				if err != nil {
+					return nil, err
+				}
+				// NOTE: we collect defers given that the iterator won't be consumed until `union` resolves at the end.
+				defer iter.Stop()
+				resolvers = append(resolvers, c.weight2Userset(ctx, req, usersets, iter))
 			}
-			defer iter.Stop()
-			if typesys.UsersetUseWeight2Resolvers(objectType, relation, userType, directlyRelatedUsersetTypes) {
-				resolvers = append(resolvers, c.weight2Userset(ctx, req, directlyRelatedUsersetTypes, iter))
-			} else {
-				resolvers = append(resolvers, c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter))
+			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
+			// they all resolved as a group rather than individually.
+			if len(remainingUsersetTypes) > 0 {
+				iter, err := checkutil.IteratorReadUsersetTuples(ctx, req, remainingUsersetTypes)
+				if err != nil {
+					return nil, err
+				}
+				defer iter.Stop()
+				resolvers = append(resolvers, c.defaultUserset(ctx, req, remainingUsersetTypes, iter))
 			}
 		}
 
