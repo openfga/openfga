@@ -65,6 +65,8 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	// apple to apple.
 	writeDurationHistogram.WithLabelValues(
 		strconv.FormatBool(s.IsAccessControlEnabled() && !authclaims.SkipAuthzCheckFromContext(ctx)),
+		req.GetWrites().GetOnDuplicate(),
+		req.GetDeletes().GetOnMissing(),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return resp, err

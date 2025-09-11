@@ -15,6 +15,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const defaultResolver = "default"
+
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest
 	tk        *openfgav1.TupleKey
@@ -28,37 +30,26 @@ type dispatchMsg struct {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (c *LocalChecker) defaultUserset(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator) (resp *ResolveCheckResponse, err error) {
-	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, iter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "defaultUserset")
+		defer span.End()
+		dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
-	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	pool := concurrency.NewPool(cancellableCtx, 1)
-	defer func() {
-		cancelFunc()
-		// We need to wait always to avoid a goroutine leak.
-		poolErr := pool.Wait()
-		if poolErr != nil {
-			err = poolErr
-			resp = nil
-		}
-	}()
-	pool.Go(func(ctx context.Context) error {
-		recoveredError := panics.Try(func() {
+		cancellableCtx, cancelFunc := context.WithCancel(ctx)
+		pool := concurrency.NewPool(cancellableCtx, 1)
+		defer func() {
+			cancelFunc()
+			// We need to wait always to avoid a goroutine leak.
+			_ = pool.Wait()
+		}()
+		pool.Go(func(ctx context.Context) error {
 			c.produceUsersetDispatches(ctx, req, dispatchChan, iter)
+			return nil
 		})
 
-		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-		}
-		return nil
-	})
-
-	resp, err = c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
-	if err != nil {
-		return
+		return c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	}
-
-	return
 }
 
 func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
@@ -98,30 +89,29 @@ func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *Resolv
 
 // defaultTTU is the slow path for checkTTU where we cannot short-circuit TTU evaluation and
 // resort to dispatch check on its children.
-func (c *LocalChecker) defaultTTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
+func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "defaultTTU")
+		defer span.End()
+		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
-	dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
+		dispatchChan := make(chan dispatchMsg, c.concurrencyLimit)
 
-	cancellableCtx, cancelFunc := context.WithCancel(ctx)
-	// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
-	pool := concurrency.NewPool(cancellableCtx, 1)
-	defer func() {
-		cancelFunc()
-		// We need to wait always to avoid a goroutine leak.
-		_ = pool.Wait()
-	}()
-	pool.Go(func(ctx context.Context) error {
-		c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
-		return nil
-	})
+		cancellableCtx, cancelFunc := context.WithCancel(ctx)
+		// sending to channel in batches up to a pre-configured value to subsequently checkMembership for.
+		pool := concurrency.NewPool(cancellableCtx, 1)
+		defer func() {
+			cancelFunc()
+			// We need to wait always to avoid a goroutine leak.
+			_ = pool.Wait()
+		}()
+		pool.Go(func(ctx context.Context) error {
+			c.produceTTUDispatches(ctx, computedRelation, req, dispatchChan, iter)
+			return nil
+		})
 
-	resp, err := c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
-	if err != nil {
-		return nil, err
+		return c.consumeDispatches(ctx, c.concurrencyLimit, dispatchChan)
 	}
-
-	return resp, nil
 }
 
 func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {

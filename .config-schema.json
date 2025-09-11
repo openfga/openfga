@@ -693,6 +693,7 @@
             }
         },
         "sharedIterator": {
+            "type": "object",
             "properties": {
                 "enabled": {
                     "description": "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator.",
@@ -703,7 +704,7 @@
                 "limit": {
                     "description": "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.",
                     "type": "integer",
-                    "default": "1000000",
+                    "default": 1000000,
                     "x-env-variable": "OPENFGA_SHARED_ITERATOR_LIMIT"
                 }
             }
@@ -714,6 +715,31 @@
             "format": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
+        },
+        "planner": {
+            "type": "object",
+            "properties": {
+                "initialGuess": {
+                    "description": "The initial guess for the planners estimation.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10ms",
+                    "x-env-variable": "OPENFGA_PLANNER_INITIAL_GUESS"
+                },
+                "evictionThreshold": {
+                    "description": "How long a planner key can be unused before being evicted.",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_EVICTION_THRESHOLD"
+                },
+                "cleanupInterval": {
+                    "description": "How often the planner checks for stale keys.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_CLEANUP_INTERVAL"
+                }
+            }
         }
     },
     "definitions": {

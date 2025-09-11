@@ -332,7 +332,7 @@ type tupleChangeRec struct {
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
-func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
+func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.TupleWriteOption) error {
 	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
@@ -341,7 +341,8 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
+	duplicateDeletes, _, err := sanitizeTuplesWriteDelete(s.tuples[store], deletes, writes, storage.NewTupleWriteOptions(opts...))
+	if err != nil {
 		return err
 	}
 
@@ -351,8 +352,12 @@ Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
 		tk := t.GetKey()
-		for _, k := range deletes {
+		for i, k := range deletes {
 			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
+				if slices.Contains(duplicateDeletes, i) {
+					// noop for duplicate delete
+					continue
+				}
 				s.changes[store] = append(
 					s.changes[store],
 					&tupleChangeRec{
@@ -374,6 +379,8 @@ Write:
 	for _, t := range writes {
 		for _, et := range records {
 			if match(et, t) {
+				// notice we don't need to assert for duplicateWrites because the fact that we match,
+				// and it satisfies sanitizeTuplesWriteDelete means that it is a valid duplicate write.
 				continue Write
 			}
 		}
@@ -420,32 +427,49 @@ Write:
 	return nil
 }
 
-func validateTuples(
+func sanitizeTuplesWriteDelete(
 	records []*storage.TupleRecord,
 	deletes []*openfgav1.TupleKeyWithoutCondition,
 	writes []*openfgav1.TupleKey,
-) error {
-	for _, tk := range deletes {
-		if !find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
+	opts storage.TupleWriteOptions,
+) ([]int, []int, error) {
+	var duplicateDeletes []int
+	var duplicateWrites []int
+	for i, tk := range deletes {
+		if find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) == nil {
+			if opts.OnMissingDelete == storage.OnMissingDeleteIgnore {
+				duplicateDeletes = append(duplicateDeletes, i)
+				continue
+			}
+			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
-	for _, tk := range writes {
-		if find(records, tk) {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+	for i, tk := range writes {
+		record := find(records, tk)
+		if record != nil {
+			if opts.OnDuplicateInsert == storage.OnDuplicateInsertIgnore {
+				// need to validate against condition and context
+				if record.ConditionName == tk.GetCondition().GetName() && record.ConditionContext.String() == tk.GetCondition().GetContext().String() {
+					duplicateWrites = append(duplicateWrites, i)
+					continue
+				}
+				return nil, nil, storage.TupleConditionConflictError(tk)
+			}
+			return nil, nil, storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+		}
+	}
+	return duplicateDeletes, duplicateWrites, nil
+}
+
+// find returns tuple if *storage.TupleRecord [*storage.TupleRecord] returns true.
+// Return nil otherwise.
+func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) *storage.TupleRecord {
+	for _, tr := range records {
+		if match(tr, tupleKey) {
+			return tr
 		}
 	}
 	return nil
-}
-
-// find returns true if there is any [*storage.TupleRecord] for which match returns true.
-func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
-	for _, tr := range records {
-		if match(tr, tupleKey) {
-			return true
-		}
-	}
-	return false
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.

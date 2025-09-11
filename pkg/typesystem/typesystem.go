@@ -424,71 +424,53 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, sour
 	return false, nil
 }
 
-func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, allowedUsersets []*openfgav1.RelationReference) bool {
+func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType string, userset *openfgav1.RelationReference) bool {
 	if t.authzWeightedGraph == nil {
 		return false
 	}
-	objRel := tuple.ToObjectRelationString(objectType, relation)
-	node, ok := t.authzWeightedGraph.GetNodeByID(objRel)
+
+	node, ok := t.authzWeightedGraph.GetNodeByID(tuple.ToObjectRelationString(objectType, relation))
+	if !ok {
+		return false
+	}
+	if w, ok := node.GetWeight(userType); !ok || w == graph.Infinite {
+		// if there is a tuple cycle, we have to go through default resolver (or recursive one)
+		return false
+	}
+
+	usersetNodeID := tuple.ToObjectRelationString(userset.GetType(), userset.GetRelation())
+	usersetNode, ok := t.authzWeightedGraph.GetNodeByID(usersetNodeID)
 	if !ok {
 		return false
 	}
 
-	// verifying weight here is not enough given the object#relation might be weight 2, but we do not explicitly know
-	// the userset given we aren't in the weighted graph as we traverse, thus having to fully inspect to match the context
-	// of what is being resolved.
-	_, ok = node.GetWeight(userType)
+	// the node itself has to be weight 1 (not 2, because its the userset node that we are verifying at this point). the edge pointing to it would be weight 2.
+	weight, ok := usersetNode.GetWeight(userType)
 	if !ok {
 		return false
 	}
 
-	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(node)
-	if !ok {
-		return false
-	}
+	return weight == 1
+}
 
-	usersetEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
+// UsersetUseWeight2Resolvers
+// TODO: Deprecate once userset refactor is complete.
+func (t *TypeSystem) UsersetUseWeight2Resolvers(objectType, relation, userType string, usersets []*openfgav1.RelationReference) bool {
+	allowedType := hashset.New()
 
-	allowed := hashset.New()
-
-	for _, u := range allowedUsersets {
-		allowed.Add(tuple.ToObjectRelationString(u.GetType(), u.GetRelation()))
-	}
-
-	totalAllowed := allowed.Size()
-
-	// find all userset edges with valid weight
-	// but exit immediately if there is any above weight
-	for len(usersetEdges) != totalAllowed && len(edges) != 0 {
-		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
-		for _, edge := range edges {
-			// edge is a set operator thus we have to inspect each node of the operator
-			if edge.GetEdgeType() == graph.RewriteEdge {
-				operationalEdges, ok := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-				if !ok {
-					return false
-				}
-				innerEdges = append(innerEdges, operationalEdges...)
-			}
-
-			// each edge must belong to one of the directly assignable userset types AND each one of them
-			// must not have a weight higher than the threshold/level. if true, collect as _all entries_ need to be accounted for
-			if edge.GetEdgeType() == graph.DirectEdge && allowed.Contains(edge.GetTo().GetUniqueLabel()) {
-				w, ok := edge.GetWeight(userType)
-				if ok {
-					if w > 2 {
-						return false
-					}
-					usersetEdges = append(usersetEdges, edge)
-				}
-			}
+	for _, u := range usersets {
+		if allowedType.Contains(u.GetType()) {
+			// If there are more than 1 directly related userset types of the same type, we cannot do userset optimization because
+			// we cannot rely on the fact that the object ID matches. Instead, we need to take into consideration
+			// on the relation as well.
+			return false
 		}
-		if len(innerEdges) == 0 {
-			break
+		if !t.UsersetUseWeight2Resolver(objectType, relation, userType, u) {
+			return false
 		}
-		edges = innerEdges
+		allowedType.Add(u.GetType())
 	}
-	return len(usersetEdges) == totalAllowed
+	return true
 }
 
 func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
@@ -1552,82 +1534,16 @@ func (t *TypeSystem) GetEdgesFromNode(
 	return edges, nil
 }
 
-// GetEdgesForListObjects returns all edges which have a path to the source type. It's responsible for handling
-// Operator nodes, which are nodes representing Intersection (AND) or Exclusion (BUT NOT) relations. Union (OR) nodes
-// are also Operators, but we must traverse all of their edges and can't prune in advance, so this function will
-// return all relevant edges from an OR.
-// In the future we may prioritize lower weight edges in ORs, but this function is not currently doing so.
-//
-// For AND relations, we choose only the lowest weight outgoing edge, and then mark that result as "needs check".
-// E.g. If we have `rel1: a AND b AND c`, this function will return the edge with the lowest weight. If they are identical weights,
-// it will return the first edge encountered.
-//
-// For BUT NOT relations, GetEdgesForListObjects first checks if the BUT NOT applies to the source type, and if it
-// does it will mark this result as "requires check".
-// E.g. If we have `rel1: a OR b BUT NOT c` and we are searching for a "user", if 'c' does not lead to type user,
-// we do not mark as "requires check".
-// After determining whether this result will require check, GetEdgesForListObjects will prune off the last edge of the
-// Exclusion, as the right-most edge is always the BUT NOT portion, and that edge has already been accounted for.
-//
-// GetEdgesForListObjects returns a list of edges, boolean indicating whether Check is needed, and an error.
-func (t *TypeSystem) GetEdgesForListObjects(
-	targetTypeRelation string,
-	sourceType string,
-) ([]*graph.WeightedAuthorizationModelEdge, bool, error) {
-	if t.authzWeightedGraph == nil {
-		return nil, false, fmt.Errorf("weighted graph is nil")
-	}
-
-	wg := t.authzWeightedGraph
-
-	currentNode, ok := wg.GetNodeByID(targetTypeRelation)
+// GetConnectedEdges returns all edges which have a path to the source type.
+func (t *TypeSystem) GetConnectedEdges(targetTypeRelation string, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	currentNode, ok := t.GetNode(targetTypeRelation)
 	if !ok {
-		return nil, false, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
+		return nil, fmt.Errorf("could not find node with label: %s", targetTypeRelation)
 	}
 
 	edges, err := t.GetEdgesFromNode(currentNode, sourceType)
 	if err != nil {
-		return nil, false, err
-	}
-	if len(edges) == 0 {
-		return nil, false, fmt.Errorf("no outgoing edges from node: %s", currentNode.GetUniqueLabel())
-	}
-
-	// needsCheck is intended to be a temporary necessity for use by list_objects/reverse_expand. There is upcoming work
-	// to remove Check from that workflow entirely, but until that's complete we need this information.
-	var needsCheck bool
-
-	if currentNode.GetNodeType() == graph.OperatorNode {
-		switch currentNode.GetLabel() {
-		case graph.ExclusionOperator: // e.g. rel1: [user, other] BUT NOT b
-			butNotEdge := edges[len(edges)-1] // this is the edge to 'b'
-
-			// if the 'b' in BUT NOT b can reach the source type we're seeking
-			// we need to run check at the end
-			if hasPathTo(butNotEdge, sourceType) {
-				needsCheck = true
-			}
-
-			// prune off the "BUT NOT b" portion of these edges and keep going
-			// the right-most edge is ALWAYS the "BUT NOT", so trim the last element
-			edges = edges[:len(edges)-1]
-		case graph.IntersectionOperator:
-			// For now, all intersections will require check
-			needsCheck = true
-
-			// Find all direct edges which can reach the sourceType
-			directEdges := slices.Collect(utils.Filter(edges, func(edge *graph.WeightedAuthorizationModelEdge) bool {
-				return edge.GetEdgeType() == graph.DirectEdge && hasPathTo(edge, sourceType)
-			}))
-
-			// If there are any direct edges which reach destination, we have to take them all
-			if len(directEdges) > 0 {
-				edges = directEdges
-			} else {
-				// Otherwise take the lowest weight edge
-				edges = []*graph.WeightedAuthorizationModelEdge{cheapestEdgeTo(edges, sourceType)}
-			}
-		}
+		return nil, err
 	}
 
 	// Filter to only return edges which have a path to the sourceType
@@ -1635,7 +1551,7 @@ func (t *TypeSystem) GetEdgesForListObjects(
 		return hasPathTo(edge, sourceType)
 	}))
 
-	return relevantEdges, needsCheck, nil
+	return relevantEdges, nil
 }
 
 func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModelNode, bool) {

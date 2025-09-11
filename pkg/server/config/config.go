@@ -21,7 +21,6 @@ const (
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 10
-	DefaultUsersetBatchSize                 = 1000
 	DefaultListObjectsDeadline              = 3 * time.Second
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
@@ -99,6 +98,10 @@ const (
 	DefaultSharedIteratorTTL              = 4 * time.Minute
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
+
+	DefaultPlannerInitialGuess      = 10 * time.Millisecond
+	DefaultPlannerEvictionThreshold = 0
+	DefaultPlannerCleanupInterval   = 0
 )
 
 type DatastoreMetricsConfig struct {
@@ -290,6 +293,12 @@ type AccessControlConfig struct {
 	ModelID string
 }
 
+type PlannerConfig struct {
+	InitialGuess      time.Duration
+	EvictionThreshold time.Duration
+	CleanupInterval   time.Duration
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at
 	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
@@ -395,6 +404,7 @@ type Config struct {
 	ListUsersDatabaseThrottle     DatabaseThrottleConfig
 	ListObjectsIteratorCache      IteratorCacheConfig
 	SharedIterator                SharedIteratorConfig
+	Planner                       PlannerConfig
 
 	RequestDurationDatastoreQueryCountBuckets []string
 	RequestDurationDispatchCountBuckets       []string
@@ -807,6 +817,11 @@ func DefaultConfig() *Config {
 		},
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,
+		Planner: PlannerConfig{
+			InitialGuess:      DefaultPlannerInitialGuess,
+			EvictionThreshold: DefaultPlannerEvictionThreshold,
+			CleanupInterval:   DefaultPlannerCleanupInterval,
+		},
 	}
 }
 

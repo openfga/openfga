@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
+- Add microsecond latency numbers and datastore query count in shadow check resolver. [#2658](https://github.com/openfga/openfga/pull/2658)
+- Add `NewWithDB` support for sqlite storage. [#2679](https://github.com/openfga/openfga/pull/2679)
+- Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
+- Add `server.WithShadowCheckCacheEnabled` to enable creation of a separate cache for shadow check resolver. [#2683](https://github.com/openfga/openfga/pull/2683)
+- Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
+
+### Changed
+- Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
+- Breaking: Changes to storage interface
+
+  > [!NOTE]
+  > The following breaking changes are related to the storage interface. If you are not implementing a storage adapter, then these changes should not impact your usage of OpenFGA.
+
+  - Changed the `RelationshipTupleWriter` datastore interface to accept variadic write options (`opts ...TupleWriteOption`) to customize behavior on duplicate inserts and missing deletes. [#2663](https://github.com/openfga/openfga/pull/2663)
+    Implementers must update the `Write` method signature to include `opts ...TupleWriteOption`. Defaults preserve prior behavior (error on duplicates and on missing deletes). Example:
+    `Write(ctx, store, deletes, writes, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))`
+
+### Fixed
+- Fixed bug in how experimental ReverseExpand support for ttus with multiple parents in the intersection and exclusion for list objects. [#2691](https://github.com/openfga/openfga/pull/2691)
+- Improve performance by allowing weight 2 optimization if the directly assignable userset types are of different types. [#2645](https://github.com/openfga/openfga/pull/2645)
+- Update ListObjects' check resolver to use correct environment variable. [#2653](https://github.com/openfga/openfga/pull/2653)
+
+## [1.9.5] - 2025-08-15
+### Fixed
+- Do not run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2643](https://github.com/openfga/openfga/pull/2643)
 
 ## [1.9.4] - 2025-08-13
 ### Fixed
@@ -1389,7 +1416,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.9.5...HEAD
+[1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
 [1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
 [1.9.3]: https://github.com/openfga/openfga/compare/v1.9.2...v1.9.3
 [1.9.2]: https://github.com/openfga/openfga/compare/v1.9.1...v1.9.2

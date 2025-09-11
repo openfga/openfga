@@ -19,40 +19,48 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const recursiveResolver = "recursive"
+
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
 	tuplesetRelation            string
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveUserset(ctx context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
-	objectProvider := newRecursiveUsersetObjectProvider(typesys)
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation())
+		objectProvider := newRecursiveUsersetObjectProvider(typesys)
 
-	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
-		kind:                        storage.UsersetKind,
-		allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
-	}, objectProvider)
+		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
+			kind:                        storage.UsersetKind,
+			allowedUserTypeRestrictions: directlyRelatedUsersetTypes,
+		}, objectProvider)
+	}
 }
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
-func (c *LocalChecker) recursiveTTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	ttu := rewrite.GetTupleToUserset()
+		ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
+		objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
 
-	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
-		kind:             storage.TTUKind,
-		tuplesetRelation: ttu.GetTupleset().GetRelation(),
-	}, objectProvider)
+		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
+			kind:             storage.TTUKind,
+			tuplesetRelation: ttu.GetTupleset().GetRelation(),
+		}, objectProvider)
+	}
 }
 
 func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "recursiveFastPath")
+	defer span.End()
 	usersetFromUser := hashset.New()
 	usersetFromObject := hashset.New()
 
