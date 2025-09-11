@@ -138,21 +138,29 @@ var (
 	NodeTypeOperator                = weightedGraph.OperatorNode
 )
 
+var a = `
+	type user
+
+	type document
+		relations
+			define viewer: [policy#manager]
+
+	type policy
+		relations
+			define manager: [user]
+`
+
 type Item struct {
 	Value string
 	Err   error
 }
 
-func (i *Item) Error() string {
-	return i.Err.Error()
-}
-
-func (c *ReverseExpandQuery) processEdge(g *Graph, ctx context.Context, edge *Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
+func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, edge *Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
 	_, ok := edge.GetWeight(targetNode.GetLabel())
 	if !ok {
-		panic("bad edge weight")
+		return emptySequence
 	}
 
 	ch := make(chan Item)
@@ -162,85 +170,96 @@ func (c *ReverseExpandQuery) processEdge(g *Graph, ctx context.Context, edge *Ed
 
 		toNode := edge.GetTo()
 
-		switch edge.GetEdgeType() {
-		case EdgeTypeDirect:
-			if toNode != targetNode {
-				panic("to node should be equal to target node")
+		fromRelation := edge.GetRelation() // TODO: weighted graph needs implementation for edge relation
+
+		object := strings.Split(fromRelation, "#")
+		if len(object) != 2 {
+			panic("from relation on a direct edge must be formatted as `type#relation`")
+		}
+		objectType := object[0]
+		objectRelation := object[1]
+
+		var userObject openfgav1.ObjectRelation
+
+		switch toNode.GetNodeType() {
+		case NodeTypeSpecificType:
+			userObject = openfgav1.ObjectRelation{
+				Object:   toNode.GetLabel() + ":" + targetIdentifier,
+				Relation: "",
 			}
-			relation := edge.GetRelation()
-			toLabel := toNode.GetLabel()
-
-			object := strings.Split(relation, "#")
-			if len(object) != 2 {
-				panic("direct edge relation is malformed")
+		case NodeTypeSpecificTypeWildcard:
+			userObject = openfgav1.ObjectRelation{
+				Object:   toNode.GetLabel(),
+				Relation: "",
 			}
-			objectType := object[0]
-			objectRelation := object[1]
+		case NodeTypeSpecificTypeAndRelation:
+			seq := c.processNode(g, ctx, toNode, targetNode, targetIdentifier)
+			parts := strings.Split(toNode.GetLabel(), "#")
+			userRelation := parts[1]
 
-			var userObject openfgav1.ObjectRelation
+			for item := range seq {
+				if item.Err != nil {
+					ch <- item
+					return
+				}
 
-			switch toNode.GetNodeType() {
-			case NodeTypeSpecificType:
+				user := item.Value
 				userObject = openfgav1.ObjectRelation{
-					Object:   toNode.GetLabel() + ":" + targetIdentifier,
-					Relation: "",
+					Object:   user,
+					Relation: userRelation,
 				}
-			case NodeTypeSpecificTypeWildcard:
-				userObject = openfgav1.ObjectRelation{
-					Object:   toNode.GetLabel(),
-					Relation: "",
-				}
-			case NodeTypeSpecificTypeAndRelation:
-				seq := processNode(g, ctx, toNode, targetNode, targetIdentifier)
-				parts := strings.Split(toLabel, "#")
-				userRelation := parts[1]
-
-				for item := range seq {
-					if item.Err != nil {
-						ch <- Item
-						return
-					}
-
-					user := item.Value
-					userObject = openfgav1.ObjectRelation{
-						Object:   user,
-						Relation: userRelation,
-					}
-				}
-
-			case NodeTypeOperator:
-				panic("operator node should not be a target of direct edge")
-			default:
-				panic("unknown node type for direct edge")
 			}
 
-			it, err := c.datastore.ReadStartingWithUser(ctx, c.StoreID, storage.ReadStartingWithUserFilter{
+		case NodeTypeOperator:
+			panic("operator node should not be a target of direct edge")
+		default:
+			panic("unknown node type for direct edge")
+		}
+
+		it, err := c.datastore.ReadStartingWithUser(
+			ctx,
+			c.StoreID, // TODO: add store id to reverse expand query instance
+			storage.ReadStartingWithUserFilter{
 				ObjectType: objectType,
 				Relation:   objectRelation,
 				UserFilter: []*openfgav1.ObjectRelation{&userObject},
-			})
+			},
+			storage.ReadStartingWithUserOptions{},
+		)
+
+		if err != nil {
+			select {
+			case <-ctx.Done():
+			case ch <- Item{Err: err}:
+			}
+			return
+		}
+
+		defer it.Stop()
+
+		for {
+			t, err := it.Next(ctx)
 
 			if err != nil {
-				ch <- Item{Err: err}
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				select {
+				case <-ctx.Done():
+				case ch <- Item{Err: err}:
+				}
 				return
 			}
 
-			defer it.Stop()
+			if t == nil {
+				continue
+			}
 
-			for {
-				t, err := it.Next(ctx)
-
-				if err != nil {
-					if err == storage.ErrIteratorDone {
-						break
-					}
-					ch <- Item{Err: err}
-					return
-				}
-				if t == nil {
-					continue
-				}
-				ch <- Item{Value: t.GetKey().Object}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- Item{Value: t.GetKey().Object}:
 			}
 		}
 	}()
@@ -280,7 +299,21 @@ func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNo
 	results := make([]iter.Seq[Item], 0, len(edges))
 
 	for _, edge := range edges {
-		seq := c.processEdge(g, ctx, edge, targetNode, targetIdentifier)
+		var seq iter.Seq[Item]
+
+		switch edge.GetEdgeType() {
+		case EdgeTypeDirect:
+			seq = c.processDirectEdge(g, ctx, edge, targetNode, targetIdentifier)
+		case EdgeTypeComputed:
+			// TODO: Handle computed edges
+		case EdgeTypeRewrite:
+			// TODO: Handle rewrite edges
+		case EdgeTypeTTU:
+			// TODO: Handle TTU edges
+		default:
+			panic("unknown edge type")
+		}
+
 		results = append(results, seq)
 	}
 
@@ -293,12 +326,20 @@ func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNo
 		go func() {
 			defer wg.Done()
 
-			seq.Iter(func(item Item) bool {
-				ch <- item
-				return true
-			})
+			for item := range seq {
+				select {
+				case ch <- item:
+				case <-ctx.Done():
+					return
+				}
+			}
 		}()
 	}
+
+	go func() {
+		defer close(ch)
+		wg.Wait()
+	}()
 
 	return func(yield func(Item) bool) {
 		defer cancel()
