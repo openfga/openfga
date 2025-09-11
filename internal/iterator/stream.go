@@ -15,8 +15,11 @@ type Msg struct {
 }
 
 func CleanMsg(msg *Msg) {
-	if msg.Iter != nil {
-		msg.Iter.Stop()
+	if msg == nil {
+		return
+	}
+	if it := msg.Iter; it != nil {
+		it.Stop()
 	}
 }
 
