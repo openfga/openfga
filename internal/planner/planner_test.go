@@ -55,6 +55,38 @@ func TestProfiler_Update(t *testing.T) {
 	require.Greater(t, counts["fast"], 90)
 	require.Less(t, counts["slow"], 10)
 }
+func TestPlanner_EvictStaleKeys(t *testing.T) {
+	evictionThreshold := 50 * time.Millisecond
+	p := New(&Config{
+		InitialGuess:      10 * time.Millisecond,
+		EvictionThreshold: evictionThreshold,
+	})
+
+	// Create multiple old keys
+	oldKeys := []string{"old_key1", "old_key2", "old_key3"}
+	for _, key := range oldKeys {
+		kp := p.GetKeyPlan(key)
+		oldTime := time.Now().Add(-evictionThreshold - 10*time.Millisecond).UnixNano()
+		kp.lastAccessed.Store(oldTime)
+	}
+
+	// Create one fresh key
+	freshKp := p.GetKeyPlan("fresh_key")
+	freshKp.touch()
+
+	// Call evictStaleKeys
+	p.evictStaleKeys()
+
+	// Check that all old keys were evicted
+	for _, key := range oldKeys {
+		_, exists := p.keys.Load(key)
+		require.False(t, exists, "old key %s should have been evicted", key)
+	}
+
+	// Check that fresh key still exists
+	_, exists := p.keys.Load("fresh_key")
+	require.True(t, exists, "fresh key should not have been evicted")
+}
 
 func BenchmarkKeyPlan(b *testing.B) {
 	p := New(&Config{InitialGuess: 10 * time.Millisecond})
