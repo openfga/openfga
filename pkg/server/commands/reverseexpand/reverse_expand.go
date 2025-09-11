@@ -412,15 +412,12 @@ func (c *ReverseExpandQuery) execute(
 				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel})
 			}
 
-			edges, err := c.typesystem.GetConnectedEdges(
+			edges, _ := c.typesystem.GetConnectedEdges(
 				typeRel,
 				sourceUserType,
 			)
-			if err != nil {
-				// this should never happen as if the weighted graph failed to build, req.skipWeightedGraph would
-				// have prevented us from entering this block
-				return err
-			}
+			// error should never happen as if the weighted graph failed to build, req.skipWeightedGraph would
+			// have prevented us from entering this block
 
 			// Set value to indicate that the weighted graph was used
 			resolutionMetadata.WasWeightedGraphUsed.Store(true)

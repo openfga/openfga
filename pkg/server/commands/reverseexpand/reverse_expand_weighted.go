@@ -685,11 +685,9 @@ func (c *ReverseExpandQuery) intersectionHandler(
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	// if no edges to call LO or call check, return nil
-	if len(intersectionEdges.LowestEdges) == 0 || len(intersectionEdges.SiblingEdges) == 0 {
-		// this should never happen because typesystem.GetEdgesFromNode should have returned an error
-		return nil
-	}
+	// note that we should never see a case where no edges to call LO
+	// i.e., len(intersectionEdges.LowestEdges) == 0 or we cannot call check (i.e., len(intersectionEdges.SiblingEdges) == 0)
+	// because typesystem.GetEdgesFromNode should have returned an error
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	intersectEdges := intersectionEdges.SiblingEdges
