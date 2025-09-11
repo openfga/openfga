@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
 - Add `server.WithShadowCheckCacheEnabled` to enable creation of a separate cache for shadow check resolver. [#2683](https://github.com/openfga/openfga/pull/2683)
 - Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
+- Add datastore query count in shadow check resolver. [#TBD](https://github.com/openfga/openfga/pull/TBD)
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)
