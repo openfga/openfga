@@ -703,7 +703,7 @@ func profiledCheckHandler(keyPlan *planner.KeyPlan, resolverName string, resolve
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			if errors.Is(err, context.DeadlineExceeded) {
 				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
 			}
 			return nil, err
