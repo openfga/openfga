@@ -1651,10 +1651,9 @@ func TestUnionCheckFuncReducer(t *testing.T) {
 			cancel()
 		}()
 
-		resp, err := intersection(ctx, concurrencyLimit, trueHandler, trueHandler)
+		resp, err := union(ctx, concurrencyLimit, trueHandler, trueHandler)
 		require.NoError(t, err)
 		require.True(t, resp.GetAllowed())
-
 		wg.Wait() // just to make sure to avoid test leaks
 	})
 
