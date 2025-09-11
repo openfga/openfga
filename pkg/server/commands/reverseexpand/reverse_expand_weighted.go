@@ -4,10 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"maps"
+	"runtime"
+	"strings"
 	"sync"
+	"sync/atomic"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -112,6 +118,1462 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	}
 
 	return job, true
+}
+
+// emptySequence represents an `iter.Seq[Item]` that does nothing.
+var emptySequence = func(yield func(Item) bool) {}
+
+type (
+	Graph = weightedGraph.WeightedAuthorizationModelGraph
+	Node  = weightedGraph.WeightedAuthorizationModelNode
+	Edge  = weightedGraph.WeightedAuthorizationModelEdge
+
+	EdgeType = weightedGraph.EdgeType
+)
+
+var (
+	EdgeTypeDirect        = weightedGraph.DirectEdge
+	EdgeTypeComputed      = weightedGraph.ComputedEdge
+	EdgeTypeRewrite       = weightedGraph.RewriteEdge
+	EdgeTypeTTU           = weightedGraph.TTUEdge
+	EdgeTypeDirectLogical = weightedGraph.DirectLogicalEdge
+	EdgeTypeTTULogical    = weightedGraph.TTULogicalEdge
+
+	NodeTypeSpecificType            = weightedGraph.SpecificType
+	NodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
+	NodeTypeSpecificTypeAndRelation = weightedGraph.SpecificTypeAndRelation
+	NodeTypeOperator                = weightedGraph.OperatorNode
+	NodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
+	NodeTypeLogicalTTUGrouping      = weightedGraph.LogicalTTUGrouping
+
+	ErrNoSuchNode         = errors.New("no such node in graph")
+	ErrNoSuchPath         = errors.New("no path between source and target nodes")
+	ErrConnectionOverflow = errors.New("too many connections")
+	ErrTupleCycle         = errors.New("cycle detected in tuples")
+)
+
+// Item is a struct that contains an object `string` as its `Value` or an
+// encountered error as its `Err`. Item is the primary container used to
+// communicate values as they pass through a `Pipeline`.
+type Item struct {
+	Value string
+	Err   error
+}
+
+// Group is a struct that acts as a container for a set of `Item` values.
+type Group struct {
+	Items []Item
+}
+
+// sequence is a function that turns its input into an `iter.Seq[T]` that
+// yields values in the order that they were provided to the function.
+func sequence[T any](items ...T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, item := range items {
+			if !yield(item) {
+				return
+			}
+		}
+	}
+}
+
+// flatten is a function that merges a set of provided `iter.Seq[T]`
+// values into a single `iter.Seq[T]` value. The values of each input are
+// yielded in the order yielded by each `iter.Seq[T]`, in the order provided
+// to the function.
+func flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, seq := range seqs {
+			for item := range seq {
+				if !yield(item) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// transform is a function that maps the values yielded by the input `seq`
+// to values produced by the input function `fn`, and returns an `iter.Seq`
+// that yields those new values.
+func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
+	return func(yield func(U) bool) {
+		for item := range seq {
+			yield(fn(item))
+		}
+	}
+}
+
+// strtoItem is a function that accepts a string input and returns an Item
+// that contains the input as its `Value` value.
+func strToItem(s string) Item {
+	return Item{Value: s}
+}
+
+// Backend is a struct that serves as a container for all backend elements
+// necessary for creating and running a `Pipeline`.
+type Backend struct {
+	Datastore  storage.RelationshipTupleReader
+	StoreID    string
+	TypeSystem *typesystem.TypeSystem
+	Context    *structpb.Struct
+	Graph      *Graph
+}
+
+type queryInput struct {
+	objectType     string
+	objectRelation string
+	userFilter     []*openfgav1.ObjectRelation
+	conditions     []string
+}
+
+func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+
+	it, err := b.Datastore.ReadStartingWithUser(
+		ctx,
+		b.StoreID,
+		storage.ReadStartingWithUserFilter{
+			ObjectType: input.objectType,
+			Relation:   input.objectRelation,
+			UserFilter: input.userFilter,
+		},
+		storage.ReadStartingWithUserOptions{},
+	)
+
+	if err != nil {
+		cancel()
+		return sequence(Item{Err: err})
+	}
+
+	var hasConditions bool
+
+	for _, cond := range input.conditions {
+		if cond != weightedGraph.NoCond {
+			hasConditions = true
+			break
+		}
+	}
+
+	var itr storage.TupleKeyIterator
+
+	if hasConditions {
+		itr = storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(it),
+				validation.FilterInvalidTuples(b.TypeSystem),
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, b.Context, b.TypeSystem),
+		)
+	} else {
+		itr = storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(it),
+			validation.FilterInvalidTuples(b.TypeSystem),
+		)
+	}
+
+	return func(yield func(Item) bool) {
+		defer cancel()
+		defer itr.Stop()
+
+		for ctx.Err() == nil {
+			t, err := itr.Next(ctx)
+
+			var item Item
+
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				item.Err = err
+
+				yield(item)
+				break
+			}
+
+			if t == nil {
+				continue
+			}
+
+			item.Value = t.GetObject()
+
+			if !yield(item) {
+				break
+			}
+		}
+	}
+}
+
+// resolver is an interface that is consumed by a Worker struct.
+// a resolver is responsible for consuming messages from a Worker's
+// senders and broadcasting the result of processing the consumed
+// messages to the Worker's listeners.
+type resolver interface {
+	// Resolve is a function that consumes messages from the
+	// provided senders, and broadcasts the results of processing
+	// the consumed messages to the provided listeners.
+	Resolve(senders []*sender, listeners []*listener)
+
+	Ready() bool
+}
+
+// interpreter is an interface that exposes a method for interpreting input for an edge into output.
+type interpreter interface {
+	Interpret(edge *Edge, items []Item) iter.Seq[Item]
+}
+
+// baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
+// workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
+// status will remain `true` until all of its senders that produce input from external sources have finished, and
+// there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
+// this resolver type requires its internal watchdog process to initiate a shutdown.
+type baseResolver struct {
+	id  int
+	ctx context.Context
+
+	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
+	// of the parent worker's listeners.
+	interpreter interpreter
+
+	// done indicates when all of the senders that produce input from external sources have completed.
+	// done is used as the resolver's "ready" indicator, which is exposed by the resolver's `Status` method.
+	// When done is `true`, it is possible for recursive senders to still be processing messages. The
+	// resolver's parent worker's watchdog process won't kill the parent worker until both done is `true`, and
+	// there a no more messages in-flight for this resolver.
+	done atomic.Bool
+
+	// mutexes each protect map access for a buffer within inBuffers at the same index.
+	mutexes []sync.Mutex
+
+	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual sender's
+	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
+	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
+	// edges producing to the same node. This is specifically true in the case of recursive edges, where
+	// a single resolver may have multiple recursive edges that must receive the same objects.
+	inBuffers []map[string]struct{}
+
+	// outMu protects map access to outBuffer.
+	outMu sync.Mutex
+
+	// outBuffer contains a map, used as a hash set, for deduplicating each resolver's output. A single
+	// resolver should only output an object once.
+	outBuffer map[string]struct{}
+
+	status *StatusPool
+}
+
+func (r *baseResolver) Ready() bool {
+	return r.status.Status()
+}
+
+func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
+	for senders[ndx].more() && r.ctx.Err() == nil {
+		var results iter.Seq[Item]
+		var outGroup Group
+		var items, unseen []Item
+
+		msg, ok := senders[ndx].recv()
+		if !ok {
+			goto ProcessEnd
+		}
+
+		// Deduplicate items within this group based on the buffer for this sender
+		for _, item := range msg.Value.Items {
+			if item.Err != nil {
+				unseen = append(unseen, item)
+				continue
+			}
+
+			r.mutexes[ndx].Lock()
+			if _, ok := r.inBuffers[ndx][item.Value]; ok {
+				r.mutexes[ndx].Unlock()
+				continue
+			}
+			r.inBuffers[ndx][item.Value] = struct{}{}
+			r.mutexes[ndx].Unlock()
+			unseen = append(unseen, item)
+		}
+
+		// If there are no unseen items, skip processing
+		if len(unseen) == 0 {
+			goto ProcessEnd
+		}
+
+		results = r.interpreter.Interpret(senders[ndx].edge, unseen)
+
+		for item := range results {
+			r.outMu.Lock()
+			if _, ok := r.outBuffer[item.Value]; ok {
+				r.outMu.Unlock()
+				continue
+			}
+			r.outBuffer[item.Value] = struct{}{}
+			r.outMu.Unlock()
+
+			items = append(items, item)
+
+			if len(items) < senders[ndx].chunkSize || senders[ndx].chunkSize == 0 {
+				continue
+			}
+
+			outGroup := Group{
+				Items: items,
+			}
+
+			items = nil
+
+			for _, lst := range listeners {
+				lst.send(outGroup)
+			}
+		}
+
+		if len(items) == 0 {
+			goto ProcessEnd
+		}
+
+		outGroup.Items = items
+
+		for _, lst := range listeners {
+			lst.send(outGroup)
+		}
+
+	ProcessEnd:
+		msg.Done()
+		runtime.Gosched()
+	}
+}
+
+func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
+	r.mutexes = make([]sync.Mutex, len(senders))
+	r.inBuffers = make([]map[string]struct{}, len(senders))
+	r.outBuffer = make(map[string]struct{})
+
+	for ndx := range len(senders) {
+		r.inBuffers[ndx] = make(map[string]struct{})
+	}
+
+	var standard []func()
+	var recursive []func()
+
+	for ndx := range len(senders) {
+		snd := senders[ndx]
+		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
+
+		proc := func() {
+			r.process(ndx, senders, listeners)
+		}
+
+		for range snd.numProcs {
+			if isRecursive {
+				recursive = append(recursive, proc)
+				continue
+			}
+			standard = append(standard, proc)
+		}
+	}
+
+	var wgStandard sync.WaitGroup
+
+	for _, proc := range standard {
+		wgStandard.Add(1)
+		go func() {
+			defer wgStandard.Done()
+			proc()
+		}()
+	}
+
+	var wgRecursive sync.WaitGroup
+
+	for _, proc := range recursive {
+		wgRecursive.Add(1)
+		go func() {
+			defer wgRecursive.Done()
+			proc()
+		}()
+	}
+	wgStandard.Wait()
+
+	r.status.Set(r.id, false)
+
+	wgRecursive.Wait()
+}
+
+type edgeHandler func(*Edge, []Item) iter.Seq[Item]
+
+func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
+	parts := strings.Split(edge.GetRelationDefinition(), "#")
+	nodeType := parts[0]
+	nodeRelation := parts[1]
+
+	userParts := strings.Split(edge.GetTo().GetLabel(), "#")
+
+	var userRelation string
+
+	if len(userParts) > 1 {
+		userRelation = userParts[1]
+	}
+
+	var userFilter []*openfgav1.ObjectRelation
+
+	var errs []Item
+
+	for _, item := range items {
+		if item.Err != nil {
+			errs = append(errs, item)
+			continue
+		}
+
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
+			Object:   item.Value,
+			Relation: userRelation,
+		})
+	}
+
+	var results iter.Seq[Item]
+
+	if len(userFilter) > 0 {
+		input := queryInput{
+			objectType:     nodeType,
+			objectRelation: nodeRelation,
+			userFilter:     userFilter,
+			conditions:     edge.GetConditions(),
+		}
+		results = b.query(context.Background(), input)
+	} else {
+		results = emptySequence
+	}
+
+	if len(errs) > 0 {
+		results = flatten(sequence(errs...), results)
+	}
+	return results
+}
+
+func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
+	parts := strings.Split(edge.GetTuplesetRelation(), "#")
+	tuplesetType := parts[0]
+	tuplesetRelation := parts[1]
+
+	tuplesetNode, ok := b.Graph.GetNodeByID(edge.GetTuplesetRelation())
+	if !ok {
+		panic("tupleset node not in graph")
+	}
+
+	edges, ok := b.Graph.GetEdgesFromNode(tuplesetNode)
+	if !ok {
+		panic("no edges found for tupleset node")
+	}
+
+	targetType := strings.Split(edge.GetTo().GetLabel(), "#")[0]
+
+	var targetEdge *Edge
+
+	for _, e := range edges {
+		if e.GetTo().GetLabel() == targetType {
+			targetEdge = e
+			break
+		}
+	}
+
+	if targetEdge == nil {
+		panic("ttu target type is not an edge of tupleset")
+	}
+
+	var userFilter []*openfgav1.ObjectRelation
+
+	var errs []Item
+
+	for _, item := range items {
+		if item.Err != nil {
+			errs = append(errs, item)
+			continue
+		}
+
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
+			Object:   item.Value,
+			Relation: "",
+		})
+	}
+
+	var results iter.Seq[Item]
+
+	if len(userFilter) > 0 {
+		input := queryInput{
+			objectType:     tuplesetType,
+			objectRelation: tuplesetRelation,
+			userFilter:     userFilter,
+			conditions:     targetEdge.GetConditions(),
+		}
+		results = b.query(context.Background(), input)
+	} else {
+		results = emptySequence
+	}
+
+	if len(errs) > 0 {
+		results = flatten(sequence(errs...), results)
+	}
+	return results
+}
+
+func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
+	return sequence(items...)
+}
+
+func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
+	panic("unsupported state")
+}
+
+func handleLeafNode(node *Node) edgeHandler {
+	return func(_ *Edge, items []Item) iter.Seq[Item] {
+		objectType := strings.Split(node.GetLabel(), "#")[0]
+
+		results := transform(sequence(items...), func(item Item) Item {
+			var value string
+
+			switch node.GetNodeType() {
+			case NodeTypeSpecificTypeWildcard:
+				value = ""
+			case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
+				value = ":" + item.Value
+			default:
+				panic("unsupported leaf node type")
+			}
+			item.Value = objectType + value
+			return item
+		})
+		return results
+	}
+}
+
+type omniInterpreter struct {
+	hndNil           edgeHandler
+	hndDirect        edgeHandler
+	hndTTU           edgeHandler
+	hndComputed      edgeHandler
+	hndRewrite       edgeHandler
+	hndDirectLogical edgeHandler
+	hndTTULogical    edgeHandler
+}
+
+func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
+	var results iter.Seq[Item]
+
+	if edge == nil {
+		results = o.hndNil(edge, items)
+		return results
+	}
+
+	switch edge.GetEdgeType() {
+	case EdgeTypeDirect:
+		results = o.hndDirect(edge, items)
+	case EdgeTypeTTU:
+		results = o.hndTTU(edge, items)
+	case EdgeTypeComputed:
+		results = o.hndComputed(edge, items)
+	case EdgeTypeRewrite:
+		results = o.hndRewrite(edge, items)
+	case EdgeTypeDirectLogical:
+		results = o.hndDirectLogical(edge, items)
+	case EdgeTypeTTULogical:
+		results = o.hndTTULogical(edge, items)
+	default:
+		panic("unexpected edge type")
+	}
+	return results
+}
+
+type intersectionResolver struct {
+	ctx         context.Context
+	interpreter interpreter
+	done        bool
+	msgs        Tracker
+}
+
+func (r *intersectionResolver) Ready() bool {
+	return !r.done
+}
+
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
+	defer func() {
+		r.msgs.Add(-1)
+		r.done = true
+	}()
+
+	r.msgs.Add(1)
+
+	var wg sync.WaitGroup
+
+	objects := make(map[string]struct{})
+
+	buffers := make([]map[string]struct{}, len(senders))
+
+	output := make([]map[string]struct{}, len(senders))
+
+	for i := range senders {
+		buffers[i] = make(map[string]struct{})
+		output[i] = make(map[string]struct{})
+	}
+
+	errs := make([][]Item, len(senders))
+
+	for i, snd := range senders {
+		wg.Add(1)
+
+		go func(i int, snd *sender) {
+			defer wg.Done()
+
+			for snd.more() && r.ctx.Err() == nil {
+				msg, ok := snd.recv()
+				if !ok {
+					runtime.Gosched()
+					continue
+				}
+
+				var unseen []Item
+
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range msg.Value.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[i][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[i][item.Value] = struct{}{}
+				}
+
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
+					msg.Done()
+					continue
+				}
+
+				results := r.interpreter.Interpret(snd.edge, unseen)
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+					}
+					output[i][item.Value] = struct{}{}
+				}
+				msg.Done()
+			}
+		}(i, snd)
+	}
+	wg.Wait()
+
+	for obj := range output[0] {
+		objects[obj] = struct{}{}
+	}
+
+	for i := 1; i < len(output); i++ {
+		found := make(map[string]struct{})
+
+		for obj := range output[i] {
+			if _, ok := objects[obj]; ok {
+				found[obj] = struct{}{}
+			}
+		}
+		objects = found
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := flatten(sequence(allErrs...), transform(maps.Keys(objects), strToItem))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, lst := range listeners {
+		lst.send(outGroup)
+	}
+
+}
+
+type exclusionResolver struct {
+	ctx         context.Context
+	interpreter interpreter
+	done        bool
+	msgs        Tracker
+}
+
+func (r *exclusionResolver) Ready() bool {
+	return !r.done
+}
+
+func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
+	defer func() {
+		r.msgs.Add(-1)
+		r.done = true
+	}()
+
+	r.msgs.Add(1)
+
+	if len(senders) < 2 {
+		panic("exclusion resolver requires at least two senders")
+	}
+	var wg sync.WaitGroup
+
+	included := make(map[string]struct{})
+	excluded := make(map[string]struct{})
+
+	errs := make([][]Item, len(senders))
+
+	var mu1 sync.Mutex
+	var mu2 sync.Mutex
+
+	for i, snd := range senders {
+		wg.Add(1)
+
+		go func(i int, snd *sender) {
+			defer wg.Done()
+
+			for snd.more() && r.ctx.Err() == nil {
+				msg, ok := snd.recv()
+				if !ok {
+					runtime.Gosched()
+					continue
+				}
+
+				results := r.interpreter.Interpret(snd.edge, msg.Value.Items)
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+						continue
+					}
+					if i == len(senders)-1 {
+						mu2.Lock()
+						excluded[item.Value] = struct{}{}
+						mu2.Unlock()
+					} else {
+						mu1.Lock()
+						included[item.Value] = struct{}{}
+						mu1.Unlock()
+					}
+				}
+				msg.Done()
+			}
+		}(i, snd)
+	}
+	wg.Wait()
+
+	for obj := range excluded {
+		delete(included, obj)
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := flatten(sequence(allErrs...), transform(maps.Keys(included), strToItem))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, lst := range listeners {
+		lst.send(outGroup)
+	}
+}
+
+type StatusPool struct {
+	mu   sync.Mutex
+	pool []uint64
+	top  int
+}
+
+func (sp *StatusPool) Register() int {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	capacity := len(sp.pool)
+
+	if sp.top/64 >= capacity {
+		sp.pool = append(sp.pool, 0)
+	}
+	id := sp.top
+	sp.top++
+	return id
+}
+
+// Set is a function that accepts a registered identifier and a boolean status.
+func (sp *StatusPool) Set(id int, status bool) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	ndx := id / 64
+	pos := uint64(1 << (id % 64))
+
+	if status {
+		sp.pool[ndx] |= pos
+		return
+	}
+	sp.pool[ndx] &^= pos
+}
+
+// Status is a function that returns the cummulative status of all statuses
+// registered within the pool. If any registered status is set to `true`,
+// the return value of Status will be `true`. The default value is `false`.
+func (sp *StatusPool) Status() bool {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+
+	var status uint64
+
+	for _, s := range sp.pool {
+		status |= s
+	}
+	return status != 0
+}
+
+type Worker struct {
+	status    *StatusPool
+	name      string
+	senders   []*sender
+	listeners []*listener
+	resolver  resolver
+	msgs      Tracker
+	wg        sync.WaitGroup
+}
+
+func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracker, status *StatusPool) *Worker {
+	var r resolver
+	var w Worker
+
+	id := status.Register()
+	status.Set(id, true)
+	w.status = status
+	w.msgs = tracker
+
+	switch node.GetNodeType() {
+	case NodeTypeSpecificTypeAndRelation:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        backend.handleDirectEdge,
+			hndTTU:           backend.handleTTUEdge,
+			hndComputed:      handleIdentity,
+			hndRewrite:       handleIdentity,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			ctx:         ctx,
+			interpreter: omni,
+			status:      w.status,
+		}
+	case NodeTypeSpecificType:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        handleUnsupported,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			ctx:         ctx,
+			interpreter: omni,
+			status:      w.status,
+		}
+	case NodeTypeSpecificTypeWildcard:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        handleUnsupported,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			ctx:         ctx,
+			interpreter: omni,
+			status:      w.status,
+		}
+	case NodeTypeOperator:
+		switch node.GetLabel() {
+		case weightedGraph.IntersectionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &intersectionResolver{
+				ctx:         ctx,
+				interpreter: omni,
+				msgs:        w.msgs,
+			}
+		case weightedGraph.UnionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &baseResolver{
+				id:          id,
+				ctx:         ctx,
+				interpreter: omni,
+				status:      w.status,
+			}
+		case weightedGraph.ExclusionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &exclusionResolver{
+				ctx:         ctx,
+				interpreter: omni,
+				msgs:        w.msgs,
+			}
+		default:
+			panic("unsupported operator node for reverse expand worker")
+		}
+	case NodeTypeLogicalDirectGrouping:
+		omni := &omniInterpreter{
+			hndNil:           handleUnsupported,
+			hndDirect:        backend.handleDirectEdge,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			ctx:         ctx,
+			interpreter: omni,
+			status:      w.status,
+		}
+	case NodeTypeLogicalTTUGrouping:
+		omni := &omniInterpreter{
+			hndNil:           handleUnsupported,
+			hndDirect:        handleUnsupported,
+			hndTTU:           backend.handleTTUEdge,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			ctx:         ctx,
+			interpreter: omni,
+			status:      w.status,
+		}
+	default:
+		panic("unsupported node type for reverse expand worker")
+	}
+
+	var name string
+
+	if node == nil {
+		name = "nil"
+	} else {
+		name = node.GetUniqueLabel()
+	}
+
+	w.name = name
+	w.resolver = r
+
+	return &w
+}
+
+func (w *Worker) Active() bool {
+	return w.resolver.Ready() || w.msgs.Load() != 0
+}
+
+func (w *Worker) Start() {
+	w.wg.Add(1)
+
+	go func() {
+		defer w.wg.Done()
+
+		defer func() {
+			for _, lst := range w.listeners {
+				lst.close()
+			}
+		}()
+
+		w.resolver.Resolve(w.senders, w.listeners)
+	}()
+}
+
+func (w *Worker) Close() {
+	for _, lst := range w.listeners {
+		lst.close()
+	}
+}
+
+func (w *Worker) Wait() {
+	w.wg.Wait()
+}
+
+type Tracker interface {
+	Add(int64) int64
+	Load() int64
+}
+
+type echoTracker struct {
+	local  atomic.Int64
+	parent Tracker
+}
+
+func (t *echoTracker) Add(i int64) int64 {
+	value := t.local.Add(i)
+	if t.parent != nil {
+		t.parent.Add(i)
+	}
+	return value
+}
+
+func (t *echoTracker) Load() int64 {
+	return t.local.Load()
+}
+
+func EchoTracker(parent Tracker) Tracker {
+	return &echoTracker{
+		parent: parent,
+	}
+}
+
+type Message[T any] struct {
+	Value T
+	done  func()
+}
+
+func (m *Message[T]) Done() {
+	if m.done != nil {
+		m.done()
+	}
+}
+
+type Producer[T any] interface {
+	Recv() (Message[T], bool)
+	Done() bool
+}
+
+type Consumer[T any] interface {
+	Send(T)
+	Close()
+}
+
+type Pipe struct {
+	ch   chan Group
+	mu   sync.Mutex
+	msgs Tracker
+	done bool
+}
+
+func (p *Pipe) Send(g Group) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.done {
+		// fmt.Printf("CLOSED PIPE %#v", g)
+		panic("called Send on a closed Pipe")
+	}
+	p.msgs.Add(1)
+	p.ch <- g
+}
+
+func (p *Pipe) Recv() (Message[Group], bool) {
+	select {
+	case group, ok := <-p.ch:
+		if !ok {
+			return Message[Group]{}, ok
+		}
+
+		fn := func() {
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			p.msgs.Add(-1)
+		}
+		return Message[Group]{Value: group, done: sync.OnceFunc(fn)}, ok
+	default:
+	}
+	return Message[Group]{}, false
+}
+
+func (p *Pipe) Done() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.done && p.msgs.Load() == 0
+}
+
+func (p *Pipe) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.done {
+		return
+	}
+	close(p.ch)
+	p.done = true
+}
+
+// listener is a struct that contains fields relevant to the listening
+// end of a pipeline connection.
+type listener struct {
+	cons Consumer[Group]
+
+	// node is the weighted graph node that is listening.
+	node *Node
+}
+
+func (lst *listener) send(g Group) {
+	lst.cons.Send(g)
+}
+
+func (lst *listener) close() {
+	lst.cons.Close()
+}
+
+// sender is a struct that contains fields relevant to the producing
+// end of a pipeline connection.
+type sender struct {
+	// edge is the weighted graph edge that is producing.
+	edge *Edge
+
+	prod Producer[Group]
+
+	// chunkSize is the target number of items to include in each
+	// outbound message. A value less than 1 indicates an unlimited
+	// number of items per message.
+	chunkSize int
+
+	numProcs int
+}
+
+func (snd *sender) recv() (Message[Group], bool) {
+	return snd.prod.Recv()
+}
+
+func (snd *sender) more() bool {
+	return !snd.prod.Done()
+}
+
+func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int, numProcs int) {
+	w.senders = append(w.senders, &sender{
+		edge:      edge,
+		prod:      p,
+		chunkSize: chunkSize,
+		numProcs:  numProcs,
+	})
+}
+
+func (w *Worker) Subscribe(node *Node) *Pipe {
+	ch := make(chan Group, 100)
+
+	p := &Pipe{
+		ch:   ch,
+		msgs: EchoTracker(w.msgs),
+	}
+
+	w.listeners = append(w.listeners, &listener{
+		cons: p,
+		node: node,
+	})
+
+	return p
+}
+
+type staticProducer struct {
+	groups []Group
+	pos    int
+	msgs   Tracker
+}
+
+func (s *staticProducer) Recv() (Message[Group], bool) {
+	if s.pos < len(s.groups) {
+		value := s.groups[s.pos]
+		s.pos++
+
+		fn := func() {
+			s.msgs.Add(-1)
+		}
+		return Message[Group]{Value: value, done: sync.OnceFunc(fn)}, true
+	}
+	return Message[Group]{}, false
+}
+
+func (s *staticProducer) Done() bool {
+	return s.pos >= len(s.groups)
+}
+
+func StaticProducer(msgs Tracker, groups ...Group) Producer[Group] {
+	if msgs != nil {
+		msgs.Add(int64(len(groups)))
+	}
+
+	return &staticProducer{
+		groups: groups,
+		msgs:   msgs,
+	}
+}
+
+type Pipeline struct {
+	backend   *Backend
+	chunkSize int
+	numProcs  int
+}
+
+func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
+	p := &Pipeline{
+		backend:   backend,
+		chunkSize: 100,
+		numProcs:  3,
+	}
+
+	for _, option := range options {
+		option(p)
+	}
+	return p
+}
+
+type Target struct {
+	node *Node
+	id   string
+}
+
+type Source *Node
+
+func (pipe *Pipeline) Target(name, identifier string) (Target, bool) {
+	if identifier == "*" {
+		name += ":*"
+		identifier = ""
+	}
+	targetNode, ok := pipe.backend.Graph.GetNodeByID(name)
+
+	return Target{
+		node: targetNode,
+		id:   identifier,
+	}, ok
+}
+
+func (pipe *Pipeline) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := pipe.backend.Graph.GetNodeByID(name + "#" + relation)
+	return (Source)(sourceNode), ok
+}
+
+type PipelineOption func(*Pipeline)
+
+func WithChunkSize(size int) PipelineOption {
+	if size < 0 {
+		size = 0
+	}
+
+	return func(pipe *Pipeline) {
+		pipe.chunkSize = size
+	}
+}
+
+func WithNumProcs(num int) PipelineOption {
+	if num < 1 {
+		num = 1
+	}
+
+	return func(pipe *Pipeline) {
+		pipe.numProcs = num
+	}
+}
+
+type path struct {
+	pipe    *Pipeline
+	workers map[*Node]*Worker
+	msgs    atomic.Int64
+}
+
+func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker Tracker, status *StatusPool) bool {
+	if _, ok := p.workers[source]; ok {
+		return true
+	}
+
+	if tracker == nil {
+		tracker = EchoTracker(&p.msgs)
+	}
+
+	if status == nil {
+		status = new(StatusPool)
+	}
+
+	worker := NewWorker(ctx, p.pipe.backend, source, tracker, status)
+
+	p.workers[source] = worker
+
+	switch source.GetNodeType() {
+	case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
+		if source == target.node {
+			// source node is the target node.
+			var group Group
+			group.Items = []Item{Item{Value: target.id}}
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+		}
+	case NodeTypeSpecificTypeWildcard:
+		label := source.GetLabel()
+		typePart := strings.Split(label, ":")[0]
+
+		if source == target.node || typePart == target.node.GetLabel() {
+			// source node is the target node or has the same type as the target.
+			var group Group
+			group.Items = []Item{Item{Value: "*"}}
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+		}
+	}
+
+	edges, ok := p.pipe.backend.Graph.GetEdgesFromNode(source)
+	if !ok {
+		return true
+	}
+
+	for _, edge := range edges {
+		var track Tracker
+		var stat *StatusPool
+
+		isRecursive := len(edge.GetRecursiveRelation()) > 0
+
+		if isRecursive {
+			track = worker.msgs
+			stat = worker.status
+		}
+
+		p.resolve(ctx, edge.GetTo(), target, track, stat)
+
+		worker.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+	}
+
+	return false
+}
+
+func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+
+	p := path{
+		pipe:    pipe,
+		workers: make(map[*Node]*Worker),
+	}
+	p.resolve(ctx, (*Node)(source), target, nil, nil)
+
+	sourceWorker, ok := p.workers[(*Node)(source)]
+	if !ok {
+		panic("no such source worker")
+	}
+
+	var wg sync.WaitGroup
+
+	results := sourceWorker.Subscribe(nil)
+
+	for _, worker := range p.workers {
+		worker.Start()
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for ctx.Err() == nil {
+			var inactiveCount int
+
+			for _, worker := range p.workers {
+				if !worker.Active() {
+					worker.Close()
+					inactiveCount++
+				}
+			}
+
+			if inactiveCount == len(p.workers) {
+				break
+			}
+
+			messageCount := p.msgs.Load()
+
+			if messageCount < 1 || ctx.Err() != nil {
+				// cancel all running workers
+				for _, worker := range p.workers {
+					worker.Close()
+				}
+
+				// wait for all workers to finish
+				for _, worker := range p.workers {
+					worker.Wait()
+				}
+				break
+			}
+
+			runtime.Gosched()
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer results.Close()
+		defer cancel()
+
+		for !results.Done() {
+			msg, ok := results.Recv()
+			if !ok {
+				runtime.Gosched()
+				continue
+			}
+
+			for _, item := range msg.Value.Items {
+				if !yield(item) {
+					msg.Done()
+					return
+				}
+			}
+			msg.Done()
+		}
+	}
+
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
