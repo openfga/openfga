@@ -279,8 +279,8 @@ type DispatchThrottlingConfig struct {
 	MaxThreshold uint32
 }
 
-// DatabaseThrottleConfig defines configurations for database throttling.
-type DatabaseThrottleConfig struct {
+// DatastoreThrottleConfig defines configurations for database throttling.
+type DatastoreThrottleConfig struct {
 	Enabled   bool
 	Threshold int
 	Duration  time.Duration
@@ -399,9 +399,9 @@ type Config struct {
 	CheckDispatchThrottling       DispatchThrottlingConfig
 	ListObjectsDispatchThrottling DispatchThrottlingConfig
 	ListUsersDispatchThrottling   DispatchThrottlingConfig
-	CheckDatabaseThrottle         DatabaseThrottleConfig
-	ListObjectsDatabaseThrottle   DatabaseThrottleConfig
-	ListUsersDatabaseThrottle     DatabaseThrottleConfig
+	CheckDatastoreThrottle        DatastoreThrottleConfig
+	ListObjectsDatastoreThrottle  DatastoreThrottleConfig
+	ListUsersDatastoreThrottle    DatastoreThrottleConfig
 	ListObjectsIteratorCache      IteratorCacheConfig
 	SharedIterator                SharedIteratorConfig
 	Planner                       PlannerConfig
@@ -589,28 +589,28 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 
 // VerifyDatabaseThrottlesConfig ensures VerifyDatabaseThrottlesConfig is called so that the right values are verified.
 func (cfg *Config) VerifyDatabaseThrottlesConfig() error {
-	if cfg.CheckDatabaseThrottle.Enabled {
-		if cfg.CheckDatabaseThrottle.Threshold <= 0 {
-			return errors.New("'checkDatabaseThrottler.threshold' must be greater than zero")
+	if cfg.CheckDatastoreThrottle.Enabled {
+		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
+			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
 		}
-		if cfg.CheckDatabaseThrottle.Duration <= 0 {
-			return errors.New("'checkDatabaseThrottler.duration' must be greater than zero")
-		}
-	}
-	if cfg.ListObjectsDatabaseThrottle.Enabled {
-		if cfg.ListObjectsDatabaseThrottle.Threshold <= 0 {
-			return errors.New("'listObjectsDatabaseThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListObjectsDatabaseThrottle.Duration <= 0 {
-			return errors.New("'listObjectsDatabaseThrottler.duration' must be greater than zero")
+		if cfg.CheckDatastoreThrottle.Duration <= 0 {
+			return errors.New("'checkDatastoreThrottler.duration' must be greater than zero")
 		}
 	}
-	if cfg.ListUsersDatabaseThrottle.Enabled {
-		if cfg.ListUsersDatabaseThrottle.Threshold <= 0 {
-			return errors.New("'listUsersDatabaseThrottler.threshold' must be greater than zero")
+	if cfg.ListObjectsDatastoreThrottle.Enabled {
+		if cfg.ListObjectsDatastoreThrottle.Threshold <= 0 {
+			return errors.New("'listObjectsDatastoreThrottler.threshold' must be greater than zero")
 		}
-		if cfg.ListUsersDatabaseThrottle.Duration <= 0 {
-			return errors.New("'listUsersDatabaseThrottler.duration' must be greater than zero")
+		if cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
+			return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero")
+		}
+	}
+	if cfg.ListUsersDatastoreThrottle.Enabled {
+		if cfg.ListUsersDatastoreThrottle.Threshold <= 0 {
+			return errors.New("'listUsersDatastoreThrottler.threshold' must be greater than zero")
+		}
+		if cfg.ListUsersDatastoreThrottle.Duration <= 0 {
+			return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero")
 		}
 	}
 	return nil
@@ -800,17 +800,17 @@ func DefaultConfig() *Config {
 			MaxResults: DefaultListObjectsIteratorCacheMaxResults,
 			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
-		CheckDatabaseThrottle: DatabaseThrottleConfig{
+		CheckDatastoreThrottle: DatastoreThrottleConfig{
 			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
-		ListObjectsDatabaseThrottle: DatabaseThrottleConfig{
+		ListObjectsDatastoreThrottle: DatastoreThrottleConfig{
 			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
-		ListUsersDatabaseThrottle: DatabaseThrottleConfig{
+		ListUsersDatastoreThrottle: DatastoreThrottleConfig{
 			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
