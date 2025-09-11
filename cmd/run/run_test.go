@@ -1300,7 +1300,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
-		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
+		require.Empty(t, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 
