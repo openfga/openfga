@@ -138,6 +138,8 @@ var (
 	NodeTypeOperator                = weightedGraph.OperatorNode
 )
 
+var ErrTupleCycle = errors.New("cycle detected in tuples")
+
 var a = `
 	type user
 
@@ -155,68 +157,95 @@ type Item struct {
 	Err   error
 }
 
-func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, edge *Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
+type node struct {
+	edge *Edge
+	next *node
+}
 
-	_, ok := edge.GetWeight(targetNode.GetLabel())
-	if !ok {
-		defer cancel()
-		return emptySequence
-	}
+func (n *node) contains(edge *Edge) bool {
+	next := n
 
-	ch := make(chan Item)
-
-	go func() {
-		defer close(ch)
-
-		toNode := edge.GetTo()
-
-		// fromRelation := edge.GetRelation() // TODO: weighted graph needs implementation for edge relation
-		fromRelation := edge.GetFrom().GetLabel()
-
-		object := strings.Split(fromRelation, "#")
-		if len(object) != 2 {
-			panic("from relation on a direct edge must be formatted as `type#relation`")
+	for next != nil {
+		if next.edge == edge {
+			return true
 		}
-		objectType := object[0]
-		objectRelation := object[1]
+		next = next.next
+	}
+	return false
+}
 
-		var userFilter []*openfgav1.ObjectRelation
+func sequence[T any](items ...T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, item := range items {
+			if !yield(item) {
+				return
+			}
+		}
+	}
+}
 
-		switch toNode.GetNodeType() {
-		case NodeTypeSpecificType:
-			userFilter = []*openfgav1.ObjectRelation{{
-				Object:   toNode.GetLabel() + ":" + targetIdentifier,
-				Relation: "",
-			}}
-		case NodeTypeSpecificTypeWildcard:
-			userFilter = []*openfgav1.ObjectRelation{{
-				Object:   toNode.GetLabel(),
-				Relation: "",
-			}}
-		case NodeTypeSpecificTypeAndRelation:
-			seq := c.processNode(g, ctx, toNode, targetNode, targetIdentifier)
-			parts := strings.Split(toNode.GetLabel(), "#")
-			userRelation := parts[1]
+func mergeUnordered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan T)
+
+	var wg sync.WaitGroup
+
+	for _, seq := range seqs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
 			for item := range seq {
-				if item.Err != nil {
-					ch <- item
+				select {
+				case ch <- item:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	var wg2 sync.WaitGroup
+
+	wg2.Add(1)
+	go func() {
+		defer wg2.Done()
+		defer close(ch)
+		wg.Wait()
+	}()
+
+	return func(yield func(T) bool) {
+		defer wg2.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
 					return
 				}
 
-				user := item.Value
-				userFilter = append(userFilter, &openfgav1.ObjectRelation{
-					Object:   user,
-					Relation: userRelation,
-				})
+				if !yield(result) {
+					return
+				}
 			}
-
-		case NodeTypeOperator:
-			panic("operator node should not be a target of direct edge")
-		default:
-			panic("unknown node type for direct edge")
 		}
+	}
+}
+
+func (c *ReverseExpandQuery) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
+
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer close(ch)
+		defer wg.Done()
 
 		it, err := c.datastore.ReadStartingWithUser(
 			ctx,
@@ -267,6 +296,7 @@ func (c *ReverseExpandQuery) processDirectEdge(g *Graph, ctx context.Context, ed
 	}()
 
 	return func(yield func(Item) bool) {
+		defer wg.Wait()
 		defer cancel()
 
 		for {
@@ -291,7 +321,7 @@ func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNo
 
 	_, ok := sourceNode.GetWeight(targetNode.GetLabel())
 	if !ok {
-		defer cancel()
+		cancel()
 		return emptySequence
 	}
 
@@ -300,52 +330,168 @@ func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNo
 		panic("given node not a member of graph")
 	}
 
-	results := make([]iter.Seq[Item], 0, len(edges))
+	groups := make(map[string][]*Edge)
 
 	for _, edge := range edges {
-		var seq iter.Seq[Item]
+		_, ok := edge.GetWeight(targetNode.GetLabel())
+		if !ok {
+			continue
+		}
 
 		switch edge.GetEdgeType() {
 		case EdgeTypeDirect:
-			seq = c.processDirectEdge(g, ctx, edge, targetNode, targetIdentifier)
-		case EdgeTypeComputed:
-			// TODO: Handle computed edges
-		case EdgeTypeRewrite:
-			// TODO: Handle rewrite edges
+			groups["direct"] = append(groups["direct"], edge)
+		case EdgeTypeComputed, EdgeTypeRewrite:
+			groups["other"] = append(groups["other"], edge)
 		case EdgeTypeTTU:
-			// TODO: Handle TTU edges
-		default:
-			panic("unknown edge type")
+			groups["ttu"] = append(groups["ttu"], edge)
 		}
-
-		results = append(results, seq)
 	}
 
-	ch := make(chan Item, 1)
+	results := make([]iter.Seq[Item], 0, len(edges))
+	recursiveEdges := make([]*Edge, 0, len(edges))
+
+	for _, edge := range groups["direct"] {
+		if edge.GetRelationDefinition() == edge.GetTo().GetLabel() {
+			recursiveEdges = append(recursiveEdges, edge)
+			continue
+		}
+
+		object := strings.Split(edge.GetRelationDefinition(), "#")
+		if len(object) != 2 {
+			panic("relation definition on an edge must be formatted as `type#relation`")
+		}
+		objectType := object[0]
+		objectRelation := object[1]
+
+		switch edge.GetTo().GetNodeType() {
+		case NodeTypeSpecificType:
+			userFilter := []*openfgav1.ObjectRelation{{
+				Object:   edge.GetTo().GetLabel() + ":" + targetIdentifier,
+				Relation: "",
+			}}
+			results = append(results, c.query(ctx, objectType, objectRelation, userFilter))
+		case NodeTypeSpecificTypeWildcard:
+			userFilter := []*openfgav1.ObjectRelation{{
+				Object:   edge.GetTo().GetLabel(),
+				Relation: "",
+			}}
+			results = append(results, c.query(ctx, objectType, objectRelation, userFilter))
+		case NodeTypeSpecificTypeAndRelation:
+			seq := c.processNode(g, ctx, edge.GetTo(), targetNode, targetIdentifier)
+			var userFilter []*openfgav1.ObjectRelation
+			var errs []Item
+
+			relation := strings.Split(edge.GetTo().GetLabel(), "#")[1]
+
+			for item := range seq {
+				if item.Err != nil {
+					errs = append(errs, item)
+					continue
+				}
+				userFilter = append(userFilter, &openfgav1.ObjectRelation{
+					Object:   item.Value,
+					Relation: relation,
+				})
+			}
+			objects := c.query(ctx, objectType, objectRelation, userFilter)
+			results = append(results, mergeUnordered(sequence(errs...), objects))
+		case NodeTypeOperator:
+			panic("direct edge cannot lead to operator node")
+		default:
+			panic("unknown node type for direct edge")
+		}
+	}
+
+	objects := mergeUnordered(results...)
+
+	ch := make(chan Item)
 
 	var wg sync.WaitGroup
 
-	for _, seq := range results {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	wg.Add(1)
+	go func(edges []*Edge) {
+		defer wg.Done()
+		defer close(ch)
 
-			for item := range seq {
+		if len(edges) == 0 {
+			for item := range objects {
 				select {
-				case ch <- item:
 				case <-ctx.Done():
 					return
+				case ch <- item:
 				}
 			}
-		}()
-	}
+			return
+		}
 
-	go func() {
-		defer close(ch)
-		wg.Wait()
-	}()
+		for _, edge := range edges {
+			var userFilter []*openfgav1.ObjectRelation
+
+			for item := range objects {
+				if item.Err != nil {
+					select {
+					case <-ctx.Done():
+						return
+					case ch <- item:
+					}
+					continue
+				}
+
+				object := item.Value
+
+				relation := strings.Split(edge.GetRelationDefinition(), "#")[1]
+
+				userFilter = append(userFilter, &openfgav1.ObjectRelation{
+					Object:   object,
+					Relation: relation,
+				})
+			}
+
+			parts := strings.Split(edge.GetTo().GetLabel(), "#")
+			objectType := parts[0]
+			objectRelation := parts[1]
+
+			seq := c.query(ctx, objectType, objectRelation, userFilter)
+
+			for {
+				var userFilter []*openfgav1.ObjectRelation
+
+				for item := range seq {
+					if item.Err != nil {
+						select {
+						case <-ctx.Done():
+							return
+						case ch <- item:
+						}
+						continue
+					}
+
+					object := item.Value
+					relation := strings.Split(edge.GetRelationDefinition(), "#")[1]
+
+					userFilter = append(userFilter, &openfgav1.ObjectRelation{
+						Object:   object,
+						Relation: relation,
+					})
+
+					select {
+					case <-ctx.Done():
+						return
+					case ch <- item:
+					}
+				}
+
+				if len(userFilter) == 0 {
+					break
+				}
+				seq = c.query(ctx, objectType, objectRelation, userFilter)
+			}
+		}
+	}(recursiveEdges)
 
 	return func(yield func(Item) bool) {
+		defer wg.Wait()
 		defer cancel()
 
 		for {

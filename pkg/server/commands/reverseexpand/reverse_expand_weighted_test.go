@@ -23,31 +23,78 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+type testcase struct {
+	name       string
+	model      string
+	tuples     []string
+	objectType string
+	relation   string
+	user       *UserRefObject
+	expected   []string
+}
+
 func TestProcessDirectEdge(t *testing.T) {
-	tests := []struct {
-		name       string
-		model      string
-		tuples     []string
-		objectType string
-		relation   string
-		user       *UserRefObject
-		expected   []string
-	}{
-		{
-			name: "direct_and_algebraic",
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+
+	evaluate := func(t *testing.T, test testcase) {
+		defer goleak.VerifyNone(t)
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithListObjectOptimizationsEnabled(true),
+			WithStoreID(storeID),
+		)
+
+		g := typesys.GetWeightedGraph()
+
+		sourceNode, ok := g.GetNodeByID(test.objectType + "#" + test.relation)
+		require.True(t, ok, "could not find source node")
+
+		targetNode, ok := g.GetNodeByID(test.user.Object.Type)
+		require.True(t, ok, "could not find target node")
+
+		targetIdentifier := test.user.Object.Id
+
+		seq := q.processNode(g, ctx, sourceNode, targetNode, targetIdentifier)
+
+		var results []string
+
+		for item := range seq {
+			require.NoError(t, item.Err)
+			results = append(results, item.Value)
+		}
+		require.ElementsMatch(t, test.expected, results)
+	}
+
+	t.Run("direct_userset", func(t *testing.T) {
+		tc := testcase{
+			name: "direct_userset",
 			model: `model
 			  schema 1.1
 
-			type user
+				type user
 
-			type document
-				relations
-					define viewer: [team#member]
+				type document
+					relations
+						define viewer: [team#member]
 
-			type team
-				relations
-					define member: [user]
-		`,
+				type team
+					relations
+						define member: [user]
+			`,
 			tuples: []string{
 				"team:1#member@user:justin",
 				"team:2#member@user:justin",
@@ -60,55 +107,110 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2", "document:3", "document:4"},
-		},
-	}
+		}
 
-	ds := memory.New()
-	t.Cleanup(ds.Close)
+		evaluate(t, tc)
+	})
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			defer goleak.VerifyNone(t)
-			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+	t.Run("indirect_userset", func(t *testing.T) {
+		tc := testcase{
+			name: "indirect_userset",
+			model: `model
+			  schema 1.1
 
-			typesys, err := typesystem.NewAndValidate(
-				context.Background(),
-				model,
-			)
-			require.NoError(t, err)
-			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+				type user
 
-			q := NewReverseExpandQuery(
-				ds,
-				typesys,
+				type document
+					relations
+						define viewer: [team#member]
 
-				// turn on weighted graph functionality
-				WithListObjectOptimizationsEnabled(true),
-				WithStoreID(storeID),
-			)
+				type team
+					relations
+						define member: [user, org#employee]
 
-			g := typesys.GetWeightedGraph()
+				type org
+					relations
+						define employee: [user]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"team:3#member@org:1#employee",
+				"team:4#member@org:2#employee",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:1#member",
+				"document:3#viewer@team:2#member",
+				"document:4#viewer@team:2#member",
+				"document:5#viewer@team:3#member",
+				"document:6#viewer@team:4#member",
+				"document:7#viewer@team:0#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6"},
+		}
 
-			sourceNode, ok := g.GetNodeByID(test.objectType + "#" + test.relation)
-			require.True(t, ok, "could not find source node")
+		evaluate(t, tc)
+	})
 
-			targetNode, ok := g.GetNodeByID(test.user.Object.Type)
-			require.True(t, ok, "could not find target node")
+	t.Run("recursive", func(t *testing.T) {
+		tc := testcase{
+			name: "recursion",
+			model: `model
+				  schema 1.1
 
-			targetIdentifier := test.user.Object.Id
+				type user
+				
+				type group
+					relations
+						define member: [user, group#member]
+				
+				type document
+					relations
+						define viewer: [group#member]
+			`,
+			tuples: []string{
+				"group:fga#member@user:justin",
+				"group:cncf#member@group:fga#member",
+				"document:1#viewer@group:cncf#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1"},
+		}
 
-			seq := q.processNode(g, ctx, sourceNode, targetNode, targetIdentifier)
+		evaluate(t, tc)
+	})
 
-			var results []string
+	t.Run("tuple_cycle", func(t *testing.T) {
+		tc := testcase{
+			name: "tuple_cycle",
+			model: `model
+				  schema 1.1
 
-			for item := range seq {
-				require.NoError(t, item.Err)
-				results = append(results, item.Value)
-			}
-			require.ElementsMatch(t, test.expected, results)
-		})
-	}
+				type user
+				
+				type team
+					relations
+						define member: [user, team#member]
+			`,
+			tuples: []string{
+				"team:fga#member@user:justin",
+				"team:cncf#member@team:fga#member",
+				"team:lnf#member@team:cncf#member",
+			},
+			objectType: "team",
+			relation:   "member",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"team:fga", "team:cncf", "team:lnf"},
+		}
+
+		evaluate(t, tc)
+	})
 }
 
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
