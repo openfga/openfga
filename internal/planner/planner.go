@@ -21,7 +21,6 @@ type Planner struct {
 
 // Config holds configuration for the planner.
 type Config struct {
-	InitialGuess      time.Duration // The starting performance assumption for a new resolver.
 	EvictionThreshold time.Duration // How long a key can be unused before being evicted. (e.g., 30 * time.Minute)
 	CleanupInterval   time.Duration // How often the planner checks for stale keys. (e.g., 5 * time.Minute)
 }
@@ -38,11 +37,10 @@ func New(config *Config) *Planner {
 		return rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 
-	/*
-		if config.EvictionThreshold > 0 && config.CleanupInterval > 0 {
-			p.startCleanupRoutine(config.CleanupInterval)
-		}
-	*/
+	if config.EvictionThreshold > 0 && config.CleanupInterval > 0 {
+		p.startCleanupRoutine(config.CleanupInterval)
+	}
+	
 	return p
 }
 
