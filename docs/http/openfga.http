@@ -2,18 +2,44 @@
 @fga_store_id = 
 @fga_model_id = 
 
+## Required for Client Credentials Flows
+@fga_token_issuer = 
+@fga_api_audience = 
+@fga_client_id = 
+@fga_client_secret = 
+
+########################
+# GET API TOKEN FROM CLIENT CREDENTIALS FLOW
+########################
+
+POST https://{{fga_token_issuer}}/oauth/token
+Content-Type: application/json
+
+{
+    "client_id": "{{fga_client_id}}",
+    "client_secret": "{{fga_client_secret}}",
+    "audience": "{{fga_api_audience}}",
+    "grant_type":"client_credentials"
+}
+
+### Save API token as a request variable
+@fga_api_token = {{auth.response.body.access_token}}
+
+
 ########################
 # STORES
 ########################
 
 ### List All Stores
 GET {{fga_api_url}}/stores
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 
 ### Create Store
 # @name store
 POST {{fga_api_url}}/stores
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -25,11 +51,13 @@ Content-Type: application/json
 
 ### Get A Store
 GET {{fga_api_url}}/stores/{{fga_store_id}}
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 
 ### Delete Store
 DELETE {{fga_api_url}}/stores/{{fga_store_id}}
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 
@@ -39,15 +67,18 @@ Content-Type: application/json
 
 ### Get All Authorization Models
 GET {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 ### Get Authorization Model
 GET {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models/{{fga_model_id}}
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 ### Create New Authorization Model
 # @name model
 POST {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -149,6 +180,7 @@ Content-Type: application/json
 ### Return a list of all tuples changes
 # @name changes
 GET {{fga_api_url}}/stores/{{fga_store_id}}/changes?page_size=50
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 ### Save the /changes continuation_token
@@ -157,6 +189,7 @@ Content-Type: application/json
 ### Return a list of all tuples changes after the continuation_token
 GET {{fga_api_url}}/stores/{{fga_store_id}}/changes
   ?continuation_token={{fga_changes_continuation_token}}
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 
@@ -166,6 +199,7 @@ Content-Type: application/json
 
 ### Query if a tuple exists
 POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -178,6 +212,7 @@ Content-Type: application/json
 
 ### Query for all objects in a type definition
 POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -190,6 +225,7 @@ Content-Type: application/json
 
 ### Query for all stored relationship tuples that have a particular relation and object
 POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -201,6 +237,7 @@ Content-Type: application/json
 
 ### Query for all users with all relationships for a particular document
 POST {{fga_api_url}}/stores/{{fga_store_id}}/read
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -215,8 +252,8 @@ Content-Type: application/json
 
 ### Adding relationships
 POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
-
 {
   "writes": {
     "tuple_keys": [
@@ -229,8 +266,27 @@ Content-Type: application/json
   }
 }
 
+
+### Adding relationships
+POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Authorization: Bearer {{fga_api_token}}
+Content-Type: application/json
+
+{
+  "writes": {
+    "tuple_keys": [
+      {
+        "user": "user:anne",
+        "relation": "owner",
+        "object": "document:test"
+      }
+    ],
+    "on_duplicate": "ignore"
+  }
+}  
 ### Removing relationships
 POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -245,12 +301,31 @@ Content-Type: application/json
   }
 }
 
+### Removing relationships
+POST {{fga_api_url}}/stores/{{fga_store_id}}/write
+Authorization: Bearer {{fga_api_token}}
+Content-Type: application/json
+
+{
+  "deletes": {
+    "tuple_keys": [
+      {
+        "user": "user:anne",
+        "relation": "owner",
+        "object": "document:duplicate"
+      }
+    ],
+    "on_missing": "ignore"
+  }
+}
+
 ########################
 # /CHECK
 ########################
 
 ### Check
 POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -263,6 +338,7 @@ Content-Type: application/json
 
 ### Batch Check
 POST {{fga_api_url}}/stores/{{fga_store_id}}/batch-check
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -288,6 +364,7 @@ Content-Type: application/json
 
 ### Check with contextual tuples
 POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -309,6 +386,7 @@ Content-Type: application/json
 
 ### Check with higher consistency (default value = MINIMIZE_LATENCY)
 POST {{fga_api_url}}/stores/{{fga_store_id}}/check
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -325,6 +403,7 @@ Content-Type: application/json
 ########################
 
 POST {{fga_api_url}}/stores/{{fga_store_id}}/expand
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -338,8 +417,9 @@ Content-Type: application/json
 
 ########################
 # /LIST-OBJECTS
-########################
+  ########################
 POST {{fga_api_url}}/stores/{{fga_store_id}}/list-objects
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
@@ -352,6 +432,7 @@ Content-Type: application/json
 # /LIST-USERS
 ########################
 POST {{fga_api_url}}/stores/{{fga_store_id}}/list-users
+Authorization: Bearer {{fga_api_token}}
 Content-Type: application/json
 
 {
