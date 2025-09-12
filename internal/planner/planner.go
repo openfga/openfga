@@ -40,10 +40,11 @@ func New(config *Config) *Planner {
 		return rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 
-	if config.EvictionThreshold > 0 && config.CleanupInterval > 0 {
-		p.startCleanupRoutine(config.CleanupInterval)
-	}
-
+	/*
+		if config.EvictionThreshold > 0 && config.CleanupInterval > 0 {
+			p.startCleanupRoutine(config.CleanupInterval)
+		}
+	*/
 	return p
 }
 

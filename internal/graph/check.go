@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -698,13 +699,14 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func profiledCheckHandler(keyPlan *planner.KeyPlan, resolverName string, resolver CheckHandlerFunc) CheckHandlerFunc {
+func profiledCheckHandler(logger logger.Logger, path string, keyPlan *planner.KeyPlan, resolverName string, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
+			logger.Info("profiled check handler", zap.String("method", path), zap.Error(err))
 			if errors.Is(err, context.DeadlineExceeded) {
-				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
+				keyPlan.UpdateStats(resolverName, 4*time.Second)
 			}
 			return nil, err
 		}
@@ -773,7 +775,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if resolverName == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return profiledCheckHandler(c.logger, "userset", keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -806,7 +808,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				if resolverName == weightTwoResolver {
 					resolver = c.weight2Userset
 				}
-				resolvers = append(resolvers, profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
+				resolvers = append(resolvers, profiledCheckHandler(c.logger, "userset", keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -1013,7 +1015,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return profiledCheckHandler(c.logger, "ttu", keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 
