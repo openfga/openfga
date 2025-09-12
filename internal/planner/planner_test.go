@@ -17,7 +17,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	key := "test_key"
 	resolvers := []string{"fast", "slow"}
 
-	kp := p.GetKeyPlan(key)
+	kp := p.GetKeyPlan(key, 10*time.Millisecond)
 	choice := kp.SelectResolver(resolvers)
 	require.Contains(t, resolvers, choice)
 
@@ -33,7 +33,7 @@ func TestProfiler_Update(t *testing.T) {
 	key := "test_convergence"
 	resolvers := []string{"fast", "slow"}
 
-	kp := p.GetKeyPlan(key)
+	kp := p.GetKeyPlan(key, 10*time.Millisecond)
 
 	// Heavily reward the "fast" strategy
 	for i := 0; i < 150; i++ {
@@ -58,20 +58,19 @@ func TestProfiler_Update(t *testing.T) {
 func TestPlanner_EvictStaleKeys(t *testing.T) {
 	evictionThreshold := 50 * time.Millisecond
 	p := New(&Config{
-		InitialGuess:      10 * time.Millisecond,
 		EvictionThreshold: evictionThreshold,
 	})
 
 	// Create multiple old keys
 	oldKeys := []string{"old_key1", "old_key2", "old_key3"}
 	for _, key := range oldKeys {
-		kp := p.GetKeyPlan(key)
+		kp := p.GetKeyPlan(key, 10*time.Millisecond)
 		oldTime := time.Now().Add(-evictionThreshold - 10*time.Millisecond).UnixNano()
 		kp.lastAccessed.Store(oldTime)
 	}
 
 	// Create one fresh key
-	freshKp := p.GetKeyPlan("fresh_key")
+	freshKp := p.GetKeyPlan("fresh_key", 10*time.Millisecond)
 	freshKp.touch()
 
 	// Call evictStaleKeys
@@ -90,7 +89,7 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 
 func BenchmarkKeyPlan(b *testing.B) {
 	p := New(&Config{InitialGuess: 10 * time.Millisecond})
-	kp := p.GetKeyPlan("test|store123|objectType|relation|userType")
+	kp := p.GetKeyPlan("test|store123|objectType|relation|userType", 10*time.Millisecond)
 	resolvers := []string{"resolver1", "resolver2", "resolver3"}
 
 	b.ResetTimer()

@@ -31,6 +31,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const weight2Guess = 15 * time.Millisecond
+const recursiveGuess = 50 * time.Millisecond
+
 var tracer = otel.Tracer("internal/graph/check")
 
 type setOperatorType int
@@ -768,7 +771,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)
 			b.WriteString("infinite")
-			keyPlan := c.planner.GetKeyPlan(b.String())
+			keyPlan := c.planner.GetKeyPlan(b.String(), recursiveGuess)
 			resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 			resolver := c.defaultUserset
@@ -801,7 +804,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				k.WriteString("userset|")
 				k.WriteString(userset.String())
 
-				keyPlan := c.planner.GetKeyPlan(k.String())
+				keyPlan := c.planner.GetKeyPlan(k.String(), weight2Guess)
 				resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 				resolver := c.defaultUserset
@@ -971,6 +974,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
+		guess := weight2Guess
 		possibleResolvers := []string{defaultResolver}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
@@ -981,6 +985,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleResolvers = append(possibleResolvers, recursiveResolver)
 				resolver = c.recursiveTTU
+				guess = recursiveGuess
 			}
 		}
 
@@ -1003,7 +1008,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString("|")
 		b.WriteString(computedRelation)
 		planKey := b.String()
-		keyPlan := c.planner.GetKeyPlan(planKey)
+		keyPlan := c.planner.GetKeyPlan(planKey, guess)
 		resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 		switch resolverName {

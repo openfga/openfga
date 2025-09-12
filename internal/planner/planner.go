@@ -11,7 +11,6 @@ import (
 // It is safe for concurrent use and includes a background routine to evict old keys.
 type Planner struct {
 	keys              sync.Map // Stores *KeyPlan, ensuring fine-grained concurrency per key.
-	initialGuess      time.Duration
 	evictionThreshold time.Duration
 	// Use a pool of RNGs to reduce allocation overhead and initialization cost on the hot path.
 	rngPool sync.Pool
@@ -30,7 +29,6 @@ type Config struct {
 // New creates a new Planner with the specified configuration and starts its cleanup routine.
 func New(config *Config) *Planner {
 	p := &Planner{
-		initialGuess:      config.InitialGuess,
 		evictionThreshold: config.EvictionThreshold,
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -50,7 +48,6 @@ func New(config *Config) *Planner {
 
 func NewNoopPlanner() *Planner {
 	p := &Planner{
-		initialGuess:      10 * time.Millisecond,
 		evictionThreshold: 0,
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -63,9 +60,9 @@ func NewNoopPlanner() *Planner {
 }
 
 // GetKeyPlan retrieves the plan for a specific key, creating it if it doesn't exist.
-func (p *Planner) GetKeyPlan(key string) *KeyPlan {
+func (p *Planner) GetKeyPlan(key string, initialGuess time.Duration) *KeyPlan {
 	kp, _ := p.keys.LoadOrStore(key, &KeyPlan{
-		initialGuess: p.initialGuess,
+		initialGuess: initialGuess,
 		planner:      p,
 	})
 
