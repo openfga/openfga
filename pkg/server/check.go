@@ -65,19 +65,20 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		s.datastore,
 		s.checkResolver,
 		typesys,
+		&commands.CheckCommandParams{
+			StoreID:          storeID,
+			TupleKey:         req.GetTupleKey(),
+			ContextualTuples: req.GetContextualTuples(),
+			Context:          req.GetContext(),
+			Consistency:      req.GetConsistency(),
+		},
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 	)
 
-	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
-		StoreID:          storeID,
-		TupleKey:         req.GetTupleKey(),
-		ContextualTuples: req.GetContextualTuples(),
-		Context:          req.GetContext(),
-		Consistency:      req.GetConsistency(),
-	})
+	resp, checkRequestMetadata, err := checkQuery.Execute(ctx)
 
 	endTime := time.Since(startTime).Milliseconds()
 

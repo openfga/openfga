@@ -28,16 +28,17 @@ const (
 )
 
 type CheckQuery struct {
+	params                     *CheckCommandParams
 	logger                     logger.Logger
 	checkResolver              graph.CheckResolver
 	typesys                    *typesystem.TypeSystem
-	datastore                  storage.RelationshipTupleReader
 	sharedCheckResources       *shared.SharedDatastoreResources
 	cacheSettings              config.CacheSettings
 	maxConcurrentReads         uint32
 	shouldCacheIterators       bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
+	datastoreWithTupleCache    *storagewrappers.RequestStorageWrapper
 }
 
 type CheckCommandParams struct {
@@ -76,11 +77,10 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
-// TODO accept CheckCommandParams so we can build the datastore object right away.
-func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
+func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, params *CheckCommandParams, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
+		params:               params,
 		logger:               logger.NewNoopLogger(),
-		datastore:            datastore,
 		checkResolver:        checkResolver,
 		typesys:              typesys,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
@@ -94,28 +94,45 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	for _, opt := range opts {
 		opt(cmd)
 	}
+
+	cmd.datastoreWithTupleCache = storagewrappers.NewRequestStorageWrapperWithCache(
+		datastore,
+		params.ContextualTuples.GetTupleKeys(),
+		&storagewrappers.Operation{
+			Method:            apimethod.Check,
+			Concurrency:       cmd.maxConcurrentReads,
+			ThrottleThreshold: cmd.datastoreThrottleThreshold,
+			ThrottleDuration:  cmd.datastoreThrottleDuration,
+		},
+		storagewrappers.DataResourceConfiguration{
+			Resources:      cmd.sharedCheckResources,
+			CacheSettings:  cmd.cacheSettings,
+			UseShadowCache: false,
+		},
+	)
+
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
+func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+	err := validateCheckRequest(c.typesys, c.params.TupleKey, c.params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	cacheInvalidationTime := time.Time{}
 
-	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, params.StoreID)
+	if c.params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, c.params.StoreID)
 	}
 
 	resolveCheckRequest, err := graph.NewResolveCheckRequest(
 		graph.ResolveCheckRequestParams{
-			StoreID:                   params.StoreID,
-			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
-			Context:                   params.Context,
-			ContextualTuples:          params.ContextualTuples,
-			Consistency:               params.Consistency,
+			StoreID:                   c.params.StoreID,
+			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(c.params.TupleKey),
+			Context:                   c.params.Context,
+			ContextualTuples:          c.params.ContextualTuples,
+			Consistency:               c.params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
 			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
 		},
@@ -125,24 +142,8 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 		return nil, nil, err
 	}
 
-	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
-		c.datastore,
-		params.ContextualTuples.GetTupleKeys(),
-		&storagewrappers.Operation{
-			Method:            apimethod.Check,
-			Concurrency:       c.maxConcurrentReads,
-			ThrottleThreshold: c.datastoreThrottleThreshold,
-			ThrottleDuration:  c.datastoreThrottleDuration,
-		},
-		storagewrappers.DataResourceConfiguration{
-			Resources:      c.sharedCheckResources,
-			CacheSettings:  c.cacheSettings,
-			UseShadowCache: false,
-		},
-	)
-
 	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastoreWithTupleCache)
 
 	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
@@ -160,7 +161,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	}
 
 	resp.ResolutionMetadata.Duration = endTime
-	dsMeta := datastoreWithTupleCache.GetMetadata()
+	dsMeta := c.datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
 	// Until dispatch throttling is deprecated, merge the results of both
 	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)

@@ -415,17 +415,18 @@ func (q *ListObjectsQuery) evaluate(
 
 				pool.Go(func(ctx context.Context) error {
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
-						WithCheckCommandLogger(q.logger),
-						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
-					).
-						Execute(ctx, &CheckCommandParams{
+						&CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 							ContextualTuples: req.GetContextualTuples(),
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
-						})
+						},
+						WithCheckCommandLogger(q.logger),
+						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
+						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+					).
+						Execute(ctx)
 					if err != nil {
 						return err
 					}
