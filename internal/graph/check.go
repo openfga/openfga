@@ -707,7 +707,7 @@ func profiledCheckHandler(logger logger.Logger, path string, keyPlan *planner.Ke
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
-			logger.Info("profiled check handler", zap.String("method", path), zap.Error(err))
+			logger.Info("profiled check handler", zap.String("resolver", resolverName), zap.String("method", path), zap.Error(err), zap.Duration("duration", time.Since(start)))
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
 			}
