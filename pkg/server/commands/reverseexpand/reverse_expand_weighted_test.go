@@ -163,21 +163,26 @@ func TestProcessDirectEdge(t *testing.T) {
 				  schema 1.1
 
 				type user
-				
+
+				type team
+					relations
+						define member: [user, team#member]
+
 				type group
 					relations
-						define member: [user, group#member]
+						define member: [user, team#member, group#member]
 				
 				type document
 					relations
 						define viewer: [group#member]
 			`,
 			tuples: []string{
-				"group:fga#member@user:justin",
-				"group:agf#member@group:fga#member",
-				"group:xyz#member@group:agf#member",
-				"group:abc#member@group:xyz#member",
-				"group:cncf#member@group:abc#member",
+				"team:fga#member@user:justin",
+				"team:xyz#member@team:fga#member",
+				"group:abc#member@team:xyz#member",
+				"group:xyz#member@group:abc#member",
+				"group:fga#member@group:xyz#member",
+				"group:cncf#member@group:fga#member",
 				"document:1#viewer@group:cncf#member",
 			},
 			objectType: "document",
