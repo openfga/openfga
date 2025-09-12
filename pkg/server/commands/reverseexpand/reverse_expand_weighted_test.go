@@ -174,7 +174,10 @@ func TestProcessDirectEdge(t *testing.T) {
 			`,
 			tuples: []string{
 				"group:fga#member@user:justin",
-				"group:cncf#member@group:fga#member",
+				"group:agf#member@group:fga#member",
+				"group:xyz#member@group:agf#member",
+				"group:abc#member@group:xyz#member",
+				"group:cncf#member@group:abc#member",
 				"document:1#viewer@group:cncf#member",
 			},
 			objectType: "document",

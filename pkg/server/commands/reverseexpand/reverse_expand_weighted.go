@@ -116,9 +116,7 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	return job, true
 }
 
-var emptySequence = func(yield func(Item) bool) {
-	return
-}
+var emptySequence = func(yield func(Item) bool) {}
 
 type (
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
@@ -139,18 +137,6 @@ var (
 )
 
 var ErrTupleCycle = errors.New("cycle detected in tuples")
-
-var a = `
-	type user
-
-	type document
-		relations
-			define viewer: [policy#manager]
-
-	type policy
-		relations
-			define manager: [user]
-`
 
 type Item struct {
 	Value string
@@ -316,42 +302,17 @@ func (c *ReverseExpandQuery) query(ctx context.Context, objectType, objectRelati
 	}
 }
 
-func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNode *Node, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
+func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, edges []*Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	_, ok := sourceNode.GetWeight(targetNode.GetLabel())
-	if !ok {
-		cancel()
-		return emptySequence
-	}
-
-	edges, ok := g.GetEdgesFromNode(sourceNode)
-	if !ok {
-		panic("given node not a member of graph")
-	}
-
-	groups := make(map[string][]*Edge)
+	var recursiveEdges []*Edge
+	var results []iter.Seq[Item]
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(targetNode.GetLabel())
-		if !ok {
-			continue
+		if edge.GetEdgeType() != EdgeTypeDirect {
+			panic("expected only direct edges")
 		}
 
-		switch edge.GetEdgeType() {
-		case EdgeTypeDirect:
-			groups["direct"] = append(groups["direct"], edge)
-		case EdgeTypeComputed, EdgeTypeRewrite:
-			groups["other"] = append(groups["other"], edge)
-		case EdgeTypeTTU:
-			groups["ttu"] = append(groups["ttu"], edge)
-		}
-	}
-
-	results := make([]iter.Seq[Item], 0, len(edges))
-	recursiveEdges := make([]*Edge, 0, len(edges))
-
-	for _, edge := range groups["direct"] {
 		if edge.GetRelationDefinition() == edge.GetTo().GetLabel() {
 			recursiveEdges = append(recursiveEdges, edge)
 			continue
@@ -509,6 +470,42 @@ func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNo
 			}
 		}
 	}
+}
+
+func (c *ReverseExpandQuery) processNode(g *Graph, ctx context.Context, sourceNode *Node, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
+	_, ok := sourceNode.GetWeight(targetNode.GetLabel())
+	if !ok {
+		return emptySequence
+	}
+
+	edges, ok := g.GetEdgesFromNode(sourceNode)
+	if !ok {
+		panic("given node not a member of graph")
+	}
+
+	groups := make(map[string][]*Edge)
+
+	for _, edge := range edges {
+		_, ok := edge.GetWeight(targetNode.GetLabel())
+		if !ok {
+			continue
+		}
+
+		switch edge.GetEdgeType() {
+		case EdgeTypeDirect:
+			groups["direct"] = append(groups["direct"], edge)
+		case EdgeTypeComputed, EdgeTypeRewrite:
+			groups["other"] = append(groups["other"], edge)
+		case EdgeTypeTTU:
+			groups["ttu"] = append(groups["ttu"], edge)
+		}
+	}
+
+	var results []iter.Seq[Item]
+
+	results = append(results, c.processDirectEdges(g, ctx, groups["direct"], targetNode, targetIdentifier))
+
+	return mergeUnordered(results...)
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
