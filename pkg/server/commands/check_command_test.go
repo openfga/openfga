@@ -45,8 +45,7 @@ type doc
 	require.NoError(t, err)
 
 	t.Run("validates_input_user", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "invalid:1",
@@ -54,12 +53,12 @@ type doc
 				Object:   "doc:1",
 			},
 		})
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorContains(t, err, "type 'invalid' not found")
 	})
 
 	t.Run("validates_input_relation", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -67,12 +66,12 @@ type doc
 				Object:   "doc:1",
 			},
 		})
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorContains(t, err, "relation 'doc#invalid' not found")
 	})
 
 	t.Run("validates_input_object", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -80,12 +79,12 @@ type doc
 				Object:   "invalid:1",
 			},
 		})
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorContains(t, err, "type 'invalid' not found")
 	})
 
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -94,12 +93,12 @@ type doc
 				},
 			},
 		})
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorContains(t, err, "type 'invalid' not found")
 	})
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -109,23 +108,27 @@ type doc
 				},
 			},
 		})
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorContains(t, err, "type 'user' is not an allowed type restriction for 'doc#viewer_computed'")
 	})
 
 	t.Run("no_validation_error_and_call_to_resolver_goes_through", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
-			Times(1).
-			Return(&graph.ResolveCheckResponse{}, nil)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(1).
+			Return(&graph.ResolveCheckResponse{}, nil)
+		_, _, err := cmd.Execute(context.Background())
 		require.NoError(t, err)
 	})
 
 	t.Run("returns_db_metrics", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
 		mockDatastore.EXPECT().Read(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
@@ -134,16 +137,16 @@ type doc
 				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
 				return &graph.ResolveCheckResponse{}, nil
 			})
-		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
-			StoreID:  ulid.Make().String(),
-			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
-		})
+		checkResp, _, err := cmd.Execute(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)
 	})
 
 	t.Run("sets_context", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
+			StoreID:  ulid.Make().String(),
+			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+		})
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
@@ -155,34 +158,31 @@ type doc
 				require.True(t, ok)
 				return &graph.ResolveCheckResponse{}, nil
 			})
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
-			StoreID:  ulid.Make().String(),
-			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
-		})
+		_, _, err := cmd.Execute(context.Background())
 		require.NoError(t, err)
 	})
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).Return(nil, ofga_errors.ErrUnknown)
+		_, _, err := cmd.Execute(context.Background())
 		require.ErrorIs(t, err, ofga_errors.ErrUnknown)
 	})
 
 	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-			require.Zero(t, req.GetLastCacheInvalidationTime())
-			return &graph.ResolveCheckResponse{}, nil
-		})
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:     ulid.Make().String(),
 			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
 		})
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			require.Zero(t, req.GetLastCacheInvalidationTime())
+			return &graph.ResolveCheckResponse{}, nil
+		})
+		_, _, err := cmd.Execute(context.Background())
 		require.NoError(t, err)
 	})
 
@@ -190,29 +190,31 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, WithCheckCommandCache(&shared.SharedDatastoreResources{
-			CacheController: cacheController,
-			Logger:          logger.NewNoopLogger(),
-		}, config.CacheSettings{}))
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts,
+			&CheckCommandParams{
+				StoreID:  storeID,
+				TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
+			},
+			WithCheckCommandCache(&shared.SharedDatastoreResources{
+				CacheController: cacheController,
+				Logger:          logger.NewNoopLogger(),
+			}, config.CacheSettings{}))
 		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(1).DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 			require.Equal(t, req.GetLastCacheInvalidationTime(), invalidationTime)
 			return &graph.ResolveCheckResponse{}, nil
 		})
 		cacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), storeID).Return(invalidationTime)
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
-			StoreID:  storeID,
-			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
-		})
+		_, _, err := cmd.Execute(context.Background())
 		require.NoError(t, err)
 	})
 
 	t.Run("fails_if_store_id_is_missing", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-
-		_, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  "",
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
+
+		_, _, err := cmd.Execute(context.Background())
 		require.Error(t, err)
 	})
 
@@ -233,11 +235,11 @@ type doc
 				return nil, context.DeadlineExceeded
 			})
 
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts)
-		checkResp, checkRequestMetadata, err := cmd.Execute(ctx, &CheckCommandParams{
+		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, ts, &CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 		})
+		checkResp, checkRequestMetadata, err := cmd.Execute(ctx)
 
 		require.Error(t, err)
 		require.Equal(t, uint32(1), checkResp.GetResolutionMetadata().DatastoreQueryCount)

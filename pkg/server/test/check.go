@@ -388,16 +388,17 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			ds,
 			graph.NewLocalChecker(graph.WithOptimizations(true)),
 			typeSystem,
+			&commands.CheckCommandParams{
+				StoreID:  storeID,
+				TupleKey: bm.tupleKeyToCheck,
+				Context:  bm.contextGenerator(),
+			},
 			commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 		)
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				response, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
-					StoreID:  storeID,
-					TupleKey: bm.tupleKeyToCheck,
-					Context:  bm.contextGenerator(),
-				})
+				response, _, err := checkQuery.Execute(ctx)
 
 				require.NoError(b, err)
 				require.Equal(b, bm.expected, response.GetAllowed())
@@ -480,15 +481,16 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 		ds,
 		graph.NewLocalChecker(graph.WithOptimizations(true)),
 		typeSystemTwo,
+		&commands.CheckCommandParams{
+			StoreID:  storeID,
+			TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
+		},
 		commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 	)
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			response, _, err := checkQuery.Execute(context.Background(), &commands.CheckCommandParams{
-				StoreID:  storeID,
-				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
-			})
+			response, _, err := checkQuery.Execute(context.Background())
 
 			require.NoError(b, err)
 			require.False(b, response.GetAllowed())

@@ -179,15 +179,6 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			default:
 			}
 
-			checkQuery := NewCheckCommand(
-				bq.datastore,
-				bq.checkResolver,
-				bq.typesys,
-				WithCheckCommandLogger(bq.logger),
-				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
-				WithCheckDatastoreThrottler(bq.datastoreThrottleThreshold, bq.datastoreThrottleDuration),
-			)
-
 			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
@@ -196,7 +187,17 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Consistency:      params.Consistency,
 			}
 
-			response, metadata, err := checkQuery.Execute(ctx, checkParams)
+			checkQuery := NewCheckCommand(
+				bq.datastore,
+				bq.checkResolver,
+				bq.typesys,
+				checkParams,
+				WithCheckCommandLogger(bq.logger),
+				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
+				WithCheckDatastoreThrottler(bq.datastoreThrottleThreshold, bq.datastoreThrottleDuration),
+			)
+
+			response, metadata, err := checkQuery.Execute(ctx)
 
 			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,
