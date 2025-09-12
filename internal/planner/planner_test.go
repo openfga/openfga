@@ -17,7 +17,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	key := "test_key"
 	resolvers := []string{"fast", "slow"}
 
-	kp := p.GetKeyPlan(key)
+	kp := p.GetKeyPlan(key, 10*time.Millisecond)
 	choice := kp.SelectResolver(resolvers)
 	require.Contains(t, resolvers, choice)
 
@@ -33,7 +33,7 @@ func TestProfiler_Update(t *testing.T) {
 	key := "test_convergence"
 	resolvers := []string{"fast", "slow"}
 
-	kp := p.GetKeyPlan(key)
+	kp := p.GetKeyPlan(key, 10*time.Millisecond)
 
 	// Heavily reward the "fast" strategy
 	for i := 0; i < 150; i++ {
@@ -55,10 +55,41 @@ func TestProfiler_Update(t *testing.T) {
 	require.Greater(t, counts["fast"], 90)
 	require.Less(t, counts["slow"], 10)
 }
+func TestPlanner_EvictStaleKeys(t *testing.T) {
+	evictionThreshold := 50 * time.Millisecond
+	p := New(&Config{
+		EvictionThreshold: evictionThreshold,
+	})
+
+	// Create multiple old keys
+	oldKeys := []string{"old_key1", "old_key2", "old_key3"}
+	for _, key := range oldKeys {
+		kp := p.GetKeyPlan(key, 10*time.Millisecond)
+		oldTime := time.Now().Add(-evictionThreshold - 10*time.Millisecond).UnixNano()
+		kp.lastAccessed.Store(oldTime)
+	}
+
+	// Create one fresh key
+	freshKp := p.GetKeyPlan("fresh_key", 10*time.Millisecond)
+	freshKp.touch()
+
+	// Call evictStaleKeys
+	p.evictStaleKeys()
+
+	// Check that all old keys were evicted
+	for _, key := range oldKeys {
+		_, exists := p.keys.Load(key)
+		require.False(t, exists, "old key %s should have been evicted", key)
+	}
+
+	// Check that fresh key still exists
+	_, exists := p.keys.Load("fresh_key")
+	require.True(t, exists, "fresh key should not have been evicted")
+}
 
 func BenchmarkKeyPlan(b *testing.B) {
 	p := New(&Config{InitialGuess: 10 * time.Millisecond})
-	kp := p.GetKeyPlan("test|store123|objectType|relation|userType")
+	kp := p.GetKeyPlan("test|store123|objectType|relation|userType", 10*time.Millisecond)
 	resolvers := []string{"resolver1", "resolver2", "resolver3"}
 
 	b.ResetTimer()

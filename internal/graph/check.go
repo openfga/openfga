@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -29,6 +30,9 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+const weight2Guess = 15 * time.Millisecond
+const recursiveGuess = 50 * time.Millisecond
 
 var tracer = otel.Tracer("internal/graph/check")
 
@@ -698,11 +702,12 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func profiledCheckHandler(keyPlan *planner.KeyPlan, resolverName string, resolver CheckHandlerFunc) CheckHandlerFunc {
+func profiledCheckHandler(logger logger.Logger, path string, keyPlan *planner.KeyPlan, resolverName string, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
+			logger.Info("profiled check handler", zap.String("resolver", resolverName), zap.String("method", path), zap.Error(err), zap.Duration("duration", time.Since(start)))
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
 			}
@@ -766,14 +771,14 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)
 			b.WriteString("infinite")
-			keyPlan := c.planner.GetKeyPlan(b.String())
+			keyPlan := c.planner.GetKeyPlan(b.String(), recursiveGuess)
 			resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 			resolver := c.defaultUserset
 			if resolverName == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return profiledCheckHandler(c.logger, "userset", keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -799,14 +804,14 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				k.WriteString("userset|")
 				k.WriteString(userset.String())
 
-				keyPlan := c.planner.GetKeyPlan(k.String())
+				keyPlan := c.planner.GetKeyPlan(k.String(), weight2Guess)
 				resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 				resolver := c.defaultUserset
 				if resolverName == weightTwoResolver {
 					resolver = c.weight2Userset
 				}
-				resolvers = append(resolvers, profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
+				resolvers = append(resolvers, profiledCheckHandler(c.logger, "userset", keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -969,6 +974,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
+		guess := weight2Guess
 		possibleResolvers := []string{defaultResolver}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
@@ -979,6 +985,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleResolvers = append(possibleResolvers, recursiveResolver)
 				resolver = c.recursiveTTU
+				guess = recursiveGuess
 			}
 		}
 
@@ -1001,7 +1008,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString("|")
 		b.WriteString(computedRelation)
 		planKey := b.String()
-		keyPlan := c.planner.GetKeyPlan(planKey)
+		keyPlan := c.planner.GetKeyPlan(planKey, guess)
 		resolverName := keyPlan.SelectResolver(possibleResolvers)
 
 		switch resolverName {
@@ -1013,7 +1020,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return profiledCheckHandler(c.logger, "ttu", keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 
