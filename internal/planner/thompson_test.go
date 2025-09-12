@@ -14,7 +14,6 @@ func TestThompsonStats_Update(t *testing.T) {
 	params := (*samplingParams)(atomic.LoadPointer(&stats.params))
 	initialMu := params.mu
 
-
 	stats.Update(100 * time.Millisecond)
 	params = (*samplingParams)(atomic.LoadPointer(&stats.params))
 	require.NotEqual(t, initialMu, params.mu)
