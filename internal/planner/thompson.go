@@ -13,7 +13,6 @@ import (
 // ThompsonStats holds the parameters for the Normal-gamma distribution,
 // which models our belief about the performance (execution time) of a strategy.
 type ThompsonStats struct {
-	runs   int64          // atomic access via atomic.AddInt64/LoadInt64
 	params unsafe.Pointer // *samplingParams - atomic access
 }
 
@@ -107,7 +106,6 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 		// If another goroutine changed the pointer in the meantime, this will fail,
 		// and we will loop again to retry the whole operation.
 		if atomic.CompareAndSwapPointer(&ts.params, oldPtr, unsafe.Pointer(newParams)) {
-			atomic.AddInt64(&ts.runs, 1)
 			return
 		}
 	}
