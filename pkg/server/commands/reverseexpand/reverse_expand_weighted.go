@@ -303,8 +303,6 @@ func (c *ReverseExpandQuery) query(ctx context.Context, objectType, objectRelati
 }
 
 func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, edges []*Edge, targetNode *Node, targetIdentifier string) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
-
 	var recursiveEdges []*Edge
 	var results []iter.Seq[Item]
 
@@ -367,36 +365,32 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 
 	objects := mergeUnordered(results...)
 
+	if len(recursiveEdges) == 0 {
+		return objects
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
 	ch := make(chan Item)
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-	go func(edges []*Edge) {
+	go func() {
 		defer wg.Done()
 		defer close(ch)
 
-		if len(edges) == 0 {
+		for _, edge := range recursiveEdges {
+			var userFilter []*openfgav1.ObjectRelation
+
 			for item := range objects {
 				select {
 				case <-ctx.Done():
 					return
 				case ch <- item:
 				}
-			}
-			return
-		}
 
-		for _, edge := range edges {
-			var userFilter []*openfgav1.ObjectRelation
-
-			for item := range objects {
 				if item.Err != nil {
-					select {
-					case <-ctx.Done():
-						return
-					case ch <- item:
-					}
 					continue
 				}
 
@@ -408,12 +402,6 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 					Object:   object,
 					Relation: relation,
 				})
-
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- item:
-				}
 			}
 
 			parts := strings.Split(edge.GetTo().GetLabel(), "#")
@@ -426,12 +414,13 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 				var userFilter []*openfgav1.ObjectRelation
 
 				for item := range seq {
+					select {
+					case <-ctx.Done():
+						return
+					case ch <- item:
+					}
+
 					if item.Err != nil {
-						select {
-						case <-ctx.Done():
-							return
-						case ch <- item:
-						}
 						continue
 					}
 
@@ -442,12 +431,6 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 						Object:   object,
 						Relation: relation,
 					})
-
-					select {
-					case <-ctx.Done():
-						return
-					case ch <- item:
-					}
 				}
 
 				if len(userFilter) == 0 {
@@ -456,7 +439,7 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 				seq = c.query(ctx, objectType, objectRelation, userFilter)
 			}
 		}
-	}(recursiveEdges)
+	}()
 
 	return func(yield func(Item) bool) {
 		defer wg.Wait()
