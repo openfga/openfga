@@ -184,11 +184,16 @@ func TestProcessDirectEdge(t *testing.T) {
 				"group:fga#member@group:xyz#member",
 				"group:cncf#member@group:fga#member",
 				"document:1#viewer@group:cncf#member",
+				"team:1#member@user:justin",
+				"team:2#member@team:1#member",
+				"team:3#member@team:2#member",
+				"group:2#member@team:3#member",
+				"document:2#viewer@group:2#member",
 			},
 			objectType: "document",
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expected:   []string{"document:1"},
+			expected:   []string{"document:1", "document:2"},
 		}
 
 		evaluate(t, tc)

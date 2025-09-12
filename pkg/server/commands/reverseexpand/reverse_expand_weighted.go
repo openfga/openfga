@@ -350,6 +350,7 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 					errs = append(errs, item)
 					continue
 				}
+
 				userFilter = append(userFilter, &openfgav1.ObjectRelation{
 					Object:   item.Value,
 					Relation: relation,
@@ -407,6 +408,12 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 					Object:   object,
 					Relation: relation,
 				})
+
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- item:
+				}
 			}
 
 			parts := strings.Split(edge.GetTo().GetLabel(), "#")
