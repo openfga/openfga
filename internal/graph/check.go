@@ -708,8 +708,8 @@ func profiledCheckHandler(logger logger.Logger, path string, keyPlan *planner.Ke
 		res, err := resolver(ctx)
 		if err != nil {
 			logger.Info("profiled check handler", zap.String("method", path), zap.Error(err))
-			if errors.Is(err, context.DeadlineExceeded) {
-				keyPlan.UpdateStats(resolverName, 4*time.Second)
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
 			}
 			return nil, err
 		}
