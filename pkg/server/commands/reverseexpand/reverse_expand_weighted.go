@@ -381,34 +381,11 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 		defer close(ch)
 
 		for _, edge := range recursiveEdges {
-			var userFilter []*openfgav1.ObjectRelation
-
-			for item := range objects {
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- item:
-				}
-
-				if item.Err != nil {
-					continue
-				}
-
-				object := item.Value
-
-				relation := strings.Split(edge.GetRelationDefinition(), "#")[1]
-
-				userFilter = append(userFilter, &openfgav1.ObjectRelation{
-					Object:   object,
-					Relation: relation,
-				})
-			}
-
 			parts := strings.Split(edge.GetTo().GetLabel(), "#")
 			objectType := parts[0]
 			objectRelation := parts[1]
 
-			seq := c.query(ctx, objectType, objectRelation, userFilter)
+			seq := objects
 
 			for {
 				var userFilter []*openfgav1.ObjectRelation
@@ -425,6 +402,7 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 					}
 
 					object := item.Value
+
 					relation := strings.Split(edge.GetRelationDefinition(), "#")[1]
 
 					userFilter = append(userFilter, &openfgav1.ObjectRelation{
