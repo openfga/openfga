@@ -46,29 +46,21 @@ func TestProcessDirectEdge(t *testing.T) {
 			model,
 		)
 		require.NoError(t, err)
-		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
-			WithStoreID(storeID),
-		)
 
 		g := typesys.GetWeightedGraph()
 
-		sourceNode, ok := g.GetNodeByID(test.objectType + "#" + test.relation)
-		require.True(t, ok, "could not find source node")
+		traversal := &Traversal{
+			graph:     g,
+			datastore: ds,
+			storeId:   storeID,
+		}
 
-		targetNode, ok := g.GetNodeByID(test.user.Object.Type)
-		require.True(t, ok, "could not find target node")
+		ctx := context.Background()
 
-		targetIdentifier := test.user.Object.Id
+		path, err := traversal.Traverse(test.objectType+"#"+test.relation, test.user.Object.GetType(), test.user.Object.GetId())
+		require.NoError(t, err)
 
-		seq := q.processNode(g, ctx, sourceNode, targetNode, targetIdentifier)
+		seq := path.Resolve(ctx)
 
 		var results []string
 
