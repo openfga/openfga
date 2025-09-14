@@ -363,7 +363,15 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 		}
 	}
 
-	objects := mergeUnordered(results...)
+	var objects iter.Seq[Item]
+
+	if len(results) < 1 {
+		return emptySequence
+	} else if len(results) > 1 {
+		objects = mergeUnordered(results...)
+	} else {
+		objects = results[0]
+	}
 
 	if len(recursiveEdges) == 0 {
 		return objects
