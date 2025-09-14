@@ -282,7 +282,7 @@ func (t Traversal) query(ctx context.Context, objectType, objectRelation string,
 
 		it, err := t.datastore.ReadStartingWithUser(
 			ctx,
-			t.storeId, // TODO: add store id to reverse expand query instance
+			t.storeId,
 			storage.ReadStartingWithUserFilter{
 				ObjectType: objectType,
 				Relation:   objectRelation,
