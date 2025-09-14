@@ -526,6 +526,14 @@ func (p Path) processDirectEdges(ctx context.Context, edges []*Edge) iter.Seq[It
 	}
 }
 
+func (p Path) processComputedEdge(ctx context.Context, edge *Edge) iter.Seq[Item] {
+	if edge.GetEdgeType() != EdgeTypeComputed {
+		panic("expected only computed edge")
+	}
+	p.source = edge.GetTo()
+	return p.Resolve(ctx)
+}
+
 func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 	_, ok := p.source.GetWeight(p.target.GetLabel())
 	if !ok {
@@ -538,6 +546,12 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 
 	if group, ok := groups[EdgeTypeDirect]; ok {
 		results = append(results, p.processDirectEdges(ctx, group))
+	}
+
+	if group, ok := groups[EdgeTypeComputed]; ok {
+		for _, edge := range group {
+			results = append(results, p.processComputedEdge(ctx, edge))
+		}
 	}
 
 	if len(results) < 1 {

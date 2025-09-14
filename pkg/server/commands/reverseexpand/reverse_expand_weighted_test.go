@@ -24,7 +24,6 @@ import (
 )
 
 type testcase struct {
-	name       string
 	model      string
 	tuples     []string
 	objectType string
@@ -71,9 +70,41 @@ func TestProcessDirectEdge(t *testing.T) {
 		require.ElementsMatch(t, test.expected, results)
 	}
 
+	t.Run("computed", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member]
+
+				type team
+					relations
+						define rel1: [user]
+						define rel2: rel1
+						define rel3: rel2
+						define member: rel3
+			`,
+			tuples: []string{
+				"team:1#rel1@user:justin",
+				"document:1#viewer@team:1#member",
+				"document:2#viewer@team:1#member",
+				"document:3#viewer@team:2#member",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2"},
+		}
+
+		evaluate(t, tc)
+	})
+
 	t.Run("direct_userset", func(t *testing.T) {
 		tc := testcase{
-			name: "direct_userset",
 			model: `model
 			  schema 1.1
 
@@ -106,7 +137,6 @@ func TestProcessDirectEdge(t *testing.T) {
 
 	t.Run("indirect_userset", func(t *testing.T) {
 		tc := testcase{
-			name: "indirect_userset",
 			model: `model
 			  schema 1.1
 
@@ -150,7 +180,6 @@ func TestProcessDirectEdge(t *testing.T) {
 
 	t.Run("recursive", func(t *testing.T) {
 		tc := testcase{
-			name: "recursion",
 			model: `model
 				  schema 1.1
 
@@ -193,7 +222,6 @@ func TestProcessDirectEdge(t *testing.T) {
 
 	t.Run("tuple_cycle", func(t *testing.T) {
 		tc := testcase{
-			name: "tuple_cycle",
 			model: `model
 				  schema 1.1
 
