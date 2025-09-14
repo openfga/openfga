@@ -354,8 +354,13 @@ func (c *ReverseExpandQuery) processDirectEdges(g *Graph, ctx context.Context, e
 					Relation: relation,
 				})
 			}
+
 			objects := c.query(ctx, objectType, objectRelation, userFilter)
-			results = append(results, mergeUnordered(sequence(errs...), objects))
+
+			if len(errs) > 0 {
+				objects = mergeUnordered(sequence(errs...), objects)
+			}
+			results = append(results, objects)
 		case NodeTypeOperator:
 			panic("direct edge cannot lead to operator node")
 		default:
