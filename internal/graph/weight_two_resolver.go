@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/sourcegraph/conc/panics"
@@ -22,6 +23,7 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
+const weight2Guess = 10 * time.Millisecond
 
 var ErrShortCircuit = errors.New("short circuit")
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sourcegraph/conc/panics"
 
@@ -16,6 +17,8 @@ import (
 )
 
 const defaultResolver = "default"
+const defaultGuess = 40 * time.Millisecond
+const defaultRecursiveGuess = 90 * time.Millisecond
 
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest

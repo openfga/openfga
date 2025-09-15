@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,6 +21,7 @@ import (
 )
 
 const recursiveResolver = "recursive"
+const recursiveGuess = 30 * time.Millisecond
 
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
