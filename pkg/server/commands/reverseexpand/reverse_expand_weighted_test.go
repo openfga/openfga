@@ -103,6 +103,45 @@ func TestProcessDirectEdge(t *testing.T) {
 		evaluate(t, tc)
 	})
 
+	t.Run("union", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define rel1: [user]
+						define rel2: [user]
+						define rel3: [user]
+						define viewer: rel1 or rel2 or rel3
+			`,
+			tuples: []string{
+				"document:1#rel1@user:justin",
+				"document:1#rel2@user:justin",
+				"document:1#rel3@user:justin",
+				"document:1#rel1@user:bob",
+				"document:1#rel2@user:bob",
+				"document:1#rel3@user:bob",
+				"document:2#rel1@user:justin",
+				"document:2#rel2@user:justin",
+				"document:2#rel1@user:bob",
+				"document:2#rel2@user:bob",
+				"document:2#rel3@user:bob",
+				"document:3#rel1@user:justin",
+				"document:3#rel2@user:justin",
+				"document:3#rel3@user:justin",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:2", "document:3"},
+		}
+
+		evaluate(t, tc)
+	})
+
 	t.Run("intersection", func(t *testing.T) {
 		tc := testcase{
 			model: `model

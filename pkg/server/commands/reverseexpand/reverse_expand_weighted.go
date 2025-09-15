@@ -247,6 +247,20 @@ func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	}
 }
 
+func dedup[T comparable](seq iter.Seq[T]) iter.Seq[T] {
+	seen := make(map[T]struct{})
+
+	return func(yield func(T) bool) {
+		for item := range seq {
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			yield(item)
+		}
+	}
+}
+
 type Traversal struct {
 	graph     *Graph
 	datastore storage.RelationshipTupleReader
@@ -659,13 +673,17 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 		return p.intersection(ctx, results...)
 	}
 
+	var seq iter.Seq[Item]
+
 	if len(results) < 1 {
 		return emptySequence
 	} else if len(results) > 1 {
-		return mergeUnordered(results...)
+		seq = mergeUnordered(results...)
 	} else {
-		return results[0]
+		seq = results[0]
 	}
+
+	return dedup(seq)
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
