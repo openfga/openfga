@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"maps"
 	"strings"
 	"sync"
 
@@ -234,6 +235,14 @@ func mergeUnordered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 					return
 				}
 			}
+		}
+	}
+}
+
+func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
+	return func(yield func(U) bool) {
+		for item := range seq {
+			yield(fn(item))
 		}
 	}
 }
@@ -534,6 +543,92 @@ func (p Path) processComputedEdge(ctx context.Context, edge *Edge) iter.Seq[Item
 	return p.Resolve(ctx)
 }
 
+func (p Path) processRewriteEdge(ctx context.Context, edge *Edge) iter.Seq[Item] {
+	if edge.GetEdgeType() != EdgeTypeRewrite {
+		panic("expected only rewrite edge")
+	}
+	p.source = edge.GetTo()
+	return p.Resolve(ctx)
+}
+
+func (p Path) intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
+	if len(seqs) == 0 {
+		return emptySequence
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(ch)
+
+		var errs []Item
+		objects := make(map[string]struct{})
+
+		for item := range seqs[0] {
+			if item.Err != nil {
+				errs = append(errs, item)
+				continue
+			}
+			objects[item.Value] = struct{}{}
+		}
+
+		for i := 1; i < len(seqs); i++ {
+			seq := seqs[i]
+
+			found := make(map[string]struct{})
+
+			for item := range seq {
+				if item.Err != nil {
+					errs = append(errs, item)
+					continue
+				}
+
+				if _, ok := objects[item.Value]; ok {
+					found[item.Value] = struct{}{}
+				}
+			}
+			objects = found
+		}
+
+		keys := maps.Keys(objects)
+
+		items := mergeOrdered(sequence(errs...), transform(keys, func(o string) Item { return Item{Value: o} }))
+
+		for item := range items {
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- item:
+			}
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
 func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 	_, ok := p.source.GetWeight(p.target.GetLabel())
 	if !ok {
@@ -552,6 +647,16 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 		for _, edge := range group {
 			results = append(results, p.processComputedEdge(ctx, edge))
 		}
+	}
+
+	if group, ok := groups[EdgeTypeRewrite]; ok {
+		for _, edge := range group {
+			results = append(results, p.processRewriteEdge(ctx, edge))
+		}
+	}
+
+	if p.source.GetNodeType() == NodeTypeOperator && p.source.GetLabel() == weightedGraph.IntersectionOperator {
+		return p.intersection(ctx, results...)
 	}
 
 	if len(results) < 1 {
