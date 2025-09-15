@@ -771,6 +771,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 			b.WriteString("infinite")
 			keyPlan := c.planner.GetKeyPlan(b.String())
+			possibleStrategies[defaultResolver].InitialGuess = defaultRecursiveGuess
 			possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: defaultRecursiveGuess}
 			plan := keyPlan.SelectStrategy(possibleStrategies)
 
@@ -974,23 +975,24 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
-		possibleResolvers := map[string]*planner.KeyPlanStrategy{
+		possibleStrategies := map[string]*planner.KeyPlanStrategy{
 			defaultResolver: {Type: defaultResolver, InitialGuess: defaultGuess},
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleResolvers[weightTwoResolver] = &planner.KeyPlanStrategy{Type: weightTwoResolver, InitialGuess: weight2Guess}
+				possibleStrategies[weightTwoResolver] = &planner.KeyPlanStrategy{Type: weightTwoResolver, InitialGuess: weight2Guess}
 
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleResolvers[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: defaultRecursiveGuess}
+				possibleStrategies[defaultResolver].InitialGuess = defaultRecursiveGuess
+				possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: recursiveGuess}
 				resolver = c.recursiveTTU
 			}
 		}
 
-		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
+		if len(possibleStrategies) == 1 || !c.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
@@ -1010,7 +1012,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString(computedRelation)
 		planKey := b.String()
 		keyPlan := c.planner.GetKeyPlan(planKey)
-		strategy := keyPlan.SelectStrategy(possibleResolvers)
+		strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 		switch strategy.Type {
 		case defaultResolver:

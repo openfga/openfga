@@ -77,7 +77,6 @@ func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 // KeyPlan manages the statistics for a single key and makes decisions about its resolvers.
 // This struct is now entirely lock-free, using a sync.Map to manage its stats.
 type KeyPlan struct {
-	plan    *KeyPlanStrategy
 	stats   sync.Map // Stores map[string]*ThompsonStats
 	planner *Planner
 	// lastAccessed stores the UnixNano timestamp of the last access.
