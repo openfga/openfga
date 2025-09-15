@@ -663,6 +663,8 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 		}
 	}
 
+	// TODO: handle TTU edges here
+
 	if group, ok := groups[EdgeTypeRewrite]; ok {
 		for _, edge := range group {
 			results = append(results, p.processRewriteEdge(ctx, edge))
@@ -683,7 +685,7 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 		seq = results[0]
 	}
 
-	return dedup(seq)
+	return dedup(seq) // TODO: do we need to dedup always?
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
