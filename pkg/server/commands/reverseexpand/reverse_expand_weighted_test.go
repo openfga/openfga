@@ -227,10 +227,10 @@ func TestProcessDirectEdge(t *testing.T) {
 				type team
 					relations
 						define member: [user, org#employee]
-
+			
 				type org
 					relations
-						define employee: [user]
+						define employee: [user, team#member]
 			`,
 			tuples: []string{
 				"team:1#member@user:justin",
@@ -239,12 +239,16 @@ func TestProcessDirectEdge(t *testing.T) {
 				"org:2#employee@user:justin",
 				"team:3#member@org:1#employee",
 				"team:4#member@org:2#employee",
+				"org:3#employee@team:3#member",
+				"org:4#employee@team:4#member",
+				"team:5#member@org:3#employee",
+				"team:6#member@org:4#employee",
 				"document:1#viewer@team:1#member",
-				"document:2#viewer@team:1#member",
-				"document:3#viewer@team:2#member",
-				"document:4#viewer@team:2#member",
-				"document:5#viewer@team:3#member",
-				"document:6#viewer@team:4#member",
+				"document:2#viewer@team:2#member",
+				"document:3#viewer@team:3#member",
+				"document:4#viewer@team:4#member",
+				"document:5#viewer@team:5#member",
+				"document:6#viewer@team:6#member",
 				"document:7#viewer@team:0#member",
 			},
 			objectType: "document",

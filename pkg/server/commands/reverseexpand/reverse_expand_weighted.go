@@ -149,16 +149,20 @@ type Item struct {
 	Err   error
 }
 
-type node struct {
-	edge *Edge
-	next *node
+type element struct {
+	node *Node
+	next *element
 }
 
-func (n *node) contains(edge *Edge) bool {
-	next := n
+func contains(e *element, node *Node) bool {
+	if e == nil {
+		return false
+	}
+
+	next := e
 
 	for next != nil {
-		if next.edge == edge {
+		if next.node == node {
 			return true
 		}
 		next = next.next
@@ -377,6 +381,7 @@ type Path struct {
 	source           *Node
 	target           *Node
 	targetIdentifier string
+	breadcrumb       *element
 }
 
 func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
@@ -432,6 +437,9 @@ func (p Path) processDirectEdges(ctx context.Context, edges []*Edge) iter.Seq[It
 			}}
 			results = append(results, p.traversal.query(ctx, objectType, objectRelation, userFilter))
 		case NodeTypeSpecificTypeAndRelation:
+			if contains(p.breadcrumb, edge.GetTo()) {
+				continue
+			}
 			p.source = edge.GetTo()
 			seq := p.Resolve(ctx)
 			var userFilter []*openfgav1.ObjectRelation
@@ -648,6 +656,8 @@ func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
 	if !ok {
 		return emptySequence
 	}
+
+	p.breadcrumb = &element{node: p.source, next: p.breadcrumb}
 
 	groups := p.groupEdgesByType(p.source)
 
