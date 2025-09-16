@@ -11,7 +11,7 @@
 ########################
 # GET API TOKEN FROM CLIENT CREDENTIALS FLOW
 ########################
-
+# @name auth
 POST https://{{fga_token_issuer}}/oauth/token
 Content-Type: application/json
 
