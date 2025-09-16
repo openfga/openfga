@@ -414,13 +414,14 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
-						&CheckCommandParams{
+					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver,
+						CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 							ContextualTuples: req.GetContextualTuples(),
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
+							Typesys:          typesys,
 						},
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),

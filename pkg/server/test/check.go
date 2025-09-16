@@ -387,11 +387,11 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		checkQuery := commands.NewCheckCommand(
 			ds,
 			graph.NewLocalChecker(graph.WithOptimizations(true)),
-			typeSystem,
-			&commands.CheckCommandParams{
+			commands.CheckCommandParams{
 				StoreID:  storeID,
 				TupleKey: bm.tupleKeyToCheck,
 				Context:  bm.contextGenerator(),
+				Typesys:  typeSystem,
 			},
 			commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 		)
@@ -480,10 +480,10 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	checkQuery := commands.NewCheckCommand(
 		ds,
 		graph.NewLocalChecker(graph.WithOptimizations(true)),
-		typeSystemTwo,
-		&commands.CheckCommandParams{
+		commands.CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
+			Typesys:  typeSystemTwo,
 		},
 		commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 	)

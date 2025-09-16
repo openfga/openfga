@@ -1029,6 +1029,130 @@ func TestReleasesConnections(t *testing.T) {
 	})
 }
 
+func TestCheckWithShadowMode(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := parser.MustTransformDSLToProto(`
+		model
+			schema 1.1
+		type user
+		type company
+			relations
+				define viewer: [user]
+		type license
+			relations
+				define viewer: [user, company#viewer]`).GetTypeDefinitions()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+			Id:              modelID,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetObject() == "company:1" {
+					return &openfgav1.Tuple{
+						Key:       tk,
+						Timestamp: timestamppb.Now(),
+					}, nil
+				}
+
+				return nil, storage.ErrNotFound
+			})
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("license:1", "viewer", "company:1#viewer"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	mockDatastore.EXPECT().
+		ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+		AnyTimes().
+		Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+			{
+				Key:       tuple.NewTupleKey("company:1", "viewer", "user:1"),
+				Timestamp: timestamppb.Now(),
+			},
+		}), nil)
+
+	s := MustNewServerWithOpts(
+		WithContext(ctx),
+		WithDatastore(mockDatastore),
+		WithCheckCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithCheckIteratorCacheEnabled(true),
+		WithCheckIteratorCacheMaxResults(10),
+		WithShadowCheckResolverEnabled(true),
+		WithShadowCheckResolverSamplePercentage(100), // 100% sampling for consistent test behavior
+		WithShadowCheckResolverTimeout(100*time.Millisecond),
+	)
+
+	t.Cleanup(func() {
+		mockDatastore.EXPECT().Close().Times(1)
+		s.Close()
+	})
+
+	// Verify that shadow check resolver is enabled
+	require.True(t, s.shadowCheckResolverEnabled)
+	require.NotNil(t, s.checkCommandServerConfig) // TODO : assert shadow config specifically
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Sleep for a while to ensure that shadow operations complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Perform a second check with the same request - this should use cached results and shadow mode
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:1"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.GetAllowed())
+
+	// Perform a check with a different user to validate shadow mode with different data
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tuple.NewCheckRequestTupleKey("license:1", "viewer", "user:2"),
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.False(t, checkResponse.GetAllowed()) // user:2 should not have access based on our mock setup
+}
+
 func TestOperationsWithInvalidModel(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
