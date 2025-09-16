@@ -50,7 +50,7 @@ require (
 	go.uber.org/mock v0.5.2
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.17.0
 	gonum.org/v1/gonum v0.16.0
 	google.golang.org/grpc v1.74.2
 	google.golang.org/protobuf v1.36.6
