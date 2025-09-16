@@ -772,7 +772,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			b.WriteString("infinite")
 			keyPlan := c.planner.GetKeyPlan(b.String())
 			possibleStrategies[defaultResolver].InitialGuess = defaultRecursiveGuess
-			possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: defaultRecursiveGuess}
+			possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: recursiveGuess}
 			plan := keyPlan.SelectStrategy(possibleStrategies)
 
 			resolver := c.defaultUserset
