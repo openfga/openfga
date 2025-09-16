@@ -113,7 +113,7 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 
 // NewThompsonStats creates a new stats object with a diffuse prior,
 // representing our initial uncertainty about a strategy's performance.
-func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
+func NewThompsonStats(initialGuess time.Duration, lambda, alpha, beta float64) *ThompsonStats {
 	initialMs := float64(initialGuess.Nanoseconds()) / 1e6
 
 	ts := &ThompsonStats{}
@@ -121,9 +121,9 @@ func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
 	// Create the initial immutable parameter snapshot.
 	params := &samplingParams{
 		mu:     initialMs,
-		lambda: 1.0,
-		alpha:  1.0,
-		beta:   1.0,
+		lambda: lambda,
+		alpha:  alpha,
+		beta:   beta,
 	}
 	atomic.StorePointer(&ts.params, unsafe.Pointer(params))
 

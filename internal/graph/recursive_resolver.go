@@ -14,6 +14,7 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -21,7 +22,14 @@ import (
 )
 
 const recursiveResolver = "recursive"
-const recursiveGuess = 30 * time.Millisecond
+
+var recursivePlan = &planner.KeyPlanStrategy{
+	Type:         recursiveResolver,
+	InitialGuess: 30 * time.Millisecond,
+	Lambda:       3,
+	Alpha:        3,
+	Beta:         3,
+}
 
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind

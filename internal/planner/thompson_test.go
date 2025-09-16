@@ -10,7 +10,7 @@ import (
 )
 
 func TestThompsonStats_Update(t *testing.T) {
-	stats := NewThompsonStats(1 * time.Second)
+	stats := NewThompsonStats(1*time.Second, 1, 1, 1)
 	params := (*samplingParams)(atomic.LoadPointer(&stats.params))
 	initialMu := params.mu
 
@@ -21,7 +21,7 @@ func TestThompsonStats_Update(t *testing.T) {
 
 func TestThompsonStats_Sample(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		stats := NewThompsonStats(1 * time.Second)
+		stats := NewThompsonStats(1*time.Second, 1, 1, 1)
 		r := rand.New(rand.NewSource(1)) // Use a fixed seed for reproducibility
 
 		sample1 := stats.Sample(r)
@@ -31,7 +31,7 @@ func TestThompsonStats_Sample(t *testing.T) {
 		require.NotEqual(t, sample1, sample2)
 	})
 	t.Run("complete", func(t *testing.T) {
-		stats := NewThompsonStats(50 * time.Millisecond)
+		stats := NewThompsonStats(50*time.Millisecond, 1, 1, 1)
 		r := rand.New(rand.NewSource(42))
 		numSamples := 100
 
@@ -61,7 +61,7 @@ func TestThompsonStats_Sample(t *testing.T) {
 }
 
 func BenchmarkThompsonStats_SampleParallel(b *testing.B) {
-	ts := NewThompsonStats(10 * time.Millisecond)
+	ts := NewThompsonStats(10*time.Millisecond, 1, 1, 1)
 
 	// Add some sample data
 	for i := 0; i < 1000; i++ {

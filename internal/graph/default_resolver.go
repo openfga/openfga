@@ -11,14 +11,29 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const defaultResolver = "default"
-const defaultGuess = 40 * time.Millisecond
-const defaultRecursiveGuess = 90 * time.Millisecond
+
+var defaultPlan = &planner.KeyPlanStrategy{
+	Type:         weightTwoResolver,
+	InitialGuess: 40 * time.Millisecond,
+	Lambda:       1,
+	Alpha:        1,
+	Beta:         1,
+}
+
+var defaultRecursivePlan = &planner.KeyPlanStrategy{
+	Type:         weightTwoResolver,
+	InitialGuess: 90 * time.Millisecond,
+	Lambda:       1,
+	Alpha:        1,
+	Beta:         1,
+}
 
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest

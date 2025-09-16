@@ -743,7 +743,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		}
 
 		possibleStrategies := map[string]*planner.KeyPlanStrategy{
-			defaultResolver: {Type: defaultResolver, InitialGuess: defaultGuess},
+			defaultResolver: defaultPlan,
 		}
 
 		var b strings.Builder
@@ -771,8 +771,8 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 			b.WriteString("infinite")
 			keyPlan := c.planner.GetKeyPlan(b.String())
-			possibleStrategies[defaultResolver].InitialGuess = defaultRecursiveGuess
-			possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: recursiveGuess}
+			possibleStrategies[defaultResolver] = defaultRecursivePlan
+			possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.SelectStrategy(possibleStrategies)
 
 			resolver := c.defaultUserset
@@ -787,7 +787,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		if c.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
-			possibleStrategies[weightTwoResolver] = &planner.KeyPlanStrategy{Type: weightTwoResolver, InitialGuess: weight2Guess}
+			possibleStrategies[weightTwoResolver] = weight2Plan
 			for _, userset := range directlyRelatedUsersetTypes {
 				if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 					remainingUsersetTypes = append(remainingUsersetTypes, userset)
@@ -976,18 +976,17 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		resolver := c.defaultTTU
 		possibleStrategies := map[string]*planner.KeyPlanStrategy{
-			defaultResolver: {Type: defaultResolver, InitialGuess: defaultGuess},
+			defaultResolver: defaultPlan,
 		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[weightTwoResolver] = &planner.KeyPlanStrategy{Type: weightTwoResolver, InitialGuess: weight2Guess}
-
+				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleStrategies[defaultResolver].InitialGuess = defaultRecursiveGuess
-				possibleStrategies[recursiveResolver] = &planner.KeyPlanStrategy{Type: recursiveResolver, InitialGuess: recursiveGuess}
+				possibleStrategies[defaultResolver] = defaultRecursivePlan
+				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
 			}
 		}

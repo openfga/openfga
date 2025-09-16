@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -23,7 +24,14 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
-const weight2Guess = 10 * time.Millisecond
+
+var weight2Plan = &planner.KeyPlanStrategy{
+	Type:         weightTwoResolver,
+	InitialGuess: 10 * time.Millisecond,
+	Lambda:       3,
+	Alpha:        3,
+	Beta:         3,
+}
 
 var ErrShortCircuit = errors.New("short circuit")
 

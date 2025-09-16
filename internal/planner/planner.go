@@ -22,6 +22,9 @@ type Planner struct {
 type KeyPlanStrategy struct {
 	Type         string
 	InitialGuess time.Duration
+	Lambda       float64
+	Alpha        float64
+	Beta         float64
 }
 
 // Config holds configuration for the planner.
@@ -99,7 +102,7 @@ func (kp *KeyPlan) getOrCreateStats(plan *KeyPlanStrategy) *ThompsonStats {
 	}
 
 	// Slow path: The stats don't exist. Create a new one.
-	newTS := NewThompsonStats(plan.InitialGuess)
+	newTS := NewThompsonStats(plan.InitialGuess, plan.Lambda, plan.Alpha, plan.Beta)
 
 	// Use LoadOrStore to handle the race where another goroutine might have created it
 	// in the time between our Load and now. The newTs object is only stored if
