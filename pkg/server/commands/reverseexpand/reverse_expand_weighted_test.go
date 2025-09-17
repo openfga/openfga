@@ -218,6 +218,49 @@ func TestProcessDirectEdge(t *testing.T) {
 		evaluate(t, tc)
 	})
 
+	t.Run("mean_tuple_cycle", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member, org#employee]
+
+				type team
+					relations
+						define member: [user, document#viewer]
+			
+				type org
+					relations
+						define employee: [user, document#viewer]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"org:3#employee@document:1#viewer",
+				"org:4#employee@document:2#viewer",
+				"team:3#member@document:3#viewer",
+				"document:3#viewer@team:4#member",
+				"team:4#member@user:justin",
+				"document:5#viewer@team:3#member",
+				"document:1#viewer@org:4#employee",
+				"document:8#viewer@org:3#employee",
+				"org:4#employee@user:justin",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:1", "document:3", "document:5", "document:8"},
+		}
+
+		evaluate(t, tc)
+	})
+
 	t.Run("indirect_userset", func(t *testing.T) {
 		tc := testcase{
 			model: `model
