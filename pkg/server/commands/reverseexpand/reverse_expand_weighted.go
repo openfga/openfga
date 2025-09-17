@@ -500,24 +500,31 @@ func intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
 }
 
 func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
+	// if graph traversal has encountered the target node, we can return the target identifiers.
 	if source == p.target {
+		// the target identifiers are typeless, we need to append the target type to the values.
 		targetType := strings.Split(p.target.GetLabel(), "#")[0]
 		return transform(sequence(p.targetIdentifiers...), func(id string) Item {
 			return Item{Value: targetType + ":" + id}
 		})
 	}
 
+	// if we have already traversed this node on the current path.
 	if contains(p.breadcrumb, source) {
+		// the identifiers for this cycle need to be turned into items.
 		return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
 			return Item{Value: id}
 		})
 	}
 
+	// does the current node have a path to the target node?
 	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
 		return emptySequence
 	}
 
+	// if no cycle beginning has been recored, yet the node is part of a tuple cycle, record the
+	// current node as the beginning of a tuple cycle.
 	if p.cycleBegin == nil && source.IsPartOfTupleCycle() {
 		p.cycleBegin = source
 	}
@@ -539,12 +546,15 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 		defer close(ch)
 
 		for {
-			localp := p
-			localp.breadcrumb = &element{node: source, next: localp.breadcrumb}
+			localp := p // shadow the current path so as not to mutate the original as we iterate.
+
+			localp.breadcrumb = &element{node: source, next: localp.breadcrumb} // add the current node to our breadcrumb trail
 
 			var results []iter.Seq[Item]
 
 			for _, edge := range edges {
+				// if currently traversing a tuple cycle, but the edge is not part of a tuple cycle, skip it.
+				// otherwise, all edges will be processed.
 				if p.cycle && !edge.IsPartOfTupleCycle() {
 					continue
 				}
@@ -553,8 +563,11 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 				case EdgeTypeDirect:
 					switch edge.GetTo().GetNodeType() {
 					case NodeTypeSpecificTypeAndRelation:
+						// this is a direct edge to a node of specific type and relation.
+						// we need to process the next node and process its results.
 						outcome := localp.resolve(ctx, edge.GetTo())
 
+						// for our upcoming query, we need the type and relation off of the specific type and relation ancestor node.
 						parts := strings.Split(edge.GetRelationDefinition(), "#")
 						nodeType := parts[0]
 						nodeRelation := parts[1]
@@ -599,6 +612,8 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 					results = append(results, localp.resolve(ctx, edge.GetTo()))
 				case EdgeTypeComputed:
 					results = append(results, localp.resolve(ctx, edge.GetTo()))
+				case EdgeTypeTTU:
+					panic("unexpected TTU edge in resolve")
 				default:
 					panic("unexpected edge type in resolve")
 				}
