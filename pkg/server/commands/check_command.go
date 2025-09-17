@@ -54,6 +54,7 @@ type CheckCommandParams struct {
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
 	Typesys          *typesystem.TypeSystem
+	Operation        string
 }
 
 // CheckCommandConfig server config required to run a CheckCommand.

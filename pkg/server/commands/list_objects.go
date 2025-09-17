@@ -416,6 +416,7 @@ func (q *ListObjectsQuery) evaluate(
 							Context:          req.GetContext(),
 							Consistency:      req.GetConsistency(),
 							Typesys:          typesys,
+							Operation:        "list-objects",
 						},
 					).
 						Execute(ctx)

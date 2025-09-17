@@ -70,6 +70,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Context:          req.GetContext(),
 		Consistency:      req.GetConsistency(),
 		Typesys:          typesys,
+		Operation:        "check",
 	}
 
 	checkCommand = commands.NewCheckCommandWithServerConfig(s.checkCommandServerConfig, params)

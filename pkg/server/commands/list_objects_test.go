@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -500,6 +501,163 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, errors.ErrUnknown)
 }
+
+func TestListObjectsWithShadowModeCheck_Runs_Shadow(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish() // TODO : no need to call Finish if using t.Cleanup above
+
+	mockLogger := mocks.NewMockLogger(mockController)
+
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{
+			Allowed: true,
+		}, nil
+	})
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	mockShadowCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{
+			Allowed: false,
+		}, nil
+	})
+	mockShadowCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	checkCfg := NewCheckCommandServerConfig(
+		NewCheckCommandConfig(ds, mockCheckResolver),
+		WithShadowCheckCommandConfig(
+			NewCheckCommandShadowConfig(
+				NewCheckCommandConfig(ds, mockShadowCheckResolver),
+				WithShadowCheckQueryEnabled(true),
+				WithShadowCheckQueryPct(100),
+				WithShadowCheckQueryLogger(mockLogger),
+				WithShadowCheckQueryRunSync(true),
+			),
+		),
+	)
+
+	tupleKey := tuple.NewTupleKey("folder:x", "viewer", "user:maria")
+
+	// Expect the "shadow check difference" log with all the correct fields
+	mockLogger.EXPECT().InfoWithContext(
+		gomock.Any(),
+		gomock.Eq("shadow check difference"),
+		zap.String("resolver", "list-objects"),
+		zap.String("request", tupleKey.String()),
+		zap.String("store_id", storeID),
+		zap.String("model_id", ts.GetAuthorizationModelID()),
+		zap.String("function", ShadowCheckQueryFunction),
+		zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
+		zap.Bool("main_cycle", false),
+		gomock.AssignableToTypeOf(zap.Int64("", 0)), // main_latency - we can't predict exact timing
+		zap.Uint32("main_query_count", uint32(0)),   // FIXME: mock metadata
+		zap.Bool("shadow", false),
+		zap.Bool("shadow_cycle", false),
+		gomock.AssignableToTypeOf(zap.Int64("", 0)), // shadow_latency - we can't predict exact timing
+		zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+	)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 1)
+}
+
+func TestListObjectsWithShadowModeCheck_Error(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(nil, errors.ErrUnknown).
+		Times(1)
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	mockShadowCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+	mockShadowCheckResolver.EXPECT().GetDelegate().Times(0)
+
+	checkCfg := NewCheckCommandServerConfig(
+		NewCheckCommandConfig(ds, mockCheckResolver),
+		WithShadowCheckCommandConfig(
+			NewCheckCommandShadowConfig(
+				NewCheckCommandConfig(ds, mockShadowCheckResolver),
+				WithShadowCheckQueryEnabled(true),
+				WithShadowCheckQueryPct(100),
+				WithShadowCheckQueryRunSync(true),
+			),
+		),
+	)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, errors.ErrUnknown)
+}
+
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	tests := []struct {
 		shadowEnabled bool

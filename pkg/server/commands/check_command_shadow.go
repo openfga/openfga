@@ -26,16 +26,17 @@ type shadowedCheckQuery struct {
 	logger logger.Logger
 
 	// only used for testing signals
-	wg sync.WaitGroup
+	wg      sync.WaitGroup
+	runSync bool // if true, run shadow query synchronously (used for testing)
 }
 
 type ShadowCheckCommandConfig struct {
-	name          string
 	enabled       bool          // A boolean indicating whether shadow mode is enabled.
 	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	logger        logger.Logger
 	cfg           CheckCommandConfig // embedded to ensure we can create a shadowed check command with all necessary params
+	runSync       bool               // if true, run shadow query synchronously (used for testing)
 }
 
 func (sc *ShadowCheckCommandConfig) isEnabled() bool {
@@ -47,12 +48,6 @@ type ShadowCheckQueryOption func(*ShadowCheckCommandConfig)
 func WithShadowCheckQueryEnabled(enabled bool) ShadowCheckQueryOption {
 	return func(config *ShadowCheckCommandConfig) {
 		config.enabled = enabled
-	}
-}
-
-func WithShadowCheckQueryName(name string) ShadowCheckQueryOption {
-	return func(config *ShadowCheckCommandConfig) {
-		config.name = name
 	}
 }
 
@@ -74,6 +69,12 @@ func WithShadowCheckQueryLogger(logger logger.Logger) ShadowCheckQueryOption {
 	}
 }
 
+func WithShadowCheckQueryRunSync(runSync bool) ShadowCheckQueryOption {
+	return func(config *ShadowCheckCommandConfig) {
+		config.runSync = runSync
+	}
+}
+
 // check that shadowedCheckQuery implements CheckCommand.
 var _ CheckCommand = (*shadowedCheckQuery)(nil)
 
@@ -85,12 +86,12 @@ var _ CheckCommand = (*shadowedCheckQuery)(nil)
 //   - logger: noop logger
 func NewCheckCommandShadowConfig(cfg CheckCommandConfig, opts ...ShadowCheckQueryOption) ShadowCheckCommandConfig {
 	config := ShadowCheckCommandConfig{
-		name:          "check",
 		enabled:       false,
 		shadowPct:     0,
 		shadowTimeout: 500 * time.Millisecond,
 		logger:        logger.NewNoopLogger(),
 		cfg:           cfg,
+		runSync:       false,
 	}
 
 	for _, opt := range opts {
@@ -104,20 +105,27 @@ func newCheckCommandWithShadowConfig(cfg CheckCommandConfig, shadowConfig Shadow
 	checkCommand := NewCheckCommand(cfg.datastore, cfg.checkResolver, params, cfg.options...)
 	if shadowConfig.isEnabled() {
 		shadowCheckCommand := NewCheckCommand(shadowConfig.cfg.datastore, shadowConfig.cfg.checkResolver, params, shadowConfig.cfg.options...)
-		return newShadowCheckCommand(checkCommand, shadowCheckCommand, shadowConfig)
+		return newShadowCheckCommand(params.Operation, checkCommand, shadowCheckCommand, shadowConfig)
 	}
 	return checkCommand
 }
 
-func newShadowCheckCommand(mainCheck *CheckQuery, shadowCheck *CheckQuery, shadowConfig ShadowCheckCommandConfig) CheckCommand {
-	return &shadowedCheckQuery{
-		name:          shadowConfig.name,
+func newShadowCheckCommand(name string, mainCheck *CheckQuery, shadowCheck *CheckQuery, shadowConfig ShadowCheckCommandConfig) CheckCommand {
+	res := &shadowedCheckQuery{
+		name:          "check",
 		main:          *mainCheck,
 		shadow:        *shadowCheck,
 		shadowPct:     shadowConfig.shadowPct,
 		shadowTimeout: shadowConfig.shadowTimeout,
 		logger:        shadowConfig.logger,
+		runSync:       shadowConfig.runSync,
 	}
+
+	if name != "" {
+		res.name = name
+	}
+
+	return res
 }
 
 // checkShadowModeSampleRate randomly returns true based on the shadowPct.
@@ -182,13 +190,17 @@ func (q *shadowedCheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckRe
 		}()
 	}
 
+	if q.runSync {
+		q.wg.Wait() // for testing
+	}
+
 	return response, metadata, nil
 }
 
 func (q *shadowedCheckQuery) withCommonShadowCheckFields(fields ...zap.Field) []zap.Field {
 	params := q.main.params
 	return append([]zap.Field{
-		zap.String("resolver", "check"),
+		zap.String("resolver", q.name),
 		zap.String("request", params.TupleKey.String()),
 		zap.String("store_id", params.StoreID),
 		zap.String("model_id", params.Typesys.GetAuthorizationModelID()),

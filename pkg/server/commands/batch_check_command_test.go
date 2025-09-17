@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -71,6 +72,96 @@ func TestBatchCheckCommand(t *testing.T) {
 			StoreID:              ulid.Make().String(),
 			Typesys:              ts,
 		}
+
+		result, meta, err := cmd.Execute(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Equal(t, len(result), numChecks)
+
+		// No actual datastore queries should have been run since we're mocking
+		require.Equal(t, 0, int(meta.DatastoreQueryCount))
+		require.Equal(t, 0, meta.DuplicateCheckCount)
+	})
+
+	t.Run("calls_check_once_for_each_tuple_in_batch_with_shadow", func(t *testing.T) {
+		numChecks := int(maxChecks)
+
+		mockCheckResolver := graph.NewMockCheckResolver(mockController)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(numChecks).
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{
+					Allowed: true,
+				}, nil
+			})
+
+		mockShadowCheckResolver := graph.NewMockCheckResolver(mockController)
+		mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+			Times(numChecks).
+			DoAndReturn(func(_ any, _ any) (*graph.ResolveCheckResponse, error) {
+				// Need this DoAndReturn or the test will use a single instance of &graph.ResolveCheckResponse{}
+				// which will create a race condition
+				return &graph.ResolveCheckResponse{
+					Allowed: false,
+				}, nil
+			})
+
+		mockLogger := mockstorage.NewMockLogger(mockController)
+
+		cmd := NewBatchCheckCommand(NewCheckCommandServerConfig(
+			NewCheckCommandConfig(ds, mockCheckResolver),
+			WithShadowCheckCommandConfig(
+				NewCheckCommandShadowConfig(
+					NewCheckCommandConfig(ds, mockShadowCheckResolver),
+					WithShadowCheckQueryEnabled(true),
+					WithShadowCheckQueryPct(100),
+					WithShadowCheckQueryRunSync(true),
+					WithShadowCheckQueryLogger(mockLogger),
+				),
+			),
+		))
+
+		checks := make([]*openfgav1.BatchCheckItem, numChecks)
+		for i := 0; i < numChecks; i++ {
+			checks[i] = &openfgav1.BatchCheckItem{
+				TupleKey: &openfgav1.CheckRequestTupleKey{
+					Object:   fmt.Sprintf("doc:doc%d", i),
+					Relation: "viewer",
+					User:     "user:justin",
+				},
+				CorrelationId: fmt.Sprintf("fakeid%d", i),
+			}
+		}
+
+		storeID := ulid.Make().String()
+
+		params := &BatchCheckCommandParams{
+			AuthorizationModelID: ts.GetAuthorizationModelID(),
+			Checks:               checks,
+			StoreID:              storeID,
+			Typesys:              ts,
+		}
+
+		// Expect the "shadow check difference" log with all the correct fields
+		mockLogger.EXPECT().InfoWithContext(
+			gomock.Any(),
+			gomock.Eq("shadow check difference"),
+			zap.String("resolver", "batch-check"),
+			gomock.Any(),
+			zap.String("store_id", storeID),
+			zap.String("model_id", ts.GetAuthorizationModelID()),
+			zap.String("function", ShadowCheckQueryFunction),
+			zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
+			zap.Bool("main_cycle", false),
+			gomock.AssignableToTypeOf(zap.Int64("", 0)), // main_latency - we can't predict exact timing
+			zap.Uint32("main_query_count", uint32(0)),   // FIXME: mock metadata
+			zap.Bool("shadow", false),
+			zap.Bool("shadow_cycle", false),
+			gomock.AssignableToTypeOf(zap.Int64("", 0)), // shadow_latency - we can't predict exact timing
+			zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+		).Times(numChecks)
 
 		result, meta, err := cmd.Execute(context.Background(), params)
 
