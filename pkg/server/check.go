@@ -72,7 +72,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Typesys:          typesys,
 	}
 
-	checkCommand = commands.NewCheckCommandFromServerConfig(s.checkCommandServerConfig, params)
+	checkCommand = commands.NewCheckCommandWithServerConfig(s.checkCommandServerConfig, params)
 
 	resp, checkRequestMetadata, err := checkCommand.Execute(ctx)
 

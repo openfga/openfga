@@ -202,7 +202,6 @@ func TestRequestStorageWrapper(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
-		shadowCache := mocks.NewMockInMemoryCache[any](ctrl)
 
 		requestContextualTuples := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("doc:1", "viewer", "user:maria"),
@@ -212,16 +211,14 @@ func TestRequestStorageWrapper(t *testing.T) {
 			&Operation{Concurrency: maxConcurrentReads, Method: apimethod.ListObjects},
 			DataResourceConfiguration{
 				Resources: &shared.SharedDatastoreResources{
-					CheckCache:       mockCache,
-					ShadowCheckCache: shadowCache,
-					Logger:           logger.NewNoopLogger(),
+					CheckCache: mockCache,
+					Logger:     logger.NewNoopLogger(),
 				},
 				CacheSettings: config.CacheSettings{
 					ListObjectsIteratorCacheEnabled:    true,
 					CheckCacheLimit:                    1,
 					ListObjectsIteratorCacheMaxResults: 1,
 				},
-				UseShadowCache: true,
 			},
 		)
 		require.NotNil(t, br)

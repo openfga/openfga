@@ -438,7 +438,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		// Should be a regular CheckQuery, not a shadowedCheckQuery
 		_, isCheckQuery := command.(*CheckQuery)
@@ -453,7 +453,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		// Should be a shadowedCheckQuery when shadow is enabled
 		_, isCheckQuery := command.(*CheckQuery)
@@ -468,7 +468,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		// Should be a regular CheckQuery when percentage is 0
 		_, isCheckQuery := command.(*CheckQuery)
@@ -490,7 +490,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfigWithOptions, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		checkQuery, ok := command.(*CheckQuery)
 		require.True(t, ok)
@@ -586,7 +586,7 @@ type doc
 		require.True(t, serverConfig.shadowCfg.isEnabled())
 
 		// Create command
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		// Verify we get a shadow command
 		shadowedCommand, isShadowedQuery := command.(*shadowedCheckQuery)
@@ -690,7 +690,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		shadowedCommand, ok := command.(*shadowedCheckQuery)
 		require.True(t, ok)
@@ -770,7 +770,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandFromServerConfig(serverConfig, params)
+		command := NewCheckCommandWithServerConfig(serverConfig, params)
 
 		shadowedCommand, ok := command.(*shadowedCheckQuery)
 		require.True(t, ok)

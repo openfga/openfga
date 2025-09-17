@@ -185,7 +185,8 @@ type Server struct {
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
 	// sharedDatastoreResources are created by the server
-	sharedDatastoreResources *shared.SharedDatastoreResources
+	sharedDatastoreResources      *shared.SharedDatastoreResources
+	sharedShadowDatasoreResources *shared.SharedDatastoreResources
 
 	checkResolverClosers   []graph.CheckResolverCloser
 	sharedDatastoreClosers []*shared.SharedDatastoreResources
@@ -958,6 +959,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 	)
 
+	s.sharedShadowDatasoreResources = s.sharedDatastoreResources
+	if s.shadowCheckResolverEnabled || s.shadowListObjectsQueryEnabled || s.cacheSettings.ShadowCheckCacheEnabled {
+		s.sharedShadowDatasoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+		if err != nil {
+			return nil, err
+		}
+		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedShadowDatasoreResources)
+	}
+
 	var shadowCheckCommandConfig commands.ShadowCheckCommandConfig
 	if s.shadowCheckResolverEnabled {
 		shadowCheckResolver, shadowCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
@@ -974,11 +984,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			return nil, err
 		}
 		s.checkResolverClosers = append(s.checkResolverClosers, shadowCheckResolverCloser)
-		shadowCheckResolverDatastoreResources, err := shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
-		if err != nil {
-			return nil, err
-		}
-		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, shadowCheckResolverDatastoreResources)
 
 		shadowCheckCommandConfig = commands.NewCheckCommandShadowConfig(
 			commands.NewCheckCommandConfig(
@@ -986,7 +991,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				shadowCheckResolver,
 				commands.WithCheckCommandLogger(s.logger),
 				commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-				commands.WithCheckCommandCache(shadowCheckResolverDatastoreResources, s.cacheSettings), // use a separate cache for the shadow checker
+				commands.WithCheckCommandCache(s.sharedShadowDatasoreResources, s.cacheSettings), // use a separate cache for the shadow checker
 				commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 			),
 			commands.WithShadowCheckQueryEnabled(s.shadowCheckResolverEnabled), // always true here

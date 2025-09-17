@@ -102,11 +102,11 @@ func NewCheckCommandServerConfig(main CheckCommandConfig, opts ...CheckCommandSe
 	return serverConfig
 }
 
-// NewCheckCommandFromServerConfig creates a CheckCommand that automatically handles shadow mode
+// NewCheckCommandWithServerConfig creates a CheckCommand that automatically handles shadow mode
 // based on the server configuration. This is the main entry point that should be used
 // throughout the codebase instead of the individual factory functions.
 // TODO : replace public NewCheckCommand with this.
-func NewCheckCommandFromServerConfig(serverConfig CheckCommandServerConfig, params CheckCommandParams) CheckCommand {
+func NewCheckCommandWithServerConfig(serverConfig CheckCommandServerConfig, params CheckCommandParams) CheckCommand {
 	return newCheckCommandWithShadowConfig(serverConfig.checkCfg, serverConfig.shadowCfg, params)
 }
 
@@ -166,9 +166,8 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 			ThrottleDuration:  cmd.datastoreThrottleDuration,
 		},
 		storagewrappers.DataResourceConfiguration{
-			Resources:      cmd.sharedCheckResources,
-			CacheSettings:  cmd.cacheSettings,
-			UseShadowCache: false,
+			Resources:     cmd.sharedCheckResources,
+			CacheSettings: cmd.cacheSettings,
 		},
 	)
 	return cmd

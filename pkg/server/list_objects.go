@@ -67,12 +67,17 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
+		s.checkCommandServerConfig,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
+			commands.WithShadowListObjectsQueryOptions(
+				// override the default cache with the shadow cache for the shadow queries
+				commands.WithListObjectsCache(s.sharedShadowDatasoreResources, s.cacheSettings),
+			),
 		),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -202,12 +207,17 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
+		s.checkCommandServerConfig,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
+			commands.WithShadowListObjectsQueryOptions(
+				// override the default cache with the shadow cache for the shadow queries
+				commands.WithListObjectsCache(s.sharedShadowDatasoreResources, s.cacheSettings),
+			),
 		),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),

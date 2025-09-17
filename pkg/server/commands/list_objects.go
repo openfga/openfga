@@ -69,8 +69,8 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
-	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
+	optimizationsEnabled     bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	checkCommandServerConfig CheckCommandServerConfig
 }
 
 type ListObjectsResolver interface {
@@ -178,15 +178,10 @@ func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	}
 }
 
-func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.useShadowCache = useShadowCache
-	}
-}
-
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	checkCommandServerConfig CheckCommandServerConfig, // required
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -216,8 +211,8 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
-		useShadowCache:       false,
+		optimizationsEnabled:     serverconfig.DefaultListObjectsOptimizationsEnabled,
+		checkCommandServerConfig: checkCommandServerConfig,
 	}
 
 	for _, opt := range opts {
@@ -334,9 +329,8 @@ func (q *ListObjectsQuery) evaluate(
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
 			storagewrappers.DataResourceConfiguration{
-				Resources:      q.sharedDatastoreResources,
-				CacheSettings:  q.cacheSettings,
-				UseShadowCache: q.useShadowCache,
+				Resources:     q.sharedDatastoreResources,
+				CacheSettings: q.cacheSettings,
 			},
 		)
 
@@ -414,7 +408,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver,
+					resp, checkRequestMetadata, err := NewCheckCommandWithServerConfig(q.checkCommandServerConfig,
 						CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
@@ -423,9 +417,6 @@ func (q *ListObjectsQuery) evaluate(
 							Consistency:      req.GetConsistency(),
 							Typesys:          typesys,
 						},
-						WithCheckCommandLogger(q.logger),
-						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
 					).
 						Execute(ctx)
 					if err != nil {
@@ -496,9 +487,6 @@ func (q *ListObjectsQuery) Execute(
 		if q.cacheSettings.ShouldCacheListObjectsIterators() {
 			// Kick off background job to check if cache records are stale, invalidating where needed
 			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
-			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
 		}
 	}
 

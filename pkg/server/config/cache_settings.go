@@ -65,15 +65,3 @@ func (c CacheSettings) ShouldCacheListObjectsIterators() bool {
 func (c CacheSettings) ShouldCreateShadowNewCache() bool {
 	return c.ShadowCheckCacheEnabled && c.ShouldCreateNewCache()
 }
-
-// ShouldCreateShadowCacheController determines if a new shadow cache controller should be created.
-// A shadow cache controller is created if the ShadowCheckCache is enabled and the cache controller is enabled.
-func (c CacheSettings) ShouldCreateShadowCacheController() bool {
-	return c.ShadowCheckCacheEnabled && c.ShouldCreateCacheController()
-}
-
-// ShouldShadowCacheListObjectsIterators returns true if a new shadow cache for list objects iterators should be created.
-// A shadow cache for list objects iterators is created if the ShadowCheckCache is enabled and list objects iterators caching is enabled.
-func (c CacheSettings) ShouldShadowCacheListObjectsIterators() bool {
-	return c.ShadowCheckCacheEnabled && c.ShouldCacheListObjectsIterators()
-}

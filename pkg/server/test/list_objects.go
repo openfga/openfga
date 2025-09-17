@@ -518,7 +518,10 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			require.NoError(t, err)
 			t.Cleanup(closer)
 
-			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			checkCommandServerConfig := commands.NewCheckCommandServerConfig(commands.NewCheckCommandConfig(datastore, checkResolver))
+
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, checkCommandServerConfig,
+				opts...)
 			require.NoError(t, err)
 
 			// assertions
@@ -660,10 +663,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
+	checkCommandServerConfig := commands.NewCheckCommandServerConfig(commands.NewCheckCommandConfig(ds, checkResolver))
+
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
 			checkResolver,
+			checkCommandServerConfig,
 			commands.WithListObjectsMaxResults(1),
 		)
 		require.NoError(b, err)
@@ -682,6 +688,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
 			checkResolver,
+			checkCommandServerConfig,
 			commands.WithListObjectsMaxResults(0),
 		)
 		require.NoError(b, err)

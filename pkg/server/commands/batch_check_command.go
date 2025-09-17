@@ -160,7 +160,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Typesys:          params.Typesys,
 			}
 
-			checkQuery := NewCheckCommandFromServerConfig(bq.checkConfig, checkParams)
+			checkQuery := NewCheckCommandWithServerConfig(bq.checkConfig, checkParams)
 
 			response, metadata, err := checkQuery.Execute(ctx)
 

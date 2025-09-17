@@ -127,23 +127,17 @@ func (q *shadowedCheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckRe
 	}
 
 	if q.checkShadowModeSampleRate() {
-		shadowCtx, shadowCancel := context.WithTimeout(ctxClone, q.shadowTimeout)
-		defer shadowCancel()
-
 		q.wg.Add(1)
 		go func() {
 			defer q.wg.Done()
+			// create a new context with timeout for the shadow query
+			shadowCtx, shadowCancel := context.WithTimeout(ctxClone, q.shadowTimeout)
+			defer shadowCancel()
 
-			params := q.main.params
 			defer func() {
 				if r := recover(); r != nil {
 					q.logger.ErrorWithContext(ctx, "panic recovered",
-						zap.String("resolver", "check"),
-						zap.String("request", params.TupleKey.String()),
-						zap.String("store_id", params.StoreID),
-						zap.String("model_id", q.main.typesys.GetAuthorizationModelID()),
-						zap.String("function", ShadowCheckQueryFunction),
-						zap.Any("error", err),
+						q.withCommonShadowCheckFields(zap.Error(err))...,
 					)
 				}
 			}()
