@@ -18,6 +18,8 @@ type shadowedCheckQuery struct {
 	main   CheckQuery
 	shadow CheckQuery
 
+	name string
+
 	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 
@@ -28,6 +30,7 @@ type shadowedCheckQuery struct {
 }
 
 type ShadowCheckCommandConfig struct {
+	name          string
 	enabled       bool          // A boolean indicating whether shadow mode is enabled.
 	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
@@ -44,6 +47,12 @@ type ShadowCheckQueryOption func(*ShadowCheckCommandConfig)
 func WithShadowCheckQueryEnabled(enabled bool) ShadowCheckQueryOption {
 	return func(config *ShadowCheckCommandConfig) {
 		config.enabled = enabled
+	}
+}
+
+func WithShadowCheckQueryName(name string) ShadowCheckQueryOption {
+	return func(config *ShadowCheckCommandConfig) {
+		config.name = name
 	}
 }
 
@@ -76,6 +85,7 @@ var _ CheckCommand = (*shadowedCheckQuery)(nil)
 //   - logger: noop logger
 func NewCheckCommandShadowConfig(cfg CheckCommandConfig, opts ...ShadowCheckQueryOption) ShadowCheckCommandConfig {
 	config := ShadowCheckCommandConfig{
+		name:          "check",
 		enabled:       false,
 		shadowPct:     0,
 		shadowTimeout: 500 * time.Millisecond,
@@ -101,6 +111,7 @@ func newCheckCommandWithShadowConfig(cfg CheckCommandConfig, shadowConfig Shadow
 
 func newShadowCheckCommand(mainCheck *CheckQuery, shadowCheck *CheckQuery, shadowConfig ShadowCheckCommandConfig) CheckCommand {
 	return &shadowedCheckQuery{
+		name:          shadowConfig.name,
 		main:          *mainCheck,
 		shadow:        *shadowCheck,
 		shadowPct:     shadowConfig.shadowPct,
@@ -137,7 +148,7 @@ func (q *shadowedCheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckRe
 			defer func() {
 				if r := recover(); r != nil {
 					q.logger.ErrorWithContext(ctx, "panic recovered",
-						q.withCommonShadowCheckFields(zap.Error(err))...,
+						q.withCommonShadowCheckFields(zap.Any("error", r))...,
 					)
 				}
 			}()
@@ -180,7 +191,7 @@ func (q *shadowedCheckQuery) withCommonShadowCheckFields(fields ...zap.Field) []
 		zap.String("resolver", "check"),
 		zap.String("request", params.TupleKey.String()),
 		zap.String("store_id", params.StoreID),
-		zap.String("model_id", q.main.typesys.GetAuthorizationModelID()),
+		zap.String("model_id", params.Typesys.GetAuthorizationModelID()),
 		zap.String("function", ShadowCheckQueryFunction),
 	}, fields...)
 }

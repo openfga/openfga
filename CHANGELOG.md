@@ -8,6 +8,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+- Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
+
 ## [1.10.0] - 2025-09-11
 ### Added
 - Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
@@ -16,7 +18,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
 - Add `server.WithShadowCheckCacheEnabled` to enable creation of a separate cache for shadow check resolver. [#2683](https://github.com/openfga/openfga/pull/2683)
 - Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
-- Add datastore query count in shadow check resolver. [#2698](https://github.com/openfga/openfga/pull/2698)
 
 ### Changed
 - Make experimental reverse_expand behave the same as old reverse_expand in case of timeouts. [#2649](https://github.com/openfga/openfga/pull/2649)

@@ -934,7 +934,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	var checkResolverCloser func()
+	var checkResolverCloser graph.CheckResolverCloser
 	s.checkResolver, checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -1005,7 +1005,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		commands.WithShadowCheckCommandConfig(shadowCheckCommandConfig),
 	)
 
-	var listObjectsCheckResolverCloser func()
+	var listObjectsCheckResolverCloser graph.CheckResolverCloser
 	s.listObjectsCheckResolver, listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),

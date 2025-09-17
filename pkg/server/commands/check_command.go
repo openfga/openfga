@@ -36,7 +36,6 @@ type CheckQuery struct {
 	params                     CheckCommandParams
 	logger                     logger.Logger
 	checkResolver              graph.CheckResolver
-	typesys                    *typesystem.TypeSystem
 	sharedCheckResources       *shared.SharedDatastoreResources
 	cacheSettings              config.CacheSettings
 	maxConcurrentReads         uint32
@@ -79,12 +78,11 @@ type CheckCommandServerConfig struct {
 	shadowCfg ShadowCheckCommandConfig
 }
 
-type CheckCommandServerConfigOption func(*CheckCommandServerConfig) bool
+type CheckCommandServerConfigOption func(*CheckCommandServerConfig)
 
 func WithShadowCheckCommandConfig(shadowCfg ShadowCheckCommandConfig) CheckCommandServerConfigOption {
-	return func(c *CheckCommandServerConfig) bool {
+	return func(c *CheckCommandServerConfig) {
 		c.shadowCfg = shadowCfg
-		return true
 	}
 }
 
@@ -95,9 +93,7 @@ func NewCheckCommandServerConfig(main CheckCommandConfig, opts ...CheckCommandSe
 	}
 
 	for _, opt := range opts {
-		if opt(&serverConfig) {
-			break
-		}
+		opt(&serverConfig)
 	}
 	return serverConfig
 }
@@ -143,7 +139,6 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		params:               params,
 		logger:               logger.NewNoopLogger(),
 		checkResolver:        checkResolver,
-		typesys:              params.Typesys,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
@@ -156,9 +151,13 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 		opt(cmd)
 	}
 
+	var ctxTupleKeys []*openfgav1.TupleKey
+	if params.ContextualTuples != nil {
+		ctxTupleKeys = params.ContextualTuples.GetTupleKeys()
+	}
 	cmd.datastoreWithTupleCache = storagewrappers.NewRequestStorageWrapperWithCache(
 		datastore,
-		params.ContextualTuples.GetTupleKeys(),
+		ctxTupleKeys,
 		&storagewrappers.Operation{
 			Method:            apimethod.Check,
 			Concurrency:       cmd.maxConcurrentReads,
@@ -174,7 +173,7 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 }
 
 func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(c.typesys, c.params.TupleKey, c.params.ContextualTuples)
+	err := validateCheckRequest(c.params.Typesys, c.params.TupleKey, c.params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -193,7 +192,7 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 			ContextualTuples:          c.params.ContextualTuples,
 			Consistency:               c.params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
-			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
+			AuthorizationModelID:      c.params.Typesys.GetAuthorizationModelID(),
 		},
 	)
 
@@ -201,7 +200,7 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 		return nil, nil, err
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
+	ctx = typesystem.ContextWithTypesystem(ctx, c.params.Typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastoreWithTupleCache)
 
 	startTime := time.Now()
@@ -237,6 +236,9 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 }
 
 func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
+	if typesys == nil {
+		return errors.New("typesystem is required")
+	}
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return &InvalidRelationError{Cause: err}

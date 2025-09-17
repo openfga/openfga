@@ -97,6 +97,11 @@ func NewBatchCheckCommand(checkConfig CheckCommandServerConfig, opts ...BatchChe
 }
 
 func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
+	if params.Typesys == nil {
+		return nil, nil, &BatchCheckValidationError{
+			Message: "missing typesystem in batch check params",
+		}
+	}
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
 		return nil, nil, &BatchCheckValidationError{
 			Message: "batchCheck received " + strconv.Itoa(len(params.Checks)) + " checks, the maximum allowed is " + strconv.Itoa(int(bq.maxChecksAllowed)),
@@ -117,7 +122,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 	// After all routines have finished, we will map each individual check response to all associated CorrelationIDs
 	cacheKeyMap := make(map[CacheKey]*checkAndCorrelationIDs)
 	for _, check := range params.Checks {
-		key, err := generateCacheKeyFromCheck(check, params.StoreID, params.Typesys.GetAuthorizationModelID())
+		key, err := generateCacheKeyFromCheck(check, params.StoreID, params.AuthorizationModelID)
 		if err != nil {
 			bq.logger.Error("batch check cache key computation failed with error", zap.Error(err))
 			return nil, nil, err
