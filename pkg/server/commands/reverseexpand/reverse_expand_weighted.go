@@ -412,6 +412,15 @@ func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
 	return groups
 }
 
+func extractObject(item Item) Item {
+	if item.Err != nil {
+		return item
+	}
+	parts := strings.Split(item.Value, "#")
+	item.Value = parts[0]
+	return item
+}
+
 func intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
 	if len(seqs) == 0 {
 		return emptySequence
@@ -539,19 +548,82 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 				if p.cycle && !edge.IsPartOfTupleCycle() {
 					continue
 				}
-				results = append(results, localp.resolve(ctx, edge.GetTo()))
+
+				switch edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					switch edge.GetTo().GetNodeType() {
+					case NodeTypeSpecificTypeAndRelation:
+						outcome := localp.resolve(ctx, edge.GetTo())
+
+						parts := strings.Split(edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						userParts := strings.Split(edge.GetTo().GetLabel(), "#")
+
+						var userRelation string
+
+						if len(userParts) > 1 {
+							userRelation = userParts[1]
+						}
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						for item := range outcome {
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: userRelation,
+							})
+						}
+						results = append(results, localp.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+					case NodeTypeSpecificType, NodeTypeSpecificTypeWildcard:
+						outcome := localp.resolve(ctx, edge.GetTo())
+
+						parts := strings.Split(edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						for item := range outcome {
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: "",
+							})
+						}
+						results = append(results, localp.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+					default:
+						panic("unexpected node type in direct edge resolve")
+					}
+				case EdgeTypeRewrite:
+					results = append(results, localp.resolve(ctx, edge.GetTo()))
+				case EdgeTypeComputed:
+					results = append(results, localp.resolve(ctx, edge.GetTo()))
+				default:
+					panic("unexpected edge type in resolve")
+				}
 			}
 
 			var objects iter.Seq[Item]
 
 			switch source.GetNodeType() {
-			case NodeTypeSpecificTypeAndRelation:
-				parts := strings.Split(source.GetLabel(), "#")
-				nodeType := parts[0]
-				nodeRelation := parts[1]
+			case NodeTypeOperator:
+				switch source.GetLabel() {
+				case weightedGraph.IntersectionOperator:
+					objects = intersection(ctx, results...)
+				case weightedGraph.UnionOperator:
+					var seq iter.Seq[Item]
 
-				var userFilter []*openfgav1.ObjectRelation
-
+					if len(results) < 1 {
+						seq = emptySequence
+					} else if len(results) > 1 {
+						seq = mergeUnordered(results...)
+					} else {
+						seq = results[0]
+					}
+					objects = dedup(seq)
+				}
+			default:
 				var seq iter.Seq[Item]
 
 				if len(results) < 1 {
@@ -561,33 +633,7 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 				} else {
 					seq = results[0]
 				}
-
-				for item := range seq {
-					parts := strings.Split(item.Value, "#")
-					object := parts[0]
-
-					var relation string
-
-					if len(parts) > 1 {
-						relation = parts[1]
-					}
-
-					userFilter = append(userFilter, &openfgav1.ObjectRelation{
-						Object:   object,
-						Relation: relation,
-					})
-				}
-				r := localp.traversal.query(ctx, nodeType, nodeRelation, userFilter)
-
-				objects = transform(r, func(item Item) Item {
-					item.Value = item.Value + "#" + nodeRelation
-					return item
-				})
-			case NodeTypeOperator:
-				switch source.GetLabel() {
-				case weightedGraph.IntersectionOperator:
-					objects = intersection(ctx, results...)
-				}
+				objects = dedup(seq)
 			}
 
 			var values []string
