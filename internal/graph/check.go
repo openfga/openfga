@@ -699,12 +699,13 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func profiledCheckHandler(logger logger.Logger, path string, keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
+func profiledCheckHandler(logger logger.Logger, path string, key string, keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
+		isDeadline := errors.Is(err, context.DeadlineExceeded)
+		logger.Info("profiled check handler", zap.String("key", key), zap.String("resolver", strategy.Type), zap.String("method", path), zap.Bool("deadlined", isDeadline), zap.Duration("duration", time.Since(start)))
 		if err != nil {
-			logger.Info("profiled check handler", zap.String("resolver", strategy.Type), zap.String("method", path), zap.Error(err), zap.Duration("duration", time.Since(start)))
 			if errors.Is(err, context.DeadlineExceeded) {
 				keyPlan.UpdateStats(strategy, 4*time.Second)
 			}
@@ -770,7 +771,8 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 
 			b.WriteString("infinite")
-			keyPlan := c.planner.GetKeyPlan(b.String())
+			key := b.String()
+			keyPlan := c.planner.GetKeyPlan(key)
 			possibleStrategies[defaultResolver] = defaultRecursivePlan
 			possibleStrategies[recursiveResolver] = recursivePlan
 			plan := keyPlan.SelectStrategy(possibleStrategies)
@@ -779,7 +781,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if plan.Type == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return profiledCheckHandler(c.logger, "userset", keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return profiledCheckHandler(c.logger, "userset", key, keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -804,15 +806,15 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				k.WriteString(keyPlanPrefix)
 				k.WriteString("userset|")
 				k.WriteString(userset.String())
-
-				keyPlan := c.planner.GetKeyPlan(k.String())
+				key := k.String()
+				keyPlan := c.planner.GetKeyPlan(key)
 				strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 				resolver := c.defaultUserset
 				if strategy.Type == weightTwoResolver {
 					resolver = c.weight2Userset
 				}
-				resolvers = append(resolvers, profiledCheckHandler(c.logger, "userset", keyPlan, strategy, resolver(ctx, req, usersets, iter)))
+				resolvers = append(resolvers, profiledCheckHandler(c.logger, "userset", key, keyPlan, strategy, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -1022,7 +1024,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return profiledCheckHandler(c.logger, "ttu", keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return profiledCheckHandler(c.logger, "ttu", planKey, keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 
