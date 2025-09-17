@@ -821,26 +821,23 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
 		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
-		require.Equal(t, &openfgav1.Userset{
-			Userset: &openfgav1.Userset_Union{
-				Union: &openfgav1.Usersets{
-					Child: []*openfgav1.Userset{
-						{
-							Userset: &openfgav1.Userset_ComputedUserset{
-								ComputedUserset: &openfgav1.ObjectRelation{
-									Relation: "allowed",
-								},
-							},
-						},
-						{
-							Userset: &openfgav1.Userset_ComputedUserset{
-								ComputedUserset: &openfgav1.ObjectRelation{
-									Relation: "granted",
-								},
-							},
-						},
-					},
-				}}}, userset)
+		innerUserset := userset.GetUserset()
+		require.NotNil(t, innerUserset)
+		innerUnion := innerUserset.(*openfgav1.Userset_Union)
+		require.NotNil(t, innerUnion)
+		innerUnionUserset := innerUnion.Union
+		require.NotNil(t, innerUnionUserset)
+		require.Len(t, innerUnionUserset.GetChild(), 2)
+		var relationName []string
+		for _, child := range innerUnionUserset.GetChild() {
+			cu := child.GetUserset()
+			require.NotNil(t, cu)
+			cr := cu.(*openfgav1.Userset_ComputedUserset)
+			require.NotNil(t, cr)
+			relationName = append(relationName, cr.ComputedUserset.GetRelation())
+		}
+		require.Contains(t, relationName, "allowed")
+		require.Contains(t, relationName, "granted")
 	})
 	t.Run("operator_intersection", func(t *testing.T) {
 		model := `
@@ -875,26 +872,23 @@ func TestConstructUserset(t *testing.T) {
 		require.Equal(t, graph.RewriteEdge, dut.GetEdgeType())
 		userset, err := typeSystem.ConstructUserset(dut, "user")
 		require.NoError(t, err)
-		require.Equal(t, &openfgav1.Userset{
-			Userset: &openfgav1.Userset_Intersection{
-				Intersection: &openfgav1.Usersets{
-					Child: []*openfgav1.Userset{
-						{
-							Userset: &openfgav1.Userset_ComputedUserset{
-								ComputedUserset: &openfgav1.ObjectRelation{
-									Relation: "allowed",
-								},
-							},
-						},
-						{
-							Userset: &openfgav1.Userset_ComputedUserset{
-								ComputedUserset: &openfgav1.ObjectRelation{
-									Relation: "granted",
-								},
-							},
-						},
-					},
-				}}}, userset)
+		innerUserset := userset.GetUserset()
+		require.NotNil(t, innerUserset)
+		innerIntersection := innerUserset.(*openfgav1.Userset_Intersection)
+		require.NotNil(t, innerIntersection)
+		innerIntersectionUserset := innerIntersection.Intersection
+		require.NotNil(t, innerIntersectionUserset)
+		require.Len(t, innerIntersectionUserset.GetChild(), 2)
+		var relationName []string
+		for _, child := range innerIntersectionUserset.GetChild() {
+			cu := child.GetUserset()
+			require.NotNil(t, cu)
+			cr := cu.(*openfgav1.Userset_ComputedUserset)
+			require.NotNil(t, cr)
+			relationName = append(relationName, cr.ComputedUserset.GetRelation())
+		}
+		require.Contains(t, relationName, "allowed")
+		require.Contains(t, relationName, "granted")
 	})
 	t.Run("operator_exclusion", func(t *testing.T) {
 		model := `
