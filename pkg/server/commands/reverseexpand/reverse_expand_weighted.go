@@ -271,28 +271,36 @@ type Traversal struct {
 	storeId   string
 }
 
-func (t *Traversal) Traverse(sourceType, targetType, targetIdentifier string) (Path, error) {
-	sourceNode, ok := t.graph.GetNodeByID(sourceType)
-	if !ok {
-		return Path{}, ErrNoSuchNode
-	}
+type Target *Node
+type Source *Node
 
-	targetNode, ok := t.graph.GetNodeByID(targetType)
-	if !ok {
-		return Path{}, ErrNoSuchNode
-	}
+func (t *Traversal) Target(name string) (Target, bool) {
+	targetNode, ok := t.graph.GetNodeByID(name)
+	return (Target)(targetNode), ok
+}
 
-	_, ok = sourceNode.GetWeight(targetNode.GetLabel())
-	if !ok {
-		return Path{}, ErrNoSuchPath
-	}
+func (t *Traversal) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := t.graph.GetNodeByID(name + "#" + relation)
+	return (Source)(sourceNode), ok
+}
 
+func (t *Traversal) Traverse(target Target, targetIdentifiers ...string) Path {
 	return Path{
-		traversal:        t,
-		source:           sourceNode,
-		target:           targetNode,
-		targetIdentifier: targetIdentifier,
-	}, nil
+		traversal:         t,
+		target:            (*Node)(target),
+		targetIdentifiers: targetIdentifiers,
+	}
+}
+
+func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
+	return transform(p.resolve(ctx, source), func(item Item) Item {
+		if item.Err != nil {
+			return item
+		}
+		parts := strings.Split(item.Value, "#")
+		item.Value = parts[0]
+		return item
+	})
 }
 
 func (t Traversal) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
@@ -377,11 +385,13 @@ func (t Traversal) query(ctx context.Context, objectType, objectRelation string,
 }
 
 type Path struct {
-	traversal        *Traversal
-	source           *Node
-	target           *Node
-	targetIdentifier string
-	breadcrumb       *element
+	traversal         *Traversal
+	target            *Node
+	targetIdentifiers []string
+	breadcrumb        *element
+	cycle             bool
+	cycleBegin        *Node
+	cycleIdentifiers  []string
 }
 
 func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
@@ -402,178 +412,7 @@ func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
 	return groups
 }
 
-func (p Path) processDirectEdges(ctx context.Context, edges []*Edge) iter.Seq[Item] {
-	var recursiveEdges []*Edge
-	var results []iter.Seq[Item]
-
-	for _, edge := range edges {
-		if edge.GetEdgeType() != EdgeTypeDirect {
-			panic("expected only direct edges")
-		}
-
-		if edge.GetRelationDefinition() == edge.GetTo().GetLabel() {
-			recursiveEdges = append(recursiveEdges, edge)
-			continue
-		}
-
-		object := strings.Split(edge.GetRelationDefinition(), "#")
-		if len(object) != 2 {
-			panic("relation definition on an edge must be formatted as `type#relation`")
-		}
-		objectType := object[0]
-		objectRelation := object[1]
-
-		switch edge.GetTo().GetNodeType() {
-		case NodeTypeSpecificType:
-			userFilter := []*openfgav1.ObjectRelation{{
-				Object:   edge.GetTo().GetLabel() + ":" + p.targetIdentifier,
-				Relation: "",
-			}}
-			results = append(results, p.traversal.query(ctx, objectType, objectRelation, userFilter))
-		case NodeTypeSpecificTypeWildcard:
-			userFilter := []*openfgav1.ObjectRelation{{
-				Object:   edge.GetTo().GetLabel(),
-				Relation: "",
-			}}
-			results = append(results, p.traversal.query(ctx, objectType, objectRelation, userFilter))
-		case NodeTypeSpecificTypeAndRelation:
-			if contains(p.breadcrumb, edge.GetTo()) {
-				continue
-			}
-			p.source = edge.GetTo()
-			seq := p.Resolve(ctx)
-			var userFilter []*openfgav1.ObjectRelation
-			var errs []Item
-
-			relation := strings.Split(edge.GetTo().GetLabel(), "#")[1]
-
-			for item := range seq {
-				if item.Err != nil {
-					errs = append(errs, item)
-					continue
-				}
-
-				userFilter = append(userFilter, &openfgav1.ObjectRelation{
-					Object:   item.Value,
-					Relation: relation,
-				})
-			}
-
-			objects := p.traversal.query(ctx, objectType, objectRelation, userFilter)
-
-			if len(errs) > 0 {
-				objects = mergeOrdered(sequence(errs...), objects)
-			}
-			results = append(results, objects)
-		case NodeTypeOperator:
-			panic("direct edge cannot lead to operator node")
-		default:
-			panic("unknown node type for direct edge")
-		}
-	}
-
-	var objects iter.Seq[Item]
-
-	if len(results) < 1 {
-		return emptySequence
-	} else if len(results) > 1 {
-		objects = mergeUnordered(results...)
-	} else {
-		objects = results[0]
-	}
-
-	if len(recursiveEdges) == 0 {
-		return objects
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	ch := make(chan Item)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(ch)
-
-		for _, edge := range recursiveEdges {
-			parts := strings.Split(edge.GetTo().GetLabel(), "#")
-			objectType := parts[0]
-			objectRelation := parts[1]
-
-			seq := objects
-
-			for {
-				var userFilter []*openfgav1.ObjectRelation
-
-				for item := range seq {
-					select {
-					case <-ctx.Done():
-						return
-					case ch <- item:
-					}
-
-					if item.Err != nil {
-						continue
-					}
-
-					object := item.Value
-
-					relation := strings.Split(edge.GetRelationDefinition(), "#")[1]
-
-					userFilter = append(userFilter, &openfgav1.ObjectRelation{
-						Object:   object,
-						Relation: relation,
-					})
-				}
-
-				if len(userFilter) == 0 {
-					break
-				}
-				seq = p.traversal.query(ctx, objectType, objectRelation, userFilter)
-			}
-		}
-	}()
-
-	return func(yield func(Item) bool) {
-		defer wg.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
-	}
-}
-
-func (p Path) processComputedEdge(ctx context.Context, edge *Edge) iter.Seq[Item] {
-	if edge.GetEdgeType() != EdgeTypeComputed {
-		panic("expected only computed edge")
-	}
-	p.source = edge.GetTo()
-	return p.Resolve(ctx)
-}
-
-func (p Path) processRewriteEdge(ctx context.Context, edge *Edge) iter.Seq[Item] {
-	if edge.GetEdgeType() != EdgeTypeRewrite {
-		panic("expected only rewrite edge")
-	}
-	p.source = edge.GetTo()
-	return p.Resolve(ctx)
-}
-
-func (p Path) intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
+func intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
 	if len(seqs) == 0 {
 		return emptySequence
 	}
@@ -651,51 +490,146 @@ func (p Path) intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq
 	}
 }
 
-func (p Path) Resolve(ctx context.Context) iter.Seq[Item] {
-	_, ok := p.source.GetWeight(p.target.GetLabel())
+func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
+	if source == p.target {
+		targetType := strings.Split(p.target.GetLabel(), "#")[0]
+		return transform(sequence(p.targetIdentifiers...), func(id string) Item {
+			return Item{Value: targetType + ":" + id}
+		})
+	}
+
+	if contains(p.breadcrumb, source) {
+		return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
+			return Item{Value: id}
+		})
+	}
+
+	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
 		return emptySequence
 	}
 
-	p.breadcrumb = &element{node: p.source, next: p.breadcrumb}
-
-	groups := p.groupEdgesByType(p.source)
-
-	var results []iter.Seq[Item]
-
-	if group, ok := groups[EdgeTypeDirect]; ok {
-		results = append(results, p.processDirectEdges(ctx, group))
+	if p.cycleBegin == nil && source.IsPartOfTupleCycle() {
+		p.cycleBegin = source
 	}
 
-	if group, ok := groups[EdgeTypeComputed]; ok {
-		for _, edge := range group {
-			results = append(results, p.processComputedEdge(ctx, edge))
+	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
+	if !ok {
+		panic("given node not a member of graph")
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(ch)
+
+		for {
+			localp := p
+			localp.breadcrumb = &element{node: source, next: localp.breadcrumb}
+
+			var results []iter.Seq[Item]
+
+			for _, edge := range edges {
+				if p.cycle && !edge.IsPartOfTupleCycle() {
+					continue
+				}
+				results = append(results, localp.resolve(ctx, edge.GetTo()))
+			}
+
+			var objects iter.Seq[Item]
+
+			switch source.GetNodeType() {
+			case NodeTypeSpecificTypeAndRelation:
+				parts := strings.Split(source.GetLabel(), "#")
+				nodeType := parts[0]
+				nodeRelation := parts[1]
+
+				var userFilter []*openfgav1.ObjectRelation
+
+				var seq iter.Seq[Item]
+
+				if len(results) < 1 {
+					seq = emptySequence
+				} else if len(results) > 1 {
+					seq = mergeUnordered(results...)
+				} else {
+					seq = results[0]
+				}
+
+				for item := range seq {
+					parts := strings.Split(item.Value, "#")
+					object := parts[0]
+
+					var relation string
+
+					if len(parts) > 1 {
+						relation = parts[1]
+					}
+
+					userFilter = append(userFilter, &openfgav1.ObjectRelation{
+						Object:   object,
+						Relation: relation,
+					})
+				}
+				r := localp.traversal.query(ctx, nodeType, nodeRelation, userFilter)
+
+				objects = transform(r, func(item Item) Item {
+					item.Value = item.Value + "#" + nodeRelation
+					return item
+				})
+			case NodeTypeOperator:
+				switch source.GetLabel() {
+				case weightedGraph.IntersectionOperator:
+					objects = intersection(ctx, results...)
+				}
+			}
+
+			var values []string
+
+			for item := range objects {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- item:
+				}
+
+				values = append(values, item.Value)
+			}
+
+			if len(values) == 0 || localp.cycleBegin != source {
+				break
+			}
+
+			p.cycleIdentifiers = values
+			p.cycle = true
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
 		}
 	}
-
-	// TODO: handle TTU edges here
-
-	if group, ok := groups[EdgeTypeRewrite]; ok {
-		for _, edge := range group {
-			results = append(results, p.processRewriteEdge(ctx, edge))
-		}
-	}
-
-	if p.source.GetNodeType() == NodeTypeOperator && p.source.GetLabel() == weightedGraph.IntersectionOperator {
-		return p.intersection(ctx, results...)
-	}
-
-	var seq iter.Seq[Item]
-
-	if len(results) < 1 {
-		return emptySequence
-	} else if len(results) > 1 {
-		seq = mergeUnordered(results...)
-	} else {
-		seq = results[0]
-	}
-
-	return dedup(seq) // TODO: do we need to dedup always?
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,

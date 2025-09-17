@@ -56,10 +56,15 @@ func TestProcessDirectEdge(t *testing.T) {
 
 		ctx := context.Background()
 
-		path, err := traversal.Traverse(test.objectType+"#"+test.relation, test.user.Object.GetType(), test.user.Object.GetId())
-		require.NoError(t, err)
+		target, ok := traversal.Target(test.user.GetObjectType())
+		require.True(t, ok)
 
-		seq := path.Resolve(ctx)
+		source, ok := traversal.Source(test.objectType, test.relation)
+		require.True(t, ok)
+
+		path := traversal.Traverse(target, test.user.Object.GetId())
+
+		seq := path.Objects(ctx, source)
 
 		var results []string
 
@@ -235,6 +240,8 @@ func TestProcessDirectEdge(t *testing.T) {
 			tuples: []string{
 				"team:1#member@user:justin",
 				"team:2#member@user:justin",
+				"org:22#employee@team:2#member",
+				"team:22#member@org:22#employee",
 				"org:1#employee@user:justin",
 				"org:2#employee@user:justin",
 				"team:3#member@org:1#employee",
@@ -250,11 +257,12 @@ func TestProcessDirectEdge(t *testing.T) {
 				"document:5#viewer@team:5#member",
 				"document:6#viewer@team:6#member",
 				"document:7#viewer@team:0#member",
+				"document:22#viewer@team:22#member",
 			},
 			objectType: "document",
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6"},
+			expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
 		}
 
 		evaluate(t, tc)
