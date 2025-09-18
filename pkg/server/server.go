@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/open-feature/go-sdk/openfeature"
+	"github.com/openfga/openfga/internal/featureflags"
 	"slices"
 	"sort"
 	"time"
@@ -176,6 +178,8 @@ type Server struct {
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
+	featureProvider                  openfeature.FeatureProvider
+	featureClient                    *openfeature.Client
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
@@ -402,6 +406,12 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+func WithFeatureProvider(provider openfeature.FeatureProvider) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.featureProvider = provider
+	}
+}
+
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
 func WithAccessControlParams(enabled bool, storeID string, modelID string, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -591,7 +601,8 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
+	isEnabled := s.featureClient.Boolean(context.Background(), string(ExperimentalAccessControlParams), false, openfeature.EvaluationContext{})
+	return isEnabled && s.AccessControl.Enabled
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
@@ -907,6 +918,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	if s.featureProvider == nil {
+		flags := make([]string, 0, len(s.experimentals))
+		for _, val := range s.experimentals {
+			flags = append(flags, string(val))
+		}
+		s.featureProvider = featureflags.NewDefaultProvider(flags)
+	}
+
+	if err := openfeature.SetProviderAndWait(s.featureProvider); err != nil {
+		return nil, fmt.Errorf("failed to set feature provider: %v", err)
+	}
+
+	s.featureClient = openfeature.NewClient("fga")
+
 	err := s.validateAccessControlEnabled()
 	if err != nil {
 		return nil, err
@@ -960,10 +985,16 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
+	checkOptimizationsEnabled := s.featureClient.Boolean(
+		context.Background(),
+		string(ExperimentalCheckOptimizations),
+		false,
+		openfeature.EvaluationContext{},
+	)
 	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithOptimizations(checkOptimizationsEnabled),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
@@ -989,7 +1020,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithOptimizations(checkOptimizationsEnabled),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
