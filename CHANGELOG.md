@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Revert spf13/viper back to v.1.20.1 to avoid bumping sourcegraph/conc to an unreleased version as it causes performance degradation. [#2706](https://github.com/openfga/openfga/pull/2706)
 
+### Changed
+- Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
+
 ## [1.10.0] - 2025-09-11
 ### Added
 - Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
