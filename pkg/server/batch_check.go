@@ -52,14 +52,10 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	cmd := commands.NewBatchCheckCommand(
-		s.datastore,
-		s.checkResolver,
-		typesys,
-		commands.WithBatchCheckCacheOptions(s.sharedDatastoreResources, s.cacheSettings),
+		s.checkCommandServerConfig,
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
-		commands.WithBatchCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
@@ -67,6 +63,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		Checks:               req.GetChecks(),
 		Consistency:          req.GetConsistency(),
 		StoreID:              storeID,
+		Typesys:              typesys,
 	})
 
 	if err != nil {

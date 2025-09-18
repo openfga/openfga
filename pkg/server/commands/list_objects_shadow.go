@@ -66,12 +66,20 @@ func WithShadowListObjectsQueryMaxDeltaItems(maxDeltaItems int) ShadowListObject
 	}
 }
 
+// WithShadowListObjectsQueryOptions appends ListObjectsQueryOptions to override the default options for the shadow list_objects query.
+func WithShadowListObjectsQueryOptions(opts ...ListObjectsQueryOption) ShadowListObjectsQueryOption {
+	return func(c *ShadowListObjectsQueryConfig) {
+		c.opts = append(c.opts, opts...)
+	}
+}
+
 type ShadowListObjectsQueryConfig struct {
 	shadowEnabled bool          // A boolean flag to globally enable or disable the shadow mode for list_objects queries. When false, the shadow query will not be executed.
 	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	maxDeltaItems int           // The maximum number of items to log in the delta between the main and shadow results. This prevents excessive logging in case of large differences.
 	logger        logger.Logger
+	opts          []ListObjectsQueryOption
 }
 
 func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *ShadowListObjectsQueryConfig {
@@ -92,37 +100,43 @@ func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *Shad
 func NewListObjectsQueryWithShadowConfig(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	checkCommandServerConfig CheckCommandServerConfig,
 	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
 	if shadowConfig != nil && shadowConfig.shadowEnabled {
-		return newShadowedListObjectsQuery(ds, checkResolver, shadowConfig, opts...)
+		return newShadowedListObjectsQuery(ds, checkResolver, checkCommandServerConfig, shadowConfig, opts...)
 	}
 
-	return NewListObjectsQuery(ds, checkResolver, opts...)
+	return NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig, opts...)
 }
 
 // newShadowedListObjectsQuery creates a new ListObjectsResolver that runs two queries in parallel: one with optimizations and one without.
 func newShadowedListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	checkCommandServerConfig CheckCommandServerConfig,
 	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
 	if shadowConfig == nil {
 		return nil, errors.New("shadowConfig must be set")
 	}
-	standard, err := NewListObjectsQuery(ds, checkResolver,
+	standard, err := NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig,
 		// force disable optimizations
 		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(false)})...,
 	)
 	if err != nil {
 		return nil, err
 	}
-	optimized, err := NewListObjectsQuery(ds, checkResolver,
-		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithListObjectsOptimizationsEnabled(true)})...,
-	)
+	shadowOptions := slices.Concat(opts,
+		shadowConfig.opts, // override with any options using shadow config
+		[]ListObjectsQueryOption{
+			// force enable optimizations
+			WithListObjectsOptimizationsEnabled(true),
+		})
+
+	optimized, err := NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig, shadowOptions...)
 	if err != nil {
 		return nil, err
 	}

@@ -31,18 +31,20 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
-			WithShadowListObjectsQuerySamplePercentage(13),
-			WithShadowListObjectsQueryMaxDeltaItems(99),
-			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-		), WithListObjectsOptimizationsEnabled(true))
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(&mockTupleReader{}, &mockCheckResolver{}))
+		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg,
+			NewShadowListObjectsQueryConfig(
+				WithShadowListObjectsQuerySamplePercentage(13),
+				WithShadowListObjectsQueryMaxDeltaItems(99),
+				WithShadowListObjectsQueryTimeout(66*time.Millisecond),
+			),
+			WithListObjectsOptimizationsEnabled(true),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
 		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
-		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
 		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
-		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
 		assert.Equal(t, noopLogger, query.logger)
 		assert.Equal(t, 13, query.shadowPct)
 		assert.Equal(t, 99, query.maxDeltaItems)
@@ -50,13 +52,15 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, &mockCheckResolver{}))
+		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, checkCfg, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
 
 	t.Run("check_resolver_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, &mockCheckResolver{}))
+		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, checkCfg, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
@@ -311,19 +315,21 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_isShadowModeEnabled(t *testing.T) {
-	q, _ := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(100)))
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
+	q, _ := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(100)))
 	sq, ok := q.(*shadowedListObjectsQuery)
 	require.True(t, ok)
 	assert.True(t, sq.checkShadowModeSampleRate())
 
-	q, _ = newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(0)))
+	q, _ = newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(0)))
 	sq, ok = q.(*shadowedListObjectsQuery)
 	require.True(t, ok)
 	assert.False(t, sq.checkShadowModeSampleRate())
 }
 
 func TestShadowedListObjectsQuery_nilConfig(t *testing.T) {
-	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, nil)
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
+	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg, nil)
 	require.Error(t, err)
 }
 

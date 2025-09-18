@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -36,20 +37,25 @@ func TestNewListObjectsQuery(t *testing.T) {
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
-		q, err := NewListObjectsQuery(nil, checkResolver)
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, checkResolver))
+		q, err := NewListObjectsQuery(nil, checkResolver, checkCfg)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery(memory.New(), nil)
+		datastore := memory.New()
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, nil))
+		q, err := NewListObjectsQuery(datastore, nil, checkCfg)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
+		datastore := memory.New()
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+		q, err := NewListObjectsQuery(datastore, checkResolver, checkCfg)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
@@ -59,7 +65,10 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+	datastore := memory.New()
+	checkResolver := graph.NewLocalChecker()
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+	q, err := NewListObjectsQueryWithShadowConfig(datastore, checkResolver, checkCfg, NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(true),
 		WithShadowListObjectsQuerySamplePercentage(100),
 		WithShadowListObjectsQueryTimeout(13*time.Second),
@@ -76,7 +85,10 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+	datastore := memory.New()
+	checkResolver := graph.NewLocalChecker()
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+	q, err := NewListObjectsQueryWithShadowConfig(datastore, checkResolver, checkCfg, NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(false),
 	))
 	require.NoError(t, err)
@@ -286,9 +298,11 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
+			checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, checker))
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
+				checkCfg,
 				WithDispatchThrottlerConfig(threshold.Config{
 					Throttler:    mockThrottler,
 					Enabled:      true,
@@ -378,9 +392,11 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, checkResolver))
 	q, _ := NewListObjectsQuery(
 		ds,
 		checkResolver,
+		checkCfg,
 	)
 
 	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
@@ -471,7 +487,8 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -484,15 +501,168 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	require.Nil(t, resp)
 	require.ErrorIs(t, err, errors.ErrUnknown)
 }
+
+func TestListObjectsWithShadowModeCheck_Runs_Shadow(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+
+	mockLogger := mocks.NewMockLogger(mockController)
+
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{
+			Allowed: true,
+		}, nil
+	})
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	mockShadowCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{
+			Allowed: false,
+		}, nil
+	})
+	mockShadowCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	checkCfg := NewCheckCommandServerConfig(
+		NewCheckCommandConfig(ds, mockCheckResolver),
+		WithShadowCheckCommandConfig(
+			NewCheckCommandShadowConfig(
+				NewCheckCommandConfig(ds, mockShadowCheckResolver),
+				WithShadowCheckQueryEnabled(true),
+				WithShadowCheckQueryPct(100),
+				WithShadowCheckQueryLogger(mockLogger),
+				WithShadowCheckQueryRunSync(true),
+			),
+		),
+	)
+
+	tupleKey := tuple.NewTupleKey("folder:x", "viewer", "user:maria")
+
+	// Expect the "shadow check difference" log with all the correct fields
+	mockLogger.EXPECT().InfoWithContext(
+		gomock.Any(),
+		gomock.Eq("shadow check difference"),
+		zap.String("resolver", "list-objects"),
+		zap.String("request", tupleKey.String()),
+		zap.String("store_id", storeID),
+		zap.String("model_id", ts.GetAuthorizationModelID()),
+		zap.String("function", ShadowCheckQueryFunction),
+		zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
+		zap.Bool("main_cycle", false),
+		gomock.AssignableToTypeOf(zap.Int64("", 0)), // main_latency - we can't predict exact timing
+		zap.Uint32("main_query_count", uint32(0)),
+		zap.Bool("shadow", false),
+		zap.Bool("shadow_cycle", false),
+		gomock.AssignableToTypeOf(zap.Int64("", 0)), // shadow_latency - we can't predict exact timing
+		zap.Uint32("shadow_query_count", uint32(0)),
+	)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Objects, 1)
+}
+
+func TestListObjectsWithShadowModeCheck_Error(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	modelDsl := `
+		model
+			schema 1.1
+
+		type user
+
+		type folder
+			relations
+				define viewer: [user] but not blocked
+				define blocked: [user]`
+	tuples := []string{
+		"folder:x#viewer@user:maria",
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockCheckResolver.EXPECT().
+		ResolveCheck(gomock.Any(), gomock.Any()).
+		Return(nil, errors.ErrUnknown).
+		Times(1)
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	mockShadowCheckResolver := graph.NewMockCheckResolver(mockController)
+	mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
+	mockShadowCheckResolver.EXPECT().GetDelegate().Times(0)
+
+	checkCfg := NewCheckCommandServerConfig(
+		NewCheckCommandConfig(ds, mockCheckResolver),
+		WithShadowCheckCommandConfig(
+			NewCheckCommandShadowConfig(
+				NewCheckCommandConfig(ds, mockShadowCheckResolver),
+				WithShadowCheckQueryEnabled(true),
+				WithShadowCheckQueryPct(100),
+				WithShadowCheckQueryRunSync(true),
+			),
+		),
+	)
+
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:maria",
+	})
+
+	require.Nil(t, resp)
+	require.ErrorIs(t, err, errors.ErrUnknown)
+}
+
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	tests := []struct {
 		shadowEnabled bool
 	}{
 		{
 			shadowEnabled: false,
-		},
-		{
-			shadowEnabled: true,
 		},
 	}
 
@@ -536,11 +706,6 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 			mockCacheController := mocks.NewMockCacheController(ctrl)
 			mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
 
-			mockShadowCacheController := mocks.NewMockCacheController(ctrl)
-			if test.shadowEnabled {
-				mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
-			}
-
 			cacheSettings := serverconfig.CacheSettings{
 				ListObjectsIteratorCacheEnabled:    true,
 				ListObjectsIteratorCacheTTL:        1 * time.Second,
@@ -557,13 +722,14 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 				ds,
 				cacheSettings,
 				shared.WithCacheController(mockCacheController),
-				shared.WithShadowCacheController(mockShadowCacheController),
 			)
 			require.NoError(t, err)
 
+			checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
 			q, _ := NewListObjectsQuery(
 				ds,
 				mockCheckResolver,
+				checkCfg,
 				WithListObjectsCache(sharedResources, cacheSettings),
 			)
 
@@ -672,9 +838,11 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,
+		checkCfg,
 		WithListObjectsOptimizationsEnabled(true),
 
 		// unlimited results, these tests are designed to return `n` results per iteration
