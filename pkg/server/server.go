@@ -11,6 +11,7 @@ import (
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
+	"github.com/open-feature/go-sdk/openfeature"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
@@ -176,6 +178,8 @@ type Server struct {
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
+	featureProvider                  openfeature.FeatureProvider
+	featureClient                    *openfeature.Client
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
@@ -398,6 +402,12 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+func WithFeatureProvider(provider openfeature.FeatureProvider) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.featureProvider = provider
+	}
+}
+
 // WithAccessControlParams sets enabled, the storeID, and modelID for the access control feature.
 func WithAccessControlParams(enabled bool, storeID string, modelID string, authnMethod string) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -593,7 +603,8 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
+	isEnabled := s.featureClient.Boolean(context.Background(), string(ExperimentalAccessControlParams), false, openfeature.EvaluationContext{})
+	return isEnabled && s.AccessControl.Enabled
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
@@ -906,6 +917,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if s.listUsersDispatchThrottlingMaxThreshold != 0 && s.listUsersDispatchDefaultThreshold > s.listUsersDispatchThrottlingMaxThreshold {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
+
+	if s.featureProvider == nil {
+		flags := make([]string, 0, len(s.experimentals))
+		for _, val := range s.experimentals {
+			flags = append(flags, string(val))
+		}
+		s.featureProvider = featureflags.NewDefaultProvider(flags)
+	}
+
+	if err := openfeature.SetProviderAndWait(s.featureProvider); err != nil {
+		return nil, fmt.Errorf("failed to set feature provider: %v", err)
+	}
+
+	s.featureClient = openfeature.NewClient("fga")
 
 	err := s.validateAccessControlEnabled()
 	if err != nil {

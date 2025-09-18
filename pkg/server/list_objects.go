@@ -6,6 +6,7 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/open-feature/go-sdk/openfeature"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -72,6 +73,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	}
 	defer checkResolverCloser()
 
+	optimizationsEnabled := s.featureClient.Boolean(
+		ctx,
+		string(ExperimentalListObjectsOptimizations),
+		false,
+		openfeature.EvaluationContext{},
+	)
+
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		checkResolver,
@@ -96,7 +104,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
-		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
+		commands.WithListObjectsOptimizationsEnabled(optimizationsEnabled),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
