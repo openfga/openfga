@@ -601,7 +601,7 @@ func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	isEnabled, _ := s.featureClient.BooleanValue(nil, string(ExperimentalAccessControlParams), false, openfeature.EvaluationContext{})
+	isEnabled := s.featureClient.Boolean(context.Background(), string(ExperimentalAccessControlParams), false, openfeature.EvaluationContext{})
 	return isEnabled && s.AccessControl.Enabled
 }
 
@@ -918,6 +918,20 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
+	if s.featureProvider == nil {
+		flags := make([]string, 0, len(s.experimentals))
+		for _, val := range s.experimentals {
+			flags = append(flags, string(val))
+		}
+		s.featureProvider = featureflags.NewDefaultProvider(flags)
+	}
+
+	if err := openfeature.SetProviderAndWait(s.featureProvider); err != nil {
+		return nil, fmt.Errorf("failed to set feature provider: %v", err)
+	}
+
+	s.featureClient = openfeature.NewClient("fga")
+
 	err := s.validateAccessControlEnabled()
 	if err != nil {
 		return nil, err
@@ -926,16 +940,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	if err = s.validateShadowListObjectsQueryEnabled(); err != nil {
 		return nil, err
 	}
-
-	if s.featureProvider == nil {
-		s.featureProvider = featureflags.NewDefaultProvider(s.experimentals)
-	}
-
-	if err := openfeature.SetProviderAndWait(s.featureProvider); err != nil {
-		return nil, fmt.Errorf("failed to set feature provider: %v", err)
-	}
-
-	s.featureClient = openfeature.NewClient("fga")
 
 	// below this point, don't throw errors or we may leak resources in tests
 
@@ -981,7 +985,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	checkOptimizationsEnabled, _ := s.featureClient.BooleanValue(
+	checkOptimizationsEnabled := s.featureClient.Boolean(
 		context.Background(),
 		string(ExperimentalCheckOptimizations),
 		false,

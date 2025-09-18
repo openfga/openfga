@@ -65,7 +65,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	optimizationsEnabled, _ := s.featureClient.BooleanValue(
+	optimizationsEnabled := s.featureClient.Boolean(
 		ctx,
 		string(ExperimentalListObjectsOptimizations),
 		false,

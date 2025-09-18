@@ -4,21 +4,18 @@ import (
 	"context"
 	"fmt"
 	"github.com/open-feature/go-sdk/openfeature"
-	"github.com/openfga/openfga/pkg/server"
 )
 
 type Provider struct {
-	//svc string // TODO: this will be our feature flags thign
 	flags map[string]struct{}
 }
 
 type ProviderOption func(*Provider)
 
-func NewDefaultProvider(flags []server.ExperimentalFeatureFlag, opts ...ProviderOption) *Provider {
-	// take in the experimental flags by default, and add them to map
+func NewDefaultProvider(flags []string, opts ...ProviderOption) *Provider {
 	enabledFlags := make(map[string]struct{})
 	for _, flag := range flags {
-		enabledFlags[string(flag)] = struct{}{}
+		enabledFlags[flag] = struct{}{}
 	}
 	fmt.Printf("<--------------------------> default features enabled: %v\n", enabledFlags)
 	return &Provider{
