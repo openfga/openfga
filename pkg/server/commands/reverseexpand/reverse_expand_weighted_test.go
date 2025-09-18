@@ -218,7 +218,7 @@ func TestProcessDirectEdge(t *testing.T) {
 		evaluate(t, tc)
 	})
 
-	t.Run("mean_tuple_cycle", func(t *testing.T) {
+	t.Run("beast_mode", func(t *testing.T) {
 		tc := testcase{
 			model: `model
 			  schema 1.1
@@ -231,11 +231,11 @@ func TestProcessDirectEdge(t *testing.T) {
 
 				type team
 					relations
-						define member: [user, document#viewer]
+						define member: [user, document#viewer, org#employee]
 			
 				type org
 					relations
-						define employee: [user, document#viewer]
+						define employee: [user, document#viewer, team#member]
 			`,
 			tuples: []string{
 				"team:1#member@user:justin",
@@ -251,11 +251,91 @@ func TestProcessDirectEdge(t *testing.T) {
 				"document:1#viewer@org:4#employee",
 				"document:8#viewer@org:3#employee",
 				"org:4#employee@user:justin",
+
+				"document:a#viewer@team:a#member",
+				"team:a#member@user:justin",
+				"document:b#viewer@org:b#employee",
+				"org:b#employee@document:a#viewer",
+				// expect document:a, document:b
+
+				"document:c#viewer@org:c#employee",
+				"org:c#employee@user:justin",
+				"document:d#viewer@team:b#member",
+				"team:b#member@document:c#viewer",
+				// expect document:c, document:d
+
+				"document:e#viewer@team:e#member",
+				"team:e#member@org:e#employee",
+				"org:e#employee@user:justin",
+				"document:f#viewer@org:f#employee",
+				"org:f#employee@document:e#viewer",
+				"document:g#viewer@team:g#member",
+				"team:g#member@org:g#employee",
+				"org:g#employee@document:f#viewer",
+				// expect document:e, document:f, document:g
+
+				"document:h#viewer@org:h#employee",
+				"org:h#employee@team:h#member",
+				"team:h#member@user:justin",
+				"document:i#viewer@team:i#member",
+				"team:i#member@document:h#viewer",
+				"document:j#viewer@org:i#employee",
+				"org:i#employee@team:j#member",
+				"team:j#member@document:i#viewer",
+				// expect document:h, document:i, document:j
 			},
 			objectType: "document",
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
-			expected:   []string{"document:1", "document:3", "document:5", "document:8"},
+			expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
+		}
+
+		evaluate(t, tc)
+	})
+
+	t.Run("mean_tuple_cycle", func(t *testing.T) {
+		tc := testcase{
+			model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member, org#employee]
+
+				type team
+					relations
+						define member: [user, document#viewer, org#employee]
+			
+				type org
+					relations
+						define employee: [user, document#viewer, team#member]
+			`,
+			tuples: []string{
+				"team:1#member@user:justin",
+				"team:2#member@user:justin",
+				"org:1#employee@user:justin",
+				"org:2#employee@user:justin",
+				"org:3#employee@document:1#viewer",
+				"org:4#employee@document:2#viewer",
+				"team:3#member@document:3#viewer",
+				"document:3#viewer@team:4#member",
+				"team:4#member@user:justin",
+				"document:5#viewer@team:3#member",
+				"document:1#viewer@org:4#employee",
+				"document:8#viewer@org:3#employee",
+				"org:4#employee@user:justin",
+				"document:0#viewer@org:0#employee",
+				"org:0#employee@team:0#member",
+				"team:0#member@org:00#employee",
+				"org:00#employee@team:00#member",
+				"team:00#member@document:8#viewer",
+			},
+			objectType: "document",
+			relation:   "viewer",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+			expected:   []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
 		}
 
 		evaluate(t, tc)

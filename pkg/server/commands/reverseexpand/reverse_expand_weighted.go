@@ -511,10 +511,13 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 
 	// if we have already traversed this node on the current path.
 	if contains(p.breadcrumb, source) {
-		// the identifiers for this cycle need to be turned into items.
-		return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
-			return Item{Value: id}
-		})
+		if p.cycleBegin == source {
+			return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
+				return Item{Value: id}
+			})
+		}
+		p.cycleBegin = source
+		p.breadcrumb = nil
 	}
 
 	// does the current node have a path to the target node?
@@ -523,16 +526,12 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 		return emptySequence
 	}
 
-	// if no cycle beginning has been recored, yet the node is part of a tuple cycle, record the
-	// current node as the beginning of a tuple cycle.
-	if p.cycleBegin == nil && source.IsPartOfTupleCycle() {
-		p.cycleBegin = source
-	}
-
 	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
 		panic("given node not a member of graph")
 	}
+
+	p.breadcrumb = &element{node: source, next: p.breadcrumb} // add the current node to our breadcrumb trail
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -546,16 +545,12 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 		defer close(ch)
 
 		for {
-			localp := p // shadow the current path so as not to mutate the original as we iterate.
-
-			localp.breadcrumb = &element{node: source, next: localp.breadcrumb} // add the current node to our breadcrumb trail
-
 			var results []iter.Seq[Item]
 
 			for _, edge := range edges {
 				// if currently traversing a tuple cycle, but the edge is not part of a tuple cycle, skip it.
 				// otherwise, all edges will be processed.
-				if p.cycle && !edge.IsPartOfTupleCycle() {
+				if p.cycle && !edge.GetTo().IsPartOfTupleCycle() {
 					continue
 				}
 
@@ -563,9 +558,7 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 				case EdgeTypeDirect:
 					switch edge.GetTo().GetNodeType() {
 					case NodeTypeSpecificTypeAndRelation:
-						// this is a direct edge to a node of specific type and relation.
-						// we need to process the next node and process its results.
-						outcome := localp.resolve(ctx, edge.GetTo())
+						outcome := p.resolve(ctx, edge.GetTo())
 
 						// for our upcoming query, we need the type and relation off of the specific type and relation ancestor node.
 						parts := strings.Split(edge.GetRelationDefinition(), "#")
@@ -588,9 +581,9 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 								Relation: userRelation,
 							})
 						}
-						results = append(results, localp.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
 					case NodeTypeSpecificType, NodeTypeSpecificTypeWildcard:
-						outcome := localp.resolve(ctx, edge.GetTo())
+						outcome := p.resolve(ctx, edge.GetTo())
 
 						parts := strings.Split(edge.GetRelationDefinition(), "#")
 						nodeType := parts[0]
@@ -604,14 +597,14 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 								Relation: "",
 							})
 						}
-						results = append(results, localp.traversal.query(ctx, nodeType, nodeRelation, userFilter))
+						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
 					default:
 						panic("unexpected node type in direct edge resolve")
 					}
 				case EdgeTypeRewrite:
-					results = append(results, localp.resolve(ctx, edge.GetTo()))
+					results = append(results, p.resolve(ctx, edge.GetTo()))
 				case EdgeTypeComputed:
-					results = append(results, localp.resolve(ctx, edge.GetTo()))
+					results = append(results, p.resolve(ctx, edge.GetTo()))
 				case EdgeTypeTTU:
 					panic("unexpected TTU edge in resolve")
 				default:
@@ -663,12 +656,12 @@ func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
 				values = append(values, item.Value)
 			}
 
-			if len(values) == 0 || localp.cycleBegin != source {
+			if len(values) == 0 || p.cycleBegin != source {
 				break
 			}
 
-			p.cycleIdentifiers = values
 			p.cycle = true
+			p.cycleIdentifiers = values
 		}
 	}()
 
