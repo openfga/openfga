@@ -20,8 +20,8 @@ type shadowedCheckQuery struct {
 
 	name string
 
-	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
-	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
+	shadowPct     int           // An integer representing the shadowPct of Check API requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
+	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow check query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 
 	logger logger.Logger
 
@@ -32,8 +32,8 @@ type shadowedCheckQuery struct {
 
 type ShadowCheckCommandConfig struct {
 	enabled       bool          // A boolean indicating whether shadow mode is enabled.
-	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
-	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
+	shadowPct     int           // An integer representing the shadowPct of Check API requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
+	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow check query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	logger        logger.Logger
 	cfg           CheckCommandConfig // embedded to ensure we can create a shadowed check command with all necessary params
 	runSync       bool               // if true, run shadow query synchronously (used for testing)
