@@ -113,3 +113,23 @@ repository:
           ci: true
           release: true
         comment: Snyk is enabled for this repository to scan for vulnerabilities.
+      - name: Socket
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: Socket is enabled for this repo to scan for supply chain security vulnerabilities.
+      - name: OSSF Scorecard
+        type: SCA
+        version: latest
+        rulesets:
+          - built-in
+        integration:
+          adhoc: false
+          ci: true
+          release: true
+        comment: OSSF Scorecard is enabled for this repository
