@@ -99,11 +99,10 @@ func NewCheckCommandServerConfig(main CheckCommandConfig, opts ...CheckCommandSe
 	return serverConfig
 }
 
-// NewCheckCommandWithServerConfig creates a CheckCommand that automatically handles shadow mode
+// NewCheckCommand creates a CheckCommand that automatically handles shadow mode
 // based on the server configuration. This is the main entry point that should be used
 // throughout the codebase instead of the individual factory functions.
-// TODO : replace public NewCheckCommand with this.
-func NewCheckCommandWithServerConfig(serverConfig CheckCommandServerConfig, params CheckCommandParams) CheckCommand {
+func NewCheckCommand(serverConfig CheckCommandServerConfig, params CheckCommandParams) CheckCommand {
 	return newCheckCommandWithShadowConfig(serverConfig.checkCfg, serverConfig.shadowCfg, params)
 }
 
@@ -135,7 +134,7 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
-func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, params CheckCommandParams, opts ...CheckQueryOption) *CheckQuery {
+func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, params CheckCommandParams, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		params:               params,
 		logger:               logger.NewNoopLogger(),

@@ -8,7 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
+- Breaking: Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
+  > The following breaking changes are related to the `server.Server` interface. If you are not customizing the server, then these changes should not impact your usage of OpenFGA.
+    - Removed `WithShadowListObjectsCheckResolverEnabled` server option.
+    - Removed `WithShadowListObjectsCheckResolverTimeout` server option.
+    - Removed `WithShadowListObjectsCheckResolverSamplePercentage` server option.
+  > The following breaking changes are related to the `CheckResolver`. If you are not customizing a check resolver, then these changes should not impact your usage of OpenFGA.
+    - Removed `WithLocalShadowCheckerOpts` option.
+    - Removed `WithShadowResolverEnabled` option.
+    - Removed `WithShadowResolverOpts` option.
+    - Removed `ShadowResolver` struct implementation, replaced by `ShadowCheckCommand`.
 
 ### Fixed
 - Revert spf13/viper back to v.1.20.1 to avoid bumping sourcegraph/conc to an unreleased version as it causes performance degradation. [#2706](https://github.com/openfga/openfga/pull/2706)

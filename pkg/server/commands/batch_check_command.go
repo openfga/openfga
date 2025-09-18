@@ -166,7 +166,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Operation:        "batch-check",
 			}
 
-			checkQuery := NewCheckCommandWithServerConfig(bq.checkConfig, checkParams)
+			checkQuery := NewCheckCommand(bq.checkConfig, checkParams)
 
 			response, metadata, err := checkQuery.Execute(ctx)
 

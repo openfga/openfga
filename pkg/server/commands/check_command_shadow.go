@@ -102,9 +102,9 @@ func NewCheckCommandShadowConfig(cfg CheckCommandConfig, opts ...ShadowCheckQuer
 }
 
 func newCheckCommandWithShadowConfig(cfg CheckCommandConfig, shadowConfig ShadowCheckCommandConfig, params CheckCommandParams) CheckCommand {
-	checkCommand := NewCheckCommand(cfg.datastore, cfg.checkResolver, params, cfg.options...)
+	checkCommand := NewCheckQuery(cfg.datastore, cfg.checkResolver, params, cfg.options...)
 	if shadowConfig.isEnabled() {
-		shadowCheckCommand := NewCheckCommand(shadowConfig.cfg.datastore, shadowConfig.cfg.checkResolver, params, shadowConfig.cfg.options...)
+		shadowCheckCommand := NewCheckQuery(shadowConfig.cfg.datastore, shadowConfig.cfg.checkResolver, params, shadowConfig.cfg.options...)
 		return newShadowCheckCommand(params.Operation, checkCommand, shadowCheckCommand, shadowConfig)
 	}
 	return checkCommand

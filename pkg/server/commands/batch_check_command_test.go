@@ -156,11 +156,11 @@ func TestBatchCheckCommand(t *testing.T) {
 			zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
 			zap.Bool("main_cycle", false),
 			gomock.AssignableToTypeOf(zap.Int64("", 0)), // main_latency - we can't predict exact timing
-			zap.Uint32("main_query_count", uint32(0)),   // FIXME: mock metadata
+			zap.Uint32("main_query_count", uint32(0)),
 			zap.Bool("shadow", false),
 			zap.Bool("shadow_cycle", false),
 			gomock.AssignableToTypeOf(zap.Int64("", 0)), // shadow_latency - we can't predict exact timing
-			zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+			zap.Uint32("shadow_query_count", uint32(0)),
 		).Times(numChecks)
 
 		result, meta, err := cmd.Execute(context.Background(), params)

@@ -408,7 +408,7 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommandWithServerConfig(q.checkCommandServerConfig,
+					resp, checkRequestMetadata, err := NewCheckCommand(q.checkCommandServerConfig,
 						CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),

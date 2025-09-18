@@ -73,7 +73,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Operation:        "check",
 	}
 
-	checkCommand = commands.NewCheckCommandWithServerConfig(s.checkCommandServerConfig, params)
+	checkCommand = commands.NewCheckCommand(s.checkCommandServerConfig, params)
 
 	resp, checkRequestMetadata, err := checkCommand.Execute(ctx)
 

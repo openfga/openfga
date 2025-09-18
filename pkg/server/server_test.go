@@ -1118,7 +1118,7 @@ func TestCheckWithShadowMode(t *testing.T) {
 
 	// Verify that shadow check resolver is enabled
 	require.True(t, s.shadowCheckResolverEnabled)
-	require.NotNil(t, s.checkCommandServerConfig) // TODO : assert shadow config specifically
+	require.NotNil(t, s.checkCommandServerConfig)
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,

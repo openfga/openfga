@@ -46,7 +46,7 @@ type doc
 	require.NoError(t, err)
 
 	t.Run("validates_input_user", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "invalid:1",
@@ -60,7 +60,7 @@ type doc
 	})
 
 	t.Run("validates_input_relation", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -74,7 +74,7 @@ type doc
 	})
 
 	t.Run("validates_input_object", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID: ulid.Make().String(),
 			TupleKey: &openfgav1.CheckRequestTupleKey{
 				User:     "user:1",
@@ -88,7 +88,7 @@ type doc
 	})
 
 	t.Run("validates_input_contextual_tuple", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("invalid:1", "viewer", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -103,7 +103,7 @@ type doc
 	})
 
 	t.Run("validates_tuple_key_less_strictly_than_contextual_tuples", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer_computed", "user:1"),
 			ContextualTuples: &openfgav1.ContextualTupleKeys{
@@ -119,7 +119,7 @@ type doc
 	})
 
 	t.Run("no_validation_error_and_call_to_resolver_goes_through", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -132,7 +132,7 @@ type doc
 	})
 
 	t.Run("returns_db_metrics", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -151,7 +151,7 @@ type doc
 	})
 
 	t.Run("sets_context", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -172,7 +172,7 @@ type doc
 	})
 
 	t.Run("no_validation_error_but_call_to_resolver_fails", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -183,7 +183,7 @@ type doc
 	})
 
 	t.Run("ignores_cache_controller_with_high_consistency", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:     ulid.Make().String(),
 			TupleKey:    tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Consistency: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
@@ -201,7 +201,7 @@ type doc
 		storeID := ulid.Make().String()
 		invalidationTime := time.Now().UTC()
 		cacheController := mockstorage.NewMockCacheController(mockController)
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  storeID,
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -220,7 +220,7 @@ type doc
 	})
 
 	t.Run("fails_if_store_id_is_missing", func(t *testing.T) {
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  "",
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -247,7 +247,7 @@ type doc
 				return nil, context.DeadlineExceeded
 			})
 
-		cmd := NewCheckCommand(mockDatastore, mockCheckResolver, CheckCommandParams{
+		cmd := NewCheckQuery(mockDatastore, mockCheckResolver, CheckCommandParams{
 			StoreID:  ulid.Make().String(),
 			TupleKey: tuple.NewCheckRequestTupleKey("doc:1", "viewer", "user:1"),
 			Typesys:  ts,
@@ -438,7 +438,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		// Should be a regular CheckQuery, not a shadowedCheckQuery
 		_, isCheckQuery := command.(*CheckQuery)
@@ -453,7 +453,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		// Should be a shadowedCheckQuery when shadow is enabled
 		_, isCheckQuery := command.(*CheckQuery)
@@ -468,7 +468,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		// Should be a regular CheckQuery when percentage is 0
 		_, isCheckQuery := command.(*CheckQuery)
@@ -490,7 +490,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfigWithOptions, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		checkQuery, ok := command.(*CheckQuery)
 		require.True(t, ok)
@@ -586,7 +586,7 @@ type doc
 		require.True(t, serverConfig.shadowCfg.isEnabled())
 
 		// Create command
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		// Verify we get a shadow command
 		shadowedCommand, isShadowedQuery := command.(*shadowedCheckQuery)
@@ -647,9 +647,9 @@ type doc
 			zap.String("model_id", params.Typesys.GetAuthorizationModelID()),
 			zap.String("function", ShadowCheckQueryFunction),
 			gomock.Any(), // main_latency - we can't predict exact timing
-			zap.Uint32("main_query_count", uint32(0)), // FIXME: mock metadata
+			zap.Uint32("main_query_count", uint32(0)),
 			gomock.Any(), // shadow_latency - we can't predict exact timing
-			zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+			zap.Uint32("shadow_query_count", uint32(0)),
 		).Times(1)
 
 		// Execute the command
@@ -662,8 +662,6 @@ type doc
 		// Verify main response is returned (shadow runs in background)
 		require.NotNil(t, response)
 		require.True(t, response.GetAllowed())
-		// TODO : find a way to mock the datastore query count so we can verify it's correctly set from the main resolver
-		// require.Equal(t, mainQueryCount, response.GetResolutionMetadata().DatastoreQueryCount)
 
 		// Verify metadata is from main query
 		require.NotNil(t, metadata)
@@ -690,7 +688,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		shadowedCommand, ok := command.(*shadowedCheckQuery)
 		require.True(t, ok)
@@ -736,12 +734,12 @@ type doc
 			zap.String("function", ShadowCheckQueryFunction),
 			zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
 			zap.Bool("main_cycle", false),
-			gomock.Any(),                              // main_latency - we can't predict exact timing
-			zap.Uint32("main_query_count", uint32(0)), // FIXME: mock metadata
+			gomock.Any(), // main_latency - we can't predict exact timing
+			zap.Uint32("main_query_count", uint32(0)),
 			zap.Bool("shadow", false),
 			zap.Bool("shadow_cycle", false),
-			gomock.Any(),                                // shadow_latency - we can't predict exact timing
-			zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+			gomock.Any(), // shadow_latency - we can't predict exact timing
+			zap.Uint32("shadow_query_count", uint32(0)),
 		).Times(1)
 
 		// Execute
@@ -770,7 +768,7 @@ type doc
 		)
 
 		serverConfig := NewCheckCommandServerConfig(mainConfig, WithShadowCheckCommandConfig(shadowConfig))
-		command := NewCheckCommandWithServerConfig(serverConfig, params)
+		command := NewCheckCommand(serverConfig, params)
 
 		shadowedCommand, ok := command.(*shadowedCheckQuery)
 		require.True(t, ok)

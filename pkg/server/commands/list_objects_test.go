@@ -527,7 +527,6 @@ func TestListObjectsWithShadowModeCheck_Runs_Shadow(t *testing.T) {
 	require.NoError(t, err)
 
 	mockController := gomock.NewController(t)
-	defer mockController.Finish() // TODO : no need to call Finish if using t.Cleanup above
 
 	mockLogger := mocks.NewMockLogger(mockController)
 
@@ -574,11 +573,11 @@ func TestListObjectsWithShadowModeCheck_Runs_Shadow(t *testing.T) {
 		zap.Bool("main", true), // Bug: should be true (response.GetAllowed()) but uses shadowRes.GetAllowed()
 		zap.Bool("main_cycle", false),
 		gomock.AssignableToTypeOf(zap.Int64("", 0)), // main_latency - we can't predict exact timing
-		zap.Uint32("main_query_count", uint32(0)),   // FIXME: mock metadata
+		zap.Uint32("main_query_count", uint32(0)),
 		zap.Bool("shadow", false),
 		zap.Bool("shadow_cycle", false),
 		gomock.AssignableToTypeOf(zap.Int64("", 0)), // shadow_latency - we can't predict exact timing
-		zap.Uint32("shadow_query_count", uint32(0)), // FIXME: mock metadata
+		zap.Uint32("shadow_query_count", uint32(0)),
 	)
 
 	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
