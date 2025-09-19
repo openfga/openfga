@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"time"
 
@@ -595,10 +594,6 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	}
 
 	return s
-}
-
-func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
-	return slices.Contains(s.experimentals, flag)
 }
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.

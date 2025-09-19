@@ -24,8 +24,8 @@ func TestNewDefaultProvider(t *testing.T) {
 	if _, ok := provider.flags["test-flag-2"]; !ok {
 		t.Errorf("Expected flag 'test-flag-2' to be in the map, but it wasn't")
 	}
-	if _, ok := provider.flags["non-existent-flag"]; ok {
-		t.Errorf("Did not expect 'non-existent-flag' to be in the map, but it was")
+	if len(provider.flags) != len(flags) {
+		t.Errorf("Expected %d flags, but got %d", len(flags), len(provider.flags))
 	}
 }
 
@@ -34,7 +34,7 @@ func TestBooleanEvaluation(t *testing.T) {
 	flags := []string{"enabled-flag", "another-enabled-flag"}
 	provider := NewDefaultProvider(flags)
 	ctx := context.Background()
-	flatCtx := make(openfeature.FlattenedContext)
+	flatCtx := openfeature.FlattenedContext{}
 
 	// Test case for an enabled flag
 	t.Run("Enabled Flag", func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestBooleanEvaluation(t *testing.T) {
 func TestOtherEvaluations(t *testing.T) {
 	provider := NewDefaultProvider([]string{})
 	ctx := context.Background()
-	flatCtx := make(openfeature.FlattenedContext)
+	flatCtx := openfeature.FlattenedContext{}
 
 	t.Run("StringEvaluation", func(t *testing.T) {
 		defaultValue := "default-value"
