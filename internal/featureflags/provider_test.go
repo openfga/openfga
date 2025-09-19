@@ -14,7 +14,7 @@ func TestNewDefaultProvider(t *testing.T) {
 
 	if provider == nil {
 		t.Errorf("NewDefaultProvider returned nil")
-		return // to make linter happy
+		return
 	}
 
 	// Verify that the flags map is correctly populated

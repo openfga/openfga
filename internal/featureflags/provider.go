@@ -12,6 +12,9 @@ type Provider struct {
 
 type ProviderOption func(*Provider)
 
+// NewDefaultProvider creates a feature provider for OpenFGA which conforms to the interface set by OpenFeature.
+// This default Provider reads its list of features from OpenFGA's experimental flags, and as a result its only
+// fully-functional method is BooleanEvaluation; all other methods return their received defaultValue.
 func NewDefaultProvider(flags []string, opts ...ProviderOption) *Provider {
 	enabledFlags := make(map[string]struct{})
 	for _, flag := range flags {
