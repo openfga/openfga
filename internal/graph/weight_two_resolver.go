@@ -28,9 +28,9 @@ const weightTwoResolver = "weight2"
 var weight2Plan = &planner.KeyPlanStrategy{
 	Type:         weightTwoResolver,
 	InitialGuess: 10 * time.Millisecond,
-	Lambda:       3,
-	Alpha:        3,
-	Beta:         3,
+	Lambda:       1,
+	Alpha:        1,
+	Beta:         1,
 }
 
 var ErrShortCircuit = errors.New("short circuit")
