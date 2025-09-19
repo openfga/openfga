@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -54,6 +53,7 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
+	upstreamTimeout      time.Duration
 	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -93,6 +93,12 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 	}
 }
 
+func WithUpstreamTimeout(timeout time.Duration) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.upstreamTimeout = timeout
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -102,6 +108,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
+		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
 	}
@@ -699,15 +706,14 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func profiledCheckHandler(logger logger.Logger, path string, key string, keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
+func (c *LocalChecker) profiledCheckHandler(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
-		isDeadline := errors.Is(err, context.DeadlineExceeded)
-		logger.Info("profiled check handler", zap.String("key", key), zap.String("resolver", strategy.Type), zap.String("method", path), zap.Bool("deadlined", isDeadline), zap.Duration("duration", time.Since(start)))
 		if err != nil {
+			// penalize plans that timeout from the upstream context
 			if errors.Is(err, context.DeadlineExceeded) {
-				keyPlan.UpdateStats(strategy, 4*time.Second)
+				keyPlan.UpdateStats(strategy, c.upstreamTimeout)
 			}
 			return nil, err
 		}
@@ -781,7 +787,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if plan.Type == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return profiledCheckHandler(c.logger, "userset", key, keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -814,7 +820,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				if strategy.Type == weightTwoResolver {
 					resolver = c.weight2Userset
 				}
-				resolvers = append(resolvers, profiledCheckHandler(c.logger, "userset", key, keyPlan, strategy, resolver(ctx, req, usersets, iter)))
+				resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -1024,7 +1030,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return profiledCheckHandler(c.logger, "ttu", planKey, keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 

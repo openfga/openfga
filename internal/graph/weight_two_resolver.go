@@ -28,9 +28,15 @@ const weightTwoResolver = "weight2"
 var weight2Plan = &planner.KeyPlanStrategy{
 	Type:         weightTwoResolver,
 	InitialGuess: 20 * time.Millisecond,
-	Lambda:       10.0,
-	Alpha:        20,
-	Beta:         2,
+	// High Lambda: Represents strong confidence in the initial guess. It's like
+	// starting with the belief of having already seen 10 good runs.
+	Lambda: 10.0,
+	// High Alpha, Low Beta: Creates a very NARROW belief about variance.
+	// This tells the planner: "I am very confident that the performance is
+	// consistently close to 10ms". A single slow run will be a huge surprise
+	// and will dramatically shift this belief.
+	Alpha: 20,
+	Beta:  2,
 }
 
 var ErrShortCircuit = errors.New("short circuit")

@@ -26,9 +26,14 @@ const recursiveResolver = "recursive"
 var recursivePlan = &planner.KeyPlanStrategy{
 	Type:         recursiveResolver,
 	InitialGuess: 150 * time.Millisecond,
-	Lambda:       2.0,
-	Alpha:        2.0,
-	Beta:         2.5,
+	// Medium Lambda: Represents medium confidence in the initial guess. It's like
+	// starting with the belief of having already seen 5 good runs.
+	Lambda: 5.0,
+	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
+	// Low Alpha/Beta values create a wider belief curve, telling the planner
+	// to expect and not be overly surprised by performance variations.
+	Alpha: 2.0,
+	Beta:  2.5,
 }
 
 type recursiveMapping struct {
