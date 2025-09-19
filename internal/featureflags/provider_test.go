@@ -14,6 +14,7 @@ func TestNewDefaultProvider(t *testing.T) {
 
 	if provider == nil {
 		t.Errorf("NewDefaultProvider returned nil")
+		return // to make linter happy
 	}
 
 	// Verify that the flags map is correctly populated
@@ -53,7 +54,7 @@ func TestBooleanEvaluation(t *testing.T) {
 }
 
 // TestOtherEvaluations checks that the other evaluation methods return the default values.
-// All non-boolean evaluations currently just return defaults
+// All non-boolean evaluations currently just return defaults.
 func TestOtherEvaluations(t *testing.T) {
 	provider := NewDefaultProvider([]string{})
 	ctx := context.Background()
