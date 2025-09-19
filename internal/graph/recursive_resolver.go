@@ -26,9 +26,9 @@ const recursiveResolver = "recursive"
 var recursivePlan = &planner.KeyPlanStrategy{
 	Type:         recursiveResolver,
 	InitialGuess: 30 * time.Millisecond,
-	Lambda:       1,
-	Alpha:        1,
-	Beta:         1,
+	Lambda:       3.0,
+	Alpha:        4.0,
+	Beta:         1.2,
 }
 
 type recursiveMapping struct {

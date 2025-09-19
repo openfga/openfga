@@ -23,16 +23,16 @@ var defaultPlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
 	InitialGuess: 40 * time.Millisecond,
 	Lambda:       1,
-	Alpha:        1,
-	Beta:         1,
+	Alpha:        0.5,
+	Beta:         0.5,
 }
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
 	InitialGuess: 90 * time.Millisecond,
 	Lambda:       1,
-	Alpha:        1,
-	Beta:         1,
+	Alpha:        0.5,
+	Beta:         0.5,
 }
 
 type dispatchParams struct {
