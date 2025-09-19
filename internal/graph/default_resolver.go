@@ -20,7 +20,7 @@ import (
 const defaultResolver = "default"
 
 var defaultPlan = &planner.KeyPlanStrategy{
-	Type:         weightTwoResolver,
+	Type:         defaultResolver,
 	InitialGuess: 40 * time.Millisecond,
 	Lambda:       1,
 	Alpha:        1,
@@ -28,7 +28,7 @@ var defaultPlan = &planner.KeyPlanStrategy{
 }
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
-	Type:         weightTwoResolver,
+	Type:         defaultResolver,
 	InitialGuess: 90 * time.Millisecond,
 	Lambda:       1,
 	Alpha:        1,
