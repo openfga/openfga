@@ -1904,48 +1904,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 }
 
-func TestIsExperimentallyEnabled(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	ds := memory.New() // Datastore required for server instantiation
-	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
-	t.Cleanup(ds.Close)
-
-	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-}
-
 func TestIsAccessControlEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
