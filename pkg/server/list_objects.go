@@ -3,10 +3,10 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/open-feature/go-sdk/openfeature"
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/open-feature/go-sdk/openfeature"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"

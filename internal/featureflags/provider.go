@@ -2,7 +2,7 @@ package featureflags
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/open-feature/go-sdk/openfeature"
 )
 
@@ -17,7 +17,6 @@ func NewDefaultProvider(flags []string, opts ...ProviderOption) *Provider {
 	for _, flag := range flags {
 		enabledFlags[flag] = struct{}{}
 	}
-	fmt.Printf("<--------------------------> default features enabled: %v\n", enabledFlags)
 	return &Provider{
 		flags: enabledFlags,
 	}
