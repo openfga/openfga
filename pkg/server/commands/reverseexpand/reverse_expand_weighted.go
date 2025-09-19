@@ -265,6 +265,58 @@ func dedup[T comparable](seq iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
+func unwrap[T any](seqs iter.Seq[iter.Seq[T]]) iter.Seq[T] {
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan T)
+
+	var wg sync.WaitGroup
+
+	for seq := range seqs {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for item := range seq {
+				select {
+				case ch <- item:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	var wg2 sync.WaitGroup
+
+	wg2.Add(1)
+	go func() {
+		defer wg2.Done()
+		defer close(ch)
+		wg.Wait()
+	}()
+
+	return func(yield func(T) bool) {
+		defer wg2.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(result) {
+					return
+				}
+			}
+		}
+	}
+}
+
 type canceler struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -540,6 +592,49 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 	wg.Wait()
 }
 
+type unionResolver struct {
+	backend *backend
+	node    *Node
+}
+
+func (r *unionResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
+	if len(senders) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		seqs := make([]iter.Seq[iter.Seq[Item]], len(senders))
+
+		for i, snd := range senders {
+			seqs[i] = snd.seq
+		}
+
+		mergedSeqs := mergeUnordered(seqs...)
+
+		unwrapped := dedup(unwrap(mergedSeqs))
+
+		var outSeqs []iter.Seq[Item]
+
+		if len(listeners) > 1 {
+			outSeqs = tee(unwrapped, len(listeners))
+		} else {
+			outSeqs = []iter.Seq[Item]{unwrapped}
+		}
+
+		for i, lst := range listeners {
+			select {
+			case lst.ch <- outSeqs[i]:
+			case <-lst.ctx.Done():
+			}
+		}
+	}()
+	wg.Wait()
+}
+
 type intersectionResolver struct {
 	backend *backend
 	node    *Node
@@ -651,6 +746,11 @@ func NewWorker(backend *backend, node *Node) *Worker {
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			r = &intersectionResolver{
+				backend: backend,
+				node:    node,
+			}
+		case weightedGraph.UnionOperator:
+			r = &unionResolver{
 				backend: backend,
 				node:    node,
 			}
