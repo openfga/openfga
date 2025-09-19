@@ -21,7 +21,7 @@ const defaultResolver = "default"
 
 var defaultPlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
-	InitialGuess: 40 * time.Millisecond,
+	InitialGuess: 50 * time.Millisecond,
 	Lambda:       1,
 	Alpha:        0.5,
 	Beta:         0.5,
@@ -29,7 +29,7 @@ var defaultPlan = &planner.KeyPlanStrategy{
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
-	InitialGuess: 200 * time.Millisecond,
+	InitialGuess: 300 * time.Millisecond,
 	Lambda:       1,
 	Alpha:        0.5,
 	Beta:         0.5,

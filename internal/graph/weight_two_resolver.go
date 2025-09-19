@@ -27,7 +27,7 @@ const weightTwoResolver = "weight2"
 
 var weight2Plan = &planner.KeyPlanStrategy{
 	Type:         weightTwoResolver,
-	InitialGuess: 15 * time.Millisecond,
+	InitialGuess: 20 * time.Millisecond,
 	Lambda:       10.0,
 	Alpha:        20,
 	Beta:         2,
