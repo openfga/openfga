@@ -29,7 +29,6 @@ type KeyPlanStrategy struct {
 
 // Config holds configuration for the planner.
 type Config struct {
-	InitialGuess      time.Duration // TODO: Remove
 	EvictionThreshold time.Duration // How long a key can be unused before being evicted. (e.g., 30 * time.Minute)
 	CleanupInterval   time.Duration // How often the planner checks for stale keys. (e.g., 5 * time.Minute)
 }
@@ -142,14 +141,6 @@ func (kp *KeyPlan) UpdateStats(plan *KeyPlanStrategy, duration time.Duration) {
 	// Use the optimized helper method to avoid allocations.
 	ts := kp.getOrCreateStats(plan)
 	ts.Update(duration)
-}
-
-// UpdateStatsOverGuess is like UpdateStats but only updates if the duration is worse than the initial guess.
-// This can help reduce noise from very fast responses that might not reflect true performance (or cancelled ones)..
-func (kp *KeyPlan) UpdateStatsOverGuess(plan *KeyPlanStrategy, duration time.Duration) {
-	if duration > plan.InitialGuess {
-		kp.UpdateStats(plan, duration)
-	}
 }
 
 // startCleanupRoutine runs a background goroutine that periodically evicts stale keys.

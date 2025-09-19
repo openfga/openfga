@@ -19,10 +19,16 @@ func TestPlanner_SelectResolver(t *testing.T) {
 		"fast": {
 			Type:         "fast",
 			InitialGuess: 5 * time.Millisecond,
+			Lambda:       1,
+			Alpha:        1,
+			Beta:         1,
 		},
 		"slow": {
 			Type:         "slow",
 			InitialGuess: 10 * time.Millisecond,
+			Lambda:       1,
+			Alpha:        1,
+			Beta:         1,
 		}}
 	kp := p.GetKeyPlan(key)
 	choice := kp.SelectStrategy(resolvers)
@@ -45,10 +51,16 @@ func TestProfiler_Update(t *testing.T) {
 		"fast": {
 			Type:         "fast",
 			InitialGuess: 5 * time.Millisecond,
+			Lambda:       1,
+			Alpha:        1,
+			Beta:         1,
 		},
 		"slow": {
 			Type:         "slow",
 			InitialGuess: 10 * time.Millisecond,
+			Lambda:       1,
+			Alpha:        1,
+			Beta:         1,
 		}}
 	// Heavily reward the "fast" strategy
 	for i := 0; i < 150; i++ {
@@ -101,36 +113,3 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 	_, exists := p.keys.Load("fresh_key")
 	require.True(t, exists, "fresh key should not have been evicted")
 }
-
-/*
-func BenchmarkKeyPlan(b *testing.B) {
-	p := New(&Config{InitialGuess: 10 * time.Millisecond})
-	kp := p.GetKeyPlan("test|store123|objectType|relation|userType")
-
-	resolvers := map[string]*KeyPlanStrategy{
-		"0": {
-			Type:         "fast",
-			InitialGuess: 5 * time.Millisecond,
-		},
-		"1": {
-			Type:         "slow",
-			InitialGuess: 10 * time.Millisecond,
-		}}
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			if i%2 == 0 {
-				_ = kp.SelectStrategy(resolvers)
-			} else {
-				resolver := resolvers[i%len(resolvers)]
-				duration := time.Duration(10+i%50) * time.Millisecond
-				kp.UpdateStats(resolver, duration)
-			}
-			i++
-		}
-	})
-}
-*/

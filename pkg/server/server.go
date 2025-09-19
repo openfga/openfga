@@ -877,7 +877,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
 		planner: planner.New(&planner.Config{
-			InitialGuess:      serverconfig.DefaultPlannerInitialGuess,
 			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
 			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
 		}),
