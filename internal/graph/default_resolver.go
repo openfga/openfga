@@ -4,18 +4,40 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sourcegraph/conc/panics"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const defaultResolver = "default"
+
+var defaultPlan = &planner.KeyPlanStrategy{
+	Type:         defaultResolver,
+	InitialGuess: 50 * time.Millisecond,
+	// Very Low Lambda: Represents zero confidence. It's a pure guess.
+	Lambda: 1,
+	Alpha:  0.5,
+	Beta:   0.5,
+}
+
+var defaultRecursivePlan = &planner.KeyPlanStrategy{
+	Type:         defaultResolver,
+	InitialGuess: 300 * time.Millisecond,
+	// Very Low Lambda: Represents zero confidence. It's a pure guess.
+	Lambda: 1,
+	// We use the same highly uncertain prior as before. Its job is to be
+	// an exploratory option, and its InitialGuess is only a starting point.
+	Alpha: 0.5,
+	Beta:  0.5,
+}
 
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest

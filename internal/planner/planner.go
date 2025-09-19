@@ -11,7 +11,6 @@ import (
 // It is safe for concurrent use and includes a background routine to evict old keys.
 type Planner struct {
 	keys              sync.Map // Stores *KeyPlan, ensuring fine-grained concurrency per key.
-	initialGuess      time.Duration
 	evictionThreshold time.Duration
 	// Use a pool of RNGs to reduce allocation overhead and initialization cost on the hot path.
 	rngPool sync.Pool
@@ -20,9 +19,16 @@ type Planner struct {
 	stopCleanup chan struct{}
 }
 
+type KeyPlanStrategy struct {
+	Type         string
+	InitialGuess time.Duration
+	Lambda       float64
+	Alpha        float64
+	Beta         float64
+}
+
 // Config holds configuration for the planner.
 type Config struct {
-	InitialGuess      time.Duration // The starting performance assumption for a new resolver.
 	EvictionThreshold time.Duration // How long a key can be unused before being evicted. (e.g., 30 * time.Minute)
 	CleanupInterval   time.Duration // How often the planner checks for stale keys. (e.g., 5 * time.Minute)
 }
@@ -30,7 +36,6 @@ type Config struct {
 // New creates a new Planner with the specified configuration and starts its cleanup routine.
 func New(config *Config) *Planner {
 	p := &Planner{
-		initialGuess:      config.InitialGuess,
 		evictionThreshold: config.EvictionThreshold,
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -49,7 +54,6 @@ func New(config *Config) *Planner {
 
 func NewNoopPlanner() *Planner {
 	p := &Planner{
-		initialGuess:      10 * time.Millisecond,
 		evictionThreshold: 0,
 		stopCleanup:       make(chan struct{}),
 		wg:                sync.WaitGroup{},
@@ -64,8 +68,7 @@ func NewNoopPlanner() *Planner {
 // GetKeyPlan retrieves the plan for a specific key, creating it if it doesn't exist.
 func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 	kp, _ := p.keys.LoadOrStore(key, &KeyPlan{
-		initialGuess: p.initialGuess,
-		planner:      p,
+		planner: p,
 	})
 
 	plan := kp.(*KeyPlan)
@@ -76,9 +79,8 @@ func (p *Planner) GetKeyPlan(key string) *KeyPlan {
 // KeyPlan manages the statistics for a single key and makes decisions about its resolvers.
 // This struct is now entirely lock-free, using a sync.Map to manage its stats.
 type KeyPlan struct {
-	initialGuess time.Duration
-	stats        sync.Map // Stores map[string]*ThompsonStats
-	planner      *Planner
+	stats   sync.Map // Stores map[string]*ThompsonStats
+	planner *Planner
 	// lastAccessed stores the UnixNano timestamp of the last access.
 	// Using atomic guarantees thread-safe updates without a mutex.
 	lastAccessed atomic.Int64
@@ -91,25 +93,25 @@ func (kp *KeyPlan) touch() {
 
 // getOrCreateStats atomically retrieves or creates the ThompsonStats for a given resolver name.
 // This avoids the allocation overhead of calling LoadOrStore directly on the hot path.
-func (kp *KeyPlan) getOrCreateStats(name string) *ThompsonStats {
+func (kp *KeyPlan) getOrCreateStats(plan *KeyPlanStrategy) *ThompsonStats {
 	// Fast path: Try a simple load first. This avoids the allocation in the common case.
-	val, ok := kp.stats.Load(name)
+	val, ok := kp.stats.Load(plan.Type)
 	if ok {
 		return val.(*ThompsonStats)
 	}
 
 	// Slow path: The stats don't exist. Create a new one.
-	newTS := NewThompsonStats(kp.initialGuess)
+	newTS := NewThompsonStats(plan.InitialGuess, plan.Lambda, plan.Alpha, plan.Beta)
 
 	// Use LoadOrStore to handle the race where another goroutine might have created it
 	// in the time between our Load and now. The newTs object is only stored if
 	// no entry existed.
-	actual, _ := kp.stats.LoadOrStore(name, newTS)
+	actual, _ := kp.stats.LoadOrStore(plan.Type, newTS)
 	return actual.(*ThompsonStats)
 }
 
-// SelectResolver implements the Thompson Sampling decision rule.
-func (kp *KeyPlan) SelectResolver(resolvers []string) string {
+// SelectStrategy implements the Thompson Sampling decision rule.
+func (kp *KeyPlan) SelectStrategy(resolvers map[string]*KeyPlanStrategy) *KeyPlanStrategy {
 	kp.touch() // Mark this key as recently used.
 
 	rng := kp.planner.rngPool.Get().(*rand.Rand)
@@ -118,35 +120,27 @@ func (kp *KeyPlan) SelectResolver(resolvers []string) string {
 	bestResolver := ""
 	var minSampledTime float64 = -1
 
-	for _, name := range resolvers {
+	for k, plan := range resolvers {
 		// Use the optimized helper method to get stats without unnecessary allocations.
-		ts := kp.getOrCreateStats(name)
+		ts := kp.getOrCreateStats(plan)
 
 		sampledTime := ts.Sample(rng)
 		if bestResolver == "" || sampledTime < minSampledTime {
 			minSampledTime = sampledTime
-			bestResolver = name
+			bestResolver = k
 		}
 	}
 
-	return bestResolver
+	return resolvers[bestResolver]
 }
 
 // UpdateStats performs the Bayesian update for the given resolver's statistics.
-func (kp *KeyPlan) UpdateStats(resolver string, duration time.Duration) {
+func (kp *KeyPlan) UpdateStats(plan *KeyPlanStrategy, duration time.Duration) {
 	kp.touch() // Mark this key as recently used.
 
 	// Use the optimized helper method to avoid allocations.
-	ts := kp.getOrCreateStats(resolver)
+	ts := kp.getOrCreateStats(plan)
 	ts.Update(duration)
-}
-
-// UpdateStatsOverGuess is like UpdateStats but only updates if the duration is worse than the initial guess.
-// This can help reduce noise from very fast responses that might not reflect true performance (or cancelled ones)..
-func (kp *KeyPlan) UpdateStatsOverGuess(resolver string, duration time.Duration) {
-	if duration > kp.initialGuess {
-		kp.UpdateStats(resolver, duration)
-	}
 }
 
 // startCleanupRoutine runs a background goroutine that periodically evicts stale keys.
