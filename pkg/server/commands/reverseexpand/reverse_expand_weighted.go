@@ -496,13 +496,24 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 
 				var userFilter []*openfgav1.ObjectRelation
 
+				var errs []Item
+
 				for item := range items {
+					if item.Err != nil {
+						errs = append(errs, item)
+						continue
+					}
+
 					userFilter = append(userFilter, &openfgav1.ObjectRelation{
 						Object:   item.Value,
 						Relation: userRelation,
 					})
 				}
 				results := r.backend.query(ctx, nodeType, nodeRelation, userFilter)
+
+				if len(errs) > 0 {
+					results = mergeOrdered(sequence(errs...), results)
+				}
 
 				var seqs []iter.Seq[Item]
 
@@ -527,7 +538,6 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 type intersectionResolver struct {
 	backend *backend
 	node    *Node
-	// TODO: perhaps add worker's waitgroup here to manage goroutines
 }
 
 func (r *intersectionResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
@@ -548,15 +558,21 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []sender, li
 			buffers[i] = make(map[string]struct{})
 		}
 
+		errs := make([][]Item, len(senders))
+
 		var wg sync.WaitGroup
 
 		for i, snd := range senders {
 			wg.Add(1)
+
 			go func(i int, snd sender) {
 				defer wg.Done()
 
 				for items := range snd.seq {
 					for item := range items {
+						if item.Err != nil {
+							errs[i] = append(errs[i], item)
+						}
 						buffers[i][item.Value] = struct{}{}
 					}
 				}
@@ -579,7 +595,13 @@ func (r *intersectionResolver) Resolve(ctx context.Context, senders []sender, li
 			objects = found
 		}
 
-		items := transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} })
+		var allErrs []Item
+
+		for _, errList := range errs {
+			allErrs = append(allErrs, errList...)
+		}
+
+		items := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
 
 		var seqs []iter.Seq[Item]
 
@@ -641,10 +663,21 @@ func NewWorker(backend *backend, node *Node) *Worker {
 
 func (w *Worker) Start(ctx context.Context) {
 	w.wg.Add(1)
+
 	go func() {
 		defer w.wg.Done()
+		defer func() {
+			for _, lst := range w.listeners {
+				close(lst.ch)
+			}
+		}()
+
 		w.resolver.Resolve(ctx, w.senders, w.listeners)
 	}()
+}
+
+func (w *Worker) Wait() {
+	w.wg.Wait()
 }
 
 func (w *Worker) Listen(edge *Edge, i iter.Seq[iter.Seq[Item]]) {
@@ -684,10 +717,52 @@ func (w *Worker) Subscribe(ctx context.Context) iter.Seq[iter.Seq[Item]] {
 	}
 }
 
+func output(ctx context.Context, cancel context.CancelFunc, seq iter.Seq[iter.Seq[Item]]) iter.Seq[Item] {
+	ch := make(chan Item)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(ch)
+
+		for items := range seq {
+			for item := range items {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- item:
+				}
+			}
+		}
+	}()
+
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case item, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(item) {
+					return
+				}
+			}
+		}
+	}
+}
+
 type Traversal struct {
-	graph       *Graph
-	workers     map[*Node]*Worker
-	breadcrumbs map[*Edge]struct{}
+	graph    *Graph
+	backend  *backend
+	pipeline map[*Node]*Worker
 }
 
 type Target *Node
@@ -705,118 +780,62 @@ func (t *Traversal) Source(name, relation string) (Source, bool) {
 
 func (t *Traversal) Traverse(target Target, targetIdentifiers ...string) Path {
 	return Path{
-		traversal:         t,
-		target:            (*Node)(target),
-		targetIdentifiers: targetIdentifiers,
-	}
-}
-
-func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
-	return transform(p.resolve(ctx, source), func(item Item) Item {
-		if item.Err != nil {
-			return item
-		}
-		parts := strings.Split(item.Value, "#")
-		item.Value = parts[0]
-		return item
-	})
-}
-
-func (t Traversal) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
-
-	ch := make(chan Item)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer close(ch)
-		defer wg.Done()
-
-		it, err := t.datastore.ReadStartingWithUser(
-			ctx,
-			t.storeId,
-			storage.ReadStartingWithUserFilter{
-				ObjectType: objectType,
-				Relation:   objectRelation,
-				UserFilter: userFilter,
-			},
-			storage.ReadStartingWithUserOptions{},
-		)
-
-		if err != nil {
-			select {
-			case <-ctx.Done():
-			case ch <- Item{Err: err}:
-			}
-			return
-		}
-
-		defer it.Stop()
-
-		for {
-			t, err := it.Next(ctx)
-
-			if err != nil {
-				if err == storage.ErrIteratorDone {
-					break
-				}
-
-				select {
-				case <-ctx.Done():
-				case ch <- Item{Err: err}:
-				}
-				return
-			}
-
-			if t == nil {
-				continue
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- Item{Value: t.GetKey().Object}:
-			}
-		}
-	}()
-
-	return func(yield func(Item) bool) {
-		defer wg.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
+		traversal: t,
+		target:    (*Node)(target),
 	}
 }
 
 type Path struct {
-	traversal         *Traversal
-	target            *Node
-	targetIdentifiers []string
-	breadcrumb        *element
-	cycle             bool
-	cycleBegin        *Node
-	cycleIdentifiers  []string
+	traversal *Traversal
+	target    *Node
 }
 
-func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
-	groups := make(map[EdgeType][]*Edge, 4)
+func (p Path) Objects(ctx context.Context, source Source, identifiers ...string) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(ctx)
 
-	edges, ok := p.traversal.graph.GetEdgesFromNode(n)
+	p.resolve(ctx, (*Node)(source))
+
+	sourceWorker, ok := p.traversal.pipeline[(*Node)(source)]
+	if !ok {
+		panic("no such source worker")
+	}
+
+	seqId := transform(sequence(identifiers...), func(id string) Item { return Item{Value: id} })
+
+	sourceWorker.Listen(nil, sequence(seqId))
+
+	targetWorker, ok := p.traversal.pipeline[p.target]
+	if !ok {
+		panic("no such target worker")
+	}
+
+	results := output(ctx, cancel, targetWorker.Subscribe(ctx))
+
+	for _, worker := range p.traversal.pipeline {
+		worker.Start(ctx)
+	}
+
+	return results
+}
+
+func (p Path) resolve(ctx context.Context, source *Node) {
+	// if graph traversal has encountered the target node, we can return the target identifiers.
+	if source == p.target {
+		return
+	}
+
+	_, ok := source.GetWeight(p.target.GetLabel())
+	if !ok {
+		return
+	}
+
+	if _, ok := p.traversal.pipeline[source]; !ok {
+		p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source)
+	} else {
+		return
+	}
+
+	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
 		panic("given node not a member of graph")
 	}
@@ -826,282 +845,8 @@ func (p Path) groupEdgesByType(n *Node) map[EdgeType][]*Edge {
 		if !ok {
 			continue
 		}
-		groups[edge.GetEdgeType()] = append(groups[edge.GetEdgeType()], edge)
-	}
-	return groups
-}
-
-func extractObject(item Item) Item {
-	if item.Err != nil {
-		return item
-	}
-	parts := strings.Split(item.Value, "#")
-	item.Value = parts[0]
-	return item
-}
-
-func intersection(ctx context.Context, seqs ...iter.Seq[Item]) iter.Seq[Item] {
-	if len(seqs) == 0 {
-		return emptySequence
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	ch := make(chan Item)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(ch)
-
-		var errs []Item
-		objects := make(map[string]struct{})
-
-		for item := range seqs[0] {
-			if item.Err != nil {
-				errs = append(errs, item)
-				continue
-			}
-			objects[item.Value] = struct{}{}
-		}
-
-		for i := 1; i < len(seqs); i++ {
-			seq := seqs[i]
-
-			found := make(map[string]struct{})
-
-			for item := range seq {
-				if item.Err != nil {
-					errs = append(errs, item)
-					continue
-				}
-
-				if _, ok := objects[item.Value]; ok {
-					found[item.Value] = struct{}{}
-				}
-			}
-			objects = found
-		}
-
-		keys := maps.Keys(objects)
-
-		items := mergeOrdered(sequence(errs...), transform(keys, func(o string) Item { return Item{Value: o} }))
-
-		for item := range items {
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- item:
-			}
-		}
-	}()
-
-	return func(yield func(Item) bool) {
-		defer wg.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
-	}
-}
-
-func (p Path) resolve(ctx context.Context, source *Node) iter.Seq[Item] {
-	// if graph traversal has encountered the target node, we can return the target identifiers.
-	if source == p.target {
-		// the target identifiers are typeless, we need to append the target type to the values.
-		targetType := strings.Split(p.target.GetLabel(), "#")[0]
-		return transform(sequence(p.targetIdentifiers...), func(id string) Item {
-			return Item{Value: targetType + ":" + id}
-		})
-	}
-
-	// if we have already traversed this node on the current path.
-	if contains(p.breadcrumb, source) {
-		if p.cycleBegin == source {
-			return transform(sequence(p.cycleIdentifiers...), func(id string) Item {
-				return Item{Value: id}
-			})
-		}
-		p.cycleBegin = source
-		p.breadcrumb = nil
-	}
-
-	// does the current node have a path to the target node?
-	_, ok := source.GetWeight(p.target.GetLabel())
-	if !ok {
-		return emptySequence
-	}
-
-	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
-	if !ok {
-		panic("given node not a member of graph")
-	}
-
-	p.breadcrumb = &element{node: source, next: p.breadcrumb} // add the current node to our breadcrumb trail
-
-	ctx, cancel := context.WithCancel(ctx)
-
-	ch := make(chan Item)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(ch)
-
-		for {
-			var results []iter.Seq[Item]
-
-			for _, edge := range edges {
-				// if currently traversing a tuple cycle, but the edge is not part of a tuple cycle, skip it.
-				// otherwise, all edges will be processed.
-				if p.cycle && !edge.GetTo().IsPartOfTupleCycle() {
-					continue
-				}
-
-				switch edge.GetEdgeType() {
-				case EdgeTypeDirect:
-					switch edge.GetTo().GetNodeType() {
-					case NodeTypeSpecificTypeAndRelation:
-						outcome := p.resolve(ctx, edge.GetTo())
-
-						// for our upcoming query, we need the type and relation off of the specific type and relation ancestor node.
-						parts := strings.Split(edge.GetRelationDefinition(), "#")
-						nodeType := parts[0]
-						nodeRelation := parts[1]
-
-						userParts := strings.Split(edge.GetTo().GetLabel(), "#")
-
-						var userRelation string
-
-						if len(userParts) > 1 {
-							userRelation = userParts[1]
-						}
-
-						var userFilter []*openfgav1.ObjectRelation
-
-						for item := range outcome {
-							userFilter = append(userFilter, &openfgav1.ObjectRelation{
-								Object:   item.Value,
-								Relation: userRelation,
-							})
-						}
-						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
-					case NodeTypeSpecificType, NodeTypeSpecificTypeWildcard:
-						outcome := p.resolve(ctx, edge.GetTo())
-
-						parts := strings.Split(edge.GetRelationDefinition(), "#")
-						nodeType := parts[0]
-						nodeRelation := parts[1]
-
-						var userFilter []*openfgav1.ObjectRelation
-
-						for item := range outcome {
-							userFilter = append(userFilter, &openfgav1.ObjectRelation{
-								Object:   item.Value,
-								Relation: "",
-							})
-						}
-						results = append(results, p.traversal.query(ctx, nodeType, nodeRelation, userFilter))
-					default:
-						panic("unexpected node type in direct edge resolve")
-					}
-				case EdgeTypeRewrite:
-					results = append(results, p.resolve(ctx, edge.GetTo()))
-				case EdgeTypeComputed:
-					results = append(results, p.resolve(ctx, edge.GetTo()))
-				case EdgeTypeTTU:
-					panic("unexpected TTU edge in resolve")
-				default:
-					panic("unexpected edge type in resolve")
-				}
-			}
-
-			var objects iter.Seq[Item]
-
-			switch source.GetNodeType() {
-			case NodeTypeOperator:
-				switch source.GetLabel() {
-				case weightedGraph.IntersectionOperator:
-					objects = intersection(ctx, results...)
-				case weightedGraph.UnionOperator:
-					var seq iter.Seq[Item]
-
-					if len(results) < 1 {
-						seq = emptySequence
-					} else if len(results) > 1 {
-						seq = mergeUnordered(results...)
-					} else {
-						seq = results[0]
-					}
-					objects = dedup(seq)
-				}
-			default:
-				var seq iter.Seq[Item]
-
-				if len(results) < 1 {
-					seq = emptySequence
-				} else if len(results) > 1 {
-					seq = mergeUnordered(results...)
-				} else {
-					seq = results[0]
-				}
-				objects = dedup(seq)
-			}
-
-			var values []string
-
-			for item := range objects {
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- item:
-				}
-
-				values = append(values, item.Value)
-			}
-
-			if len(values) == 0 || p.cycleBegin != source {
-				break
-			}
-
-			p.cycle = true
-			p.cycleIdentifiers = values
-		}
-	}()
-
-	return func(yield func(Item) bool) {
-		defer wg.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
+		p.resolve(ctx, edge.GetTo())
+		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx))
 	}
 }
 
