@@ -479,40 +479,45 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 		go func(snd sender) {
 			defer wg.Done()
 
-			fromLabel := snd.edge.GetRelationDefinition()
-
 			for items := range snd.seq {
-				parts := strings.Split(fromLabel, "#")
-				nodeType := parts[0]
-				nodeRelation := parts[1]
+				var results iter.Seq[Item]
 
-				userParts := strings.Split(r.node.GetLabel(), "#")
+				switch snd.edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					parts := strings.Split(r.node.GetLabel(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
 
-				var userRelation string
+					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
 
-				if len(userParts) > 1 {
-					userRelation = userParts[1]
-				}
+					var userRelation string
 
-				var userFilter []*openfgav1.ObjectRelation
-
-				var errs []Item
-
-				for item := range items {
-					if item.Err != nil {
-						errs = append(errs, item)
-						continue
+					if len(userParts) > 1 {
+						userRelation = userParts[1]
 					}
 
-					userFilter = append(userFilter, &openfgav1.ObjectRelation{
-						Object:   item.Value,
-						Relation: userRelation,
-					})
-				}
-				results := r.backend.query(ctx, nodeType, nodeRelation, userFilter)
+					var userFilter []*openfgav1.ObjectRelation
 
-				if len(errs) > 0 {
-					results = mergeOrdered(sequence(errs...), results)
+					var errs []Item
+
+					for item := range items {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: userRelation,
+						})
+					}
+					results = r.backend.query(ctx, nodeType, nodeRelation, userFilter)
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+					results = items
 				}
 
 				var seqs []iter.Seq[Item]
@@ -780,36 +785,38 @@ func (t *Traversal) Source(name, relation string) (Source, bool) {
 
 func (t *Traversal) Traverse(target Target, targetIdentifiers ...string) Path {
 	return Path{
-		traversal: t,
-		target:    (*Node)(target),
+		traversal:         t,
+		target:            (*Node)(target),
+		targetIdentifiers: targetIdentifiers,
 	}
 }
 
 type Path struct {
-	traversal *Traversal
-	target    *Node
+	traversal         *Traversal
+	target            *Node
+	targetIdentifiers []string
 }
 
-func (p Path) Objects(ctx context.Context, source Source, identifiers ...string) iter.Seq[Item] {
+func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
 	p.resolve(ctx, (*Node)(source))
 
-	sourceWorker, ok := p.traversal.pipeline[(*Node)(source)]
+	targetWorker, ok := p.traversal.pipeline[p.target]
 	if !ok {
 		panic("no such source worker")
 	}
 
-	seqId := transform(sequence(identifiers...), func(id string) Item { return Item{Value: id} })
+	seqId := transform(sequence(p.targetIdentifiers...), func(id string) Item { return Item{Value: id} })
 
-	sourceWorker.Listen(nil, sequence(seqId))
+	targetWorker.Listen(nil, sequence(seqId))
 
-	targetWorker, ok := p.traversal.pipeline[p.target]
+	sourceWorker, ok := p.traversal.pipeline[source]
 	if !ok {
 		panic("no such target worker")
 	}
 
-	results := output(ctx, cancel, targetWorker.Subscribe(ctx))
+	results := output(ctx, cancel, sourceWorker.Subscribe(ctx))
 
 	for _, worker := range p.traversal.pipeline {
 		worker.Start(ctx)
@@ -819,8 +826,15 @@ func (p Path) Objects(ctx context.Context, source Source, identifiers ...string)
 }
 
 func (p Path) resolve(ctx context.Context, source *Node) {
+	if p.traversal.pipeline == nil {
+		p.traversal.pipeline = make(map[*Node]*Worker)
+	}
+
 	// if graph traversal has encountered the target node, we can return the target identifiers.
 	if source == p.target {
+		if _, ok := p.traversal.pipeline[source]; !ok {
+			p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source)
+		}
 		return
 	}
 
@@ -845,6 +859,7 @@ func (p Path) resolve(ctx context.Context, source *Node) {
 		if !ok {
 			continue
 		}
+
 		p.resolve(ctx, edge.GetTo())
 		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx))
 	}

@@ -48,10 +48,14 @@ func TestProcessDirectEdge(t *testing.T) {
 
 		g := typesys.GetWeightedGraph()
 
-		traversal := &Traversal{
-			graph:     g,
+		backend := &backend{
 			datastore: ds,
 			storeId:   storeID,
+		}
+
+		traversal := &Traversal{
+			graph:   g,
+			backend: backend,
 		}
 
 		ctx := context.Background()
