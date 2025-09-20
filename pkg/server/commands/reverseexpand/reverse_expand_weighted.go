@@ -522,11 +522,13 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	nexts := make([]func() (Group, bool), len(senders))
 	stops := make([]func(), len(senders))
 	stopped := make([]bool, len(senders))
+	buffers := make([]map[string]struct{}, len(senders))
 
 	for i, snd := range senders {
 		next, stop := iter.Pull(snd.seq)
 		nexts[i] = next
 		stops[i] = stop
+		buffers[i] = make(map[string]struct{})
 	}
 
 	var ctr int
@@ -545,8 +547,9 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
-				timer := time.AfterFunc(100*time.Millisecond, func() {
+				timer := time.AfterFunc(1000*time.Millisecond, func() {
 					println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+					stops[ndx]()
 				})
 
 				inGroup, ok := nexts[ndx]()
@@ -560,7 +563,25 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				timer.Stop()
 
-				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", inGroup))
+				var unseen []Item
+
+				for _, item := range inGroup.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[ndx][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[ndx][item.Value] = struct{}{}
+				}
+
+				if len(unseen) == 0 {
+					continue
+				}
+
+				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -582,7 +603,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 					var errs []Item
 
-					for _, item := range inGroup.Items {
+					for _, item := range unseen {
 						if item.Err != nil {
 							errs = append(errs, item)
 							continue
@@ -620,6 +641,10 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
 
 				if len(outGroup.Items) == 0 {
+					if senders[ndx].edge.GetRecursiveRelation() != "" {
+						println("RECURSIVE", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+						stops[ndx]()
+					}
 					continue
 				}
 
