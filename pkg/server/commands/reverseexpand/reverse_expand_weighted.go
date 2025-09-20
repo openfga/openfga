@@ -8,6 +8,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"time"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
@@ -147,6 +148,10 @@ var ErrTupleCycle = errors.New("cycle detected in tuples")
 type Item struct {
 	Value string
 	Err   error
+}
+
+type Group struct {
+	Items []Item
 }
 
 func sequence[T any](items ...T) iter.Seq[T] {
@@ -441,18 +446,18 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 }
 
 type listener struct {
-	ch     chan iter.Seq[Item]
+	ch     chan Group
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 type sender struct {
 	edge *Edge
-	seq  iter.Seq[iter.Seq[Item]]
+	seq  iter.Seq[Group]
 }
 
 type resolver interface {
-	Resolve(senders []sender, listeners []listener)
+	Resolve(senders []*sender, listeners []*listener)
 }
 
 type specificTypeResolver struct {
@@ -460,7 +465,7 @@ type specificTypeResolver struct {
 	node    *Node
 }
 
-func (s *specificTypeResolver) Resolve(senders []sender, listeners []listener) {
+func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -469,31 +474,28 @@ func (s *specificTypeResolver) Resolve(senders []sender, listeners []listener) {
 	for _, snd := range senders {
 		wg.Add(1)
 
-		go func(snd sender) {
+		go func(snd *sender) {
 			defer wg.Done()
 
-			for items := range snd.seq {
-				results := transform(items, func(item Item) Item { return Item{Value: s.node.GetLabel() + ":" + item.Value} })
+			for group := range snd.seq {
+				var items []Item
 
-				var values []Item
-
-				for item := range results {
-					values = append(values, item)
-				}
-
-				var seqs []iter.Seq[Item]
-
-				if len(listeners) > 1 {
-					for range listeners {
-						seqs = append(seqs, sequence(values...))
+				for _, item := range group.Items {
+					if item.Err != nil {
+						items = append(items, item)
+						continue
 					}
-				} else {
-					seqs = []iter.Seq[Item]{sequence(values...)}
+					item.Value = s.node.GetLabel() + ":" + item.Value
+					items = append(items, item)
 				}
 
-				for i, lst := range listeners {
+				mappedGroup := Group{
+					Items: items,
+				}
+
+				for _, lst := range listeners {
 					select {
-					case lst.ch <- seqs[i]:
+					case lst.ch <- mappedGroup:
 					case <-lst.ctx.Done():
 					}
 				}
@@ -508,19 +510,18 @@ type specificTypeAndRelationResolver struct {
 	node    *Node
 }
 
-func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []listener) {
-	var reason string
+func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		println("RESOLVER DONE", r.node.GetUniqueLabel(), "--", reason)
+		println("RESOLVER DONE", r.node.GetUniqueLabel())
 	}()
+
 	if len(senders) == 0 {
 		return
 	}
 
-	nexts := make([]func() (iter.Seq[Item], bool), len(senders))
+	nexts := make([]func() (Group, bool), len(senders))
 	stops := make([]func(), len(senders))
 	stopped := make([]bool, len(senders))
-	empties := make([]bool, len(senders))
 
 	for i, snd := range senders {
 		next, stop := iter.Pull(snd.seq)
@@ -530,47 +531,36 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []
 
 	var ctr int
 
-	for {
-		var countEmptyOrStopped int
+	var wg sync.WaitGroup
 
-		for _, value := range empties {
-			if value {
-				countEmptyOrStopped++
-			}
-		}
+	for ctr < len(senders) {
+		ndx := ctr
 
-		for _, value := range stopped {
-			if value {
-				countEmptyOrStopped++
-			}
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		if countEmptyOrStopped == len(senders) {
-			reason = "all empty or stopped"
-			break
-		}
+			for {
+				if stopped[ndx] {
+					break
+				}
 
-		var wg sync.WaitGroup
+				timer := time.AfterFunc(100*time.Millisecond, func() {
+					println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+				})
 
-		for ctr < len(senders) {
-			ndx := ctr
-
-			if stopped[ndx] {
-				ctr++
-				continue
-			}
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
-				seq, ok := nexts[ndx]()
+				inGroup, ok := nexts[ndx]()
 				if !ok {
+					timer.Stop()
 					stops[ndx]()
 					stopped[ndx] = true
 					println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
-					return
+					break
 				}
+
+				timer.Stop()
+
+				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", inGroup))
 
 				var results iter.Seq[Item]
 
@@ -592,15 +582,11 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []
 
 					var errs []Item
 
-					var vals []string
-
-					for item := range seq {
+					for _, item := range inGroup.Items {
 						if item.Err != nil {
 							errs = append(errs, item)
 							continue
 						}
-
-						vals = append(vals, item.Value)
 
 						userFilter = append(userFilter, &openfgav1.ObjectRelation{
 							Object:   item.Value,
@@ -608,15 +594,17 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []
 						})
 					}
 
-					println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", vals))
-
-					results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
 
 					if len(errs) > 0 {
 						results = mergeOrdered(sequence(errs...), results)
 					}
 				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
-					results = seq
+					results = sequence(inGroup.Items...)
 				}
 
 				var items []Item
@@ -625,42 +613,28 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []
 					items = append(items, item)
 				}
 
-				var vals []string
-
-				for _, item := range items {
-					vals = append(vals, item.Value)
+				outGroup := Group{
+					Items: items,
 				}
 
-				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", vals))
+				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
 
-				if len(items) == 0 {
-					empties[ndx] = true
-					return
+				if len(outGroup.Items) == 0 {
+					continue
 				}
 
-				var seqs []iter.Seq[Item]
-
-				if len(listeners) > 1 {
-					for range listeners {
-						seqs = append(seqs, sequence(items...))
-					}
-				} else {
-					seqs = []iter.Seq[Item]{sequence(items...)}
-				}
-
-				for i, lst := range listeners {
+				for _, lst := range listeners {
 					select {
-					case lst.ch <- seqs[i]:
+					case lst.ch <- outGroup:
 					case <-lst.ctx.Done():
 					}
 				}
-			}()
+			}
+		}()
 
-			ctr++
-		}
-		ctr = 0
-		wg.Wait()
+		ctr++
 	}
+	wg.Wait()
 
 	for _, stop := range stops {
 		stop()
@@ -672,7 +646,7 @@ type unionResolver struct {
 	node    *Node
 }
 
-func (r *unionResolver) Resolve(senders []sender, listeners []listener) {
+func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -682,7 +656,7 @@ func (r *unionResolver) Resolve(senders []sender, listeners []listener) {
 	go func() {
 		defer wg.Done()
 
-		seqs := make([]iter.Seq[iter.Seq[Item]], len(senders))
+		seqs := make([]iter.Seq[Group], len(senders))
 
 		for i, snd := range senders {
 			seqs[i] = snd.seq
@@ -690,19 +664,31 @@ func (r *unionResolver) Resolve(senders []sender, listeners []listener) {
 
 		mergedSeqs := mergeUnordered(seqs...)
 
-		unwrapped := dedup(unwrap(mergedSeqs))
+		seen := make(map[string]struct{})
 
-		var outSeqs []iter.Seq[Item]
+		var items []Item
 
-		if len(listeners) > 1 {
-			outSeqs = tee(unwrapped, len(listeners))
-		} else {
-			outSeqs = []iter.Seq[Item]{unwrapped}
+		for group := range mergedSeqs {
+			for _, item := range group.Items {
+				if item.Err != nil {
+					items = append(items, item)
+				}
+
+				if _, ok := seen[item.Value]; ok {
+					continue
+				}
+				seen[item.Value] = struct{}{}
+				items = append(items, item)
+			}
 		}
 
-		for i, lst := range listeners {
+		outGroup := Group{
+			Items: items,
+		}
+
+		for _, lst := range listeners {
 			select {
-			case lst.ch <- outSeqs[i]:
+			case lst.ch <- outGroup:
 			case <-lst.ctx.Done():
 			}
 		}
@@ -715,7 +701,7 @@ type intersectionResolver struct {
 	node    *Node
 }
 
-func (r *intersectionResolver) Resolve(senders []sender, listeners []listener) {
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -740,11 +726,11 @@ func (r *intersectionResolver) Resolve(senders []sender, listeners []listener) {
 		for i, snd := range senders {
 			wg.Add(1)
 
-			go func(i int, snd sender) {
+			go func(i int, snd *sender) {
 				defer wg.Done()
 
-				for items := range snd.seq {
-					for item := range items {
+				for group := range snd.seq {
+					for _, item := range group.Items {
 						if item.Err != nil {
 							errs[i] = append(errs[i], item)
 						}
@@ -776,19 +762,21 @@ func (r *intersectionResolver) Resolve(senders []sender, listeners []listener) {
 			allErrs = append(allErrs, errList...)
 		}
 
-		items := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
+		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
 
-		var seqs []iter.Seq[Item]
+		var items []Item
 
-		if len(listeners) > 1 {
-			seqs = tee(items, len(listeners))
-		} else {
-			seqs = []iter.Seq[Item]{items}
+		for item := range seq {
+			items = append(items, item)
 		}
 
-		for i, sub := range listeners {
+		outGroup := Group{
+			Items: items,
+		}
+
+		for _, sub := range listeners {
 			select {
-			case sub.ch <- seqs[i]:
+			case sub.ch <- outGroup:
 			case <-sub.ctx.Done():
 			}
 		}
@@ -797,8 +785,8 @@ func (r *intersectionResolver) Resolve(senders []sender, listeners []listener) {
 }
 
 type Worker struct {
-	senders   []sender
-	listeners []listener
+	senders   []*sender
+	listeners []*listener
 	resolver  resolver
 	wg        sync.WaitGroup
 }
@@ -864,24 +852,24 @@ func (w *Worker) Close() {
 	w.wg.Wait()
 }
 
-func (w *Worker) Listen(edge *Edge, i iter.Seq[iter.Seq[Item]]) {
-	w.senders = append(w.senders, sender{
+func (w *Worker) Listen(edge *Edge, i iter.Seq[Group]) {
+	w.senders = append(w.senders, &sender{
 		edge: edge,
 		seq:  i,
 	})
 }
 
-func (w *Worker) Subscribe(ctx context.Context) iter.Seq[iter.Seq[Item]] {
+func (w *Worker) Subscribe(ctx context.Context) iter.Seq[Group] {
 	ctx, cancel := context.WithCancel(ctx)
-	ch := make(chan iter.Seq[Item], 1)
+	ch := make(chan Group, 1)
 
-	w.listeners = append(w.listeners, listener{
+	w.listeners = append(w.listeners, &listener{
 		ch:     ch,
 		ctx:    ctx,
 		cancel: cancel,
 	})
 
-	return func(yield func(iter.Seq[Item]) bool) {
+	return func(yield func(Group) bool) {
 		defer cancel()
 
 		for items := range ch {
@@ -892,7 +880,7 @@ func (w *Worker) Subscribe(ctx context.Context) iter.Seq[iter.Seq[Item]] {
 	}
 }
 
-func output(cancel context.CancelFunc, seq iter.Seq[iter.Seq[Item]]) iter.Seq[Item] {
+func output(cancel context.CancelFunc, seq iter.Seq[Group]) iter.Seq[Item] {
 	ch := make(chan Item, 1)
 
 	var wg sync.WaitGroup
@@ -902,8 +890,8 @@ func output(cancel context.CancelFunc, seq iter.Seq[iter.Seq[Item]]) iter.Seq[It
 		defer wg.Done()
 		defer close(ch)
 
-		for items := range seq {
-			for item := range items {
+		for group := range seq {
+			for _, item := range group.Items {
 				ch <- item
 			}
 		}
@@ -966,9 +954,19 @@ func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 		panic("no such source worker")
 	}
 
-	seqId := transform(sequence(p.targetIdentifiers...), func(id string) Item { return Item{Value: id} })
+	var items []Item
 
-	targetWorker.Listen(nil, sequence(seqId))
+	for _, id := range p.targetIdentifiers {
+		items = append(items, Item{Value: id})
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	seq := sequence(outGroup)
+
+	targetWorker.Listen(nil, seq)
 
 	sourceWorker, ok := p.traversal.pipeline[source]
 	if !ok {
