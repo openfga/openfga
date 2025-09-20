@@ -149,27 +149,6 @@ type Item struct {
 	Err   error
 }
 
-type element struct {
-	node *Node
-	next *element
-}
-
-func contains(e *element, node *Node) bool {
-	if e == nil {
-		return false
-	}
-
-	next := e
-
-	for next != nil {
-		if next.node == node {
-			return true
-		}
-		next = next.next
-	}
-	return false
-}
-
 func sequence[T any](items ...T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, item := range items {
@@ -462,8 +441,9 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 }
 
 type listener struct {
-	ch  chan iter.Seq[Item]
-	ctx context.Context
+	ch     chan iter.Seq[Item]
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type sender struct {
@@ -472,7 +452,7 @@ type sender struct {
 }
 
 type resolver interface {
-	Resolve(ctx context.Context, senders []sender, listeners []listener)
+	Resolve(senders []sender, listeners []listener)
 }
 
 type specificTypeResolver struct {
@@ -480,7 +460,7 @@ type specificTypeResolver struct {
 	node    *Node
 }
 
-func (s *specificTypeResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
+func (s *specificTypeResolver) Resolve(senders []sender, listeners []listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -493,14 +473,22 @@ func (s *specificTypeResolver) Resolve(ctx context.Context, senders []sender, li
 			defer wg.Done()
 
 			for items := range snd.seq {
-				values := transform(items, func(item Item) Item { return Item{Value: s.node.GetLabel() + ":" + item.Value} })
+				results := transform(items, func(item Item) Item { return Item{Value: s.node.GetLabel() + ":" + item.Value} })
+
+				var values []Item
+
+				for item := range results {
+					values = append(values, item)
+				}
 
 				var seqs []iter.Seq[Item]
 
 				if len(listeners) > 1 {
-					seqs = tee(values, len(listeners))
+					for range listeners {
+						seqs = append(seqs, sequence(values...))
+					}
 				} else {
-					seqs = []iter.Seq[Item]{values}
+					seqs = []iter.Seq[Item]{sequence(values...)}
 				}
 
 				for i, lst := range listeners {
@@ -520,27 +508,79 @@ type specificTypeAndRelationResolver struct {
 	node    *Node
 }
 
-func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
+func (r *specificTypeAndRelationResolver) Resolve(senders []sender, listeners []listener) {
+	var reason string
+	defer func() {
+		println("RESOLVER DONE", r.node.GetUniqueLabel(), "--", reason)
+	}()
 	if len(senders) == 0 {
 		return
 	}
-	var wg sync.WaitGroup
 
-	for _, snd := range senders {
-		wg.Add(1)
-		go func(snd sender) {
-			defer wg.Done()
+	nexts := make([]func() (iter.Seq[Item], bool), len(senders))
+	stops := make([]func(), len(senders))
+	stopped := make([]bool, len(senders))
+	empties := make([]bool, len(senders))
 
-			for items := range snd.seq {
+	for i, snd := range senders {
+		next, stop := iter.Pull(snd.seq)
+		nexts[i] = next
+		stops[i] = stop
+	}
+
+	var ctr int
+
+	for {
+		var countEmptyOrStopped int
+
+		for _, value := range empties {
+			if value {
+				countEmptyOrStopped++
+			}
+		}
+
+		for _, value := range stopped {
+			if value {
+				countEmptyOrStopped++
+			}
+		}
+
+		if countEmptyOrStopped == len(senders) {
+			reason = "all empty or stopped"
+			break
+		}
+
+		var wg sync.WaitGroup
+
+		for ctr < len(senders) {
+			ndx := ctr
+
+			if stopped[ndx] {
+				ctr++
+				continue
+			}
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				seq, ok := nexts[ndx]()
+				if !ok {
+					stops[ndx]()
+					stopped[ndx] = true
+					println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+					return
+				}
+
 				var results iter.Seq[Item]
 
-				switch snd.edge.GetEdgeType() {
+				switch senders[ndx].edge.GetEdgeType() {
 				case EdgeTypeDirect:
 					parts := strings.Split(r.node.GetLabel(), "#")
 					nodeType := parts[0]
 					nodeRelation := parts[1]
 
-					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+					userParts := strings.Split(senders[ndx].edge.GetTo().GetLabel(), "#")
 
 					var userRelation string
 
@@ -552,32 +592,60 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 
 					var errs []Item
 
-					for item := range items {
+					var vals []string
+
+					for item := range seq {
 						if item.Err != nil {
 							errs = append(errs, item)
 							continue
 						}
+
+						vals = append(vals, item.Value)
 
 						userFilter = append(userFilter, &openfgav1.ObjectRelation{
 							Object:   item.Value,
 							Relation: userRelation,
 						})
 					}
-					results = r.backend.query(ctx, nodeType, nodeRelation, userFilter)
+
+					println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", vals))
+
+					results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
 
 					if len(errs) > 0 {
 						results = mergeOrdered(sequence(errs...), results)
 					}
 				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
-					results = items
+					results = seq
+				}
+
+				var items []Item
+
+				for item := range results {
+					items = append(items, item)
+				}
+
+				var vals []string
+
+				for _, item := range items {
+					vals = append(vals, item.Value)
+				}
+
+				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", vals))
+
+				if len(items) == 0 {
+					empties[ndx] = true
+					return
 				}
 
 				var seqs []iter.Seq[Item]
 
 				if len(listeners) > 1 {
-					seqs = tee(results, len(listeners))
+					for range listeners {
+						seqs = append(seqs, sequence(items...))
+					}
 				} else {
-					seqs = []iter.Seq[Item]{results}
+					seqs = []iter.Seq[Item]{sequence(items...)}
 				}
 
 				for i, lst := range listeners {
@@ -586,10 +654,17 @@ func (r *specificTypeAndRelationResolver) Resolve(ctx context.Context, senders [
 					case <-lst.ctx.Done():
 					}
 				}
-			}
-		}(snd)
+			}()
+
+			ctr++
+		}
+		ctr = 0
+		wg.Wait()
 	}
-	wg.Wait()
+
+	for _, stop := range stops {
+		stop()
+	}
 }
 
 type unionResolver struct {
@@ -597,7 +672,7 @@ type unionResolver struct {
 	node    *Node
 }
 
-func (r *unionResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
+func (r *unionResolver) Resolve(senders []sender, listeners []listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -640,7 +715,7 @@ type intersectionResolver struct {
 	node    *Node
 }
 
-func (r *intersectionResolver) Resolve(ctx context.Context, senders []sender, listeners []listener) {
+func (r *intersectionResolver) Resolve(senders []sender, listeners []listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -766,22 +841,26 @@ func NewWorker(backend *backend, node *Node) *Worker {
 	}
 }
 
-func (w *Worker) Start(ctx context.Context) {
+func (w *Worker) Start() {
 	w.wg.Add(1)
 
 	go func() {
 		defer w.wg.Done()
+
 		defer func() {
 			for _, lst := range w.listeners {
 				close(lst.ch)
 			}
 		}()
 
-		w.resolver.Resolve(ctx, w.senders, w.listeners)
+		w.resolver.Resolve(w.senders, w.listeners)
 	}()
 }
 
-func (w *Worker) Wait() {
+func (w *Worker) Close() {
+	for _, lst := range w.listeners {
+		lst.cancel()
+	}
 	w.wg.Wait()
 }
 
@@ -794,36 +873,27 @@ func (w *Worker) Listen(edge *Edge, i iter.Seq[iter.Seq[Item]]) {
 
 func (w *Worker) Subscribe(ctx context.Context) iter.Seq[iter.Seq[Item]] {
 	ctx, cancel := context.WithCancel(ctx)
-	ch := make(chan iter.Seq[Item])
+	ch := make(chan iter.Seq[Item], 1)
 
 	w.listeners = append(w.listeners, listener{
-		ch:  ch,
-		ctx: ctx,
+		ch:     ch,
+		ctx:    ctx,
+		cancel: cancel,
 	})
 
 	return func(yield func(iter.Seq[Item]) bool) {
-		defer w.wg.Wait()
 		defer cancel()
 
-		for {
-			select {
-			case <-ctx.Done():
+		for items := range ch {
+			if !yield(items) {
 				return
-			case items, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(items) {
-					return
-				}
 			}
 		}
 	}
 }
 
-func output(ctx context.Context, cancel context.CancelFunc, seq iter.Seq[iter.Seq[Item]]) iter.Seq[Item] {
-	ch := make(chan Item)
+func output(cancel context.CancelFunc, seq iter.Seq[iter.Seq[Item]]) iter.Seq[Item] {
+	ch := make(chan Item, 1)
 
 	var wg sync.WaitGroup
 
@@ -834,31 +904,20 @@ func output(ctx context.Context, cancel context.CancelFunc, seq iter.Seq[iter.Se
 
 		for items := range seq {
 			for item := range items {
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- item:
-				}
+				ch <- item
 			}
 		}
 	}()
 
 	return func(yield func(Item) bool) {
 		defer wg.Wait()
-		defer cancel()
+		defer func() {
+			cancel()
+		}()
 
-		for {
-			select {
-			case <-ctx.Done():
+		for item := range ch {
+			if !yield(item) {
 				return
-			case item, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(item) {
-					return
-				}
 			}
 		}
 	}
@@ -916,10 +975,10 @@ func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 		panic("no such target worker")
 	}
 
-	results := output(ctx, cancel, sourceWorker.Subscribe(ctx))
+	results := output(cancel, sourceWorker.Subscribe(context.Background()))
 
 	for _, worker := range p.traversal.pipeline {
-		worker.Start(ctx)
+		worker.Start()
 	}
 
 	return results

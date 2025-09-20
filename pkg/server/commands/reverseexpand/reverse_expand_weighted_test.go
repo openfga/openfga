@@ -60,6 +60,10 @@ func TestProcessDirectEdge(t *testing.T) {
 
 		ctx := context.Background()
 
+		ctx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Second))
+
+		defer cancel()
+
 		target, ok := traversal.Target(test.user.GetObjectType())
 		require.True(t, ok)
 
