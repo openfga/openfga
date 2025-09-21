@@ -547,7 +547,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
-				timer := time.AfterFunc(1000*time.Millisecond, func() {
+				timer := time.AfterFunc(5*time.Millisecond, func() {
 					println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
 					stops[ndx]()
 				})
@@ -641,10 +641,12 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
 
 				if len(outGroup.Items) == 0 {
-					if senders[ndx].edge.GetRecursiveRelation() != "" {
-						println("RECURSIVE", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
-						stops[ndx]()
-					}
+					/*
+						if senders[ndx].edge.GetRecursiveRelation() != "" {
+							println("RECURSIVE", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+							stops[ndx]()
+						}
+					*/
 					continue
 				}
 
@@ -886,7 +888,7 @@ func (w *Worker) Listen(edge *Edge, i iter.Seq[Group]) {
 
 func (w *Worker) Subscribe(ctx context.Context) iter.Seq[Group] {
 	ctx, cancel := context.WithCancel(ctx)
-	ch := make(chan Group, 1)
+	ch := make(chan Group, 100)
 
 	w.listeners = append(w.listeners, &listener{
 		ch:     ch,
