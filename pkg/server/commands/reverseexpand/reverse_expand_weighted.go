@@ -8,6 +8,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -449,6 +450,7 @@ type listener struct {
 	ch     chan Group
 	ctx    context.Context
 	cancel context.CancelFunc
+	node   *Node
 }
 
 type sender struct {
@@ -457,15 +459,21 @@ type sender struct {
 }
 
 type resolver interface {
-	Resolve(senders []*sender, listeners []*listener)
+	Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64)
+	Active() bool
 }
 
 type specificTypeResolver struct {
 	backend *backend
 	node    *Node
+	active  atomic.Bool
 }
 
-func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
+func (s *specificTypeResolver) Active() bool {
+	return s.active.Load()
+}
+
+func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
 	if len(senders) == 0 {
 		return
 	}
@@ -479,6 +487,10 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 
 			for group := range snd.seq {
 				var items []Item
+
+				s.active.Store(true)
+
+				messageCount.Add(-1)
 
 				for _, item := range group.Items {
 					if item.Err != nil {
@@ -496,9 +508,11 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 				for _, lst := range listeners {
 					select {
 					case lst.ch <- mappedGroup:
+						messageCount.Add(1)
 					case <-lst.ctx.Done():
 					}
 				}
+				s.active.Store(false)
 			}
 		}(snd)
 	}
@@ -508,9 +522,14 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 type specificTypeAndRelationResolver struct {
 	backend *backend
 	node    *Node
+	active  atomic.Bool
 }
 
-func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *specificTypeAndRelationResolver) Active() bool {
+	return r.active.Load()
+}
+
+func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
 	defer func() {
 		println("RESOLVER DONE", r.node.GetUniqueLabel())
 	}()
@@ -547,9 +566,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
-				timer := time.AfterFunc(5*time.Millisecond, func() {
+				timer := time.AfterFunc(500*time.Millisecond, func() {
 					println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
-					stops[ndx]()
 				})
 
 				inGroup, ok := nexts[ndx]()
@@ -560,6 +578,9 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
 					break
 				}
+
+				r.active.Store(true)
+				messageCount.Add(-1)
 
 				timer.Stop()
 
@@ -578,10 +599,11 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				if len(unseen) == 0 {
+					r.active.Store(false)
 					continue
 				}
 
-				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
+				println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -638,8 +660,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					Items: items,
 				}
 
-				println(senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
-
 				if len(outGroup.Items) == 0 {
 					/*
 						if senders[ndx].edge.GetRecursiveRelation() != "" {
@@ -647,15 +667,21 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 							stops[ndx]()
 						}
 					*/
+					r.active.Store(false)
 					continue
 				}
 
 				for _, lst := range listeners {
 					select {
 					case lst.ch <- outGroup:
+						messageCount.Add(1)
+						if lst.node != nil {
+							println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
+						}
 					case <-lst.ctx.Done():
 					}
 				}
+				r.active.Store(false)
 			}
 		}()
 
@@ -671,9 +697,14 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 type unionResolver struct {
 	backend *backend
 	node    *Node
+	active  atomic.Bool
 }
 
-func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *unionResolver) Active() bool {
+	return r.active.Load()
+}
+
+func (r *unionResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
 	if len(senders) == 0 {
 		return
 	}
@@ -695,7 +726,11 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 		var items []Item
 
+		r.active.Store(true)
+
 		for group := range mergedSeqs {
+			messageCount.Add(-1)
+
 			for _, item := range group.Items {
 				if item.Err != nil {
 					items = append(items, item)
@@ -716,9 +751,11 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 		for _, lst := range listeners {
 			select {
 			case lst.ch <- outGroup:
+				messageCount.Add(1)
 			case <-lst.ctx.Done():
 			}
 		}
+		r.active.Store(false)
 	}()
 	wg.Wait()
 }
@@ -726,9 +763,14 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 type intersectionResolver struct {
 	backend *backend
 	node    *Node
+	active  atomic.Bool
 }
 
-func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *intersectionResolver) Active() bool {
+	return r.active.Load()
+}
+
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
 	if len(senders) == 0 {
 		return
 	}
@@ -750,6 +792,8 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 
 		var wg sync.WaitGroup
 
+		r.active.Store(true)
+
 		for i, snd := range senders {
 			wg.Add(1)
 
@@ -757,6 +801,8 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 				defer wg.Done()
 
 				for group := range snd.seq {
+					messageCount.Add(-1)
+
 					for _, item := range group.Items {
 						if item.Err != nil {
 							errs[i] = append(errs[i], item)
@@ -807,6 +853,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 			case <-sub.ctx.Done():
 			}
 		}
+		r.active.Store(false)
 	}()
 	wg.Wait()
 }
@@ -856,7 +903,11 @@ func NewWorker(backend *backend, node *Node) *Worker {
 	}
 }
 
-func (w *Worker) Start() {
+func (w *Worker) Active() bool {
+	return w.resolver.Active()
+}
+
+func (w *Worker) Start(messageCount *atomic.Int64) {
 	w.wg.Add(1)
 
 	go func() {
@@ -868,7 +919,7 @@ func (w *Worker) Start() {
 			}
 		}()
 
-		w.resolver.Resolve(w.senders, w.listeners)
+		w.resolver.Resolve(w.senders, w.listeners, messageCount)
 	}()
 }
 
@@ -886,7 +937,7 @@ func (w *Worker) Listen(edge *Edge, i iter.Seq[Group]) {
 	})
 }
 
-func (w *Worker) Subscribe(ctx context.Context) iter.Seq[Group] {
+func (w *Worker) Subscribe(ctx context.Context, node *Node) iter.Seq[Group] {
 	ctx, cancel := context.WithCancel(ctx)
 	ch := make(chan Group, 100)
 
@@ -894,20 +945,30 @@ func (w *Worker) Subscribe(ctx context.Context) iter.Seq[Group] {
 		ch:     ch,
 		ctx:    ctx,
 		cancel: cancel,
+		node:   node,
 	})
 
 	return func(yield func(Group) bool) {
 		defer cancel()
 
-		for items := range ch {
-			if !yield(items) {
+		for {
+			select {
+			case <-ctx.Done():
 				return
+			case items, ok := <-ch:
+				if !ok {
+					return
+				}
+
+				if !yield(items) {
+					return
+				}
 			}
 		}
 	}
 }
 
-func output(cancel context.CancelFunc, seq iter.Seq[Group]) iter.Seq[Item] {
+func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGroup, messageCount *atomic.Int64) iter.Seq[Item] {
 	ch := make(chan Item, 1)
 
 	var wg sync.WaitGroup
@@ -918,6 +979,7 @@ func output(cancel context.CancelFunc, seq iter.Seq[Group]) iter.Seq[Item] {
 		defer close(ch)
 
 		for group := range seq {
+			messageCount.Add(-1)
 			for _, item := range group.Items {
 				ch <- item
 			}
@@ -925,10 +987,9 @@ func output(cancel context.CancelFunc, seq iter.Seq[Group]) iter.Seq[Item] {
 	}()
 
 	return func(yield func(Item) bool) {
+		defer outWg.Wait()
 		defer wg.Wait()
-		defer func() {
-			cancel()
-		}()
+		defer cancel()
 
 		for item := range ch {
 			if !yield(item) {
@@ -969,9 +1030,10 @@ type Path struct {
 	traversal         *Traversal
 	target            *Node
 	targetIdentifiers []string
+	messageCount      atomic.Int64
 }
 
-func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
+func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
 	p.resolve(ctx, (*Node)(source))
@@ -993,6 +1055,8 @@ func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 
 	seq := sequence(outGroup)
 
+	p.messageCount.Store(1)
+
 	targetWorker.Listen(nil, seq)
 
 	sourceWorker, ok := p.traversal.pipeline[source]
@@ -1000,16 +1064,55 @@ func (p Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 		panic("no such target worker")
 	}
 
-	results := output(cancel, sourceWorker.Subscribe(context.Background()))
+	var wg sync.WaitGroup
+
+	results := output(cancel, sourceWorker.Subscribe(context.Background(), nil), &wg, &p.messageCount)
 
 	for _, worker := range p.traversal.pipeline {
-		worker.Start()
+		worker.Start(&p.messageCount)
 	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for {
+			var busy bool
+
+			for _, worker := range p.traversal.pipeline {
+				if worker.Active() {
+					busy = true
+				}
+			}
+			messageCount := p.messageCount.Load()
+
+			println("busy: ", busy, " message count: ", messageCount)
+
+			if !busy && messageCount < 1 {
+				for _, worker := range p.traversal.pipeline {
+					var node *Node
+					switch worker.resolver.(type) {
+					case *specificTypeResolver:
+						node = worker.resolver.(*specificTypeResolver).node
+					case *specificTypeAndRelationResolver:
+						node = worker.resolver.(*specificTypeAndRelationResolver).node
+					case *unionResolver:
+						node = worker.resolver.(*unionResolver).node
+					case *intersectionResolver:
+						node = worker.resolver.(*intersectionResolver).node
+					}
+					println("CLOSING WORKER", node.GetUniqueLabel())
+					worker.Close()
+				}
+				break
+			}
+		}
+	}()
 
 	return results
 }
 
-func (p Path) resolve(ctx context.Context, source *Node) {
+func (p *Path) resolve(ctx context.Context, source *Node) {
 	if p.traversal.pipeline == nil {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
@@ -1045,7 +1148,7 @@ func (p Path) resolve(ctx context.Context, source *Node) {
 		}
 
 		p.resolve(ctx, edge.GetTo())
-		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx))
+		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
 	}
 }
 
