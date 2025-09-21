@@ -522,11 +522,11 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener,
 type specificTypeAndRelationResolver struct {
 	backend *backend
 	node    *Node
-	active  atomic.Bool
+	active  atomic.Uint64
 }
 
 func (r *specificTypeAndRelationResolver) Active() bool {
-	return r.active.Load()
+	return r.active.Load() > 0
 }
 
 func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
@@ -550,12 +550,13 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 		buffers[i] = make(map[string]struct{})
 	}
 
-	var ctr int
+	var ctr uint64
 
 	var wg sync.WaitGroup
 
-	for ctr < len(senders) {
+	for ctr < uint64(len(senders)) {
 		ndx := ctr
+		pos := 2 ^ ndx
 
 		wg.Add(1)
 		go func() {
@@ -579,8 +580,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
-				r.active.Store(true)
-				messageCount.Add(-1)
+				r.active.Or(pos)
 
 				timer.Stop()
 
@@ -599,7 +599,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				if len(unseen) == 0 {
-					r.active.Store(false)
+					r.active.And(^pos)
+					messageCount.Add(-1)
 					continue
 				}
 
@@ -667,7 +668,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 							stops[ndx]()
 						}
 					*/
-					r.active.Store(false)
+					r.active.And(^pos)
+					messageCount.Add(-1)
 					continue
 				}
 
@@ -681,7 +683,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					case <-lst.ctx.Done():
 					}
 				}
-				r.active.Store(false)
+				r.active.And(^pos)
+				messageCount.Add(-1)
 			}
 		}()
 
@@ -923,10 +926,13 @@ func (w *Worker) Start(messageCount *atomic.Int64) {
 	}()
 }
 
-func (w *Worker) Close() {
+func (w *Worker) Cancel() {
 	for _, lst := range w.listeners {
 		lst.cancel()
 	}
+}
+
+func (w *Worker) Wait() {
 	w.wg.Wait()
 }
 
@@ -1082,6 +1088,7 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 			for _, worker := range p.traversal.pipeline {
 				if worker.Active() {
 					busy = true
+					break
 				}
 			}
 			messageCount := p.messageCount.Load()
@@ -1102,7 +1109,11 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 						node = worker.resolver.(*intersectionResolver).node
 					}
 					println("CLOSING WORKER", node.GetUniqueLabel())
-					worker.Close()
+					worker.Cancel()
+				}
+
+				for _, worker := range p.traversal.pipeline {
+					worker.Wait()
 				}
 				break
 			}
