@@ -140,11 +140,11 @@ var (
 	NodeTypeSpecificTypeAndRelation = weightedGraph.SpecificTypeAndRelation
 	NodeTypeOperator                = weightedGraph.OperatorNode
 
-	ErrNoSuchNode = errors.New("no such node in graph")
-	ErrNoSuchPath = errors.New("no path between source and target nodes")
+	ErrNoSuchNode         = errors.New("no such node in graph")
+	ErrNoSuchPath         = errors.New("no path between source and target nodes")
+	ErrConnectionOverflow = errors.New("too many connections")
+	ErrTupleCycle         = errors.New("cycle detected in tuples")
 )
-
-var ErrTupleCycle = errors.New("cycle detected in tuples")
 
 type Item struct {
 	Value string
@@ -446,6 +446,82 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 	}
 }
 
+type coordinator struct {
+	mu           sync.Mutex
+	top          int
+	a            uint64
+	b            uint64
+	c            uint64
+	d            uint64
+	messageCount int64
+}
+
+func (c *coordinator) register() (int, error) {
+	if c.top >= 256 {
+		return 0, ErrConnectionOverflow
+	}
+	id := c.top
+	c.top++
+	return id, nil
+}
+
+func (c *coordinator) setActive(id int, active bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	pos := uint64(1 << id)
+
+	if id < 64 {
+		if active {
+			c.a |= pos
+			return
+		}
+		c.a &^= pos
+		return
+	}
+
+	if id < 128 {
+		if active {
+			c.b |= pos
+			return
+		}
+		c.b &^= pos
+		return
+	}
+
+	if id < 192 {
+		if active {
+			c.c |= pos
+			return
+		}
+		c.c &^= pos
+		return
+	}
+
+	if id < 256 {
+		if active {
+			c.d |= pos
+			return
+		}
+		c.d &^= pos
+		return
+	}
+	panic("too many connections")
+}
+
+func (c *coordinator) getState() (bool, int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.a|c.b|c.c|c.d != 0, c.messageCount
+}
+
+func (c *coordinator) addMessages(n int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.messageCount += n
+}
+
 type listener struct {
 	ch     chan Group
 	ctx    context.Context
@@ -459,21 +535,17 @@ type sender struct {
 }
 
 type resolver interface {
-	Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64)
-	Active() bool
+	Resolve(senders []*sender, listeners []*listener)
 }
 
 type specificTypeResolver struct {
+	id      int
+	coord   *coordinator
 	backend *backend
 	node    *Node
-	active  atomic.Bool
 }
 
-func (s *specificTypeResolver) Active() bool {
-	return s.active.Load()
-}
-
-func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
+func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -488,16 +560,15 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener,
 			for group := range snd.seq {
 				var items []Item
 
-				s.active.Store(true)
-
-				messageCount.Add(-1)
+				r.coord.setActive(r.id, true)
+				r.coord.addMessages(-1)
 
 				for _, item := range group.Items {
 					if item.Err != nil {
 						items = append(items, item)
 						continue
 					}
-					item.Value = s.node.GetLabel() + ":" + item.Value
+					item.Value = r.node.GetLabel() + ":" + item.Value
 					items = append(items, item)
 				}
 
@@ -506,13 +577,14 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener,
 				}
 
 				for _, lst := range listeners {
+					r.coord.addMessages(1)
 					select {
 					case lst.ch <- mappedGroup:
-						messageCount.Add(1)
 					case <-lst.ctx.Done():
+						r.coord.addMessages(-1)
 					}
 				}
-				s.active.Store(false)
+				r.coord.setActive(r.id, false)
 			}
 		}(snd)
 	}
@@ -520,16 +592,13 @@ func (s *specificTypeResolver) Resolve(senders []*sender, listeners []*listener,
 }
 
 type specificTypeAndRelationResolver struct {
+	id      int
+	coord   *coordinator
 	backend *backend
 	node    *Node
-	active  atomic.Uint64
 }
 
-func (r *specificTypeAndRelationResolver) Active() bool {
-	return r.active.Load() > 0
-}
-
-func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
+func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		println("RESOLVER DONE", r.node.GetUniqueLabel())
 	}()
@@ -550,13 +619,15 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 		buffers[i] = make(map[string]struct{})
 	}
 
+	var active atomic.Uint64
+
 	var ctr uint64
 
 	var wg sync.WaitGroup
 
 	for ctr < uint64(len(senders)) {
 		ndx := ctr
-		pos := 2 ^ ndx
+		pos := uint64(1 << ndx)
 
 		wg.Add(1)
 		go func() {
@@ -580,7 +651,9 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
-				r.active.Or(pos)
+				active.Or(pos)
+				r.coord.setActive(r.id, active.Load() != 0)
+				r.coord.addMessages(-1)
 
 				timer.Stop()
 
@@ -599,8 +672,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				if len(unseen) == 0 {
-					r.active.And(^pos)
-					messageCount.Add(-1)
+					active.And(^pos)
+					r.coord.setActive(r.id, active.Load() != 0)
 					continue
 				}
 
@@ -668,23 +741,24 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 							stops[ndx]()
 						}
 					*/
-					r.active.And(^pos)
-					messageCount.Add(-1)
+					active.And(^pos)
+					r.coord.setActive(r.id, active.Load() != 0)
 					continue
 				}
 
 				for _, lst := range listeners {
+					r.coord.addMessages(1)
 					select {
 					case lst.ch <- outGroup:
-						messageCount.Add(1)
 						if lst.node != nil {
 							println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
 						}
 					case <-lst.ctx.Done():
+						r.coord.addMessages(-1)
 					}
 				}
-				r.active.And(^pos)
-				messageCount.Add(-1)
+				active.And(^pos)
+				r.coord.setActive(r.id, active.Load() != 0)
 			}
 		}()
 
@@ -698,16 +772,13 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 }
 
 type unionResolver struct {
+	id      int
+	coord   *coordinator
 	backend *backend
 	node    *Node
-	active  atomic.Bool
 }
 
-func (r *unionResolver) Active() bool {
-	return r.active.Load()
-}
-
-func (r *unionResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
+func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -729,10 +800,10 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener, messag
 
 		var items []Item
 
-		r.active.Store(true)
+		r.coord.setActive(r.id, true)
 
 		for group := range mergedSeqs {
-			messageCount.Add(-1)
+			r.coord.addMessages(-1)
 
 			for _, item := range group.Items {
 				if item.Err != nil {
@@ -752,28 +823,26 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener, messag
 		}
 
 		for _, lst := range listeners {
+			r.coord.addMessages(1)
 			select {
 			case lst.ch <- outGroup:
-				messageCount.Add(1)
 			case <-lst.ctx.Done():
+				r.coord.addMessages(-1)
 			}
 		}
-		r.active.Store(false)
+		r.coord.setActive(r.id, false)
 	}()
 	wg.Wait()
 }
 
 type intersectionResolver struct {
+	id      int
+	coord   *coordinator
 	backend *backend
 	node    *Node
-	active  atomic.Bool
 }
 
-func (r *intersectionResolver) Active() bool {
-	return r.active.Load()
-}
-
-func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener, messageCount *atomic.Int64) {
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
 	}
@@ -795,7 +864,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener,
 
 		var wg sync.WaitGroup
 
-		r.active.Store(true)
+		r.coord.setActive(r.id, true)
 
 		for i, snd := range senders {
 			wg.Add(1)
@@ -804,7 +873,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener,
 				defer wg.Done()
 
 				for group := range snd.seq {
-					messageCount.Add(-1)
+					r.coord.addMessages(-1)
 
 					for _, item := range group.Items {
 						if item.Err != nil {
@@ -851,12 +920,14 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener,
 		}
 
 		for _, sub := range listeners {
+			r.coord.addMessages(1)
 			select {
 			case sub.ch <- outGroup:
 			case <-sub.ctx.Done():
+				r.coord.addMessages(-1)
 			}
 		}
-		r.active.Store(false)
+		r.coord.setActive(r.id, false)
 	}()
 	wg.Wait()
 }
@@ -868,17 +939,26 @@ type Worker struct {
 	wg        sync.WaitGroup
 }
 
-func NewWorker(backend *backend, node *Node) *Worker {
+func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 	var r resolver
+
+	id, err := coord.register()
+	if err != nil {
+		panic(err)
+	}
 
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
 		r = &specificTypeAndRelationResolver{
+			id:      id,
+			coord:   coord,
 			backend: backend,
 			node:    node,
 		}
 	case NodeTypeSpecificType:
 		r = &specificTypeResolver{
+			id:      id,
+			coord:   coord,
 			backend: backend,
 			node:    node,
 		}
@@ -886,11 +966,15 @@ func NewWorker(backend *backend, node *Node) *Worker {
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			r = &intersectionResolver{
+				id:      id,
+				coord:   coord,
 				backend: backend,
 				node:    node,
 			}
 		case weightedGraph.UnionOperator:
 			r = &unionResolver{
+				id:      id,
+				coord:   coord,
 				backend: backend,
 				node:    node,
 			}
@@ -906,11 +990,7 @@ func NewWorker(backend *backend, node *Node) *Worker {
 	}
 }
 
-func (w *Worker) Active() bool {
-	return w.resolver.Active()
-}
-
-func (w *Worker) Start(messageCount *atomic.Int64) {
+func (w *Worker) Start() {
 	w.wg.Add(1)
 
 	go func() {
@@ -922,7 +1002,7 @@ func (w *Worker) Start(messageCount *atomic.Int64) {
 			}
 		}()
 
-		w.resolver.Resolve(w.senders, w.listeners, messageCount)
+		w.resolver.Resolve(w.senders, w.listeners)
 	}()
 }
 
@@ -974,7 +1054,7 @@ func (w *Worker) Subscribe(ctx context.Context, node *Node) iter.Seq[Group] {
 	}
 }
 
-func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGroup, messageCount *atomic.Int64) iter.Seq[Item] {
+func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGroup, coord *coordinator) iter.Seq[Item] {
 	ch := make(chan Item, 1)
 
 	var wg sync.WaitGroup
@@ -985,7 +1065,7 @@ func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGrou
 		defer close(ch)
 
 		for group := range seq {
-			messageCount.Add(-1)
+			coord.addMessages(-1)
 			for _, item := range group.Items {
 				ch <- item
 			}
@@ -1036,13 +1116,14 @@ type Path struct {
 	traversal         *Traversal
 	target            *Node
 	targetIdentifiers []string
-	messageCount      atomic.Int64
 }
 
 func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	p.resolve(ctx, (*Node)(source))
+	var coord coordinator
+
+	p.resolve(ctx, (*Node)(source), &coord)
 
 	targetWorker, ok := p.traversal.pipeline[p.target]
 	if !ok {
@@ -1061,7 +1142,7 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 
 	seq := sequence(outGroup)
 
-	p.messageCount.Store(1)
+	coord.addMessages(1)
 
 	targetWorker.Listen(nil, seq)
 
@@ -1072,10 +1153,10 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 
 	var wg sync.WaitGroup
 
-	results := output(cancel, sourceWorker.Subscribe(context.Background(), nil), &wg, &p.messageCount)
+	results := output(cancel, sourceWorker.Subscribe(context.Background(), nil), &wg, &coord)
 
 	for _, worker := range p.traversal.pipeline {
-		worker.Start(&p.messageCount)
+		worker.Start()
 	}
 
 	wg.Add(1)
@@ -1085,15 +1166,9 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 		for {
 			var busy bool
 
-			for _, worker := range p.traversal.pipeline {
-				if worker.Active() {
-					busy = true
-					break
-				}
-			}
-			messageCount := p.messageCount.Load()
+			busy, messageCount := coord.getState()
 
-			println("busy: ", busy, " message count: ", messageCount)
+			// println("busy: ", busy, " message count: ", messageCount)
 
 			if !busy && messageCount < 1 {
 				for _, worker := range p.traversal.pipeline {
@@ -1123,7 +1198,7 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 	return results
 }
 
-func (p *Path) resolve(ctx context.Context, source *Node) {
+func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	if p.traversal.pipeline == nil {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
@@ -1131,7 +1206,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 	// if graph traversal has encountered the target node, we can return the target identifiers.
 	if source == p.target {
 		if _, ok := p.traversal.pipeline[source]; !ok {
-			p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source)
+			p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
 		}
 		return
 	}
@@ -1142,7 +1217,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 	}
 
 	if _, ok := p.traversal.pipeline[source]; !ok {
-		p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source)
+		p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
 	} else {
 		return
 	}
@@ -1158,7 +1233,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 			continue
 		}
 
-		p.resolve(ctx, edge.GetTo())
+		p.resolve(ctx, edge.GetTo(), coord)
 		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
 	}
 }
