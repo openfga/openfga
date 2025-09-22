@@ -755,10 +755,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	if config.HTTP.Enabled {
 		runtime.DefaultContextTimeout = serverconfig.DefaultContextTimeout(config)
 
-		dialOpts := []grpc.DialOption{
-			// nolint:staticcheck // ignoring gRPC deprecations
-			grpc.WithBlock(),
-		}
+		var dialOpts []grpc.DialOption
 		if config.Trace.Enabled {
 			dialOpts = append(dialOpts, grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 		}
@@ -772,11 +769,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		}
 
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-
-		// nolint:staticcheck // ignoring gRPC deprecations
-		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
+		conn, err := grpc.NewClient(config.GRPC.Addr, dialOpts...)
 		if err != nil {
 			s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
 		}
