@@ -19,6 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     - Removed `WithShadowResolverOpts` option.
     - Removed `ShadowResolver` struct implementation, replaced by `ShadowCheckCommand`.
 
+## [1.10.1] - 2025-09-22
 ### Fixed
 - Revert spf13/viper back to v.1.20.1 to avoid bumping sourcegraph/conc to an unreleased version as it causes performance degradation. [#2706](https://github.com/openfga/openfga/pull/2706)
 
@@ -1435,7 +1436,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/openfga/openfga/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openfga/openfga/compare/v1.9.5...v1.10.0
 [1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
 [1.9.4]: https://github.com/openfga/openfga/compare/v1.9.3...v1.9.4
