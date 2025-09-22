@@ -12,6 +12,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	lang "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -30,6 +31,134 @@ type testcase struct {
 	relation   string
 	user       *UserRefObject
 	expected   []string
+}
+
+func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
+	backend := &backend{
+		datastore: ds,
+		storeId:   storeID,
+	}
+
+	traversal := &Traversal{
+		graph:   g,
+		backend: backend,
+	}
+
+	target, ok := traversal.Target(tc.user.GetObjectType())
+	if !ok {
+		panic("no such target")
+	}
+
+	source, ok := traversal.Source(tc.objectType, tc.relation)
+	if !ok {
+		panic("no such source")
+	}
+
+	path := traversal.Traverse(source, target, tc.user.Object.GetId())
+
+	return path
+}
+
+func BenchmarkPipeline(b *testing.B) {
+	ds := memory.New()
+	b.Cleanup(ds.Close)
+
+	tc := testcase{
+		model: `model
+			  schema 1.1
+
+				type user
+
+				type document
+					relations
+						define viewer: [team#member, org#employee]
+
+				type team
+					relations
+						define member: [user, document#viewer, org#employee]
+			
+				type org
+					relations
+						define employee: [user, document#viewer, team#member]
+			`,
+		tuples: []string{
+			"team:1#member@user:justin",
+			"team:2#member@user:justin",
+			"org:1#employee@user:justin",
+			"org:2#employee@user:justin",
+			"org:3#employee@document:1#viewer",
+			"org:4#employee@document:2#viewer",
+			"team:3#member@document:3#viewer",
+			"document:3#viewer@team:4#member",
+			"team:4#member@user:justin",
+			"document:5#viewer@team:3#member",
+			"document:1#viewer@org:4#employee",
+			"document:8#viewer@org:3#employee",
+			"org:4#employee@user:justin",
+
+			"document:a#viewer@team:a#member",
+			"team:a#member@user:justin",
+			"document:b#viewer@org:b#employee",
+			"org:b#employee@document:a#viewer",
+			// expect document:a, document:b
+
+			"document:c#viewer@org:c#employee",
+			"org:c#employee@user:justin",
+			"document:d#viewer@team:b#member",
+			"team:b#member@document:c#viewer",
+			// expect document:c, document:d
+
+			"document:e#viewer@team:e#member",
+			"team:e#member@org:e#employee",
+			"org:e#employee@user:justin",
+			"document:f#viewer@org:f#employee",
+			"org:f#employee@document:e#viewer",
+			"document:g#viewer@team:g#member",
+			"team:g#member@org:g#employee",
+			"org:g#employee@document:f#viewer",
+			// expect document:e, document:f, document:g
+
+			"document:h#viewer@org:h#employee",
+			"org:h#employee@team:h#member",
+			"team:h#member@user:justin",
+			"document:i#viewer@team:i#member",
+			"team:i#member@document:h#viewer",
+			"document:j#viewer@org:i#employee",
+			"org:i#employee@team:j#member",
+			"team:j#member@document:i#viewer",
+			// expect document:h, document:i, document:j
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
+	}
+
+	ctx := context.Background()
+
+	storeID, model := storagetest.BootstrapFGAStore(b, ds, tc.model, tc.tuples)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	g := typesys.GetWeightedGraph()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		path := setup(ds, storeID, g, tc)
+
+		seq := path.Objects(ctx)
+
+		for range seq {
+		}
+	}
 }
 
 func TestProcessDirectEdge(t *testing.T) {
@@ -70,9 +199,9 @@ func TestProcessDirectEdge(t *testing.T) {
 		source, ok := traversal.Source(test.objectType, test.relation)
 		require.True(t, ok)
 
-		path := traversal.Traverse(target, test.user.Object.GetId())
+		path := traversal.Traverse(source, target, test.user.Object.GetId())
 
-		seq := path.Objects(ctx, source)
+		seq := path.Objects(ctx)
 
 		var results []string
 

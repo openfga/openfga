@@ -8,7 +8,6 @@ import (
 	"maps"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -600,7 +599,7 @@ type specificTypeAndRelationResolver struct {
 
 func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		println("RESOLVER DONE", r.node.GetUniqueLabel())
+		// println("RESOLVER DONE", r.node.GetUniqueLabel())
 	}()
 
 	if len(senders) == 0 {
@@ -627,8 +626,10 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 		buffers[i] = make(map[string]struct{})
 	}
 
+	var mu sync.Mutex
+
 	// active is a bitfield representing which senders are currently processing messages
-	var active atomic.Uint64
+	var active uint64
 
 	// ctr is used to assign a unique bit position to each sender
 	var ctr uint64
@@ -652,7 +653,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				timer := time.AfterFunc(500*time.Millisecond, func() {
-					println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+					// println("STUCK?", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
 				})
 
 				inGroup, ok := nexts[ndx]()
@@ -660,14 +661,17 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					timer.Stop()
 					stops[ndx]()
 					stopped[ndx] = true
-					println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
+					// println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
 					break
 				}
 
 				timer.Stop()
 
-				active.Or(pos)
-				r.coord.setActive(r.id, active.Load() != 0)
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
 				r.coord.addMessages(-1)
 
 				var unseen []Item
@@ -687,12 +691,14 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
-					active.And(^pos)
-					r.coord.setActive(r.id, active.Load() != 0)
+					mu.Lock()
+					active &^= pos
+					r.coord.setActive(r.id, active != 0)
+					mu.Unlock()
 					continue
 				}
 
-				println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
+				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -765,8 +771,10 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				// if no items were produced, skip sending to listeners
 				if len(outGroup.Items) == 0 {
-					active.And(^pos)
-					r.coord.setActive(r.id, active.Load() != 0)
+					mu.Lock()
+					active &^= pos
+					r.coord.setActive(r.id, active != 0)
+					mu.Unlock()
 					continue
 				}
 
@@ -776,14 +784,16 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					select {
 					case lst.ch <- outGroup:
 						if lst.node != nil {
-							println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
+							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
 						}
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
 					}
 				}
-				active.And(^pos)
-				r.coord.setActive(r.id, active.Load() != 0)
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
 			}
 		}()
 
@@ -1129,26 +1139,28 @@ func (t *Traversal) Source(name, relation string) (Source, bool) {
 	return (Source)(sourceNode), ok
 }
 
-func (t *Traversal) Traverse(target Target, targetIdentifiers ...string) Path {
+func (t *Traversal) Traverse(source Source, target Target, targetIdentifiers ...string) Path {
 	return Path{
 		traversal:         t,
+		source:            (*Node)(source),
 		target:            (*Node)(target),
 		targetIdentifiers: targetIdentifiers,
 	}
 }
 
 type Path struct {
+	source            *Node
 	traversal         *Traversal
 	target            *Node
 	targetIdentifiers []string
 }
 
-func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
+func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
 	var coord coordinator
 
-	p.resolve(ctx, (*Node)(source), &coord)
+	p.resolve(ctx, p.source, &coord)
 
 	targetWorker, ok := p.traversal.pipeline[p.target]
 	if !ok {
@@ -1171,7 +1183,7 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 
 	targetWorker.Listen(nil, seq)
 
-	sourceWorker, ok := p.traversal.pipeline[source]
+	sourceWorker, ok := p.traversal.pipeline[p.source]
 	if !ok {
 		panic("no such target worker")
 	}
@@ -1197,18 +1209,20 @@ func (p *Path) Objects(ctx context.Context, source Source) iter.Seq[Item] {
 
 			if !busy && messageCount < 1 {
 				for _, worker := range p.traversal.pipeline {
-					var node *Node
-					switch worker.resolver.(type) {
-					case *specificTypeResolver:
-						node = worker.resolver.(*specificTypeResolver).node
-					case *specificTypeAndRelationResolver:
-						node = worker.resolver.(*specificTypeAndRelationResolver).node
-					case *unionResolver:
-						node = worker.resolver.(*unionResolver).node
-					case *intersectionResolver:
-						node = worker.resolver.(*intersectionResolver).node
-					}
-					println("CLOSING WORKER", node.GetUniqueLabel())
+					/*
+						var node *Node
+						switch worker.resolver.(type) {
+						case *specificTypeResolver:
+							node = worker.resolver.(*specificTypeResolver).node
+						case *specificTypeAndRelationResolver:
+							node = worker.resolver.(*specificTypeAndRelationResolver).node
+						case *unionResolver:
+							node = worker.resolver.(*unionResolver).node
+						case *intersectionResolver:
+							node = worker.resolver.(*intersectionResolver).node
+						}
+						println("CLOSING WORKER", node.GetUniqueLabel())
+					*/
 					worker.Cancel()
 				}
 
