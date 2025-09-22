@@ -10,7 +10,6 @@ import (
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
-	"github.com/open-feature/go-sdk/openfeature"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
@@ -177,8 +176,7 @@ type Server struct {
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
-	featureProvider                  openfeature.FeatureProvider
-	featureClient                    *openfeature.Client
+	featureFlagClient                featureflags.Client
 
 	// NOTE don't use this directly, use function resolveTypesystem. See https://github.com/openfga/openfga/issues/1527
 	typesystemResolver     typesystem.TypesystemResolverFunc
@@ -401,9 +399,9 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
-func WithFeatureProvider(provider openfeature.FeatureProvider) OpenFGAServiceV1Option {
+func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.featureProvider = provider
+		s.featureFlagClient = client
 	}
 }
 
@@ -598,7 +596,7 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	isEnabled := s.featureClient.Boolean(context.Background(), string(ExperimentalAccessControlParams), false, openfeature.EvaluationContext{})
+	isEnabled := s.featureFlagClient.Boolean(string(ExperimentalAccessControlParams), false, nil)
 	return isEnabled && s.AccessControl.Enabled
 }
 
@@ -913,19 +911,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("ListUsers default dispatch throttling threshold must be equal or smaller than max dispatch threshold for ListUsers")
 	}
 
-	if s.featureProvider == nil {
+	if s.featureFlagClient == nil {
 		flags := make([]string, 0, len(s.experimentals))
 		for _, val := range s.experimentals {
 			flags = append(flags, string(val))
 		}
-		s.featureProvider = featureflags.NewDefaultProvider(flags)
+		s.featureFlagClient = featureflags.NewDefaultClient(flags)
 	}
-
-	if err := openfeature.SetProviderAndWait(s.featureProvider); err != nil {
-		return nil, fmt.Errorf("failed to set feature provider: %v", err)
-	}
-
-	s.featureClient = openfeature.NewClient("fga")
 
 	err := s.validateAccessControlEnabled()
 	if err != nil {
