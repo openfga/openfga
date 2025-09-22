@@ -2,6 +2,7 @@ package featureflags
 
 import (
 	"context"
+
 	"github.com/open-feature/go-sdk/openfeature"
 )
 

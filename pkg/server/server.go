@@ -41,16 +41,11 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-type ExperimentalFeatureFlag string
-
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
-	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
-	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
-	allowedLabel                                                 = "allowed"
+	allowedLabel = "allowed"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -172,7 +167,7 @@ type Server struct {
 	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
-	experimentals                    []ExperimentalFeatureFlag
+	experimentals                    []serverconfig.ExperimentalFeatureFlag
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
@@ -393,7 +388,7 @@ func WithMaxConcurrentReadsForListUsers(maxConcurrentReadsForListUsers uint32) O
 	}
 }
 
-func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+func WithExperimentals(experimentals ...serverconfig.ExperimentalFeatureFlag) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
 	}
@@ -596,7 +591,11 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	isEnabled := s.featureFlagClient.Boolean(string(ExperimentalAccessControlParams), false, nil)
+	isEnabled := s.featureFlagClient.Boolean(
+		string(serverconfig.ExperimentalAccessControlParams),
+		false,
+		nil,
+	)
 	return isEnabled && s.AccessControl.Enabled
 }
 
@@ -833,7 +832,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
-		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		experimentals:                    make([]serverconfig.ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
@@ -946,6 +945,71 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	if err != nil {
+		return nil, err
+	}
+
+	var checkCacheOptions []graph.CachedCheckResolverOpt
+	if s.cacheSettings.ShouldCacheCheckQueries() {
+		checkCacheOptions = append(checkCacheOptions,
+			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+		)
+	}
+
+	checkOptimizationsEnabled := s.featureFlagClient.Boolean(
+		string(serverconfig.ExperimentalCheckOptimizations),
+		false,
+		nil,
+	)
+	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(checkOptimizationsEnabled),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, err
+	}
+
+	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(checkOptimizationsEnabled),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithName("list-objects"),
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
 	if err != nil {
 		return nil, err
 	}
