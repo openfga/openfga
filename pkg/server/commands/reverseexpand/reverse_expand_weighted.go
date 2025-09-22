@@ -469,7 +469,7 @@ func (c *coordinator) setActive(id int, active bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	pos := uint64(1 << id)
+	pos := uint64(1 << (id % 64))
 
 	if id < 64 {
 		if active {
