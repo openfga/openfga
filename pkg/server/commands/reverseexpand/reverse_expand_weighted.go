@@ -604,12 +604,20 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	}()
 
 	if len(senders) == 0 {
+		// nothing to do
 		return
 	}
 
+	// nexts holds the next function for each sender sequence
 	nexts := make([]func() (Group, bool), len(senders))
+
+	// stops holds the stop function for each sender sequence
 	stops := make([]func(), len(senders))
+
+	// stopped keeps track of which sender sequences have been fully consumed
 	stopped := make([]bool, len(senders))
+
+	// buffers holds a set of seen item values for each sender to avoid processing duplicates
 	buffers := make([]map[string]struct{}, len(senders))
 
 	for i, snd := range senders {
@@ -619,12 +627,16 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 		buffers[i] = make(map[string]struct{})
 	}
 
+	// active is a bitfield representing which senders are currently processing messages
 	var active atomic.Uint64
 
+	// ctr is used to assign a unique bit position to each sender
 	var ctr uint64
 
+	// wg is used to wait for all sender goroutines to finish
 	var wg sync.WaitGroup
 
+	// Start a goroutine for each sender to process incoming groups concurrently
 	for ctr < uint64(len(senders)) {
 		ndx := ctr
 		pos := uint64(1 << ndx)
@@ -635,6 +647,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 			for {
 				if stopped[ndx] {
+					// This sender has been fully consumed, exit the loop
 					break
 				}
 
@@ -651,14 +664,15 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					break
 				}
 
+				timer.Stop()
+
 				active.Or(pos)
 				r.coord.setActive(r.id, active.Load() != 0)
 				r.coord.addMessages(-1)
 
-				timer.Stop()
-
 				var unseen []Item
 
+				// Deduplicate items within this group based on the buffer for this sender
 				for _, item := range inGroup.Items {
 					if item.Err != nil {
 						continue
@@ -671,6 +685,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					buffers[ndx][item.Value] = struct{}{}
 				}
 
+				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
 					active.And(^pos)
 					r.coord.setActive(r.id, active.Load() != 0)
@@ -683,6 +698,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				switch senders[ndx].edge.GetEdgeType() {
 				case EdgeTypeDirect:
+					// For direct edges, we need to query the backend to find all objects of the specified type
+
 					parts := strings.Split(r.node.GetLabel(), "#")
 					nodeType := parts[0]
 					nodeRelation := parts[1]
@@ -724,6 +741,18 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					results = sequence(inGroup.Items...)
 				}
 
+				// collect all items produced in results
+				// and send them as a single group to listeners
+				// this ensures that we maintain some semblance of ordering
+				// from the original input stream
+				// while still allowing concurrent processing of multiple input streams
+				// and deduplication within each stream
+				//
+				// NOTE: this does mean that a single slow listener
+				// can hold up the processing of other input streams
+				// but this is a tradeoff we're willing to make for now.
+				// This is specifically a problem when a listener is the current producer,
+				// as it can lead to a deadlock. This is always true for recursive edges.
 				var items []Item
 
 				for item := range results {
@@ -734,18 +763,14 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					Items: items,
 				}
 
+				// if no items were produced, skip sending to listeners
 				if len(outGroup.Items) == 0 {
-					/*
-						if senders[ndx].edge.GetRecursiveRelation() != "" {
-							println("RECURSIVE", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
-							stops[ndx]()
-						}
-					*/
 					active.And(^pos)
 					r.coord.setActive(r.id, active.Load() != 0)
 					continue
 				}
 
+				// send a copy of the produced group to all listeners
 				for _, lst := range listeners {
 					r.coord.addMessages(1)
 					select {
