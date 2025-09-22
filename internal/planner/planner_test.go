@@ -33,7 +33,7 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	kp := p.GetKeyPlan(key)
 	choice := kp.SelectStrategy(resolvers)
 	// It should favor "fast" since it has a better initial guess.
-	require.Equal(t, "fast", choice)
+	require.Equal(t, resolvers["fast"], choice)
 
 	require.NotNil(t, kp)
 	_, ok := kp.stats.Load("fast")
