@@ -22,19 +22,23 @@ const defaultResolver = "default"
 var defaultPlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
 	InitialGuess: 50 * time.Millisecond,
-	// Very Low Lambda: Represents zero confidence. It's a pure guess.
+	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
-	Alpha:  0.5,
-	Beta:   0.5,
+	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
+	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
+	// helping out with the cold start when we don't have enough data.
+	Alpha: 0.5,
+	Beta:  0.5,
 }
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
-	InitialGuess: 300 * time.Millisecond,
-	// Very Low Lambda: Represents zero confidence. It's a pure guess.
+	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
+	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
-	// We use the same highly uncertain prior as before. Its job is to be
-	// an exploratory option, and its InitialGuess is only a starting point.
+	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
+	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
+	// helping out with the cold start when we don't have enough data.
 	Alpha: 0.5,
 	Beta:  0.5,
 }

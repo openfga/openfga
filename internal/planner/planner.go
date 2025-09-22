@@ -46,7 +46,7 @@ type KeyPlanStrategy struct {
 
 		Higher α (for the same β) → higher expected precision → lower variance. For example, α = 20, β = 2 create a tall, narrow distribution.
 		This means we are very confident that the performance will be extremely consistent and tightly clustered around the average.
-		Low Alpha and Beta values (e.g., α ≤ 1,α = 0.5) create a wide, flat distribution. This means we are very uncertain and expect performance to be highly variable, and this causes more exploration
+		Low Alpha and Beta values (e.g., α ≤ 1,α = 0.5) create a wide, flat distribution. This means we are very uncertain and expect performance to be highly variable, and this causes more exploration.
 
 		Higher β (for the same α) → lower precision → higher variance.
 		If we expect the strategy to have bursty behaviour, keep α small (2–3) and/or β larger.

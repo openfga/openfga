@@ -25,6 +25,7 @@ const BaseIndex = 0
 const DifferenceIndex = 1
 const weightTwoResolver = "weight2"
 
+// This strategy is configured to show that it has proven fast and consistent.
 var weight2Plan = &planner.KeyPlanStrategy{
 	Type:         weightTwoResolver,
 	InitialGuess: 20 * time.Millisecond,
@@ -35,6 +36,10 @@ var weight2Plan = &planner.KeyPlanStrategy{
 	// This tells the planner: "I am very confident that the performance is
 	// consistently close to 10ms". A single slow run will be a huge surprise
 	// and will dramatically shift this belief.
+
+	// High expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 20/2 = 10
+	// Low expected variance: E[σ2]= β/(α−1) =2/9 = 0.105, narrow jitter
+	// A slow sample will look like an outlier and move the posterior noticeably but overall this prior exploits.
 	Alpha: 20,
 	Beta:  2,
 }
