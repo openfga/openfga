@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
-- Bumped the version of `openfga/language/pkg` to a version of the weighted graph includes recursive relation detection. [#2677](https://github.com/openfga/openfga/pull/2677)
+- Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 
 ## [1.10.1] - 2025-09-22
 ### Fixed
