@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/featureflags"
 	"strings"
 	"time"
 
@@ -52,6 +53,7 @@ type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
 	upstreamTimeout      time.Duration
+	ff                   featureflags.Client
 	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -70,6 +72,12 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 func WithOptimizations(enabled bool) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.ff = client
 	}
 }
 
@@ -683,7 +691,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.optimizationsEnabled {
+			if !c.ff.Boolean(string(serverconfig.ExperimentalCheckOptimizations), false, nil) {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 

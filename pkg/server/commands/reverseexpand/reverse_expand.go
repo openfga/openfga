@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/featureflags"
 	"sync"
 	"sync/atomic"
 
@@ -126,6 +127,7 @@ type UserRef struct {
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
@@ -172,6 +174,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 		if found {
 			d.localCheckResolver = localCheckResolver
 		}
+	}
+}
+
+func WithFeatureFlagClient(client featureflags.Client) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.ff = client
 	}
 }
 
@@ -384,7 +392,8 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.optimizationsEnabled && !req.skipWeightedGraph {
+	optimizationsEnabled := c.ff.Boolean(string(serverconfig.ExperimentalListObjectsOptimizations), false, nil)
+	if optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {
 			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()
