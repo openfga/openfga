@@ -445,6 +445,13 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 	}
 }
 
+// coordinator is responsible for keeping and synchronizing the current
+// state of a pipeline. The state of a pipeline is comprised of an active
+// status as a boolean value, and a count of total in-flight messages within
+// the pipeline. Each pipeline connection registered with the coordinator
+// receives a unique identifier that must be provided when updating the status
+// of a registered connection. A coordinator can support up to 256 registered
+// connections. A coordinator must not be copied.
 type coordinator struct {
 	// mu protects the fields within the coordinator struct.
 	mu sync.Mutex
@@ -475,6 +482,12 @@ type coordinator struct {
 	messageCount int64
 }
 
+// register is a function that returns a unique identifier for a pipeline
+// connection. A coordinator can support up to 256 registered connections.
+// If more than the supported maximum number of connections is registered,
+// an ErrConnectionOverflow error is returned. The identifier returned by
+// the register function must be provided when calling the setActive function
+// for a connection.
 func (c *coordinator) register() (int, error) {
 	if c.top >= 256 {
 		return 0, ErrConnectionOverflow
@@ -484,6 +497,12 @@ func (c *coordinator) register() (int, error) {
 	return id, nil
 }
 
+// setActive is a function that accepts a registered connection identifier
+// and an active status as a boolean value. The status value provided must
+// reflect the state of the pipeline connection associated with the provided
+// identifier. When active is true, the associated connection is assumed to
+// be processing a message. When active is false, the associated connection
+// is assumed to be waiting for a new message to arrive.
 func (c *coordinator) setActive(id int, active bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -528,12 +547,22 @@ func (c *coordinator) setActive(id int, active bool) {
 	panic("too many connections")
 }
 
+// getState is a function that returns the pipeline state as a sum
+// of all of its registered connections. The first return value indicates
+// the cummulative status of all registered connections; a value of true
+// indicates that at least one connection is processing a message. A
+// value of false indicates that all connections are in a waiting state.
+// The second return value indicates the number of currently in-flight
+// messages across all connections; a value greater than 0 indicates that
+// at least one message is waiting to be processed by a connection.
 func (c *coordinator) getState() (bool, int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.a|c.b|c.c|c.d != 0, c.messageCount
 }
 
+// addMessages accepts a positive or negative value indicating the amount
+// to increment the value of the coordinator's messageCount value by.
 func (c *coordinator) addMessages(n int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -541,29 +570,67 @@ func (c *coordinator) addMessages(n int64) {
 	c.messageCount += n
 }
 
+// listener is a struct that contains fields relevant to the listening
+// end of a pipeline connection.
 type listener struct {
-	ch     chan Group
-	ctx    context.Context
+	// ch is input channel of the listener.
+	ch chan Group
+
+	// ctx manages the lifetime of the listener.
+	ctx context.Context
+
+	// cancel will end the listeners lifetime when invoked.
 	cancel context.CancelFunc
-	node   *Node
+
+	// node is the weighted graph node that is listening.
+	node *Node
 }
 
+// sender is a struct that contains fields relevant to the producing
+// end of a pipeline connection.
 type sender struct {
+	// edge is the weighted graph edge that is producing.
 	edge *Edge
-	seq  iter.Seq[Group]
+
+	// seq is the continuous sequence of messages that will yield
+	// message values until the consumer stops iterating, or the
+	// mechanism feeding the seqence signals that it is done.
+	seq iter.Seq[Group]
 }
 
+// resolver is an interface that is consumed by a Worker struct.
+// a resolver is responsible for consuming messages from a Worker's
+// senders and broadcasting the result of processing the consumed
+// messages to the Worker's listeners.
 type resolver interface {
+	// Resolve is a function that consumes messages from the
+	// provided senders, and broadcasts the results of processing
+	// the consumed messages to the provided listeners.
 	Resolve(senders []*sender, listeners []*listener)
 }
 
+// specificTypeResolver is a struct that implements the resolver interface
+// for a specific type weighted graph node type.
 type specificTypeResolver struct {
-	id      int
-	coord   *coordinator
+	// id is the identifier obtained when registering this connection with
+	// the coordinator for the associated pipeline.
+	id int
+
+	// coord is an instance of a coordinator for the associated pipeline.
+	coord *coordinator
+
+	// backend is an instance containing the datastore and store identifier.
 	backend *backend
-	node    *Node
+
+	// node is a weighted graph node that is assocated with this resovler.
+	node *Node
 }
 
+// Resolve is a function that consumes messages from the provided senders,
+// processes the messages, and broadcasts the results to the provided listeners.
+// Resolve expects messages of Items having values of typeless identifiers. The
+// recieved identifiers will have the type of the node appended to them before
+// broadcasting the identifiers to  the provided listeners.
 func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
 	if len(senders) == 0 {
 		return
