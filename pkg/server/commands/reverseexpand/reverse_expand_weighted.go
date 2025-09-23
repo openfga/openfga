@@ -1054,6 +1054,149 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	wg.Wait()
 }
 
+type exclusionResolver struct {
+	id      int
+	coord   *coordinator
+	backend *backend
+	node    *Node
+}
+
+func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
+	if len(senders) < 2 {
+		panic("exclusion resolver requires at least two senders")
+	}
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		included := make(map[string]struct{})
+		excluded := make(map[string]struct{})
+
+		errs := make([][]Item, len(senders))
+
+		var mu1 sync.Mutex
+		var mu2 sync.Mutex
+
+		var wg sync.WaitGroup
+
+		r.coord.setActive(r.id, true)
+
+		for i, snd := range senders {
+			wg.Add(1)
+
+			go func(i int, snd *sender) {
+				defer wg.Done()
+
+				for group := range snd.seq {
+					r.coord.addMessages(-1)
+
+					if snd.edge.GetEdgeType() == EdgeTypeDirect {
+						// For direct edges, we need to query the backend to find all objects of the specified type
+
+						parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+						var userRelation string
+
+						if len(userParts) > 1 {
+							userRelation = userParts[1]
+						}
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						for _, item := range group.Items {
+							if item.Err != nil {
+								errs[i] = append(errs[i], item)
+								continue
+							}
+
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: userRelation,
+							})
+						}
+
+						var results iter.Seq[Item]
+
+						if len(userFilter) > 0 {
+							results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+						} else {
+							results = emptySequence
+						}
+
+						for item := range results {
+							if item.Err != nil {
+								errs[i] = append(errs[i], item)
+								continue
+							}
+
+							mu1.Lock()
+							included[item.Value] = struct{}{}
+							mu1.Unlock()
+						}
+					} else {
+						// TODO: handle TTU inclusion/exclusion cases
+						for _, item := range group.Items {
+							if item.Err != nil {
+								errs[i] = append(errs[i], item)
+								continue
+							}
+							if i == len(senders)-1 {
+								mu2.Lock()
+								excluded[item.Value] = struct{}{}
+								mu2.Unlock()
+							} else {
+								mu1.Lock()
+								included[item.Value] = struct{}{}
+								mu1.Unlock()
+							}
+						}
+					}
+				}
+			}(i, snd)
+		}
+		wg.Wait()
+
+		for obj := range excluded {
+			delete(included, obj)
+		}
+
+		var allErrs []Item
+
+		for _, errList := range errs {
+			allErrs = append(allErrs, errList...)
+		}
+
+		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), func(o string) Item { return Item{Value: o} }))
+
+		var items []Item
+
+		for item := range seq {
+			items = append(items, item)
+		}
+
+		outGroup := Group{
+			Items: items,
+		}
+
+		for _, sub := range listeners {
+			r.coord.addMessages(1)
+			select {
+			case sub.ch <- outGroup:
+			case <-sub.ctx.Done():
+				r.coord.addMessages(-1)
+			}
+		}
+		r.coord.setActive(r.id, false)
+	}()
+	wg.Wait()
+}
+
 type Worker struct {
 	senders   []*sender
 	listeners []*listener
@@ -1095,6 +1238,13 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 			}
 		case weightedGraph.UnionOperator:
 			r = &unionResolver{
+				id:      id,
+				coord:   coord,
+				backend: backend,
+				node:    node,
+			}
+		case weightedGraph.ExclusionOperator:
+			r = &exclusionResolver{
 				id:      id,
 				coord:   coord,
 				backend: backend,
