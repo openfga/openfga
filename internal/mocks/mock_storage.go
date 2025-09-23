@@ -133,17 +133,22 @@ func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, filter, op
 }
 
 // Write mocks base method.
-func (m *MockTupleBackend) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
+func (m *MockTupleBackend) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Write", ctx, store, d, w)
+	varargs := []any{ctx, store, d, w}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Write", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Write indicates an expected call of Write.
-func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w any) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockTupleBackend)(nil).Write), ctx, store, d, w)
+	varargs := append([]any{ctx, store, d, w}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockTupleBackend)(nil).Write), varargs...)
 }
 
 // MockRelationshipTupleReader is a mock of RelationshipTupleReader interface.
@@ -285,17 +290,22 @@ func (mr *MockRelationshipTupleWriterMockRecorder) MaxTuplesPerWrite() *gomock.C
 }
 
 // Write mocks base method.
-func (m *MockRelationshipTupleWriter) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
+func (m *MockRelationshipTupleWriter) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Write", ctx, store, d, w)
+	varargs := []any{ctx, store, d, w}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Write", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Write indicates an expected call of Write.
-func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w any) *gomock.Call {
+func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockRelationshipTupleWriter)(nil).Write), ctx, store, d, w)
+	varargs := append([]any{ctx, store, d, w}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockRelationshipTupleWriter)(nil).Write), varargs...)
 }
 
 // MockAuthorizationModelReadBackend is a mock of AuthorizationModelReadBackend interface.
@@ -988,17 +998,22 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter
 }
 
 // Write mocks base method.
-func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
+func (m *MockOpenFGADatastore) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes, opts ...storage.TupleWriteOption) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Write", ctx, store, d, w)
+	varargs := []any{ctx, store, d, w}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "Write", varargs...)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Write indicates an expected call of Write.
-func (mr *MockOpenFGADatastoreMockRecorder) Write(ctx, store, d, w any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) Write(ctx, store, d, w any, opts ...any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockOpenFGADatastore)(nil).Write), ctx, store, d, w)
+	varargs := append([]any{ctx, store, d, w}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockOpenFGADatastore)(nil).Write), varargs...)
 }
 
 // WriteAssertions mocks base method.

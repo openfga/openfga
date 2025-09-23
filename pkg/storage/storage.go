@@ -213,6 +213,63 @@ type RelationshipTupleReader interface {
 	) (TupleIterator, error)
 }
 
+// OnMissingDelete defines the behavior of delete operation when the tuple to be deleted does not exist.
+type OnMissingDelete int32
+
+// OnDuplicateInsert defines the behavior of insert operation when the tuple to be inserted already exists.
+type OnDuplicateInsert int32
+
+const (
+	// OnMissingDeleteError indicates that if a delete operation is attempted on a tuple that does
+	// not exist, an error should be returned.
+	OnMissingDeleteError OnMissingDelete = 0
+
+	// OnMissingDeleteIgnore indicates that if a delete operation is attempted on a tuple that does
+	// not exist, it should be ignored as no-op and no error should be returned.
+	OnMissingDeleteIgnore OnMissingDelete = 1
+
+	// OnDuplicateInsertError indicates that if an insert operation is attempted on a tuple that already exists,
+	// an error should be returned.
+	OnDuplicateInsertError OnDuplicateInsert = 0
+
+	// OnDuplicateInsertIgnore indicates that if an insert operation is attempted on a tuple that already exists,
+	// it should be ignored as a no-op and no error should be returned.
+	OnDuplicateInsertIgnore OnDuplicateInsert = 1
+)
+
+// TupleWriteOptions defines the options that can be used when writing tuples.
+// It allows customization of the behavior when a delete operation is attempted on a tuple that does not
+// exist, or when an insert operation is attempted on a tuple that already exists.
+type TupleWriteOptions struct {
+	OnMissingDelete   OnMissingDelete
+	OnDuplicateInsert OnDuplicateInsert
+}
+
+type TupleWriteOption func(*TupleWriteOptions)
+
+func WithOnMissingDelete(onMissingDelete OnMissingDelete) TupleWriteOption {
+	return func(opts *TupleWriteOptions) {
+		opts.OnMissingDelete = onMissingDelete
+	}
+}
+
+func WithOnDuplicateInsert(onDuplicateInsert OnDuplicateInsert) TupleWriteOption {
+	return func(opts *TupleWriteOptions) {
+		opts.OnDuplicateInsert = onDuplicateInsert
+	}
+}
+
+func NewTupleWriteOptions(opts ...TupleWriteOption) TupleWriteOptions {
+	res := TupleWriteOptions{
+		OnMissingDelete:   OnMissingDeleteError,
+		OnDuplicateInsert: OnDuplicateInsertError,
+	}
+	for _, opt := range opts {
+		opt(&res)
+	}
+	return res
+}
+
 // RelationshipTupleWriter is an interface that defines the set of methods
 // required for writing relationship tuples in a data store.
 type RelationshipTupleWriter interface {
@@ -221,7 +278,8 @@ type RelationshipTupleWriter interface {
 	// It must also write to the changelog.
 	// If two concurrent requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed. TODO write test
 	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return InvalidWriteInputError. TODO write test
-	Write(ctx context.Context, store string, d Deletes, w Writes) error
+	// opts are optional and can be used to customize the behavior of the write operation.
+	Write(ctx context.Context, store string, d Deletes, w Writes, opts ...TupleWriteOption) error
 
 	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined)
 	// allowed in a single write transaction.

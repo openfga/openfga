@@ -127,6 +127,7 @@ type ttus
     define alg_combined_computed: alg_combined
     define user_rel4: user_rel1 or user_rel5
     define user_rel5: user_rel2 and user_rel3
+    define alg_inline: [user, user:*] and user_rel4 and (direct from direct_parent but not other_rel from mult_parent_types)
     
     define ttu_parent: [ttus]
     define ttu_recursive: [user] or ttu_recursive from ttu_parent

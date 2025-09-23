@@ -299,11 +299,12 @@ func (s *Datastore) Write(
 	store string,
 	deletes storage.Deletes,
 	writes storage.Writes,
+	opts ...storage.TupleWriteOption,
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, time.Now().UTC())
+	return sqlcommon.Write(ctx, s.primaryDBInfo, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -445,7 +446,7 @@ func (s *Datastore) ReadStartingWithUser(
 			"object_type": filter.ObjectType,
 			"relation":    filter.Relation,
 			"_user":       targetUsersArg,
-		}).OrderBy("object_id")
+		}).OrderBy("object_id collate \"C\"")
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
