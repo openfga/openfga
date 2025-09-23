@@ -29,7 +29,7 @@ require (
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openfga/api/proto v0.0.0-20250127102726-f9709139a369
-	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20250814120952-222b2371c53f
+	github.com/openfga/language/pkg/go v0.2.0-beta.2.0.20250919191407-efa08b02a76a
 	github.com/pressly/goose/v3 v3.24.3
 	github.com/prometheus/client_golang v1.23.0
 	github.com/rs/cors v1.11.1
@@ -37,7 +37,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
 	github.com/spf13/viper v1.20.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0
@@ -52,7 +52,7 @@ require (
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
 	golang.org/x/sync v0.16.0
 	google.golang.org/grpc v1.74.2
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.9
 	modernc.org/sqlite v1.38.2
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.6.0
