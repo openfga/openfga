@@ -6,7 +6,6 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/open-feature/go-sdk/openfeature"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
@@ -20,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -65,11 +65,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	optimizationsEnabled := s.featureClient.Boolean(
-		ctx,
-		string(ExperimentalListObjectsOptimizations),
+	optimizationsEnabled := s.featureFlagClient.Boolean(
+		string(serverconfig.ExperimentalListObjectsOptimizations),
 		false,
-		openfeature.EvaluationContext{},
+		nil,
 	)
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(

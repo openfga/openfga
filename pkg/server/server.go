@@ -971,12 +971,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	// Move this
-	checkOptimizationsEnabled := s.featureClient.Boolean(
-		context.Background(),
-		string(ExperimentalCheckOptimizations),
+	checkOptimizationsEnabled := s.featureFlagClient.Boolean(
+		string(serverconfig.ExperimentalCheckOptimizations),
 		false,
-		openfeature.EvaluationContext{},
+		nil,
 	)
 	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
