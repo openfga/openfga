@@ -65,6 +65,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	// TODO HERE
 	optimizationsEnabled := s.featureFlagClient.Boolean(
 		string(serverconfig.ExperimentalListObjectsOptimizations),
 		false,
@@ -95,7 +96,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
-		commands.WithListObjectsOptimizationsEnabled(optimizationsEnabled),
+		commands.WithFeatureFlagClient(s.featureFlagClient),
+		//commands.WithListObjectsOptimizationsEnabled(optimizationsEnabled),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)

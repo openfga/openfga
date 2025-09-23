@@ -3,6 +3,8 @@ package reverseexpand
 import (
 	"context"
 	"errors"
+	"github.com/openfga/openfga/internal/featureflags"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"testing"
 	"time"
 
@@ -22,6 +24,19 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+type mockFeatureClient struct {
+	enabledFlag string
+}
+
+// enabledFeatureClient provides a simple mock which can return True for a single feature flag
+func newMockFeatureClient(featureName string) featureflags.Client {
+	return &mockFeatureClient{enabledFlag: featureName}
+}
+
+func (m *mockFeatureClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
+	return m.enabledFlag == flagName
+}
 
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	ds := memory.New()
@@ -1978,6 +1993,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		// intersection with ttu recursive
 		// intersection with userset recursive
 	}
+	enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
@@ -1999,7 +2015,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					typesys,
 
 					// turn on weighted graph functionality
-					WithListObjectOptimizationsEnabled(true),
+					WithFeatureFlagClient(enabledFeatureClient),
 				)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
@@ -2097,6 +2113,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
@@ -2110,7 +2127,7 @@ func TestLoopOverEdges(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2164,13 +2181,14 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2227,13 +2245,14 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2287,13 +2306,14 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2354,12 +2374,13 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2421,6 +2442,7 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		resultChan := make(chan *ReverseExpandResult)
 		errChan := make(chan error, 1)
 		q := NewReverseExpandQuery(
@@ -2428,7 +2450,7 @@ func TestIntersectionHandler(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		node, ok := typesys.GetNode("group#member")
@@ -2508,12 +2530,13 @@ func TestIntersectionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2574,6 +2597,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest, rewrite *openfgav1.Userset) graph.CheckHandlerFunc {
@@ -2588,7 +2612,7 @@ func TestIntersectionHandler(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2649,6 +2673,7 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), mockDatastore)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		q := NewReverseExpandQuery(
@@ -2656,7 +2681,7 @@ func TestIntersectionHandler(t *testing.T) {
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2720,13 +2745,14 @@ func TestExclusionHandler(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 
 		typesys2, err := typesystem.New(
@@ -2789,12 +2815,13 @@ func TestExclusionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 		q.localCheckResolver = mockCheckResolver
 
@@ -2859,12 +2886,13 @@ func TestExclusionHandler(t *testing.T) {
 
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
 		q := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
 
 			// turn on weighted graph functionality
-			WithListObjectOptimizationsEnabled(true),
+			WithFeatureFlagClient(enabledFeatureClient),
 		)
 		q.localCheckResolver = mockCheckResolver
 

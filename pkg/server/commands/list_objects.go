@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/internal/featureflags"
 	"math"
 	"sync/atomic"
 	"time"
@@ -53,6 +54,7 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -175,6 +177,12 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.ff = client
 	}
 }
 
@@ -348,7 +356,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
-			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
+			reverseexpand.WithFeatureFlagClient(q.ff),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
