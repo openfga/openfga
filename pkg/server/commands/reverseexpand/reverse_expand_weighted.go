@@ -446,12 +446,32 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 }
 
 type coordinator struct {
-	mu           sync.Mutex
-	top          int
-	a            uint64
-	b            uint64
-	c            uint64
-	d            uint64
+	// mu protects the fields within the coordinator struct.
+	mu sync.Mutex
+
+	// top holds the next available identifier.
+	top int
+
+	// the following fields are bitpacked flags.
+	// each bit corresponds to a boolean value; 1 = true, 0 = false.
+	// each field has a size of 64 bits and holds 64 distinct boolan values.
+	// the fields are used in order, until their bits have been assigned to capacity.
+	//
+	// identifiers 0 - 63 will be assigned a bit from field a.
+	a uint64
+
+	// identifiers 64 - 127 will be assigned a bit from field b.
+	b uint64
+
+	// identifiers 128 - 191 will be assigned a bit from field c.
+	c uint64
+
+	// identifiers 192 - 255 will be assigned a bit from field d.
+	d uint64
+
+	// more fields can be added to extend the total number of available bit flags.
+
+	// messageCount holds the total number of in-flight messages within the pipeline.
 	messageCount int64
 }
 
