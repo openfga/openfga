@@ -25,6 +25,7 @@ import (
 )
 
 type testcase struct {
+	name       string
 	model      string
 	tuples     []string
 	objectType string
@@ -59,11 +60,23 @@ func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthoriz
 	return path
 }
 
+func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
+	objects := path.Objects(ctx)
+
+	var results []string
+	for item := range objects {
+		require.NoError(t, item.Err)
+		results = append(results, item.Value)
+	}
+	require.ElementsMatch(t, tc.expected, results)
+}
+
 func BenchmarkPipeline(b *testing.B) {
 	ds := memory.New()
 	b.Cleanup(ds.Close)
 
 	tc := testcase{
+		name: "beast_mode",
 		model: `model
 			  schema 1.1
 
@@ -161,59 +174,10 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 }
 
-func TestProcessDirectEdge(t *testing.T) {
-	ds := memory.New()
-	t.Cleanup(ds.Close)
-
-	evaluate := func(t *testing.T, test testcase) {
-		defer goleak.VerifyNone(t)
-		storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
-
-		typesys, err := typesystem.NewAndValidate(
-			context.Background(),
-			model,
-		)
-		require.NoError(t, err)
-
-		g := typesys.GetWeightedGraph()
-
-		backend := &backend{
-			datastore: ds,
-			storeId:   storeID,
-		}
-
-		traversal := &Traversal{
-			graph:   g,
-			backend: backend,
-		}
-
-		ctx := context.Background()
-
-		ctx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Second))
-
-		defer cancel()
-
-		target, ok := traversal.Target(test.user.GetObjectType())
-		require.True(t, ok)
-
-		source, ok := traversal.Source(test.objectType, test.relation)
-		require.True(t, ok)
-
-		path := traversal.Traverse(source, target, test.user.Object.GetId())
-
-		seq := path.Objects(ctx)
-
-		var results []string
-
-		for item := range seq {
-			require.NoError(t, item.Err)
-			results = append(results, item.Value)
-		}
-		require.ElementsMatch(t, test.expected, results)
-	}
-
-	t.Run("computed", func(t *testing.T) {
-		tc := testcase{
+func TestPipeline(t *testing.T) {
+	cases := []testcase{
+		{
+			name: "computed",
 			model: `model
 			  schema 1.1
 
@@ -240,13 +204,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("union", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "union",
 			model: `model
 			  schema 1.1
 
@@ -279,13 +239,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2", "document:3"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("intersection", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "intersection",
 			model: `model
 			  schema 1.1
 
@@ -318,13 +274,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:3"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("direct_userset", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "direct_userset",
 			model: `model
 			  schema 1.1
 
@@ -350,13 +302,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2", "document:3", "document:4"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("beast_mode", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "beast_mode",
 			model: `model
 			  schema 1.1
 
@@ -425,13 +373,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:3", "document:5", "document:8", "document:a", "document:b", "document:c", "document:d", "document:e", "document:f", "document:g", "document:h", "document:i", "document:j"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("mean_tuple_cycle", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "mean_tuple_cycle",
 			model: `model
 			  schema 1.1
 
@@ -473,13 +417,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:0", "document:1", "document:3", "document:5", "document:8"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("indirect_userset", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "indirect_userset",
 			model: `model
 			  schema 1.1
 
@@ -523,13 +463,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2", "document:3", "document:4", "document:5", "document:6", "document:22"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("recursive", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "recursive",
 			model: `model
 				  schema 1.1
 
@@ -565,13 +501,9 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "viewer",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"document:1", "document:2"},
-		}
-
-		evaluate(t, tc)
-	})
-
-	t.Run("tuple_cycle", func(t *testing.T) {
-		tc := testcase{
+		},
+		{
+			name: "tuple_cycle",
 			model: `model
 				  schema 1.1
 
@@ -590,10 +522,33 @@ func TestProcessDirectEdge(t *testing.T) {
 			relation:   "member",
 			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 			expected:   []string{"team:fga", "team:cncf", "team:lnf"},
-		}
+		},
+	}
 
-		evaluate(t, tc)
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ds := memory.New()
+			t.Cleanup(ds.Close)
+
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, tc.model, tc.tuples)
+
+			typesys, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+
+			if err != nil {
+				panic(err)
+			}
+
+			g := typesys.GetWeightedGraph()
+
+			ctx := context.Background()
+
+			path := setup(ds, storeID, g, tc)
+			evaluate(t, ctx, tc, path)
+		})
+	}
 }
 
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
