@@ -506,10 +506,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 	}
 
-	var experimentals []serverconfig.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, serverconfig.ExperimentalFeatureFlag(feature))
-	}
+	var experimentals []string
+	experimentals = append(experimentals, config.Experimentals...)
 
 	datastore, continuationTokenSerializer, err := s.datastoreConfig(config)
 	if err != nil {

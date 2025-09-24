@@ -13,6 +13,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -114,14 +115,14 @@ func newShadowedListObjectsQuery(
 	}
 	standard, err := NewListObjectsQuery(ds, checkResolver,
 		// force disable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(false)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false))})...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithListObjectsOptimizationsEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true))})...,
 	)
 	if err != nil {
 		return nil, err

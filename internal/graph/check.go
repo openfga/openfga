@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -53,6 +54,7 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
+	ff                   featureflags.Client
 	planner              *planner.Planner
 	logger               logger.Logger
 	optimizationsEnabled bool
@@ -71,6 +73,12 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 func WithOptimizations(enabled bool) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.optimizationsEnabled = enabled
+	}
+}
+
+func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.ff = client
 	}
 }
 
@@ -761,7 +769,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.optimizationsEnabled {
+			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, false, nil) {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)

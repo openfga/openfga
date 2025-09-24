@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
 	"github.com/openfga/openfga/internal/throttler"
@@ -127,6 +128,7 @@ type UserRef struct {
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
@@ -143,8 +145,7 @@ type ReverseExpandQuery struct {
 	queryDedupeMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver   graph.CheckRewriteResolver
-	optimizationsEnabled bool
+	localCheckResolver graph.CheckRewriteResolver
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -176,9 +177,9 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 	}
 }
 
-func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
+func WithFeatureFlagClient(client featureflags.Client) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
-		d.optimizationsEnabled = enabled
+		d.ff = client
 	}
 }
 
@@ -385,7 +386,8 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.optimizationsEnabled && !req.skipWeightedGraph {
+	optimizationsEnabled := c.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil)
+	if optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {
 			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()

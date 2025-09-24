@@ -19,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
@@ -53,6 +54,7 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -69,8 +71,7 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
-	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
+	useShadowCache bool // Indicates that the shadow cache should be used instead of the main cache
 }
 
 type ListObjectsResolver interface {
@@ -172,15 +173,9 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
+func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.optimizationsEnabled = enabled
-	}
-}
-
-func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.useShadowCache = useShadowCache
+		d.ff = client
 	}
 }
 
@@ -216,12 +211,15 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
-		useShadowCache:       false,
+		useShadowCache: false,
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil) {
+		query.useShadowCache = true
 	}
 
 	return query, nil
@@ -348,7 +346,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
-			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
+			reverseexpand.WithFeatureFlagClient(q.ff),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)

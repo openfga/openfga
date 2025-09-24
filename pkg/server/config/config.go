@@ -12,8 +12,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-type ExperimentalFeatureFlag string
-
 const (
 	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
@@ -105,9 +103,9 @@ const (
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 
-	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
-	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
+	ExperimentalCheckOptimizations       = "enable-check-optimizations"
+	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
+	ExperimentalAccessControlParams      = "enable-access-control"
 )
 
 type DatastoreMetricsConfig struct {
