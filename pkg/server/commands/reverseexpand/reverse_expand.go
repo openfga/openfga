@@ -200,6 +200,7 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		visitedUsersetsMap:  new(sync.Map),
 		queryDedupeMap:      new(sync.Map),
 		localCheckResolver:  graph.NewLocalChecker(),
+		ff:                  featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {

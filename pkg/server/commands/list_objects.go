@@ -212,6 +212,7 @@ func NewListObjectsQuery(
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 		useShadowCache: false,
+		ff:             featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {

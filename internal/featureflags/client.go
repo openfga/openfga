@@ -38,3 +38,7 @@ func NewHardcodedBooleanClient(result bool) Client {
 func (h *hardcodedBooleanClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
 	return h.result
 }
+
+func NewNoopFeatureFlagClient() Client {
+	return NewHardcodedBooleanClient(false)
+}
