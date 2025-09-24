@@ -167,7 +167,7 @@ type Server struct {
 	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
-	experimentals                    []serverconfig.ExperimentalFeatureFlag
+	experimentals                    []string
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
@@ -392,7 +392,7 @@ func WithMaxConcurrentReadsForListUsers(maxConcurrentReadsForListUsers uint32) O
 	}
 }
 
-func WithExperimentals(experimentals ...serverconfig.ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+func WithExperimentals(experimentals ...string) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
 	}
@@ -590,7 +590,7 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
 	isEnabled := s.featureFlagClient.Boolean(
-		string(serverconfig.ExperimentalAccessControlParams),
+		serverconfig.ExperimentalAccessControlParams,
 		false,
 		nil,
 	)
@@ -830,7 +830,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
-		experimentals:                    make([]serverconfig.ExperimentalFeatureFlag, 0, 10),
+		experimentals:                    make([]string, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		cacheSettings:            serverconfig.NewDefaultCacheSettings(),
@@ -912,9 +912,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.featureFlagClient == nil {
 		flags := make([]string, 0, len(s.experimentals))
-		for _, val := range s.experimentals {
-			flags = append(flags, string(val))
-		}
+		flags = append(flags, s.experimentals...)
 		s.featureFlagClient = featureflags.NewDefaultClient(flags)
 	}
 
