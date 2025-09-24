@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"github.com/openfga/openfga/internal/featureflags"
 	"sort"
 	"strconv"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"

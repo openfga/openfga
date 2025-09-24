@@ -27,7 +27,7 @@ type hardcodedBooleanClient struct {
 	result bool // this client will always return this result
 }
 
-// NewHardcodedBooleanClient creates a hardcodedBooleanClient which always returns the value of `response` it's given.
+// NewHardcodedBooleanClient creates a hardcodedBooleanClient which always returns the value of `result` it's given.
 // The hardcodedBooleanClient is used in testing and in shadow code paths where we want to force enable/disable a feature.
 func NewHardcodedBooleanClient(result bool) Client {
 	return &hardcodedBooleanClient{result: result}
