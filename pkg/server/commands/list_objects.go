@@ -72,7 +72,6 @@ type ListObjectsQuery struct {
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
 	useShadowCache bool // Indicates that the shadow cache should be used instead of the main cache
-	isShadow       bool
 }
 
 type ListObjectsResolver interface {
@@ -171,12 +170,6 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	return func(d *ListObjectsQuery) {
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
-	}
-}
-
-func WithShadowEnabled(enabled bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.isShadow = enabled
 	}
 }
 
