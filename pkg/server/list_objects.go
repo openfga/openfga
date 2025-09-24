@@ -19,7 +19,6 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -65,13 +64,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	// TODO HERE
-	optimizationsEnabled := s.featureFlagClient.Boolean(
-		string(serverconfig.ExperimentalListObjectsOptimizations),
-		false,
-		nil,
-	)
-
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
@@ -97,7 +89,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
-		//commands.WithListObjectsOptimizationsEnabled(optimizationsEnabled),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
