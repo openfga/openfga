@@ -12,10 +12,10 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/stack"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
@@ -2157,7 +2157,6 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				q := NewReverseExpandQuery(
 					ds,
 					typesys,
-					WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false)), // disable weighted graph
 				)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
