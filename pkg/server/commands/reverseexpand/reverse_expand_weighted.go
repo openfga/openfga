@@ -119,6 +119,7 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 }
 
 var emptySequence = func(yield func(Item) bool) {}
+var emptyGroupSequence = func(yield func(Group) bool) {}
 
 type (
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
@@ -632,21 +633,28 @@ type specificTypeResolver struct {
 // recieved identifiers will have the type of the node appended to them before
 // broadcasting the identifiers to  the provided listeners.
 func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
+	var mu sync.Mutex
+
+	var active uint64
+
 	var wg sync.WaitGroup
 
-	for _, snd := range senders {
+	for i, snd := range senders {
 		wg.Add(1)
 
-		go func(snd *sender) {
+		go func(i int, snd *sender) {
 			defer wg.Done()
+
+			pos := uint64(1 << i)
 
 			for group := range snd.seq {
 				var items []Item
 
-				r.coord.setActive(r.id, true)
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
 				r.coord.addMessages(-1)
 
 				for _, item := range group.Items {
@@ -670,9 +678,12 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 						r.coord.addMessages(-1)
 					}
 				}
-				r.coord.setActive(r.id, false)
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
 			}
-		}(snd)
+		}(i, snd)
 	}
 	wg.Wait()
 }
@@ -1329,14 +1340,6 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
 
-	// if graph traversal has encountered the target node, we can return the target identifiers.
-	if source == p.target {
-		if _, ok := p.traversal.pipeline[source]; !ok {
-			p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
-		}
-		return
-	}
-
 	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
 		return
@@ -1354,8 +1357,12 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	}
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(p.target.GetLabel())
-		if !ok {
+		if edge.GetTo().GetNodeType() == NodeTypeSpecificType {
+			if _, ok := p.traversal.pipeline[edge.GetTo()]; !ok {
+				p.traversal.pipeline[edge.GetTo()] = NewWorker(p.traversal.backend, edge.GetTo(), coord)
+				p.traversal.pipeline[edge.GetTo()].Listen(edge, emptyGroupSequence)
+			}
+			p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
 			continue
 		}
 
