@@ -1927,7 +1927,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(serverconfig.ExperimentalFeatureFlag("some-other-feature")),
+			WithExperimentals("some-other-feature"),
 			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
