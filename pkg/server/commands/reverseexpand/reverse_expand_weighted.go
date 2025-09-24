@@ -841,7 +841,43 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					if len(errs) > 0 {
 						results = mergeOrdered(sequence(errs...), results)
 					}
-				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+				case EdgeTypeTTU:
+					if r.node == senders[ndx].edge.GetFrom() {
+						// We are on the specific type and relation that begins the TTU.
+						results = sequence(inGroup.Items...)
+						break
+					}
+					// We are on the tupleset node.
+					parts := strings.Split(r.node.GetLabel(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: "",
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite:
 					results = sequence(inGroup.Items...)
 				}
 
@@ -1342,14 +1378,14 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 
 	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
+		println(source.GetLabel())
 		return
 	}
 
-	if _, ok := p.traversal.pipeline[source]; !ok {
-		p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
-	} else {
+	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
+	p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
 
 	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
@@ -1357,13 +1393,30 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	}
 
 	for _, edge := range edges {
-		if edge.GetTo().GetNodeType() == NodeTypeSpecificType {
-			if _, ok := p.traversal.pipeline[edge.GetTo()]; !ok {
-				p.traversal.pipeline[edge.GetTo()] = NewWorker(p.traversal.backend, edge.GetTo(), coord)
-				p.traversal.pipeline[edge.GetTo()].Listen(edge, emptyGroupSequence)
+		if edge.GetEdgeType() == EdgeTypeTTU {
+			tupleset, ok := p.traversal.graph.GetNodeByID(edge.GetTuplesetRelation())
+			if !ok {
+				panic("tupleset relation not in graph")
 			}
-			p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
+
+			if _, ok := p.traversal.pipeline[tupleset]; !ok {
+				p.traversal.pipeline[tupleset] = NewWorker(p.traversal.backend, tupleset, coord)
+				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source))
+			}
+			p.resolve(ctx, edge.GetTo(), coord)
+			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset))
 			continue
+		}
+
+		if edge.GetEdgeType() == EdgeTypeDirect {
+			if edge.GetTo().GetNodeType() == NodeTypeSpecificType {
+				if _, ok := p.traversal.pipeline[edge.GetTo()]; !ok {
+					p.traversal.pipeline[edge.GetTo()] = NewWorker(p.traversal.backend, edge.GetTo(), coord)
+					p.traversal.pipeline[edge.GetTo()].Listen(edge, emptyGroupSequence)
+				}
+				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
+				continue
+			}
 		}
 
 		p.resolve(ctx, edge.GetTo(), coord)
