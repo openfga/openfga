@@ -20,5 +20,5 @@ func NewDefaultClient(flags []string) Client {
 
 func (c *defaultClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
 	_, ok := c.flags[flagName]
-	return ok || defaultValue
+	return ok
 }
