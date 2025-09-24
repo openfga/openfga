@@ -12,7 +12,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -495,13 +494,10 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			featureFlagClient := featureflags.NewHardcodedBooleanClient(false)
-
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(10 * time.Second),
 				commands.WithMaxConcurrentReads(30),
-				commands.WithFeatureFlagClient(featureFlagClient),
 				// here
 			}
 
