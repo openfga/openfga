@@ -1466,6 +1466,49 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"org:a", "org:c"},
 		},
 		{
+			name: "ttus_with_multiple_parents",
+			model: `
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user]
+				type team
+					relations
+						define member: [user]
+				type type1
+					relations
+						define member: [user]
+				type type2
+					relations
+						define member: [type1#member]
+				type doc
+					relations
+						define parent: [group, team]
+						define owner: [type2#member] and member from parent	
+		`,
+			tuples: []string{
+				"doc:1#parent@group:1",
+				"group:1#member@user:1",
+				"doc:1#parent@team:1",
+				"team:1#member@user:2",
+				"doc:1#owner@type2:1#member",
+				"type2:1#member@type1:1#member",
+				"type1:1#member@user:1",
+				"type1:1#member@user:2",
+			},
+			objectType: "doc",
+			relation:   "owner",
+			user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "2"}},
+			expectedOptimizedObjects: []string{
+				"doc:1",
+			},
+			expectedUnoptimizedObjects: []string{
+				"doc:1",
+			},
+		},
+		{
 			name: "intersection_other_edge_no_connection",
 			model: `model
 					  schema 1.1
@@ -1951,6 +1994,41 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 			expectedOptimizedObjects:   []string{"org:a", "org:c"},
 			expectedUnoptimizedObjects: []string{"org:a", "org:c", "org:b"},
+		},
+		{
+			name: "exclusion_ttu_multipleparents",
+			model: `model
+				  schema 1.1
+			    type user
+				type subteam
+		          relations
+		            define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [user]
+				type org
+				  relations
+					define parent: [team, subteam]
+					define member: [user, team#dept_member] but not member from parent
+		`,
+			tuples: []string{
+				"org:b#member@user:bob",
+				"org:a#member@team:t1#dept_member",
+				"team:t1#dept_member@user:bob",
+				"org:c#member@team:t2#dept_member",
+				"team:t2#dept_member@user:bob",
+				"org:b#parent@team:t1",
+				"org:b#parent@team:t2",
+				"org:a#parent@subteam:st1",
+				"org:a#parent@subteam:st2",
+				"team:t1#member@user:bob",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:c"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
 		},
 		{
 			name: "lowest_weight_is_TTU_intersection_with_intersections",
@@ -2822,9 +2900,6 @@ func TestIntersectionHandler(t *testing.T) {
 		node, ok := typesys2.GetNode("document#admin")
 		require.True(t, ok)
 
-		edges, err := typesys2.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
 			StoreID:       storeID,
@@ -2832,9 +2907,9 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
-		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
-		require.ErrorContains(t, err, "invalid edges for source type")
+		require.ErrorContains(t, err, "invalid intersection node")
 		err = pool.Wait()
 		require.NoError(t, err)
 	})
@@ -2891,8 +2966,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		pool := concurrency.NewPool(ctx, 2)
 
@@ -2903,7 +2976,7 @@ func TestIntersectionHandler(t *testing.T) {
 				Relation:      relation,
 				User:          user,
 				relationStack: nil,
-			}, resultChan, edges, "", NewResolutionMetadata())
+			}, resultChan, edges[0].GetTo(), "", NewResolutionMetadata())
 
 			if newErr != nil {
 				errChan <- newErr
@@ -2920,9 +2993,10 @@ func TestIntersectionHandler(t *testing.T) {
 		case res := <-resultChan:
 			require.Fail(t, "expected no result, but got one", "received: %+v", res)
 		case <-time.After(300 * time.Millisecond):
+			require.Fail(t, "should not succeed, not a valid intersection for terminal type")
 			// Success: no result received within timeout
 		case err := <-errChan:
-			require.Fail(t, "unexpected error received on error channel: "+err.Error())
+			require.ErrorContains(t, err, "invalid edges for source type")
 		}
 	})
 
@@ -2978,8 +3052,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -2990,7 +3062,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorContains(t, err, "test")
@@ -3055,8 +3127,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -3067,7 +3137,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.NoError(t, err)
@@ -3125,8 +3195,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -3137,7 +3205,7 @@ func TestIntersectionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorIs(t, err, errorRet)
@@ -3199,9 +3267,6 @@ func TestExclusionHandler(t *testing.T) {
 		node, ok := typesys2.GetNode("document#admin")
 		require.True(t, ok)
 
-		edges, err := typesys2.GetEdgesFromNode(node, "user")
-		require.NoError(t, err)
-
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
 			StoreID:       storeID,
@@ -3209,9 +3274,9 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: nil,
-		}, make(chan *ReverseExpandResult), edges, "", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
-		require.ErrorContains(t, err, "invalid exclusion edges for source type")
+		require.ErrorContains(t, err, "invalid exclusion node")
 		err = pool.Wait()
 		require.NoError(t, err)
 	})
@@ -3268,8 +3333,6 @@ func TestExclusionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -3280,7 +3343,7 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorContains(t, err, "test")
@@ -3340,8 +3403,6 @@ func TestExclusionHandler(t *testing.T) {
 
 		edges, err := typesys.GetEdgesFromNode(node, "user")
 		require.NoError(t, err)
-		edges, err = typesys.GetEdgesFromNode(edges[0].GetTo(), "user")
-		require.NoError(t, err)
 
 		newStack := stack.Push(nil, typeRelEntry{typeRel: "document#admin"})
 
@@ -3352,7 +3413,7 @@ func TestExclusionHandler(t *testing.T) {
 			Relation:      relation,
 			User:          user,
 			relationStack: newStack,
-		}, make(chan *ReverseExpandResult), edges, "user", NewResolutionMetadata())
+		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
 		require.ErrorIs(t, err, errorRet)
