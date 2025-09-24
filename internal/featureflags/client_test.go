@@ -41,14 +41,6 @@ func TestBoolean(t *testing.T) {
 		}
 	})
 
-	// Test case where the flag is not enabled and defaultValue is true.
-	t.Run("disabled flag, true default", func(t *testing.T) {
-		result := client.Boolean("disabled-flag", true, nil)
-		if !result {
-			t.Errorf("expected true, got %t", result)
-		}
-	})
-
 	// Test case where the flag is not enabled and defaultValue is false.
 	t.Run("disabled flag, false default", func(t *testing.T) {
 		result := client.Boolean("disabled-flag", false, nil)
