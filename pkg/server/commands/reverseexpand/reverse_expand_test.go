@@ -14,6 +14,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/pkg/dispatch"
@@ -61,7 +62,7 @@ func TestReverseExpandResultChannelClosed(t *testing.T) {
 
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
-		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false)))
 		err := reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:    store,
 			ObjectType: "document",
