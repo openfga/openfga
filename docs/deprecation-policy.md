@@ -11,46 +11,6 @@ The OpenFGA organization consists of multiple components that may have different
 
 The different versioning approaches mean we handle breaking changes differently for each component type.
 
-## SDK Deprecation Policy (v0.x.x)
-
-### Current State
-All OpenFGA SDKs are currently in major version 0.x.x, which according to Semantic Versioning rules allows for breaking changes in minor version releases.
-
-### Approach
-While we *can* introduce breaking changes in minor versions due to our 0.x.x status, **we actively try to avoid it** and follow these principles:
-
-1. **Minimize Breaking Changes**: We make every effort to maintain backward compatibility
-2. **Clear Communication**: When breaking changes are necessary, we:
-   - Clearly mark them as `BREAKING CHANGE:` in changelogs
-   - Provide detailed migration guides
-   - Explain the rationale for the change
-3. **Gradual Migration**: When possible, we provide migration paths:
-   - Introduce new APIs alongside deprecated ones
-   - Rename old methods (e.g., `batchCheck` → `clientBatchCheck`)
-   - Provide clear documentation on moving to new patterns
-4. **Ship breaking changes in minor features**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
-
-### Recent Breaking Change Examples
-
-#### Go SDK
-- **[v0.7.0 (April 2025)](https://github.com/openfga/go-sdk/releases/tag/v0.7.0)**: BatchCheck API changes
-  - `BatchCheck` method renamed to `ClientBatchCheck`
-  - `BatchCheckResponse` renamed to `ClientBatchCheckResponse`
-  - Required OpenFGA v1.8.0+ server
-  
-- **[v0.6.0 (August 2024)](https://github.com/openfga/go-sdk/releases/tag/v0.6.0)**: Enum handling changes
-  - Added class name prefixes to avoid collisions (e.g., `INT` → `TYPENAME_INT`)
-
-#### Python SDK
-- **[v0.9.0 (December 2024)](https://github.com/openfga/python-sdk/releases/tag/v0.9.0)**: BatchCheck method changes
-  - `batch_check` renamed to `client_batch_check`
-  - `BatchCheckResponse` renamed to `ClientBatchCheckClientResponse`
-
-#### JavaScript/TypeScript SDK
-- **[v0.8.0 (January 2025)](https://github.com/openfga/js-sdk/releases/tag/v0.8.0)**: BatchCheck and Node.js requirements
-  - Minimum Node.js version raised to v16.15.0
-  - BatchCheck API changes similar to other SDKs
-
 ## OpenFGA Server Deprecation Policy (v1.x.x)
 
 ### Three-Phase Deprecation Process
@@ -98,6 +58,48 @@ This migration perfectly demonstrates our three-phase deprecation process:
    - Only Schema 1.1 supported going forward
 
 *Timeline: ~10 months from introduction to removal*
+
+## SDK Deprecation Policy (v0.x.x)
+
+### Current State
+All OpenFGA SDKs are currently in major version 0.x.x, which according to Semantic Versioning rules allows for breaking changes in minor version releases.
+
+### Approach
+While we *can* introduce breaking changes in minor versions due to our 0.x.x status, **we actively try to avoid it** and follow these principles:
+
+1. **Minimize Breaking Changes**: We make every effort to maintain backward compatibility
+2. **Clear Communication**: When breaking changes are necessary, we:
+   - Clearly mark them as `BREAKING CHANGE:` in changelogs
+   - Provide detailed migration guides
+   - Explain the rationale for the change
+3. **Gradual Migration**: When possible, we provide migration paths:
+   - Introduce new APIs alongside deprecated ones
+   - Rename old methods (e.g., `batchCheck` → `clientBatchCheck`)
+   - Provide clear documentation on moving to new patterns
+4. **Ship breaking changes in minor features**: While SDKs are in 0.x.x versions, breaking changes should require a minor version upgrade.
+
+It is possible that certain API deprecations will necessitate a lock-step SDK deprecation. In these situations, the SDK migration will be required to be done within the same timeline as the corresponding API deprecation.
+
+### Recent Breaking Change Examples
+
+#### Go SDK
+- **[v0.7.0 (April 2025)](https://github.com/openfga/go-sdk/releases/tag/v0.7.0)**: BatchCheck API changes
+  - `BatchCheck` method renamed to `ClientBatchCheck`
+  - `BatchCheckResponse` renamed to `ClientBatchCheckResponse`
+  - Required OpenFGA v1.8.0+ server
+  
+- **[v0.6.0 (August 2024)](https://github.com/openfga/go-sdk/releases/tag/v0.6.0)**: Enum handling changes
+  - Added class name prefixes to avoid collisions (e.g., `INT` → `TYPENAME_INT`)
+
+#### Python SDK
+- **[v0.9.0 (December 2024)](https://github.com/openfga/python-sdk/releases/tag/v0.9.0)**: BatchCheck method changes
+  - `batch_check` renamed to `client_batch_check`
+  - `BatchCheckResponse` renamed to `ClientBatchCheckClientResponse`
+
+#### JavaScript/TypeScript SDK
+- **[v0.8.0 (January 2025)](https://github.com/openfga/js-sdk/releases/tag/v0.8.0)**: BatchCheck and Node.js requirements
+  - Minimum Node.js version raised to v16.15.0
+  - BatchCheck API changes similar to other SDKs
 
 ## Communication Guidelines
 
