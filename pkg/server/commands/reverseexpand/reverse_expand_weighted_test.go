@@ -2019,7 +2019,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			// once without optimization enabled
 			unoptimizedResultsChan := make(chan *ReverseExpandResult)
 			go func() {
-				q := NewReverseExpandQuery(ds, typesys)
+				q := NewReverseExpandQuery(
+					ds,
+					typesys,
+					WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false)), // disable weighted graph
+				)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
