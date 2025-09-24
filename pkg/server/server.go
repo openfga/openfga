@@ -22,7 +22,6 @@ import (
 
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
@@ -31,6 +30,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/authclaims"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
