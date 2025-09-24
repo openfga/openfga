@@ -11,7 +11,7 @@ type defaultClient struct {
 // NewDefaultClient creates a default feature flag client which takes in a static list of enabled feature flag names
 // and stores them as keys in a map.
 func NewDefaultClient(flags []string) Client {
-	enabledFlags := make(map[string]any)
+	enabledFlags := make(map[string]any, len(flags))
 	for _, flag := range flags {
 		enabledFlags[flag] = struct{}{}
 	}
