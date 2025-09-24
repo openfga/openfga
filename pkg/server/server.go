@@ -911,9 +911,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	if s.featureFlagClient == nil {
-		flags := make([]string, 0, len(s.experimentals))
-		flags = append(flags, s.experimentals...)
-		s.featureFlagClient = featureflags.NewDefaultClient(flags)
+		s.featureFlagClient = featureflags.NewDefaultClient(s.experimentals)
 	}
 
 	err := s.validateAccessControlEnabled()
