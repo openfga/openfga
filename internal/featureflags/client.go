@@ -24,3 +24,17 @@ func (c *defaultClient) Boolean(flagName string, defaultValue bool, featureCtx m
 	_, ok := c.flags[flagName]
 	return ok
 }
+
+type hardcodedBooleanClient struct {
+	result bool // this client will always return this result
+}
+
+// NewHardcodedBooleanClient creates a hardcodedBooleanClient which always returns the value of `result` it's given.
+// The hardcodedBooleanClient is used in testing and in shadow code paths where we want to force enable/disable a feature.
+func NewHardcodedBooleanClient(result bool) Client {
+	return &hardcodedBooleanClient{result: result}
+}
+
+func (h *hardcodedBooleanClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
+	return h.result
+}

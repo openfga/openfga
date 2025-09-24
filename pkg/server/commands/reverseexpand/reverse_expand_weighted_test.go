@@ -3,8 +3,6 @@ package reverseexpand
 import (
 	"context"
 	"errors"
-	"github.com/openfga/openfga/internal/featureflags"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,6 +12,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/stack"
@@ -23,19 +22,6 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
-
-type mockFeatureClient struct {
-	enabledFlag string
-}
-
-// enabledFeatureClient provides a simple mock which can return True for a single feature flag
-func newMockFeatureClient(featureName string) featureflags.Client {
-	return &mockFeatureClient{enabledFlag: featureName}
-}
-
-func (m *mockFeatureClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
-	return m.enabledFlag == flagName
-}
 
 func TestReverseExpandWithWeightedGraph(t *testing.T) {
 	ds := memory.New()
@@ -2128,7 +2114,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		// intersection with ttu recursive
 		// intersection with userset recursive
 	}
-	enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+	enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
@@ -2168,7 +2154,11 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			// once without optimization enabled
 			unoptimizedResultsChan := make(chan *ReverseExpandResult)
 			go func() {
-				q := NewReverseExpandQuery(ds, typesys)
+				q := NewReverseExpandQuery(
+					ds,
+					typesys,
+					WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false)), // disable weighted graph
+				)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
@@ -2248,7 +2238,7 @@ func TestLoopOverEdges(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
@@ -2316,7 +2306,7 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 
 		q := NewReverseExpandQuery(
 			ds,
@@ -2380,7 +2370,7 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 
 		q := NewReverseExpandQuery(
 			ds,
@@ -2441,7 +2431,7 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 
 		q := NewReverseExpandQuery(
 			ds,
@@ -2509,7 +2499,7 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -2538,6 +2528,93 @@ func TestIntersectionHandler(t *testing.T) {
 		require.ErrorContains(t, err, "invalid intersection node")
 		err = pool.Wait()
 		require.NoError(t, err)
+	})
+
+	t.Run("return_nil_when_there_are_no_connections_for_the_path", func(t *testing.T) {
+		model := `
+			model
+				schema 1.1
+			type user
+			type user2
+			type subteam
+				relations
+					define member: [user]
+			type adhoc
+				relations
+					define member: [user]
+			type team
+				relations
+					define member: [subteam#member]
+			type group
+				relations
+					define team: [team]
+					define subteam: [subteam]
+					define adhoc_member: [adhoc#member]
+					define member: [user2] and member from team and adhoc_member and member from subteam
+		`
+		tuples := []string{}
+		objectType := "group"
+		relation := "member"
+		user := &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, model, tuples)
+		typesys, err := typesystem.New(
+			authModel,
+		)
+		require.NoError(t, err)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
+		resultChan := make(chan *ReverseExpandResult)
+		errChan := make(chan error, 1)
+		q := NewReverseExpandQuery(
+			ds,
+			typesys,
+
+			// turn on weighted graph functionality
+			WithFeatureFlagClient(enabledFeatureClient),
+		)
+
+		node, ok := typesys.GetNode("group#member")
+		require.True(t, ok)
+
+		edges, err := typesys.GetEdgesFromNode(node, "user")
+		require.NoError(t, err)
+
+		pool := concurrency.NewPool(ctx, 2)
+
+		go func() {
+			newErr := q.intersectionHandler(pool, &ReverseExpandRequest{
+				StoreID:       storeID,
+				ObjectType:    objectType,
+				Relation:      relation,
+				User:          user,
+				relationStack: nil,
+			}, resultChan, edges[0].GetTo(), "", NewResolutionMetadata())
+
+			if newErr != nil {
+				errChan <- newErr
+			}
+
+			poolErr := pool.Wait()
+
+			if poolErr != nil {
+				errChan <- poolErr
+			}
+		}()
+
+		select {
+		case res := <-resultChan:
+			require.Fail(t, "expected no result, but got one", "received: %+v", res)
+		case <-time.After(300 * time.Millisecond):
+			require.Fail(t, "should not succeed, not a valid intersection for terminal type")
+			// Success: no result received within timeout
+		case err := <-errChan:
+			require.ErrorContains(t, err, "invalid edges for source type")
+		}
 	})
 
 	t.Run("return_error_when_check_errors", func(t *testing.T) {
@@ -2578,7 +2655,7 @@ func TestIntersectionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -2645,7 +2722,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest, rewrite *openfgav1.Userset) graph.CheckHandlerFunc {
@@ -2721,7 +2798,7 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), mockDatastore)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		q := NewReverseExpandQuery(
@@ -2793,7 +2870,7 @@ func TestExclusionHandler(t *testing.T) {
 		require.NoError(t, err)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 
 		q := NewReverseExpandQuery(
 			ds,
@@ -2863,7 +2940,7 @@ func TestExclusionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -2934,7 +3011,7 @@ func TestExclusionHandler(t *testing.T) {
 
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-		enabledFeatureClient := newMockFeatureClient(string(serverconfig.ExperimentalListObjectsOptimizations))
+		enabledFeatureClient := featureflags.NewHardcodedBooleanClient(true)
 		q := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/featureflags"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"

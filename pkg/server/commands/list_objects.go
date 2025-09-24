@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/openfga/openfga/internal/featureflags"
 	"math"
 	"sync/atomic"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
+	"github.com/openfga/openfga/internal/featureflags"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
@@ -186,12 +186,6 @@ func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	}
 }
 
-func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.useShadowCache = useShadowCache
-	}
-}
-
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -231,7 +225,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.isShadow {
+	if query.ff.Boolean(string(serverconfig.ExperimentalListObjectsOptimizations), false, nil) {
 		query.useShadowCache = true
 	}
 
