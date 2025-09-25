@@ -167,6 +167,36 @@ var cases = []testcase{
 		expected:   []string{"document:1", "document:2"},
 	},
 	{
+		name: "ttu_in_intersection",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type company
+			relations
+				define employee: [user]
+
+		type document
+			relations
+				define viewer: employee from admin and employee from relative
+				define relative: [company]
+				define admin: [company]
+		`,
+		tuples: []string{
+			"company:auth0#employee@user:bob",
+			"document:1#relative@company:auth0",
+			"document:1#admin@company:auth0",
+			"document:2#relative@company:auth0",
+			"document:3#admin@company:auth0",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"document:1"},
+	},
+	{
 		name: "ttu_with_two_directs",
 		model: `
 		model
