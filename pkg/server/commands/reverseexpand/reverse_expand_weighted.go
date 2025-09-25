@@ -1702,12 +1702,6 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
 
-	_, ok := source.GetWeight(p.target.GetLabel())
-	if !ok {
-		// println(source.GetLabel())
-		return
-	}
-
 	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
@@ -1715,7 +1709,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 
 	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
-		panic("given node not a member of graph")
+		return
 	}
 
 	for _, edge := range edges {
@@ -1732,17 +1726,6 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 			p.resolve(ctx, edge.GetTo(), coord)
 			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset))
 			continue
-		}
-
-		if edge.GetEdgeType() == EdgeTypeDirect {
-			if edge.GetTo().GetNodeType() == NodeTypeSpecificType {
-				if _, ok := p.traversal.pipeline[edge.GetTo()]; !ok {
-					p.traversal.pipeline[edge.GetTo()] = NewWorker(p.traversal.backend, edge.GetTo(), coord)
-					p.traversal.pipeline[edge.GetTo()].Listen(edge, emptyGroupSequence)
-				}
-				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
-				continue
-			}
 		}
 
 		p.resolve(ctx, edge.GetTo(), coord)
