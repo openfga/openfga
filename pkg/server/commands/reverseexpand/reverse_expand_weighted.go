@@ -798,7 +798,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					continue
 				}
 
-				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
+				// println("RECEIVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -1006,6 +1006,8 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 						unseen = append(unseen, item)
 					}
 				}
+
+				// println("RECEIVED", snd.edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
@@ -1712,6 +1714,8 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		return
 	}
 
+	tuplesets := make(map[*Node]struct{})
+
 	for _, edge := range edges {
 		if edge.GetEdgeType() == EdgeTypeTTU {
 			tupleset, ok := p.traversal.graph.GetNodeByID(edge.GetTuplesetRelation())
@@ -1721,14 +1725,21 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 
 			if _, ok := p.traversal.pipeline[tupleset]; !ok {
 				p.traversal.pipeline[tupleset] = NewWorker(p.traversal.backend, tupleset, coord)
+			}
+
+			if _, ok := tuplesets[tupleset]; !ok {
+				// println("ts", tupleset.GetUniqueLabel(), "->", source.GetUniqueLabel())
 				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source))
+				tuplesets[tupleset] = struct{}{}
 			}
 			p.resolve(ctx, edge.GetTo(), coord)
+			// println(edge.GetTo().GetUniqueLabel(), "->", "ts", tupleset.GetUniqueLabel())
 			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset))
 			continue
 		}
 
 		p.resolve(ctx, edge.GetTo(), coord)
+		// println(edge.GetTo().GetUniqueLabel(), "->", source.GetUniqueLabel())
 		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
 	}
 }
