@@ -672,7 +672,6 @@ var cases = []testcase{
 		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 		expected:   []string{},
 	},
-	// TODO: handle this case
 	{
 		name: "exclusion_no_connection_base",
 		model: `model
@@ -686,7 +685,6 @@ var cases = []testcase{
 					define member: [user] but not banned
 		`,
 		tuples: []string{
-			"org:a#banned@user:bob",
 			"org:b#member@user:bob",
 			"org:a#member@user:bob",
 			"org:c#banned@user2:bob",
@@ -789,6 +787,786 @@ var cases = []testcase{
 		relation:   "member",
 		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 		expected:   []string{"org:b"},
+	},
+	{
+		name: "ttu_with_exclusion",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user] but not banned from parent
+					define parent: [org]
+				type org
+				  relations
+					define banned: [user]
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+			"team:1#parent@org:a",
+			"team:1#member@user:bob",
+			"org:b#banned@user:2",
+			"team:2#parent@org:b",
+			"team:2#member@user:bob",
+		},
+		objectType: "team",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"team:2"},
+	},
+	{
+		name: "simple_exclusion_multiple_direct_assignments_not_linked_2",
+		model: `model
+				  schema 1.1
+
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] but not allowed
+		`,
+		tuples: []string{
+			"org:a#allowed@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+			"org:c#allowed@user:bob",
+			"org:d#member@user2:bob", // even if right side not connected, it should still be good
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+		expected:   []string{"org:d"},
+	},
+	{
+		name: "simple_exclusion_with_double_negative",
+		model: `model
+				  schema 1.1
+
+				type user
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [user] but not (allowed but not granted)
+		`,
+		tuples: []string{
+			"org:a#member@user:bob",
+			"org:c#member@user:bob",
+			"org:c#allowed@user:bob",
+			"org:c#granted@user:bob",
+			"org:d#member@user:bob",
+			"org:d#granted@user:bob",
+			// negative cases
+			"org:b#member@user:bob",
+			"org:b#allowed@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c", "org:d"},
+	},
+	{
+		name: "exclusion_has_no_direct_assignment",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define member: [team#member]
+					define can_access: member but not (allowed but not granted)
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#member@team:a#member",
+			"org:a#member@user:bob",
+			"team:c#member@user:bob",
+			"org:c#member@team:c#member",
+			"org:c#allowed@user:bob",
+			"org:c#granted@user:bob",
+			"team:d#member@user:bob",
+			"org:d#member@team:d#member",
+			"org:d#granted@user:bob",
+			// negative cases
+			"team:b#member@user:bob",
+			"org:b#member@team:b#member",
+			"org:b#allowed@user:bob",
+		},
+		objectType: "org",
+		relation:   "can_access",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c", "org:d"},
+	},
+	{
+		name: "complex_exclusion_nested",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define also_also_allowed: [user]
+					define member: [team#member] but not (((allowed or also_also_allowed) but not also_allowed) but not granted)
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#member@team:a#member",
+			"team:c#member@user:bob",
+			"org:c#member@team:c#member",
+			"org:c#also_also_allowed@user:bob",
+			"org:c#also_allowed@user:bob",
+			"team:d#member@user:bob",
+			"org:d#member@team:d#member",
+			"org:d#also_also_allowed@user:bob",
+			"org:d#granted@user:bob",
+			// negative cases
+			"team:b#member@user:bob",
+			"org:b#member@team:b#member",
+			"org:b#also_also_allowed@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c", "org:d"},
+	},
+	{
+		name: "complex_exclusion_nested_and_union",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define granted: [user]
+					define also_allowed: [user]
+					define member: [team#member] but not ((allowed but not also_allowed) or granted)
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#member@team:a#member",
+			"team:c#member@user:bob",
+			"org:c#member@team:c#member",
+			"org:c#allowed@user:bob",
+			"org:c#also_allowed@user:bob",
+			// negative cases
+			"team:b#member@user:bob",
+			"org:b#member@team:b#member",
+			"org:b#allowed@user:bob",
+			"team:d#member@user:bob",
+			"org:d#member@team:d#member",
+			"org:d#granted@user:bob",
+			"org:e#granted@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c"},
+	},
+	{
+		name: "exclusion_intersection_1",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define also_allowed: [user]
+					define member: [team#member] but not (allowed and also_allowed)
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#member@team:a#member",
+			"team:b#member@user:bob",
+			"org:b#member@team:b#member",
+			"org:b#allowed@user:bob",
+			"team:c#member@user:bob",
+			"org:c#member@team:c#member",
+			"org:c#also_allowed@user:bob",
+			// negative cases
+			"team:d#member@user:bob",
+			"org:d#member@team:d#member",
+			"org:d#allowed@user:bob",
+			"org:d#also_allowed@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:b", "org:c"},
+	},
+	{
+		name: "exclusion_intersection_2",
+		model: `model
+				  schema 1.1
+
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define also_allowed: [user]
+					define member: [team#member] and (allowed but not also_allowed)
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#member@team:a#member",
+			// negative cases
+			"team:b#member@user:bob",
+			"org:b#member@team:b#member",
+			"org:b#allowed@user:bob",
+			"team:c#member@user:bob",
+			"org:c#member@team:c#member",
+			"org:c#allowed@user:bob",
+			"org:c#also_allowed@user:bob",
+			"team:d#member@user:bob",
+			"org:d#member@team:d#member",
+			"org:d#also_allowed@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:b"},
+	},
+	{
+		name: "exclusion_lowest_weight_is_TTU",
+		model: `model
+				  schema 1.1
+
+				type user
+				type dept
+		       relations
+		         define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member]
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] but not member from team
+		`,
+		tuples: []string{
+			"org:a#member@team:a#dept_member",
+			"team:a#dept_member@dept:a#member",
+			"dept:a#member@user:bob",
+			"org:c#member@team:c#dept_member",
+			"team:c#dept_member@dept:c#member",
+			"dept:c#member@user:bob",
+			"org:c#team@team:c",
+			// negative cases
+			"org:b#member@team:b#dept_member",
+			"team:b#dept_member@dept:b#member",
+			"dept:b#member@user:bob",
+			"org:b#team@team:b",
+			"team:b#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c"},
+	},
+	{
+		name: "exclusion_ttu_multipleparents",
+		model: `model
+				  schema 1.1
+			    type user
+				type subteam
+		          relations
+		            define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [user]
+				type org
+				  relations
+					define parent: [team, subteam]
+					define member: [user, team#dept_member] but not member from parent
+		`,
+		tuples: []string{
+			"org:b#member@user:bob",
+			"org:a#member@team:t1#dept_member",
+			"team:t1#dept_member@user:bob",
+			"org:c#member@team:t2#dept_member",
+			"team:t2#dept_member@user:bob",
+			"org:b#parent@team:t1",
+			"org:b#parent@team:t2",
+			"org:a#parent@subteam:st1",
+			"org:a#parent@subteam:st2",
+			"team:t1#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:c"},
+	},
+	{
+		name: "lowest_weight_is_TTU_intersection_with_intersections",
+		model: `model
+				  schema 1.1
+
+				type user
+				type dept
+		         relations
+		           define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define dept_member: [dept#member] and member
+				type org
+				  relations
+					define team: [team]
+					define member: [team#dept_member] and member from team
+		`,
+		tuples: []string{
+			"team:a#member@user:bob",
+			"org:a#team@team:a",
+			"org:a#member@team:a#dept_member",
+			"team:a#dept_member@dept:a#member",
+			"team:a#member@user:bob",
+			"dept:a#member@user:bob",
+			// negative cases
+			"team:b#member@user:bob",
+			"org:b#team@team:b",
+			"dept:b#member@user:bob",
+			"org:c#member@team:c#dept_member",
+			"team:c#dept_member@dept:c#member",
+			"dept:c#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a"},
+	},
+	{
+		name: "mix_of_union_intersection_and_exclusion",
+		model: `model
+				  schema 1.1
+
+				type user
+				type dept
+		         relations
+		           define member: [user]
+				type team
+				  relations
+					define member: [user]
+					define allowed: [user]
+				type org
+				  relations
+					define team: [team]
+					define dept: [dept]
+					define member: [user] or ((member from team and allowed from team ) but not member from dept)
+		`,
+		tuples: []string{
+			"org:a#member@user:bob",
+			"org:b#team@team:b",
+			"team:b#member@user:bob",
+			"team:b#allowed@user:bob",
+			// negative cases
+			"org:c#team@team:c",
+			"team:c#member@user:bob",
+			"team:c#allowed@user:bob",
+			"org:c#dept@dept:c",
+			"dept:c#member@user:bob",
+			"org:d#dept@dept:d",
+			"dept:d#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:b"},
+	},
+	{
+		name: "intersection_with_TTU",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type folder
+				relations
+				  define viewer: [user]
+
+			  type document
+				relations
+				  define parent: [folder]
+				  define writer: [user]
+				  define viewer: writer and viewer from parent
+		`,
+		tuples: []string{
+			"document:1#parent@folder:X",
+			"folder:X#viewer@user:a",
+			"document:1#writer@user:a",
+			// negative cases
+			"folder:X#viewer@user:b",
+			"document:2#writer@user:c",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:1"},
+	},
+	{
+		name: "intersection_with_high_weights",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type folder
+				relations
+				  define viewer: [user]
+
+			  type document
+				relations
+				  define other_parent: [folder]
+				  define parent: [folder]
+				  define viewer: viewer from parent and viewer from other_parent
+		`,
+		tuples: []string{
+			"document:1#parent@folder:X",
+			"folder:X#viewer@user:a",
+			"document:1#other_parent@folder:X",
+			"document:3#parent@folder:A",
+			"folder:A#viewer@user:a",
+			"document:3#other_parent@folder:B",
+			"folder:B#viewer@user:a",
+			// negative cases
+			"folder:X#viewer@user:b",
+			"document:2#parent@folder:Y",
+			"folder:Y#viewer@user:a",
+			"document:2#other_parent@folder:Z",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:1", "document:3"},
+	},
+	{
+		name: "exclusion_with_TTU",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type folder
+				relations
+				  define viewer: [user]
+
+			  type document
+				relations
+				  define parent: [folder]
+				  define writer: [user]
+				  define viewer: writer but not viewer from parent
+		`,
+		tuples: []string{
+			"document:2#writer@user:a",
+			"document:3#writer@user:a",
+			"document:3#parent@folder:Z",
+			// negative cases
+			"document:1#parent@folder:X",
+			"folder:X#viewer@user:a",
+			"document:1#writer@user:a",
+			"folder:Y#viewer@user:a",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:2", "document:3"},
+	},
+	{
+		name: "exclusion_with_high_weights",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type folder
+				relations
+				  define viewer: [user]
+
+			  type document
+				relations
+				  define other_parent: [folder]
+				  define parent: [folder]
+				  define viewer: viewer from parent but not viewer from other_parent
+		`,
+		tuples: []string{
+			"document:2#parent@folder:Y",
+			"folder:Y#viewer@user:a",
+			"document:4#parent@folder:D",
+			"folder:D#viewer@user:a",
+			"document:4#other_parent@folder:E",
+			// negative cases
+			"document:1#parent@folder:X",
+			"folder:X#viewer@user:a",
+			"document:1#other_parent@folder:X",
+			"document:3#parent@folder:A",
+			"folder:A#viewer@user:a",
+			"document:3#other_parent@folder:B",
+			"folder:B#viewer@user:a",
+			"document:2#other_parent@folder:Z",
+			"document:5#other_parent@folder:F",
+			"folder:F#viewer@user:a",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:2", "document:4"},
+	},
+	{
+		name: "tuple_to_userset_intersection",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type and_folder
+				relations
+				  define writer: [user]
+				  define editor: [user]
+				  define viewer: writer and editor
+
+			  type document
+				relations
+				  define and_parent: [and_folder]
+				  define viewer: viewer from and_parent
+		`,
+		tuples: []string{
+			"document:a#and_parent@and_folder:a",
+			"and_folder:a#writer@user:a",
+			"and_folder:a#editor@user:a",
+			// negative cases
+			"document:b#and_parent@and_folder:b",
+			"and_folder:b#writer@user:b",
+			"document:c#and_parent@and_folder:c",
+			"and_folder:c#editor@user:c",
+			"document:d#and_parent@and_folder:d",
+			"and_folder:e#editor@user:e",
+			"and_folder:e#editor@user:e",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:a"},
+	},
+	{
+		name: "tuple_to_userset_exclusion",
+		model: `model
+				schema 1.1
+			  type user
+
+			  type but_not_folder
+				relations
+				  define writer: [user]
+				  define editor: [user]
+				  define viewer: writer but not editor
+
+			  type document
+				relations
+				  define but_not_parent: [but_not_folder]
+				  define viewer: viewer from but_not_parent
+		`,
+		tuples: []string{
+			"document:a#but_not_parent@but_not_folder:a",
+			"but_not_folder:a#writer@user:a",
+			// negative cases
+			"document:b#but_not_parent@but_not_folder:b",
+			"but_not_folder:b#writer@user:b",
+			"but_not_folder:b#editor@user:b",
+			"document:c#but_not_parent@but_not_folder:c",
+			"but_not_folder:c#editor@user:c",
+			"but_not_folder:d#writer@user:d",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "a"}},
+		expected:   []string{"document:a"},
+	},
+	{
+		name: "duplicate_parent_ttu",
+		model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define account: [account]
+						define parent: [account]
+						define can_view: super_admin from account or super_admin from parent
+				type account
+					relations
+						define super_admin: [user]
+		`,
+		tuples: []string{
+			"thing:4#parent@account:4",
+			"account:4#super_admin@user:1",
+		},
+		objectType: "thing",
+		relation:   "can_view",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		expected: []string{
+			"thing:4",
+		},
+	},
+	{
+		name: "multiple_ttus_going_to_same_terminal_typerel",
+		model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define resource: [resource]
+						define can_view: can_view from parent or admin from resource
+						define parent: [document]
+				type document
+					relations
+						define resource: [resource]
+						define can_view: admin from resource
+				type resource
+					relations
+						define owner: [user] and also_user
+						define admin: ([user] and also_user) or owner
+						define also_user: [user]
+		`,
+		tuples: []string{
+			"thing:1#resource@resource:1",
+			"resource:1#also_user@user:1",
+			"resource:1#owner@user:1",
+
+			"thing:2#resource@resource:2",
+			"resource:2#also_user@user:1",
+			"resource:2#owner@user:1",
+
+			"thing:3#resource@resource:3",
+			"resource:3#also_user@user:1",
+			"resource:3#owner@user:1",
+
+			"thing:4#resource@resource:4",
+			"resource:4#also_user@user:1",
+			"resource:4#owner@user:1",
+
+			"thing:5#resource@resource:5",
+			"resource:5#also_user@user:1",
+			"resource:5#owner@user:1",
+		},
+		objectType: "thing",
+		relation:   "can_view",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		expected: []string{
+			"thing:1",
+			"thing:2",
+			"thing:3",
+			"thing:4",
+			"thing:5",
+		},
+	},
+	{
+		name: "multiple_ttus_same_terminal_typerel_additional_paths",
+		model: `
+				model
+					schema 1.1
+				type user
+				type thing
+					relations
+						define resource: [resource]
+						define can_view: owner or super_admin from resource or can_view from parent
+						define owner: [user] and also_user from resource
+						define parent: [document]
+				type document
+					relations
+						define _also_user: also_user from resource
+						define resource: [resource]
+						define can_view: viewer or editor or owner or super_admin from resource
+						define editor: [user, team#member, resource#member, resource#admin] and _also_user
+						define owner: [user] and _also_user
+						define viewer: [user, team#member, resource#member, resource#admin] and _also_user
+				type resource
+					relations
+						define admin: ([user] and also_user) or super_admin
+						define member: ([user] and also_user) or admin
+						define owner: [user] and also_user
+						define super_admin: ([user] and also_user) or owner
+						define also_user: [user]
+				type team
+					relations
+						define member: [user]
+		`,
+		tuples: []string{
+			// This satisfies can_view: 'owner'
+			"thing:1#resource@resource:1",
+			"resource:1#also_user@user:1",
+			"thing:1#owner@user:1",
+
+			// satisfies one of resource#super_admin edges for can_view: 'super_admin from resource'
+			"thing:2#resource@resource:2",
+			"resource:2#also_user@user:1",
+			"resource:2#super_admin@user:1",
+
+			// satisfies OR edge of resource#super_admin
+			"thing:3#resource@resource:3",
+			"resource:3#also_user@user:1",
+			"resource:3#owner@user:1",
+
+			// satisfies one of parent#can_view #viewer relation
+			"thing:4#parent@document:1",
+			"document:1#viewer@user:1",
+			"document:1#resource@resource:4",
+			"resource:4#also_user@user:1",
+
+			// satisfies team#member of parent#can_view #viewer relation
+			"thing:5#parent@document:2",
+			"document:2#viewer@team:1#member",
+			"team:1#member@user:1",
+			"document:2#resource@resource:5",
+			"resource:5#also_user@user:1",
+
+			// satisfies resource#member of parent#can_view #viewer relation
+			"thing:6#parent@document:3",
+			"document:3#resource@resource:6",
+			"resource:6#also_user@user:1",
+			"resource:6#member@user:1",
+			"document:3#viewer@resource:6#member",
+
+			// satisfies resource#member of parent#can_view #viewer relation via resource#member
+			// when the also_user is from a different resource
+			"thing:7#parent@document:4",
+			"document:4#resource@resource:7",
+			"resource:7#also_user@user:1",
+			"resource:7#member@user:1",
+			"resource:8#also_user@user:1",
+			"resource:8#member@user:1",
+			"document:4#viewer@resource:8#member",
+		},
+		objectType: "thing",
+		relation:   "can_view",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		expected: []string{
+			"thing:1",
+			"thing:2",
+			"thing:3",
+			"thing:4",
+			"thing:5",
+			"thing:6",
+			"thing:7",
+		},
 	},
 }
 
@@ -1907,7 +2685,6 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 					define member: [user] but not banned
 		`,
 			tuples: []string{
-				"org:a#banned@user:bob",
 				"org:b#member@user:bob",
 				"org:a#member@user:bob",
 				"org:c#banned@user2:bob",
