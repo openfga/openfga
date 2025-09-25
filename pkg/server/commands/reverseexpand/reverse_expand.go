@@ -397,7 +397,7 @@ func (c *ReverseExpandQuery) execute(
 			node, ok := c.typesystem.GetNode(typeRel)
 			if !ok {
 				// The weighted graph is not guaranteed to be present.
-				// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+				// If there's no weighted graph, which can happen for models with disconnected types, we will log an error below
 				// and then fall back to the non-weighted version of reverse_expand
 				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("node_id", typeRel))
 				req.skipWeightedGraph = true
