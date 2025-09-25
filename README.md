@@ -33,6 +33,7 @@ It helps developers easily model and enforce fine-grained access control in thei
 - 🌿 [Terraform Provider](https://github.com/openfga/terraform-provider-openfga) for configuring OpenFGA servers as code
 - 🎮 [Playground](https://openfga.dev/docs/getting-started/setup-openfga/playground) for modeling and testing
 - 🛠 Can also be embedded as a [Go library](https://pkg.go.dev/github.com/openfga/openfga/pkg/server#example-NewServerWithOpts)
+- 🤝 Adopted by [Grafana Labs](https://grafana.com/), [Canonical](https://canonical.com/), [Docker](https://docker.com),  [Agicap](https://agicap.com), [Read.AI](https://read.ai) and [others](https://github.com/openfga/community/blob/main/ADOPTERS.md)
 
 ---
 
@@ -82,7 +83,7 @@ curl -X POST 'localhost:8080/stores' \
 
 ### Docker
 
-OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the
+OpenFGA is available on [Docker Hub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the
 in-memory datastore by running the following commands:
 
 ```shell
