@@ -1315,7 +1315,8 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 				for group := range snd.seq {
 					r.coord.addMessages(-1)
 
-					if snd.edge.GetEdgeType() == EdgeTypeDirect {
+					switch snd.edge.GetEdgeType() {
+					case EdgeTypeDirect:
 						// For direct edges, we need to query the backend to find all objects of the specified type
 
 						parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
@@ -1362,8 +1363,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 							included[item.Value] = struct{}{}
 							mu1.Unlock()
 						}
-					} else {
-						// TODO: handle TTU inclusion/exclusion cases
+					case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
 						for _, item := range group.Items {
 							if item.Err != nil {
 								errs[i] = append(errs[i], item)
