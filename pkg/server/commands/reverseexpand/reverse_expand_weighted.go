@@ -952,8 +952,6 @@ type unionResolver struct {
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var wg sync.WaitGroup
 
-	objects := make(map[string]struct{})
-
 	buffers := make([]map[string]struct{}, len(senders))
 
 	for i := range senders {
@@ -1060,6 +1058,8 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 					}
 					output[item.Value] = struct{}{}
 				}
+
+				objects := make(map[string]struct{})
 
 				for obj := range output {
 					objects[obj] = struct{}{}
