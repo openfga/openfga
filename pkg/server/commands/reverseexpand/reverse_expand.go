@@ -25,7 +25,6 @@ import (
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -128,7 +127,6 @@ type UserRef struct {
 type ReverseExpandQuery struct {
 	logger                  logger.Logger
 	datastore               storage.RelationshipTupleReader
-	ff                      featureflags.Client
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
@@ -202,7 +200,6 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 		visitedUsersetsMap:  new(sync.Map),
 		queryDedupeMap:      new(sync.Map),
 		localCheckResolver:  graph.NewLocalChecker(),
-		ff:                  featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {
