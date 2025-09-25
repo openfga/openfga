@@ -200,6 +200,44 @@ var cases = []testcase{
 		expected:   []string{"document:1", "document:2", "document:3"},
 	},
 	{
+		name: "ttu_with_complexity",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type company
+			relations
+				define rel1: [user]
+				define employee: [user] or rel1
+
+		type org
+			relations
+				define rel1: [user]
+				define employee: [user] and rel1
+
+		type document
+			relations
+				define viewer: employee from parent
+				define parent: [company, org]
+		`,
+		tuples: []string{
+			"company:auth0#employee@user:bob",
+			"org:fga#employee@user:bob",
+			"org:fga#rel1@user:bob",
+			"org:x#employee@user:bob",
+			"document:1#parent@company:auth0",
+			"document:2#parent@company:auth0",
+			"document:3#parent@org:fga",
+			"document:4#parent@org:x",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"document:1", "document:2", "document:3"},
+	},
+	{
 		name: "intersection",
 		model: `
 		model
