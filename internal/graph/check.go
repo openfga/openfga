@@ -488,6 +488,10 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ctx.Err()
 	}
 
+	if !c.optimizationsEnabled && c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
+		c.optimizationsEnabled = true
+	}
+
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
 		attribute.String("resolver_type", "LocalChecker"),

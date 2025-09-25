@@ -71,7 +71,8 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	useShadowCache bool // Indicates that the shadow cache should be used instead of the main cache
+	optimizationsEnabled bool
+	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 }
 
 type ListObjectsResolver interface {
@@ -173,6 +174,12 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
+func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.useShadowCache = useShadowCache
+	}
+}
+
 func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		if client != nil {
@@ -216,8 +223,9 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		useShadowCache: false,
-		ff:             featureflags.NewNoopFeatureFlagClient(),
+		optimizationsEnabled: false,
+		useShadowCache:       false,
+		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {
@@ -225,7 +233,7 @@ func NewListObjectsQuery(
 	}
 
 	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
-		query.useShadowCache = true
+		query.optimizationsEnabled = true
 	}
 
 	return query, nil
@@ -352,7 +360,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
-			reverseexpand.WithFeatureFlagClient(q.ff),
+			reverseexpand.WithListObjectsOptimizationsEnabled(q.optimizationsEnabled),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
