@@ -2017,10 +2017,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			// once without optimization enabled
 			unoptimizedResultsChan := make(chan *ReverseExpandResult)
 			go func() {
-				q := NewReverseExpandQuery(
-					ds,
-					typesys,
-				)
+				q := NewReverseExpandQuery(ds, typesys)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
@@ -2100,7 +2097,6 @@ func TestLoopOverEdges(t *testing.T) {
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
-
 		storeID, authModel := storagetest.BootstrapFGAStore(t, ds, brokenModel, tuples)
 		typesys, err := typesystem.New(
 			authModel,
@@ -2493,7 +2489,6 @@ func TestIntersectionHandler(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest, rewrite *openfgav1.Userset) graph.CheckHandlerFunc {
@@ -2709,7 +2704,6 @@ func TestExclusionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
-
 		q := NewReverseExpandQuery(
 			ds,
 			typesys,
@@ -2780,7 +2774,6 @@ func TestExclusionHandler(t *testing.T) {
 
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
 		q := NewReverseExpandQuery(
 			mockDatastore,
 			typesys,
