@@ -69,12 +69,6 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithOptimizations(enabled bool) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.optimizationsEnabled = enabled
-	}
-}
-
 func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		if client != nil {
@@ -717,7 +711,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var resolvers []CheckHandlerFunc
 
-		if c.optimizationsEnabled {
+		if req.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
 			possibleStrategies[weightTwoResolver] = weight2Plan
@@ -924,7 +918,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if len(possibleStrategies) == 1 || !c.optimizationsEnabled {
+		if len(possibleResolvers) == 1 || !req.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}

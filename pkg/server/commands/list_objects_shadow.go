@@ -122,7 +122,7 @@ func newShadowedListObjectsQuery(
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
 		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true))})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true))})...,
 	)
 	if err != nil {
 		return nil, err
