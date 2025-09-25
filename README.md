@@ -28,6 +28,9 @@ It helps developers easily model and enforce fine-grained access control in thei
 - ⚡ High-performance, developer-friendly APIs (HTTP & gRPC)
 - 🔌 Flexible storage backends (In-Memory, PostgreSQL, MySQL, SQLite beta)
 - 🧰 SDKs for [Java](https://central.sonatype.com/artifact/dev.openfga/openfga-sdk), [Node.js](https://www.npmjs.com/package/@openfga/sdk), [Go](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk), [.NET](https://www.nuget.org/packages/OpenFga.Sdk)
+- 🌐  Several additional SDKs and tools [contributed by the community](https://github.com/openfga/community#community-projects)
+- 🧪 [CLI](https://github.com/openfga/cli) for interacting with an OpenFGA server and [testing authorization models](https://openfga.dev/docs/modeling/testing)
+- 🌿 [Terraform Provider](https://github.com/openfga/terraform-provider-openfga) for configuring OpenFGA servers as code
 - 🎮 [Playground](https://openfga.dev/docs/getting-started/setup-openfga/playground) for modeling and testing
 - 🛠 Can also be embedded as a [Go library](https://pkg.go.dev/github.com/openfga/openfga/pkg/server#example-NewServerWithOpts)
 
@@ -43,7 +46,6 @@ It helps developers easily model and enforce fine-grained access control in thei
     - [Build from Source](#build-from-source)
     - [Verify Installation](#verify-installation)
 - [Playground](#playground)
-- [Profiler (pprof)](#profiler-pprof)
 - [Next Steps](#next-steps)
 - [Limitations](#limitations)
 - [Production Readiness](#production-readiness)
@@ -57,8 +59,9 @@ It helps developers easily model and enforce fine-grained access control in thei
 > The following steps are meant for quick local setup and evaluation.  
 > When using the default **in-memory storage engine**, data is ephemeral and will be discarded once the service stops.
 >
-> For details on configuring storage backends, tuning performance, and deploying OpenFGA in production-ready
-> environments, refer to the documentation: [Running in Production](https://openfga.dev/docs/getting-started/running-in-production).
+> For [details on configuring](https://openfga.dev/docs/getting-started/setup-openfga/configure-openfga) storage 
+> backends, tuning performance, and deploying OpenFGA securely in production-ready environments, refer to the 
+> documentation: [Running in Production](https://openfga.dev/docs/getting-started/running-in-production).
 
 
 Run OpenFGA with in-memory storage (⚠️ **not for production**):
@@ -160,6 +163,10 @@ If everything is running correctly, you should get a response with information a
 The Playground lets you model, visualize, and test authorization setups.
 By default, it’s available at: [http://localhost:3000/playground](http://localhost:3000/playground)
 
+> [!NOTE]  
+> The Playground is intended for **local development only**.  
+> It can currently only be configured to connect to an OpenFGA server running on `localhost`.
+
 Disable it with:
 
 ```shell
@@ -184,30 +191,6 @@ Change port:
 > ```
 >
 > This starts OpenFGA on port 4000 and configures the Playground accordingly.
-
-## Profiler (pprof)
-
-Profiling via [pprof](https://github.com/google/pprof) can be enabled for performance analysis and debugging with:
-
-```shell
-./openfga run --profiler-enabled
-```
-
-- Default port: 3001 → http://localhost:3001/debug/pprof
-- Change port: `./openfga run --profiler-enabled --profiler-addr :3002`
-
-
-Example profile collection:
-
-```shell
-go tool pprof -proto -seconds 60 http://localhost:3001/debug/pprof/profile
-```
-
-Visualize:
-
-```shell
-go tool pprof -http=localhost:8084 pprof.samples.cpu.001.pb.gz
-```
 
 ## Next Steps
 
