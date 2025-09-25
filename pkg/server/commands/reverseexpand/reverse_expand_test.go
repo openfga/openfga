@@ -795,7 +795,7 @@ func TestReverseExpandSkipWeighted(t *testing.T) {
 	logger := mocks.NewMockLogger(ctrl)
 	logger.EXPECT().InfoWithContext(gomock.Any(), "unable to find node in weighted graph", gomock.Any())
 
-	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithListObjectOptimizationsEnabled(true), WithLogger(logger))
+	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithListObjectsOptimizationsEnabled(true), WithLogger(logger))
 	resultChan := make(chan *ReverseExpandResult)
 
 	err = reverseExpandQuery.Execute(ctx, request, resultChan, NewResolutionMetadata())
