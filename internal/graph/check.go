@@ -761,6 +761,8 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
+			// Optimizations can be enabled for a specific request OR for the checker itself (like in shadow tests),
+			// We have to check both.
 			if !req.optimizationsEnabled && !c.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
@@ -778,6 +780,8 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var resolvers []CheckHandlerFunc
 
+		// Optimizations can be enabled for a specific request OR for the checker itself (like in shadow tests),
+		// We have to check both.
 		if req.optimizationsEnabled || c.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
@@ -982,6 +986,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
+		// Optimizations can be enabled for a specific request OR for the checker itself (like in shadow tests),
+		// We have to check both.
 		if len(possibleResolvers) == 1 || (!req.optimizationsEnabled && !c.optimizationsEnabled) {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
