@@ -952,11 +952,9 @@ type unionResolver struct {
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var wg sync.WaitGroup
 
-	buffers := make([]map[string]struct{}, len(senders))
+	var muMap sync.Mutex
 
-	for i := range senders {
-		buffers[i] = make(map[string]struct{})
-	}
+	buffer := make(map[string]struct{})
 
 	errs := make([][]Item, len(senders))
 
@@ -990,11 +988,19 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 						continue
 					}
 
-					if _, ok := buffers[i][item.Value]; ok {
-						continue
+					var seen bool
+
+					muMap.Lock()
+					if _, ok := buffer[item.Value]; ok {
+						seen = true
+					} else {
+						buffer[item.Value] = struct{}{}
 					}
-					unseen = append(unseen, item)
-					buffers[i][item.Value] = struct{}{}
+					muMap.Unlock()
+
+					if !seen {
+						unseen = append(unseen, item)
+					}
 				}
 
 				// If there are no unseen items, skip processing
