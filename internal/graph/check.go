@@ -51,11 +51,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
-	concurrencyLimit   int
-	planner            *planner.Planner
-	logger             logger.Logger
-	maxResolutionDepth uint32
+	delegate             CheckResolver
+	concurrencyLimit     int
+	planner              *planner.Planner
+	logger               logger.Logger
+	optimizationsEnabled bool
+	maxResolutionDepth   uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -64,6 +65,12 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = int(limit)
+	}
+}
+
+func WithOptimizationsEnabled(enabled bool) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -754,7 +761,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !req.optimizationsEnabled {
+			if !req.optimizationsEnabled && !c.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)
@@ -771,7 +778,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var resolvers []CheckHandlerFunc
 
-		if req.optimizationsEnabled {
+		if req.optimizationsEnabled || c.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
 			possibleResolvers = append(possibleResolvers, weightTwoResolver)
@@ -975,7 +982,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if len(possibleResolvers) == 1 || !req.optimizationsEnabled {
+		if len(possibleResolvers) == 1 || (!req.optimizationsEnabled && !c.optimizationsEnabled) {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
