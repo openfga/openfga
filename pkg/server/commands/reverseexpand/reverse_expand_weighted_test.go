@@ -197,7 +197,7 @@ var cases = []testcase{
 		expected:   []string{"document:1"},
 	},
 	{
-		name: "ttu_in_cycle",
+		name: "ttu_in_cycle_with_union",
 		model: `
 		model
 		schema 1.1
@@ -234,6 +234,43 @@ var cases = []testcase{
 		relation:   "viewer",
 		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
 		expected:   []string{"document:1", "document:2", "document:3"},
+	},
+	{
+		name: "ttu_in_cycle_with_intersection",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type company
+			relations
+				define employee: [user] and employee from parent
+				define parent: [org]
+
+		type org
+			relations
+				define employee: [user]
+
+		type document
+			relations
+				define viewer: employee from parent
+				define parent: [company, org]
+		`,
+		tuples: []string{
+			"company:auth0#employee@user:bob",
+			"document:1#parent@company:auth0",
+			"org:auth0#employee@user:bob",
+			"company:auth0#parent@org:auth0",
+			"document:2#parent@org:auth0",
+			"document:3#parent@company:fga",
+			"document:4#parent@org:fga",
+			"company:fga#employee@user:bob",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"document:1", "document:2"},
 	},
 	{
 		name: "ttu_with_two_directs",
