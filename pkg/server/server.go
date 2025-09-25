@@ -400,7 +400,12 @@ func WithExperimentals(experimentals ...string) OpenFGAServiceV1Option {
 
 func WithFeatureFlagClient(client featureflags.Client) OpenFGAServiceV1Option {
 	return func(s *Server) {
-		s.featureFlagClient = client
+		if client != nil {
+			s.featureFlagClient = client
+			return
+		}
+
+		s.featureFlagClient = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 

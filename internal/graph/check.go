@@ -78,7 +78,12 @@ func WithOptimizations(enabled bool) LocalCheckerOption {
 
 func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.ff = client
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 

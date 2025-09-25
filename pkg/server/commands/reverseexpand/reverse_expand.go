@@ -179,7 +179,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 
 func WithFeatureFlagClient(client featureflags.Client) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
-		d.ff = client
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
