@@ -197,6 +197,45 @@ var cases = []testcase{
 		expected:   []string{"document:1"},
 	},
 	{
+		name: "ttu_in_cycle",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type company
+			relations
+				define employee: [user] or employee from parent
+				define parent: [org, company]
+
+		type org
+			relations
+				define employee: [user] or employee from parent
+				define parent: [company, org]
+
+		type document
+			relations
+				define viewer: employee from parent
+				define parent: [company, org]
+		`,
+		tuples: []string{
+			"company:auth0#employee@user:bob",
+			"document:1#parent@company:auth0",
+			"org:auth0#employee@user:bob",
+			"company:auth0#parent@org:auth0",
+			"org:auth0#parent@company:auth0",
+			"document:2#parent@org:auth0",
+			"document:3#parent@company:auth0",
+			"document:4#parent@company:fga",
+			"document:5#parent@org:fga",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"document:1", "document:2", "document:3"},
+	},
+	{
 		name: "ttu_with_two_directs",
 		model: `
 		model

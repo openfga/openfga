@@ -674,6 +674,7 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 					r.coord.addMessages(1)
 					select {
 					case lst.ch <- mappedGroup:
+						// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel())
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
 					}
@@ -686,6 +687,7 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 		}(i, snd)
 	}
 	wg.Wait()
+	// println("RESOLVER DONE", r.node.GetUniqueLabel())
 }
 
 type specificTypeAndRelationResolver struct {
@@ -796,7 +798,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					continue
 				}
 
-				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
+				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -918,7 +920,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					select {
 					case lst.ch <- outGroup:
 						if lst.node != nil {
-							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
+							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%+v", outGroup))
 						}
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
@@ -954,16 +956,15 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	buffers := make([]map[string]struct{}, len(senders))
 
-	output := make([]map[string]struct{}, len(senders))
-
 	for i := range senders {
 		buffers[i] = make(map[string]struct{})
-		output[i] = make(map[string]struct{})
 	}
 
 	errs := make([][]Item, len(senders))
 
-	r.coord.setActive(r.id, true)
+	var mu sync.Mutex
+
+	var active uint64
 
 	for i, snd := range senders {
 		wg.Add(1)
@@ -971,8 +972,17 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
+			pos := uint64(1 << i)
+
 			for inGroup := range snd.seq {
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
 				r.coord.addMessages(-1)
+
+				output := make(map[string]struct{})
 
 				var unseen []Item
 
@@ -991,6 +1001,10 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
+					mu.Lock()
+					active &^= pos
+					r.coord.setActive(r.id, active != 0)
+					mu.Unlock()
 					continue
 				}
 
@@ -1044,46 +1058,51 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 					if item.Err != nil {
 						errs[i] = append(errs[i], item)
 					}
-					output[i][item.Value] = struct{}{}
+					output[item.Value] = struct{}{}
 				}
+
+				for obj := range output {
+					objects[obj] = struct{}{}
+				}
+
+				var allErrs []Item
+
+				for _, errList := range errs {
+					allErrs = append(allErrs, errList...)
+				}
+
+				seq := mergeOrdered(
+					sequence(allErrs...),
+					transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }),
+				)
+
+				var items []Item
+
+				for item := range seq {
+					items = append(items, item)
+				}
+
+				outGroup := Group{
+					Items: items,
+				}
+
+				for _, lst := range listeners {
+					r.coord.addMessages(1)
+					select {
+					case lst.ch <- outGroup:
+						// println("SENT", r.node.GetLabel(), "->", lst.node.GetLabel())
+					case <-lst.ctx.Done():
+						r.coord.addMessages(-1)
+					}
+				}
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
 			}
 		}(i, snd)
 	}
 	wg.Wait()
-
-	for i := 0; i < len(output); i++ {
-		for obj := range output[i] {
-			objects[obj] = struct{}{}
-		}
-	}
-
-	var allErrs []Item
-
-	for _, errList := range errs {
-		allErrs = append(allErrs, errList...)
-	}
-
-	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
-
-	var items []Item
-
-	for item := range seq {
-		items = append(items, item)
-	}
-
-	outGroup := Group{
-		Items: items,
-	}
-
-	for _, sub := range listeners {
-		r.coord.addMessages(1)
-		select {
-		case sub.ch <- outGroup:
-		case <-sub.ctx.Done():
-			r.coord.addMessages(-1)
-		}
-	}
-	r.coord.setActive(r.id, false)
 }
 
 type intersectionResolver struct {
@@ -1518,7 +1537,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 
 	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
-		println(source.GetLabel())
+		// println(source.GetLabel())
 		return
 	}
 
