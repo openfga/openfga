@@ -77,7 +77,12 @@ func WithOptimizations(enabled bool) LocalCheckerOption {
 
 func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.ff = client
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -692,7 +697,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, false, nil) {
+			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 

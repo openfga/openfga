@@ -175,7 +175,12 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 
 func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.ff = client
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -219,7 +224,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
 		query.useShadowCache = true
 	}
 

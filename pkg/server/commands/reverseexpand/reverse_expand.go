@@ -178,7 +178,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 
 func WithFeatureFlagClient(client featureflags.Client) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
-		d.ff = client
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -386,7 +391,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	optimizationsEnabled := c.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil)
+	optimizationsEnabled := c.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil)
 	if optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {

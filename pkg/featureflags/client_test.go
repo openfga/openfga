@@ -24,33 +24,24 @@ func TestBoolean(t *testing.T) {
 	client := NewDefaultClient([]string{"enabled-flag", "another-enabled-flag"})
 
 	// Test case where the flag is enabled and defaultValue is true.
-	t.Run("enabled flag, true default", func(t *testing.T) {
-		result := client.Boolean("enabled-flag", true, nil)
-		require.True(t, result)
-	})
-
-	// Test case where the flag is enabled and defaultValue is false.
-	t.Run("enabled flag, false default", func(t *testing.T) {
-		result := client.Boolean("enabled-flag", false, nil)
+	t.Run("enabled flag", func(t *testing.T) {
+		result := client.Boolean("enabled-flag", nil)
 		require.True(t, result)
 	})
 
 	// Test case where the flag is not enabled and defaultValue is false.
-	t.Run("disabled flag, false default", func(t *testing.T) {
-		result := client.Boolean("disabled-flag", false, nil)
-		require.False(t, result)
-	})
-
-	// Test case with an empty flag name.
-	t.Run("empty flag name", func(t *testing.T) {
-		result := client.Boolean("", false, nil)
+	t.Run("disabled flag", func(t *testing.T) {
+		result := client.Boolean("disabled-flag", nil)
 		require.False(t, result)
 	})
 
 	// The `featureCtx` is not used by this implementation, so we test that it doesn't affect the result.
 	t.Run("with feature context", func(t *testing.T) {
 		ctx := map[string]any{"user_id": "123", "plan": "premium"}
-		result := client.Boolean("enabled-flag", false, ctx)
+		result := client.Boolean("enabled-flag", ctx)
 		require.True(t, result)
+
+		result = client.Boolean("disabled-flag", ctx)
+		require.False(t, result)
 	})
 }
