@@ -387,7 +387,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	optimizationsEnabled := c.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil)
+	optimizationsEnabled := c.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil)
 	if optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {

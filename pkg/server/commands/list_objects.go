@@ -219,7 +219,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, false, nil) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
 		query.useShadowCache = true
 	}
 

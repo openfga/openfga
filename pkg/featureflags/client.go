@@ -1,7 +1,7 @@
 package featureflags
 
 type Client interface {
-	Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool
+	Boolean(flagName string, featureCtx map[string]any) bool
 }
 
 type defaultClient struct {
@@ -20,7 +20,7 @@ func NewDefaultClient(flags []string) Client {
 	}
 }
 
-func (c *defaultClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
+func (c *defaultClient) Boolean(flagName string, featureCtx map[string]any) bool {
 	_, ok := c.flags[flagName]
 	return ok
 }
@@ -35,7 +35,7 @@ func NewHardcodedBooleanClient(result bool) Client {
 	return &hardcodedBooleanClient{result: result}
 }
 
-func (h *hardcodedBooleanClient) Boolean(flagName string, defaultValue bool, featureCtx map[string]any) bool {
+func (h *hardcodedBooleanClient) Boolean(flagName string, featureCtx map[string]any) bool {
 	return h.result
 }
 

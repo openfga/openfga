@@ -770,7 +770,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, false, nil) {
+			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)

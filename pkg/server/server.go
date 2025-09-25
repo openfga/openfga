@@ -589,11 +589,7 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	isEnabled := s.featureFlagClient.Boolean(
-		serverconfig.ExperimentalAccessControlParams,
-		false,
-		nil,
-	)
+	isEnabled := s.featureFlagClient.Boolean(serverconfig.ExperimentalAccessControlParams, nil)
 	return isEnabled && s.AccessControl.Enabled
 }
 
