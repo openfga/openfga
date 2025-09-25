@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added a default featureflag.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
+- Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 
 ## [1.10.1] - 2025-09-22
 ### Fixed
