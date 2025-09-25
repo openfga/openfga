@@ -22,7 +22,6 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -54,7 +53,6 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate           CheckResolver
 	concurrencyLimit   int
-	ff                 featureflags.Client
 	planner            *planner.Planner
 	logger             logger.Logger
 	maxResolutionDepth uint32
@@ -66,17 +64,6 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = int(limit)
-	}
-}
-
-func WithFeatureFlagClient(client featureflags.Client) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		if client != nil {
-			d.ff = client
-			return
-		}
-
-		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -109,7 +96,6 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
-		ff:                 featureflags.NewNoopFeatureFlagClient(),
 	}
 	// by default, a LocalChecker delegates/dispatches subproblems to itself (e.g. local dispatch) unless otherwise configured.
 	checker.delegate = checker
@@ -768,7 +754,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
+			if !req.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)
