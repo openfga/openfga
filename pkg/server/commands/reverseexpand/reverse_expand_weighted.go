@@ -948,60 +948,142 @@ type unionResolver struct {
 }
 
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	objects := make(map[string]struct{})
 
-		seqs := make([]iter.Seq[Group], len(senders))
+	buffers := make([]map[string]struct{}, len(senders))
 
-		for i, snd := range senders {
-			seqs[i] = snd.seq
-		}
+	output := make([]map[string]struct{}, len(senders))
 
-		mergedSeqs := mergeUnordered(seqs...)
+	for i := range senders {
+		buffers[i] = make(map[string]struct{})
+		output[i] = make(map[string]struct{})
+	}
 
-		seen := make(map[string]struct{})
+	errs := make([][]Item, len(senders))
 
-		var items []Item
+	r.coord.setActive(r.id, true)
 
-		r.coord.setActive(r.id, true)
+	for i, snd := range senders {
+		wg.Add(1)
 
-		for group := range mergedSeqs {
-			r.coord.addMessages(-1)
+		go func(i int, snd *sender) {
+			defer wg.Done()
 
-			for _, item := range group.Items {
-				if item.Err != nil {
-					items = append(items, item)
+			for inGroup := range snd.seq {
+				r.coord.addMessages(-1)
+
+				var unseen []Item
+
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range inGroup.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[i][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[i][item.Value] = struct{}{}
 				}
 
-				if _, ok := seen[item.Value]; ok {
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
 					continue
 				}
-				seen[item.Value] = struct{}{}
-				items = append(items, item)
-			}
-		}
 
-		outGroup := Group{
-			Items: items,
-		}
+				var results iter.Seq[Item]
 
-		for _, lst := range listeners {
-			r.coord.addMessages(1)
-			select {
-			case lst.ch <- outGroup:
-			case <-lst.ctx.Done():
-				r.coord.addMessages(-1)
+				switch snd.edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+					var userRelation string
+
+					if len(userParts) > 1 {
+						userRelation = userParts[1]
+					}
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: userRelation,
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+					results = sequence(inGroup.Items...)
+
+				}
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+					}
+					output[i][item.Value] = struct{}{}
+				}
 			}
-		}
-		r.coord.setActive(r.id, false)
-	}()
+		}(i, snd)
+	}
 	wg.Wait()
+
+	for i := 0; i < len(output); i++ {
+		for obj := range output[i] {
+			objects[obj] = struct{}{}
+		}
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, sub := range listeners {
+		r.coord.addMessages(1)
+		select {
+		case sub.ch <- outGroup:
+		case <-sub.ctx.Done():
+			r.coord.addMessages(-1)
+		}
+	}
+	r.coord.setActive(r.id, false)
 }
 
 type intersectionResolver struct {
@@ -1012,93 +1094,151 @@ type intersectionResolver struct {
 }
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	objects := make(map[string]struct{})
 
-		objects := make(map[string]struct{})
+	buffers := make([]map[string]struct{}, len(senders))
 
-		buffers := make([]map[string]struct{}, len(senders))
+	output := make([]map[string]struct{}, len(senders))
 
-		for i := range senders {
-			buffers[i] = make(map[string]struct{})
-		}
+	for i := range senders {
+		buffers[i] = make(map[string]struct{})
+		output[i] = make(map[string]struct{})
+	}
 
-		errs := make([][]Item, len(senders))
+	errs := make([][]Item, len(senders))
 
-		var wg sync.WaitGroup
+	r.coord.setActive(r.id, true)
 
-		r.coord.setActive(r.id, true)
+	for i, snd := range senders {
+		wg.Add(1)
 
-		for i, snd := range senders {
-			wg.Add(1)
+		go func(i int, snd *sender) {
+			defer wg.Done()
 
-			go func(i int, snd *sender) {
-				defer wg.Done()
-
-				for group := range snd.seq {
-					r.coord.addMessages(-1)
-
-					for _, item := range group.Items {
-						if item.Err != nil {
-							errs[i] = append(errs[i], item)
-						}
-						buffers[i][item.Value] = struct{}{}
-					}
-				}
-			}(i, snd)
-		}
-		wg.Wait()
-
-		for obj := range buffers[0] {
-			objects[obj] = struct{}{}
-		}
-
-		for i := 1; i < len(buffers); i++ {
-			found := make(map[string]struct{})
-
-			for obj := range buffers[i] {
-				if _, ok := objects[obj]; ok {
-					found[obj] = struct{}{}
-				}
-			}
-			objects = found
-		}
-
-		var allErrs []Item
-
-		for _, errList := range errs {
-			allErrs = append(allErrs, errList...)
-		}
-
-		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
-
-		var items []Item
-
-		for item := range seq {
-			items = append(items, item)
-		}
-
-		outGroup := Group{
-			Items: items,
-		}
-
-		for _, sub := range listeners {
-			r.coord.addMessages(1)
-			select {
-			case sub.ch <- outGroup:
-			case <-sub.ctx.Done():
+			for inGroup := range snd.seq {
 				r.coord.addMessages(-1)
+
+				var unseen []Item
+
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range inGroup.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[i][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[i][item.Value] = struct{}{}
+				}
+
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
+					continue
+				}
+
+				var results iter.Seq[Item]
+
+				switch snd.edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+					var userRelation string
+
+					if len(userParts) > 1 {
+						userRelation = userParts[1]
+					}
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: userRelation,
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+					results = sequence(inGroup.Items...)
+
+				}
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+					}
+					output[i][item.Value] = struct{}{}
+				}
+			}
+		}(i, snd)
+	}
+	wg.Wait()
+
+	for obj := range output[0] {
+		objects[obj] = struct{}{}
+	}
+
+	for i := 1; i < len(output); i++ {
+		found := make(map[string]struct{})
+
+		for obj := range output[i] {
+			if _, ok := objects[obj]; ok {
+				found[obj] = struct{}{}
 			}
 		}
-		r.coord.setActive(r.id, false)
-	}()
-	wg.Wait()
+		objects = found
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, sub := range listeners {
+		r.coord.addMessages(1)
+		select {
+		case sub.ch <- outGroup:
+		case <-sub.ctx.Done():
+			r.coord.addMessages(-1)
+		}
+	}
+	r.coord.setActive(r.id, false)
 }
 
 type Worker struct {
