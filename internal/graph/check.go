@@ -52,13 +52,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	ff                   featureflags.Client
-	planner              *planner.Planner
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate           CheckResolver
+	concurrencyLimit   int
+	ff                 featureflags.Client
+	planner            *planner.Planner
+	logger             logger.Logger
+	maxResolutionDepth uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -67,12 +66,6 @@ type LocalCheckerOption func(d *LocalChecker)
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = int(limit)
-	}
-}
-
-func WithOptimizations(enabled bool) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -488,10 +481,6 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ctx.Err()
 	}
 
-	if !c.optimizationsEnabled && c.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
-		c.optimizationsEnabled = true
-	}
-
 	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
 		attribute.String("store_id", req.GetStoreID()),
 		attribute.String("resolver_type", "LocalChecker"),
@@ -796,7 +785,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var resolvers []CheckHandlerFunc
 
-		if c.optimizationsEnabled {
+		if req.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
 			possibleResolvers = append(possibleResolvers, weightTwoResolver)
@@ -1000,7 +989,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if len(possibleResolvers) == 1 || !c.optimizationsEnabled {
+		if len(possibleResolvers) == 1 || !req.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}

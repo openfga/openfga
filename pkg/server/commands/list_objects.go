@@ -67,9 +67,10 @@ type ListObjectsQuery struct {
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 
-	checkResolver            graph.CheckResolver
-	cacheSettings            serverconfig.CacheSettings
-	sharedDatastoreResources *shared.SharedDatastoreResources
+	checkResolver             graph.CheckResolver
+	checkOptimizationsEnabled bool
+	cacheSettings             serverconfig.CacheSettings
+	sharedDatastoreResources  *shared.SharedDatastoreResources
 
 	optimizationsEnabled bool
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
@@ -234,6 +235,10 @@ func NewListObjectsQuery(
 
 	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
 		query.optimizationsEnabled = true
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
+		query.checkOptimizationsEnabled = true
 	}
 
 	return query, nil
@@ -430,6 +435,7 @@ func (q *ListObjectsQuery) evaluate(
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+						WithCheckOptimizationsEnabled(q.checkOptimizationsEnabled),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
