@@ -632,164 +632,164 @@ var cases = []testcase{
 		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
 		expected:   []string{"team:fga", "team:cncf", "team:lnf"},
 	},
-	// {
-	// 	name: "simple_exclusion",
-	// 	model: `model
-	// 			  schema 1.1
+	{
+		name: "simple_exclusion",
+		model: `model
+				  schema 1.1
 
-	// 			type user
-	// 			type org
-	// 			  relations
-	// 				define banned: [user]
-	// 				define member: [user] but not banned
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#banned@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{"org:b"},
-	// },
-	// {
-	// 	name: "exclusion_on_itself",
-	// 	model: `model
-	// 				schema 1.1
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: [user] but not banned
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:b"},
+	},
+	{
+		name: "exclusion_on_itself",
+		model: `model
+					schema 1.1
 
-	// 			type user
-	// 			type org
-	// 			  relations
-	// 				define banned: [user]
-	// 				define member: banned but not banned
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#banned@user:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{},
-	// },
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: banned but not banned
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{},
+	},
 	// TODO: handle this case
-	// {
-	// 	name: "exclusion_no_connection_base",
-	// 	model: `model
-	// 				schema 1.1
+	{
+		name: "exclusion_no_connection_base",
+		model: `model
+					schema 1.1
 
-	// 			type user
-	// 			type user2
-	// 			type org
-	// 			  relations
-	// 				define banned: [user2]
-	// 				define member: [user] but not banned
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#banned@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 		"org:c#banned@user2:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
-	// 	expected:   []string{},
-	// },
-	// {
-	// 	name: "exclusion_no_connection_exclusion_path",
-	// 	model: `model
-	// 				schema 1.1
+				type user
+				type user2
+				type org
+				  relations
+					define banned: [user2]
+					define member: [user] but not banned
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+			"org:c#banned@user2:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
+		expected:   []string{},
+	},
+	{
+		name: "exclusion_no_connection_exclusion_path",
+		model: `model
+					schema 1.1
 
-	// 			type user
-	// 			type user2
-	// 			type org
-	// 			  relations
-	// 				define banned: [user2]
-	// 				define member: [user] but not banned
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#banned@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{"org:a", "org:b"},
-	// },
-	// {
-	// 	name: "simple_exclusion_no_direct_assignment",
-	// 	model: `model
-	// 			  schema 1.1
+				type user
+				type user2
+				type org
+				  relations
+					define banned: [user2]
+					define member: [user] but not banned
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:a", "org:b"},
+	},
+	{
+		name: "simple_exclusion_no_direct_assignment",
+		model: `model
+				  schema 1.1
 
-	// 			type user
-	// 			type org
-	// 			  relations
-	// 				define banned: [user]
-	// 				define member: [user]
-	// 				define viewer: member but not banned
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#banned@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "viewer",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{"org:b"},
-	// },
-	// {
-	// 	name: "simple_exclusion_multiple_direct_assignments",
-	// 	model: `model
-	// 			  schema 1.1
+				type user
+				type org
+				  relations
+					define banned: [user]
+					define member: [user]
+					define viewer: member but not banned
+		`,
+		tuples: []string{
+			"org:a#banned@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:b"},
+	},
+	{
+		name: "simple_exclusion_multiple_direct_assignments",
+		model: `model
+				  schema 1.1
 
-	// 			type user
-	// 			type team
-	// 			  relations
-	// 				define member: [user]
-	// 			type org
-	// 			  relations
-	// 				define allowed: [user]
-	// 				define member: [user, team#member] but not allowed
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#allowed@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 		"org:c#member@team:c#member",
-	// 		"team:c#member@user:bob",
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{"org:b", "org:c"},
-	// },
-	// {
-	// 	name: "simple_exclusion_multiple_direct_assignments_not_linked_1",
-	// 	model: `model
-	// 			  schema 1.1
+				type user
+				type team
+				  relations
+					define member: [user]
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, team#member] but not allowed
+		`,
+		tuples: []string{
+			"org:a#allowed@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+			"org:c#member@team:c#member",
+			"team:c#member@user:bob",
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:b", "org:c"},
+	},
+	{
+		name: "simple_exclusion_multiple_direct_assignments_not_linked_1",
+		model: `model
+				  schema 1.1
 
-	// 			type user
-	// 			type user2
-	// 			type org
-	// 			  relations
-	// 				define allowed: [user]
-	// 				define member: [user, user2] but not allowed
-	// 	`,
-	// 	tuples: []string{
-	// 		"org:a#allowed@user:bob",
-	// 		"org:b#member@user:bob",
-	// 		"org:a#member@user:bob",
-	// 		"org:c#allowed@user:bob",
-	// 		"org:d#member@user2:bob", // bob is user2 and there should be no link
-	// 	},
-	// 	objectType: "org",
-	// 	relation:   "member",
-	// 	user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
-	// 	expected:   []string{"org:b"},
-	// },
+				type user
+				type user2
+				type org
+				  relations
+					define allowed: [user]
+					define member: [user, user2] but not allowed
+		`,
+		tuples: []string{
+			"org:a#allowed@user:bob",
+			"org:b#member@user:bob",
+			"org:a#member@user:bob",
+			"org:c#allowed@user:bob",
+			"org:d#member@user2:bob", // bob is user2 and there should be no link
+		},
+		objectType: "org",
+		relation:   "member",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"org:b"},
+	},
 }
 
 func BenchmarkPipeline(b *testing.B) {
