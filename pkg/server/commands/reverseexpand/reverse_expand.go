@@ -419,12 +419,12 @@ func (c *ReverseExpandQuery) execute(
 				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel})
 			}
 
-			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
-			// have prevented us from entering this block.
-			edges, needsCheck, _ := c.typesystem.GetEdgesForListObjects(
+			edges, _ := c.typesystem.GetConnectedEdges(
 				typeRel,
 				sourceUserType,
 			)
+			// error should never happen as if the weighted graph failed to build, req.skipWeightedGraph would
+			// have prevented us from entering this block
 
 			// Set value to indicate that the weighted graph was used
 			resolutionMetadata.WasWeightedGraphUsed.Store(true)
@@ -433,7 +433,7 @@ func (c *ReverseExpandQuery) execute(
 				ctx,
 				req,
 				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges,
+				intersectionOrExclusionInPreviousEdges,
 				resolutionMetadata,
 				resultChan,
 				sourceUserType,

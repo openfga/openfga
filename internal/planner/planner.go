@@ -141,6 +141,14 @@ func (kp *KeyPlan) UpdateStats(resolver string, duration time.Duration) {
 	ts.Update(duration)
 }
 
+// UpdateStatsOverGuess is like UpdateStats but only updates if the duration is worse than the initial guess.
+// This can help reduce noise from very fast responses that might not reflect true performance (or cancelled ones)..
+func (kp *KeyPlan) UpdateStatsOverGuess(resolver string, duration time.Duration) {
+	if duration > kp.initialGuess {
+		kp.UpdateStats(resolver, duration)
+	}
+}
+
 // startCleanupRoutine runs a background goroutine that periodically evicts stale keys.
 func (p *Planner) startCleanupRoutine(interval time.Duration) {
 	ticker := time.NewTicker(interval)

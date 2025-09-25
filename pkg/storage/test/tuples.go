@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -2001,6 +2002,51 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.Len(t, tuples, 1)
 		_, objectID := tuple.SplitObject(tuples[0].GetObject())
 		require.Equal(t, "doc1", objectID)
+	})
+	t.Run("assert_bytewise_ordering_of_tuples", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var tupleInReverseOrder = []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc7", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc6", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc_3", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:Apt", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc-3", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:alt", "viewer", "user:bob"),
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tupleInReverseOrder)
+		require.NoError(t, err)
+
+		tupleIterator, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object: "user:bob",
+					},
+				},
+			},
+			storage.ReadStartingWithUserOptions{
+				WithResultsSortedAscending: true,
+			},
+		)
+		require.NoError(t, err)
+
+		tuples := iterateThroughAllTuples(t, tupleIterator)
+		var actualObjectIDs []string
+		for _, item := range tuples {
+			_, objectID := tuple.SplitObject(item.GetObject())
+			actualObjectIDs = append(actualObjectIDs, objectID)
+		}
+
+		result := []string{"Apt", "alt", "doc-3", "doc_3", "doc6", "doc7"}
+		sort.Strings(result)
+
+		require.Equal(t, result, actualObjectIDs)
 	})
 	t.Run("enforce_order_of_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()

@@ -119,6 +119,7 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 }
 
 var emptySequence = func(yield func(Item) bool) {}
+var emptyGroupSequence = func(yield func(Group) bool) {}
 
 type (
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
@@ -632,21 +633,28 @@ type specificTypeResolver struct {
 // recieved identifiers will have the type of the node appended to them before
 // broadcasting the identifiers to  the provided listeners.
 func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
+	var mu sync.Mutex
+
+	var active uint64
+
 	var wg sync.WaitGroup
 
-	for _, snd := range senders {
+	for i, snd := range senders {
 		wg.Add(1)
 
-		go func(snd *sender) {
+		go func(i int, snd *sender) {
 			defer wg.Done()
+
+			pos := uint64(1 << i)
 
 			for group := range snd.seq {
 				var items []Item
 
-				r.coord.setActive(r.id, true)
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
 				r.coord.addMessages(-1)
 
 				for _, item := range group.Items {
@@ -666,15 +674,20 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 					r.coord.addMessages(1)
 					select {
 					case lst.ch <- mappedGroup:
+						// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel())
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
 					}
 				}
-				r.coord.setActive(r.id, false)
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
 			}
-		}(snd)
+		}(i, snd)
 	}
 	wg.Wait()
+	// println("RESOLVER DONE", r.node.GetUniqueLabel())
 }
 
 type specificTypeAndRelationResolver struct {
@@ -785,7 +798,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					continue
 				}
 
-				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), "->", fmt.Sprintf("%+v", unseen))
+				// println("RECIEVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 				var results iter.Seq[Item]
 
@@ -830,7 +843,43 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					if len(errs) > 0 {
 						results = mergeOrdered(sequence(errs...), results)
 					}
-				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+				case EdgeTypeTTU:
+					if r.node == senders[ndx].edge.GetFrom() {
+						// We are on the specific type and relation that begins the TTU.
+						results = sequence(inGroup.Items...)
+						break
+					}
+					// We are on the tupleset node.
+					parts := strings.Split(r.node.GetLabel(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: "",
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite:
 					results = sequence(inGroup.Items...)
 				}
 
@@ -871,7 +920,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					select {
 					case lst.ch <- outGroup:
 						if lst.node != nil {
-							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), "<-", fmt.Sprintf("%+v", outGroup))
+							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%+v", outGroup))
 						}
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
@@ -901,59 +950,158 @@ type unionResolver struct {
 }
 
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	buffers := make([]map[string]struct{}, len(senders))
 
-		seqs := make([]iter.Seq[Group], len(senders))
+	for i := range senders {
+		buffers[i] = make(map[string]struct{})
+	}
 
-		for i, snd := range senders {
-			seqs[i] = snd.seq
-		}
+	errs := make([][]Item, len(senders))
 
-		mergedSeqs := mergeUnordered(seqs...)
+	var mu sync.Mutex
 
-		seen := make(map[string]struct{})
+	var active uint64
 
-		var items []Item
+	for i, snd := range senders {
+		wg.Add(1)
 
-		r.coord.setActive(r.id, true)
+		go func(i int, snd *sender) {
+			defer wg.Done()
 
-		for group := range mergedSeqs {
-			r.coord.addMessages(-1)
+			pos := uint64(1 << i)
 
-			for _, item := range group.Items {
-				if item.Err != nil {
+			for inGroup := range snd.seq {
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
+				r.coord.addMessages(-1)
+
+				output := make(map[string]struct{})
+
+				var unseen []Item
+
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range inGroup.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[i][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[i][item.Value] = struct{}{}
+				}
+
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
+					mu.Lock()
+					active &^= pos
+					r.coord.setActive(r.id, active != 0)
+					mu.Unlock()
+					continue
+				}
+
+				var results iter.Seq[Item]
+
+				switch snd.edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+					var userRelation string
+
+					if len(userParts) > 1 {
+						userRelation = userParts[1]
+					}
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: userRelation,
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+					results = sequence(inGroup.Items...)
+
+				}
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+					}
+					output[item.Value] = struct{}{}
+				}
+
+				objects := make(map[string]struct{})
+
+				for obj := range output {
+					objects[obj] = struct{}{}
+				}
+
+				var allErrs []Item
+
+				for _, errList := range errs {
+					allErrs = append(allErrs, errList...)
+				}
+
+				seq := mergeOrdered(
+					sequence(allErrs...),
+					transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }),
+				)
+
+				var items []Item
+
+				for item := range seq {
 					items = append(items, item)
 				}
 
-				if _, ok := seen[item.Value]; ok {
-					continue
+				outGroup := Group{
+					Items: items,
 				}
-				seen[item.Value] = struct{}{}
-				items = append(items, item)
-			}
-		}
 
-		outGroup := Group{
-			Items: items,
-		}
-
-		for _, lst := range listeners {
-			r.coord.addMessages(1)
-			select {
-			case lst.ch <- outGroup:
-			case <-lst.ctx.Done():
-				r.coord.addMessages(-1)
+				for _, lst := range listeners {
+					r.coord.addMessages(1)
+					select {
+					case lst.ch <- outGroup:
+						// println("SENT", r.node.GetLabel(), "->", lst.node.GetLabel())
+					case <-lst.ctx.Done():
+						r.coord.addMessages(-1)
+					}
+				}
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
 			}
-		}
-		r.coord.setActive(r.id, false)
-	}()
+		}(i, snd)
+	}
 	wg.Wait()
 }
 
@@ -965,93 +1113,151 @@ type intersectionResolver struct {
 }
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
-	if len(senders) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	objects := make(map[string]struct{})
 
-		objects := make(map[string]struct{})
+	buffers := make([]map[string]struct{}, len(senders))
 
-		buffers := make([]map[string]struct{}, len(senders))
+	output := make([]map[string]struct{}, len(senders))
 
-		for i := range senders {
-			buffers[i] = make(map[string]struct{})
-		}
+	for i := range senders {
+		buffers[i] = make(map[string]struct{})
+		output[i] = make(map[string]struct{})
+	}
 
-		errs := make([][]Item, len(senders))
+	errs := make([][]Item, len(senders))
 
-		var wg sync.WaitGroup
+	r.coord.setActive(r.id, true)
 
-		r.coord.setActive(r.id, true)
+	for i, snd := range senders {
+		wg.Add(1)
 
-		for i, snd := range senders {
-			wg.Add(1)
+		go func(i int, snd *sender) {
+			defer wg.Done()
 
-			go func(i int, snd *sender) {
-				defer wg.Done()
-
-				for group := range snd.seq {
-					r.coord.addMessages(-1)
-
-					for _, item := range group.Items {
-						if item.Err != nil {
-							errs[i] = append(errs[i], item)
-						}
-						buffers[i][item.Value] = struct{}{}
-					}
-				}
-			}(i, snd)
-		}
-		wg.Wait()
-
-		for obj := range buffers[0] {
-			objects[obj] = struct{}{}
-		}
-
-		for i := 1; i < len(buffers); i++ {
-			found := make(map[string]struct{})
-
-			for obj := range buffers[i] {
-				if _, ok := objects[obj]; ok {
-					found[obj] = struct{}{}
-				}
-			}
-			objects = found
-		}
-
-		var allErrs []Item
-
-		for _, errList := range errs {
-			allErrs = append(allErrs, errList...)
-		}
-
-		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
-
-		var items []Item
-
-		for item := range seq {
-			items = append(items, item)
-		}
-
-		outGroup := Group{
-			Items: items,
-		}
-
-		for _, sub := range listeners {
-			r.coord.addMessages(1)
-			select {
-			case sub.ch <- outGroup:
-			case <-sub.ctx.Done():
+			for inGroup := range snd.seq {
 				r.coord.addMessages(-1)
+
+				var unseen []Item
+
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range inGroup.Items {
+					if item.Err != nil {
+						continue
+					}
+
+					if _, ok := buffers[i][item.Value]; ok {
+						continue
+					}
+					unseen = append(unseen, item)
+					buffers[i][item.Value] = struct{}{}
+				}
+
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
+					continue
+				}
+
+				var results iter.Seq[Item]
+
+				switch snd.edge.GetEdgeType() {
+				case EdgeTypeDirect:
+					parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+					nodeType := parts[0]
+					nodeRelation := parts[1]
+
+					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+					var userRelation string
+
+					if len(userParts) > 1 {
+						userRelation = userParts[1]
+					}
+
+					var userFilter []*openfgav1.ObjectRelation
+
+					var errs []Item
+
+					for _, item := range unseen {
+						if item.Err != nil {
+							errs = append(errs, item)
+							continue
+						}
+
+						userFilter = append(userFilter, &openfgav1.ObjectRelation{
+							Object:   item.Value,
+							Relation: userRelation,
+						})
+					}
+
+					if len(userFilter) > 0 {
+						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+					} else {
+						results = emptySequence
+					}
+
+					if len(errs) > 0 {
+						results = mergeOrdered(sequence(errs...), results)
+					}
+				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+					results = sequence(inGroup.Items...)
+
+				}
+
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+					}
+					output[i][item.Value] = struct{}{}
+				}
+			}
+		}(i, snd)
+	}
+	wg.Wait()
+
+	for obj := range output[0] {
+		objects[obj] = struct{}{}
+	}
+
+	for i := 1; i < len(output); i++ {
+		found := make(map[string]struct{})
+
+		for obj := range output[i] {
+			if _, ok := objects[obj]; ok {
+				found[obj] = struct{}{}
 			}
 		}
-		r.coord.setActive(r.id, false)
-	}()
-	wg.Wait()
+		objects = found
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, sub := range listeners {
+		r.coord.addMessages(1)
+		select {
+		case sub.ch <- outGroup:
+		case <-sub.ctx.Done():
+			r.coord.addMessages(-1)
+		}
+	}
+	r.coord.setActive(r.id, false)
 }
 
 type exclusionResolver struct {
@@ -1479,24 +1685,16 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
 
-	// if graph traversal has encountered the target node, we can return the target identifiers.
-	if source == p.target {
-		if _, ok := p.traversal.pipeline[source]; !ok {
-			p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
-		}
-		return
-	}
-
 	_, ok := source.GetWeight(p.target.GetLabel())
 	if !ok {
+		// println(source.GetLabel())
 		return
 	}
 
-	if _, ok := p.traversal.pipeline[source]; !ok {
-		p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
-	} else {
+	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
+	p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
 
 	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
@@ -1504,9 +1702,30 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	}
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(p.target.GetLabel())
-		if !ok {
+		if edge.GetEdgeType() == EdgeTypeTTU {
+			tupleset, ok := p.traversal.graph.GetNodeByID(edge.GetTuplesetRelation())
+			if !ok {
+				panic("tupleset relation not in graph")
+			}
+
+			if _, ok := p.traversal.pipeline[tupleset]; !ok {
+				p.traversal.pipeline[tupleset] = NewWorker(p.traversal.backend, tupleset, coord)
+				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source))
+			}
+			p.resolve(ctx, edge.GetTo(), coord)
+			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset))
 			continue
+		}
+
+		if edge.GetEdgeType() == EdgeTypeDirect {
+			if edge.GetTo().GetNodeType() == NodeTypeSpecificType {
+				if _, ok := p.traversal.pipeline[edge.GetTo()]; !ok {
+					p.traversal.pipeline[edge.GetTo()] = NewWorker(p.traversal.backend, edge.GetTo(), coord)
+					p.traversal.pipeline[edge.GetTo()].Listen(edge, emptyGroupSequence)
+				}
+				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
+				continue
+			}
 		}
 
 		p.resolve(ctx, edge.GetTo(), coord)
@@ -1669,20 +1888,12 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			// If the edge is an operator node, we need to handle it differently.
 			switch toNode.GetLabel() {
 			case weightedGraph.IntersectionOperator:
-				intersectionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.intersectionHandler(pool, newReq, resultChan, intersectionEdges, sourceUserType, resolutionMetadata)
+				err := c.intersectionHandler(pool, newReq, resultChan, toNode, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
 			case weightedGraph.ExclusionOperator:
-				exclusionEdges, err := c.typesystem.GetEdgesFromNode(toNode, sourceUserType)
-				if err != nil {
-					return err
-				}
-				err = c.exclusionHandler(ctx, pool, newReq, resultChan, exclusionEdges, sourceUserType, resolutionMetadata)
+				err := c.exclusionHandler(ctx, pool, newReq, resultChan, toNode, sourceUserType, resolutionMetadata)
 				if err != nil {
 					return err
 				}
@@ -2073,52 +2284,57 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	intersectionNode *weightedGraph.WeightedAuthorizationModelNode,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	intersectionEdgeComparison, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
+	if intersectionNode == nil || intersectionNode.GetNodeType() != weightedGraph.OperatorNode || intersectionNode.GetLabel() != weightedGraph.IntersectionOperator {
+		return fmt.Errorf("%w: operation: intersection: %s", errors.ErrUnsupported, "invalid intersection node")
+	}
+
+	// verify if the node has weight to the sourceUserType
+	edges, err := c.typesystem.GetEdgesFromNode(intersectionNode, sourceUserType)
+	if err != nil {
+		return err
+	}
+
+	// when the intersection node has a weight to the sourceUserType then it means all the group edges has weight to the sourceUserType
+	intersectionEdges, err := typesystem.GetEdgesForIntersection(edges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: intersection: %s", ErrLowestWeightFail, err.Error())
 	}
 
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && intersectionEdgeComparison.LowestEdge == nil {
-		// no need to go further because list objects must return empty
-		return nil
-	}
-
-	lowestWeightEdges := []*weightedGraph.WeightedAuthorizationModelEdge{intersectionEdgeComparison.LowestEdge}
-
-	if intersectionEdgeComparison.DirectEdgesAreLeastWeight {
-		lowestWeightEdges = intersectionEdgeComparison.DirectEdges
-	}
+	// note that we should never see a case where no edges to call LO
+	// i.e., len(intersectionEdges.LowestEdges) == 0 or we cannot call check (i.e., len(intersectionEdges.SiblingEdges) == 0)
+	// because typesystem.GetEdgesFromNode should have returned an error
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
-
-	siblings := intersectionEdgeComparison.Siblings
-	usersets := make([]*openfgav1.Userset, 0, len(siblings)+1)
-
-	if !intersectionEdgeComparison.DirectEdgesAreLeastWeight && len(intersectionEdgeComparison.DirectEdges) > 0 {
-		// direct weight is not the lowest edge. Therefore, need to call check against directly assigned types.
-		usersets = append(usersets, typesystem.This())
-	}
-
-	for _, sibling := range siblings {
-		userset, err := c.typesystem.ConstructUserset(sibling)
+	intersectEdges := intersectionEdges.SiblingEdges
+	usersets := make([]*openfgav1.Userset, 0, len(intersectEdges))
+	for _, intersectEdge := range intersectEdges {
+		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
+		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
+		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
+		userset, err := c.typesystem.ConstructUserset(intersectEdge[0], sourceUserType)
 		if err != nil {
-			// This should never happen.
+			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
 	}
-	userset := &openfgav1.Userset{
-		Userset: &openfgav1.Userset_Intersection{
-			Intersection: &openfgav1.Usersets{
-				Child: usersets,
-			}}}
+
+	var userset *openfgav1.Userset
+	switch len(usersets) {
+	case 0:
+		return fmt.Errorf("%w: empty connected edges", ErrConstructUsersetFail) // defensive; should be handled by the early return above
+	case 1:
+		userset = usersets[0]
+	default:
+		userset = typesystem.Intersection(usersets...)
+	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, lowestWeightEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, intersectionEdges.LowestEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true, resolutionMetadata)
 
 	return nil
@@ -2135,24 +2351,33 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	exclusionNode *weightedGraph.WeightedAuthorizationModelNode,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	baseEdges, excludedEdge, err := typesystem.GetEdgesForExclusion(edges, sourceUserType)
+	if exclusionNode == nil || exclusionNode.GetNodeType() != weightedGraph.OperatorNode || exclusionNode.GetLabel() != weightedGraph.ExclusionOperator {
+		return fmt.Errorf("%w: operation: exclusion: %s", errors.ErrUnsupported, "invalid exclusion node")
+	}
+
+	// verify if the node has weight to the sourceUserType
+	exclusionEdges, err := c.typesystem.GetEdgesFromNode(exclusionNode, sourceUserType)
+	if err != nil {
+		return err
+	}
+	edges, err := typesystem.GetEdgesForExclusion(exclusionEdges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrLowestWeightFail, err.Error())
 	}
 
 	// This means the exclusion edge does not have a path to the terminal type.
 	// e.g. `B` in `A but not B` is not relevant to this query.
-	if excludedEdge == nil {
+	if edges.ExcludedEdges == nil {
 		newReq := req.clone()
 
 		return c.shallowClone().loopOverEdges(
 			ctx,
 			newReq,
-			baseEdges,
+			edges.BaseEdges,
 			false,
 			resolutionMetadata,
 			resultChan,
@@ -2162,14 +2387,14 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
-	userset, err := c.typesystem.ConstructUserset(excludedEdge)
+	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0], sourceUserType)
 	if err != nil {
 		// This should never happen.
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, baseEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, edges.BaseEdges, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false, resolutionMetadata)
 
 	return nil
