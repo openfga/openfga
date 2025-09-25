@@ -36,7 +36,7 @@ type testcase struct {
 func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
 	backend := &backend{
 		datastore: ds,
-		storeId:   storeID,
+		storeID:   storeID,
 	}
 
 	traversal := &Traversal{
@@ -71,6 +71,41 @@ func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
 }
 
 var cases = []testcase{
+	{
+		name: "wild_card",
+		model: `model
+				  schema 1.1
+					type user
+				  type group
+					relations
+					  define member: [user, user:*]
+				  type folder
+					relations
+					  define viewer: [user,group#member]
+				  type document
+					relations
+					  define parent: [folder]
+					  define viewer: viewer from parent
+		`,
+		tuples: []string{
+			"group:1#member@user:anne",
+			"group:1#member@user:charlie",
+			"group:2#member@user:anne",
+			"group:2#member@user:bob",
+			"group:3#member@user:elle",
+			"group:public#member@user:*",
+			"document:a#parent@folder:a",
+			"document:public#parent@folder:public",
+			"folder:a#viewer@group:1#member",
+			"folder:a#viewer@group:2#member",
+			"folder:a#viewer@user:daemon",
+			"folder:public#viewer@group:public#member",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "*"}},
+		expected:   []string{"document:public"},
+	},
 	{
 		name: "computed",
 		model: `

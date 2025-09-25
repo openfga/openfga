@@ -362,7 +362,7 @@ func tee[T any](seq iter.Seq[T], n int) []iter.Seq[T] {
 
 type backend struct {
 	datastore storage.RelationshipTupleReader
-	storeId   string
+	storeID   string
 }
 
 func (b *backend) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
@@ -379,7 +379,7 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 
 		it, err := b.datastore.ReadStartingWithUser(
 			ctx,
-			b.storeId,
+			b.storeID,
 			storage.ReadStartingWithUserFilter{
 				ObjectType: objectType,
 				Relation:   objectRelation,
@@ -608,6 +608,74 @@ type resolver interface {
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
 	Resolve(senders []*sender, listeners []*listener)
+}
+
+type specificTypeWildcardResolver struct {
+	id int
+
+	coord *coordinator
+
+	backend *backend
+
+	node *Node
+}
+
+func (r *specificTypeWildcardResolver) Resolve(senders []*sender, listeners []*listener) {
+	var mu sync.Mutex
+
+	var active uint64
+
+	var wg sync.WaitGroup
+
+	for i, snd := range senders {
+		wg.Add(1)
+
+		go func(i int, snd *sender) {
+			defer wg.Done()
+
+			pos := uint64(1 << i)
+
+			for group := range snd.seq {
+				var items []Item
+
+				mu.Lock()
+				active |= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+
+				r.coord.addMessages(-1)
+
+				for _, item := range group.Items {
+					if item.Err != nil {
+						items = append(items, item)
+						continue
+					}
+					item.Value = r.node.GetLabel() + ":*"
+					items = append(items, item)
+				}
+
+				mappedGroup := Group{
+					Items: items,
+				}
+
+				for _, lst := range listeners {
+					r.coord.addMessages(1)
+					select {
+					case lst.ch <- mappedGroup:
+						// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel())
+					case <-lst.ctx.Done():
+						r.coord.addMessages(-1)
+					}
+				}
+				mu.Lock()
+				active &^= pos
+				r.coord.setActive(r.id, active != 0)
+				mu.Unlock()
+			}
+		}(i, snd)
+	}
+	wg.Wait()
+	// println("RESOLVER DONE", r.node.GetUniqueLabel())
 }
 
 // specificTypeResolver is a struct that implements the resolver interface
@@ -1452,6 +1520,13 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 			backend: backend,
 			node:    node,
 		}
+	case NodeTypeSpecificTypeWildcard:
+		r = &specificTypeWildcardResolver{
+			id:      id,
+			coord:   coord,
+			backend: backend,
+			node:    node,
+		}
 	case NodeTypeOperator:
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
@@ -1586,6 +1661,16 @@ type Traversal struct {
 	graph    *Graph
 	backend  *backend
 	pipeline map[*Node]*Worker
+}
+
+func NewTraversal(ds storage.RelationshipTupleReader, storeID string, graph *Graph) Traversal {
+	return Traversal{
+		backend: &backend{
+			datastore: ds,
+			storeID:   storeID,
+		},
+		graph: graph,
+	}
 }
 
 type Target *Node
