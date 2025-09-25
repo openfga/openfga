@@ -954,7 +954,7 @@ func TestConstructUserset(t *testing.T) {
 		dut := graph.NewWeightedAuthorizationModelGraph()
 		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
 		dut.AddNode("dut", "dut", -1) // unknown node type
-		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", "", []string{})
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
 		require.True(t, ok)
@@ -975,7 +975,7 @@ func TestConstructUserset(t *testing.T) {
 		dut := graph.NewWeightedAuthorizationModelGraph()
 		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
 		dut.AddNode("dut", "dut", graph.SpecificTypeAndRelation)
-		dut.AddEdge("root", "dut", -1, "", nil) // unknown edge type
+		dut.AddEdge("root", "dut", -1, "", "", []string{}) // unknown edge type
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
 		require.True(t, ok)
@@ -999,9 +999,9 @@ func TestConstructUserset(t *testing.T) {
 		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
 		dut.AddNode("child2", "child2", graph.SpecificTypeAndRelation)
 
-		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
-		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
-		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", nil)
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", "", []string{})
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", "", []string{})
+		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", "", []string{})
 
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
@@ -1025,8 +1025,8 @@ func TestConstructUserset(t *testing.T) {
 		dut.AddNode("dut", graph.ExclusionOperator, graph.OperatorNode)
 		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
 
-		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
-		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", "", []string{})
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", "", []string{})
 
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
@@ -1049,7 +1049,7 @@ func TestConstructUserset(t *testing.T) {
 		dut.AddNode("root", "root", graph.SpecificTypeAndRelation)
 		dut.AddNode("dut", graph.IntersectionOperator, graph.OperatorNode)
 
-		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", "", []string{})
 
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
@@ -1074,9 +1074,9 @@ func TestConstructUserset(t *testing.T) {
 		dut.AddNode("child1", "child1", graph.SpecificTypeAndRelation)
 		dut.AddNode("child2", "child2", -1) // bad node type
 
-		dut.AddEdge("root", "dut", graph.RewriteEdge, "", nil)
-		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", nil)
-		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", nil)
+		dut.AddEdge("root", "dut", graph.RewriteEdge, "", "", []string{})
+		dut.AddEdge("dut", "child1", graph.RewriteEdge, "", "", []string{})
+		dut.AddEdge("dut", "child2", graph.RewriteEdge, "", "", []string{})
 
 		typeSystem.authzWeightedGraph = dut
 		rootNode, ok := dut.GetNodeByID("root")
