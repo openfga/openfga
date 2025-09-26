@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 
+### Fixed
+- Fixed bug in how experimental ReverseExpand construct relation for underlying check call for intersection and exclusion for list objects. [#2721](https://github.com/openfga/openfga/pull/2721)
+
 ## [1.10.1] - 2025-09-22
 ### Fixed
 - Revert spf13/viper back to v.1.20.1 to avoid bumping sourcegraph/conc to an unreleased version as it causes performance degradation. [#2706](https://github.com/openfga/openfga/pull/2706)
