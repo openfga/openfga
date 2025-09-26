@@ -608,7 +608,7 @@ func (c *ReverseExpandQuery) callCheckForCandidate(
 		return &ExecutionError{
 			operation: operation,
 			object:    tmpResult.Object,
-			relation:  info.req.Relation,
+			relation:  info.relation,
 			user:      info.req.User.String(),
 			cause:     err,
 		}
