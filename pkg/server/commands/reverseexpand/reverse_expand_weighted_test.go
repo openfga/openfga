@@ -465,6 +465,77 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
 		},
 		{
+			name: "intersection_direct_assign_not_lowest",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: [user, user_group#x] and assigned
+					define assigned: [user]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#manager@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"user_group:b#x@user:bob",
+				"team:b#manager@user_group:b#x",
+				"org:b#teams@team:b",
+				"team:c#manager@user:bob",
+				"org:c#teams@team:c",
+				"team:d#assigned@user:bob",
+				"org:d#teams@team:d",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a", "org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b", "org:c"},
+		},
+		{
+			name: "intersection_ttu_different_name",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: assigned and x from mygroup
+					define assigned: [user]
+					define mygroup: [user_group]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#mygroup@user_group:a",
+				"user_group:a#x@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"team:b#mygroup@user_group:b",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:a"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
+		},
+		{
 			name: "simple_intersection_multiple_direct_assignments_not_linked_1",
 			model: `model
 				  schema 1.1
@@ -1208,6 +1279,71 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "bob"}},
 			expectedOptimizedObjects:   []string{"org:d"},
 			expectedUnoptimizedObjects: []string{"org:d"},
+		},
+		{
+			name: "exclusion_direct_assign_not_lowest",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: [user, user_group#x] but not banned
+					define banned: [user]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#banned@user:bob",
+				"team:a#manager@user:bob",
+				"org:a#teams@team:a",
+				"team:b#manager@user:bob",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
+		},
+		{
+			name: "exclusion_ttu",
+			model: `model
+				  schema 1.1
+
+				type user
+				type user_group
+				  relations
+					define x: [user]
+				type team
+				  relations
+					define manager: assigned but not x from mygroup
+					define assigned: [user]
+					define mygroup: [user_group]
+				type org
+				  relations
+					define teams: [team]
+					define member: manager from teams
+		`,
+			tuples: []string{
+				"team:a#assigned@user:bob",
+				"team:a#mygroup@user_group:a",
+				"user_group:a#x@user:bob",
+				"org:a#teams@team:a",
+				"team:b#assigned@user:bob",
+				"user_group:b#x@user:bob",
+				"org:b#teams@team:b",
+			},
+			objectType:                 "org",
+			relation:                   "member",
+			user:                       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+			expectedOptimizedObjects:   []string{"org:b"},
+			expectedUnoptimizedObjects: []string{"org:a", "org:b"},
 		},
 		{
 			name: "simple_exclusion_with_double_negative",
