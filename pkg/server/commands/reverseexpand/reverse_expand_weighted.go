@@ -782,6 +782,10 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	// buffers holds a set of seen item values for each sender to avoid processing duplicates
 	buffers := make([]map[string]struct{}, len(senders))
 
+	var muOut sync.Mutex
+
+	outBuffer := make(map[string]struct{})
+
 	for i, snd := range senders {
 		next, stop := iter.Pull(snd.seq)
 		nexts[i] = next
@@ -973,6 +977,18 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				var items []Item
 
 				for item := range results {
+					if item.Err != nil {
+						items = append(items, item)
+						continue
+					}
+
+					muOut.Lock()
+					if _, ok := outBuffer[item.Value]; ok {
+						muOut.Unlock()
+						continue
+					}
+					outBuffer[item.Value] = struct{}{}
+					muOut.Unlock()
 					items = append(items, item)
 				}
 
@@ -995,7 +1011,9 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					select {
 					case lst.ch <- outGroup:
 						if lst.node != nil {
-							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%+v", outGroup))
+							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
+						} else {
+							// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
 						}
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
