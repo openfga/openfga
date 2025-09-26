@@ -96,6 +96,79 @@ var cases = []testcase{
 		expected:   []string{"document:1"},
 	},
 	{
+		name: "err_and_true_return_err",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type resource
+			relations
+				define a1: [user]
+				define a2: [resource#a1]
+				define a3: [resource#a2]
+				define a4: [resource#a3]
+              			define a5: [resource#a4]
+              			define a6: [resource#a5]
+              			define a7: [resource#a6]
+              define a8: [resource#a7]
+              define a9: [resource#a8]
+              define a10: [resource#a9]
+              define a11: [resource#a10]
+              define a12: [resource#a11]
+              define a13: [resource#a12]
+              define a14: [resource#a13]
+              define a15: [resource#a14]
+              define a16: [resource#a15]
+              define a17: [resource#a16]
+              define a18: [resource#a17]
+              define a19: [resource#a18]
+              define a20: [resource#a19]
+              define a21: [resource#a20]
+              define a22: [resource#a21]
+              define a23: [resource#a22]
+              define a24: [resource#a23]
+              define a25: [resource#a24]
+              define a26: [resource#a25]
+              define a27: [resource#a26]
+              			define can_view: a27
+		`,
+		tuples: []string{
+			"resource:1#a27@resource:1#a26",
+			"resource:1#a26@resource:1#a25",
+			"resource:1#a25@resource:1#a24",
+			"resource:1#a24@resource:1#a23",
+			"resource:1#a23@resource:1#a22",
+			"resource:1#a22@resource:1#a21",
+			"resource:1#a21@resource:1#a20",
+			"resource:1#a20@resource:1#a19",
+			"resource:1#a19@resource:1#a18",
+			"resource:1#a18@resource:1#a17",
+			"resource:1#a17@resource:1#a16",
+			"resource:1#a16@resource:1#a15",
+			"resource:1#a15@resource:1#a14",
+			"resource:1#a14@resource:1#a13",
+			"resource:1#a13@resource:1#a12",
+			"resource:1#a12@resource:1#a11",
+			"resource:1#a11@resource:1#a10",
+			"resource:1#a10@resource:1#a9",
+			"resource:1#a9@resource:1#a8",
+			"resource:1#a8@resource:1#a7",
+			"resource:1#a7@resource:1#a6",
+			"resource:1#a6@resource:1#a5",
+			"resource:1#a5@resource:1#a4",
+			"resource:1#a4@resource:1#a3",
+			"resource:1#a3@resource:1#a2",
+			"resource:1#a2@resource:1#a1",
+			"resource:1#a1@user:maria",
+		},
+		objectType: "resource",
+		relation:   "can_view",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "maria"}},
+		expected:   []string{"resource:1"},
+	},
+	{
 		name: "simple_userset_child_computed_userset",
 		model: `
 		model
