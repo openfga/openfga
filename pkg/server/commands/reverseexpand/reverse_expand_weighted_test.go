@@ -44,7 +44,7 @@ func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthoriz
 		backend: backend,
 	}
 
-	target, ok := traversal.Target(tc.user.GetObjectType())
+	target, ok := traversal.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
 	if !ok {
 		panic("no such target")
 	}
@@ -54,7 +54,7 @@ func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthoriz
 		panic("no such source")
 	}
 
-	path := traversal.Traverse(source, target, tc.user.Object.GetId())
+	path := traversal.Traverse(source, target)
 
 	return path
 }
@@ -71,6 +71,75 @@ func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
 }
 
 var cases = []testcase{
+	{
+		name: "simple_userset_child_wildcard",
+		model: `
+		model
+            	schema 1.1
+			
+          	type user
+	  
+          	type user2
+		
+          	type group
+            		relations
+              			define member: [user, user:*, user2, user2:*]
+
+          	type folder
+            		relations
+              			define viewer: [group#member]
+		`,
+		tuples: []string{
+			"group:fga#member@user:*",
+			"group:engineering#member@user:maria",
+			"folder:1#viewer@group:fga#member",
+			"folder:2#viewer@group:engineering#member",
+		},
+		objectType: "folder",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user2", Id: "foo"}},
+		expected:   []string{},
+	},
+	{
+		name: "ttu_mix_with_userset",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user, user:*]
+		
+		type folder
+			relations
+				define viewer: [user, group#member]
+
+		type document
+			relations
+				define parent: [folder]
+				define viewer: viewer from parent
+		`,
+		tuples: []string{
+			"group:1#member@user:anne",
+			"group:2#member@user:anne",
+			"group:2#member@user:bob",
+			"group:1#member@user:charlie",
+			"folder:a#viewer@group:1#member",
+			"folder:a#viewer@group:2#member",
+			"folder:a#viewer@user:daemon",
+			"document:a#parent@folder:a",
+			"group:3#member@user:elle",
+			"group:public#member@user:*",
+			"folder:public#viewer@group:public#member",
+			"document:public#parent@folder:public",
+		},
+		objectType: "document",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "anne"}},
+		expected:   []string{"document:a", "document:public"},
+	},
 	{
 		name: "wild_card",
 		model: `model

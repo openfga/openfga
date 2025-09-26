@@ -650,7 +650,7 @@ func (r *specificTypeWildcardResolver) Resolve(senders []*sender, listeners []*l
 						items = append(items, item)
 						continue
 					}
-					item.Value = r.node.GetLabel() + ":*"
+					item.Value = r.node.GetLabel()
 					items = append(items, item)
 				}
 
@@ -769,11 +769,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	defer func() {
 		// println("RESOLVER DONE", r.node.GetUniqueLabel())
 	}()
-
-	if len(senders) == 0 {
-		// nothing to do
-		return
-	}
 
 	// nexts holds the next function for each sender sequence
 	nexts := make([]func() (Group, bool), len(senders))
@@ -1673,12 +1668,24 @@ func NewTraversal(ds storage.RelationshipTupleReader, storeID string, graph *Gra
 	}
 }
 
-type Target *Node
+type Target struct {
+	node *Node
+	id   string
+}
+
 type Source *Node
 
-func (t *Traversal) Target(name string) (Target, bool) {
+func (t *Traversal) Target(name, identifier string) (Target, bool) {
+	if identifier == "*" {
+		name += ":*"
+		identifier = ""
+	}
 	targetNode, ok := t.graph.GetNodeByID(name)
-	return (Target)(targetNode), ok
+
+	return Target{
+		node: targetNode,
+		id:   identifier,
+	}, ok
 }
 
 func (t *Traversal) Source(name, relation string) (Source, bool) {
@@ -1686,20 +1693,20 @@ func (t *Traversal) Source(name, relation string) (Source, bool) {
 	return (Source)(sourceNode), ok
 }
 
-func (t *Traversal) Traverse(source Source, target Target, targetIdentifiers ...string) Path {
+func (t *Traversal) Traverse(source Source, target Target) Path {
 	return Path{
-		traversal:         t,
-		source:            (*Node)(source),
-		target:            (*Node)(target),
-		targetIdentifiers: targetIdentifiers,
+		traversal:        t,
+		source:           (*Node)(source),
+		target:           target.node,
+		targetIdentifier: target.id,
 	}
 }
 
 type Path struct {
-	source            *Node
-	traversal         *Traversal
-	target            *Node
-	targetIdentifiers []string
+	source           *Node
+	traversal        *Traversal
+	target           *Node
+	targetIdentifier string
 }
 
 func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
@@ -1709,35 +1716,14 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 	p.resolve(ctx, p.source, &coord)
 
-	targetWorker, ok := p.traversal.pipeline[p.target]
+	sourceWorker, ok := p.traversal.pipeline[p.source]
 	if !ok {
 		panic("no such source worker")
 	}
 
-	var items []Item
-
-	for _, id := range p.targetIdentifiers {
-		items = append(items, Item{Value: id})
-	}
-
-	outGroup := Group{
-		Items: items,
-	}
-
-	seq := sequence(outGroup)
-
-	coord.addMessages(1)
-
-	targetWorker.Listen(nil, seq)
-
-	sourceWorker, ok := p.traversal.pipeline[p.source]
-	if !ok {
-		panic("no such target worker")
-	}
-
 	var wg sync.WaitGroup
 
-	results := output(cancel, sourceWorker.Subscribe(context.Background(), nil), &wg, &coord)
+	results := sourceWorker.Subscribe(context.Background(), nil)
 
 	for _, worker := range p.traversal.pipeline {
 		worker.Start()
@@ -1752,27 +1738,13 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 			busy, messageCount := coord.getState()
 
-			// println("busy: ", busy, " message count: ", messageCount)
-
 			if !busy && messageCount < 1 {
+				// cancel all running workers
 				for _, worker := range p.traversal.pipeline {
-					/*
-						var node *Node
-						switch worker.resolver.(type) {
-						case *specificTypeResolver:
-							node = worker.resolver.(*specificTypeResolver).node
-						case *specificTypeAndRelationResolver:
-							node = worker.resolver.(*specificTypeAndRelationResolver).node
-						case *unionResolver:
-							node = worker.resolver.(*unionResolver).node
-						case *intersectionResolver:
-							node = worker.resolver.(*intersectionResolver).node
-						}
-						println("CLOSING WORKER", node.GetUniqueLabel())
-					*/
 					worker.Cancel()
 				}
 
+				// wait for all workers to finish
 				for _, worker := range p.traversal.pipeline {
 					worker.Wait()
 				}
@@ -1781,7 +1753,20 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 		}
 	}()
 
-	return results
+	return func(yield func(Item) bool) {
+		defer wg.Wait()
+		defer cancel()
+
+		for g := range results {
+			coord.addMessages(-1)
+
+			for _, item := range g.Items {
+				if !yield(item) {
+					return
+				}
+			}
+		}
+	}
 }
 
 func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
@@ -1792,7 +1777,29 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
-	p.traversal.pipeline[source] = NewWorker(p.traversal.backend, source, coord)
+	worker := NewWorker(p.traversal.backend, source, coord)
+
+	p.traversal.pipeline[source] = worker
+
+	switch source.GetNodeType() {
+	case NodeTypeSpecificType:
+		if source == p.target {
+			var group Group
+			group.Items = []Item{Item{Value: p.targetIdentifier}}
+			coord.addMessages(1)
+			worker.Listen(nil, sequence(group))
+		}
+	case NodeTypeSpecificTypeWildcard:
+		label := source.GetLabel()
+		typePart := strings.Split(label, ":")[0]
+
+		if source == p.target || typePart == p.target.GetLabel() {
+			var group Group
+			group.Items = []Item{Item{Value: "*"}}
+			coord.addMessages(1)
+			worker.Listen(nil, sequence(group))
+		}
+	}
 
 	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
 	if !ok {
