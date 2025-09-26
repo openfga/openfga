@@ -865,6 +865,16 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				var results iter.Seq[Item]
 
+				if senders[ndx].edge == nil {
+					nodeType := strings.Split(r.node.GetLabel(), "#")[0]
+
+					results = transform(sequence(inGroup.Items...), func(item Item) Item {
+						item.Value = nodeType + ":" + item.Value
+						return item
+					})
+					goto AfterQuery
+				}
+
 				switch senders[ndx].edge.GetEdgeType() {
 				case EdgeTypeDirect:
 					// For direct edges, we need to query the backend to find all objects of the specified type
@@ -945,6 +955,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				case EdgeTypeComputed, EdgeTypeRewrite:
 					results = sequence(inGroup.Items...)
 				}
+
+			AfterQuery:
 
 				// collect all items produced in results
 				// and send them as a single group to listeners
@@ -1782,7 +1794,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	p.traversal.pipeline[source] = worker
 
 	switch source.GetNodeType() {
-	case NodeTypeSpecificType:
+	case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
 		if source == p.target {
 			var group Group
 			group.Items = []Item{Item{Value: p.targetIdentifier}}

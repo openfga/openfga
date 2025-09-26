@@ -72,6 +72,35 @@ func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
 
 var cases = []testcase{
 	{
+		name: "simple_userset_child_computed_userset",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type group
+			relations
+				define member: [user]
+				define member_c1: member
+				define member_c2: member_c1
+				define member_c3: member_c2
+				define member_c4: member_c3
+
+		type folder
+			relations
+				define viewer: [group#member_c4]
+		`,
+		tuples: []string{
+			"group:fga#member@user:anne",
+			"folder:1#viewer@group:fga#member_c4",
+		},
+		objectType: "folder",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "group#member", Id: "fga"}},
+		expected:   []string{"folder:1"},
+	},
+	{
 		name: "simple_userset_child_wildcard",
 		model: `
 		model
