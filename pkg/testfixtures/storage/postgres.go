@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	postgresImage = "postgres:17"
+	postgresImage = "postgres:18"
 )
 
 type postgresTestContainer struct {
