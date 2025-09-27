@@ -177,57 +177,6 @@ func mergeOrdered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
-func mergeUnordered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
-	ctx, cancel := context.WithCancel(context.Background())
-	ch := make(chan T)
-
-	var wg sync.WaitGroup
-
-	for _, seq := range seqs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			for item := range seq {
-				select {
-				case ch <- item:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	var wg2 sync.WaitGroup
-
-	wg2.Add(1)
-	go func() {
-		defer wg2.Done()
-		defer close(ch)
-		wg.Wait()
-	}()
-
-	return func(yield func(T) bool) {
-		defer wg2.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
-	}
-}
-
 func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	return func(yield func(U) bool) {
 		for item := range seq {
@@ -236,128 +185,8 @@ func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	}
 }
 
-func dedup[T comparable](seq iter.Seq[T]) iter.Seq[T] {
-	seen := make(map[T]struct{})
-
-	return func(yield func(T) bool) {
-		for item := range seq {
-			if _, ok := seen[item]; ok {
-				continue
-			}
-			seen[item] = struct{}{}
-			yield(item)
-		}
-	}
-}
-
-func unwrap[T any](seqs iter.Seq[iter.Seq[T]]) iter.Seq[T] {
-	ctx, cancel := context.WithCancel(context.Background())
-	ch := make(chan T)
-
-	var wg sync.WaitGroup
-
-	for seq := range seqs {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			for item := range seq {
-				select {
-				case ch <- item:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	var wg2 sync.WaitGroup
-
-	wg2.Add(1)
-	go func() {
-		defer wg2.Done()
-		defer close(ch)
-		wg.Wait()
-	}()
-
-	return func(yield func(T) bool) {
-		defer wg2.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
-			}
-		}
-	}
-}
-
-type canceler struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-}
-
-func tee[T any](seq iter.Seq[T], n int) []iter.Seq[T] {
-	seqs := make([]iter.Seq[T], n)
-
-	chans := make([]chan T, n)
-	cancelers := make([]canceler, n)
-
-	for i := 0; i < n; i++ {
-		chans[i] = make(chan T)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		cancelers[i] = canceler{
-			ctx:    ctx,
-			cancel: cancel,
-		}
-	}
-
-	go func() {
-		defer func() {
-			for _, ch := range chans {
-				close(ch)
-			}
-		}()
-
-		var done int
-
-		for value := range seq {
-			for i, ch := range chans {
-				select {
-				case ch <- value:
-				case <-cancelers[i].ctx.Done():
-					done++
-				}
-			}
-
-			if done == n {
-				return
-			}
-		}
-	}()
-
-	for i := 0; i < n; i++ {
-		seqs[i] = func(yield func(T) bool) {
-			defer cancelers[i].cancel()
-
-			for item := range seq {
-				yield(item)
-			}
-		}
-	}
-	return seqs
+func strToItem(s string) Item {
+	return Item{Value: s}
 }
 
 type backend struct {
@@ -1185,7 +1014,7 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 				seq := mergeOrdered(
 					sequence(allErrs...),
-					transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }),
+					transform(maps.Keys(objects), strToItem),
 				)
 
 				var items []Item
@@ -1349,7 +1178,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), func(o string) Item { return Item{Value: o} }))
+	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), strToItem))
 
 	var items []Item
 
@@ -1490,7 +1319,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 			allErrs = append(allErrs, errList...)
 		}
 
-		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), func(o string) Item { return Item{Value: o} }))
+		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), strToItem))
 
 		var items []Item
 
