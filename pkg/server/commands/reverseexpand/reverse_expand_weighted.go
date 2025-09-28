@@ -608,6 +608,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	// buffers holds a set of seen item values for each sender to avoid processing duplicates
 	buffers := make([]map[string]struct{}, len(senders))
 
+	mutexes := make([]sync.Mutex, len(senders))
+
 	var muOut sync.Mutex
 
 	outBuffer := make(map[string]struct{})
@@ -627,17 +629,23 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	// ctr is used to assign a unique bit position to each sender
 	var ctr uint64
 
+	var pctr uint64
+
 	// wg is used to wait for all sender goroutines to finish
 	var wg sync.WaitGroup
 
 	// Start a goroutine for each sender to process incoming groups concurrently
 	for ctr < uint64(len(senders)) {
 		ndx := ctr
-		pos := uint64(1 << ndx)
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		var sndWG sync.WaitGroup
+
+		ch := make(chan Group, 100)
+
+		sndWG.Add(1)
+		go func(ndx uint64) {
+			defer sndWG.Done()
+			defer close(ch)
 
 			for {
 				if stopped[ndx] {
@@ -660,175 +668,224 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 				timer.Stop()
 
-				mu.Lock()
-				active |= pos
-				r.coord.setActive(r.id, active != 0)
-				mu.Unlock()
+				ch <- inGroup
+			}
+		}(ndx)
 
-				r.coord.addMessages(-1)
+		processCount := 3
 
-				var unseen []Item
+		for range processCount {
+			wg.Add(1)
+			go func(pID uint64) {
+				defer wg.Done()
 
-				// Deduplicate items within this group based on the buffer for this sender
-				for _, item := range inGroup.Items {
-					if item.Err != nil {
-						continue
-					}
-
-					if _, ok := buffers[ndx][item.Value]; ok {
-						continue
-					}
-					unseen = append(unseen, item)
-					buffers[ndx][item.Value] = struct{}{}
-				}
-
-				// If there are no unseen items, skip processing
-				if len(unseen) == 0 {
-					mu.Lock()
-					active &^= pos
-					r.coord.setActive(r.id, active != 0)
-					mu.Unlock()
-					continue
-				}
-
-				// println("RECEIVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
-
-				var results iter.Seq[Item]
-
-				if senders[ndx].edge == nil {
-					nodeType := strings.Split(r.node.GetLabel(), "#")[0]
-
-					results = transform(sequence(inGroup.Items...), func(item Item) Item {
-						item.Value = nodeType + ":" + item.Value
-						return item
-					})
-					goto AfterQuery
-				}
-
-				switch senders[ndx].edge.GetEdgeType() {
-				case EdgeTypeDirect:
-					// For direct edges, we need to query the backend to find all objects of the specified type
-
-					parts := strings.Split(r.node.GetLabel(), "#")
-					nodeType := parts[0]
-					nodeRelation := parts[1]
-
-					userParts := strings.Split(senders[ndx].edge.GetTo().GetLabel(), "#")
-
-					var userRelation string
-
-					if len(userParts) > 1 {
-						userRelation = userParts[1]
-					}
-
-					var userFilter []*openfgav1.ObjectRelation
-
-					var errs []Item
-
-					for _, item := range unseen {
-						if item.Err != nil {
-							errs = append(errs, item)
-							continue
-						}
-
-						userFilter = append(userFilter, &openfgav1.ObjectRelation{
-							Object:   item.Value,
-							Relation: userRelation,
-						})
-					}
-
-					if len(userFilter) > 0 {
-						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
-					} else {
-						results = emptySequence
-					}
-
-					if len(errs) > 0 {
-						results = mergeOrdered(sequence(errs...), results)
-					}
-				case EdgeTypeTTU:
-					if r.node == senders[ndx].edge.GetFrom() {
-						// We are on the specific type and relation that begins the TTU.
-						results = sequence(inGroup.Items...)
+				for {
+					group, ok := <-ch
+					if !ok {
 						break
 					}
-					// We are on the tupleset node.
-					parts := strings.Split(r.node.GetLabel(), "#")
-					nodeType := parts[0]
-					nodeRelation := parts[1]
 
-					var userFilter []*openfgav1.ObjectRelation
+					mu.Lock()
+					active |= pID
+					r.coord.setActive(r.id, active != 0)
+					mu.Unlock()
 
-					var errs []Item
+					r.coord.addMessages(-1)
 
-					for _, item := range unseen {
+					var unseen []Item
+
+					// Deduplicate items within this group based on the buffer for this sender
+					for _, item := range group.Items {
 						if item.Err != nil {
-							errs = append(errs, item)
 							continue
 						}
 
-						userFilter = append(userFilter, &openfgav1.ObjectRelation{
-							Object:   item.Value,
-							Relation: "",
+						mutexes[ndx].Lock()
+						if _, ok := buffers[ndx][item.Value]; ok {
+							mutexes[ndx].Unlock()
+							continue
+						}
+						buffers[ndx][item.Value] = struct{}{}
+						mutexes[ndx].Unlock()
+						unseen = append(unseen, item)
+					}
+
+					// If there are no unseen items, skip processing
+					if len(unseen) == 0 {
+						mu.Lock()
+						active &^= pID
+						r.coord.setActive(r.id, active != 0)
+						mu.Unlock()
+						continue
+					}
+
+					// println("RECEIVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
+
+					var results iter.Seq[Item]
+
+					if senders[ndx].edge == nil {
+						nodeType := strings.Split(r.node.GetLabel(), "#")[0]
+
+						results = transform(sequence(unseen...), func(item Item) Item {
+							item.Value = nodeType + ":" + item.Value
+							return item
 						})
+						goto AfterQuery
 					}
 
-					if len(userFilter) > 0 {
-						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
-					} else {
-						results = emptySequence
+					switch senders[ndx].edge.GetEdgeType() {
+					case EdgeTypeDirect:
+						// For direct edges, we need to query the backend to find all objects of the specified type
+
+						parts := strings.Split(r.node.GetLabel(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						userParts := strings.Split(senders[ndx].edge.GetTo().GetLabel(), "#")
+
+						var userRelation string
+
+						if len(userParts) > 1 {
+							userRelation = userParts[1]
+						}
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						var errs []Item
+
+						for _, item := range unseen {
+							if item.Err != nil {
+								errs = append(errs, item)
+								continue
+							}
+
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: userRelation,
+							})
+						}
+
+						if len(userFilter) > 0 {
+							results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+						} else {
+							results = emptySequence
+						}
+
+						if len(errs) > 0 {
+							results = mergeOrdered(sequence(errs...), results)
+						}
+					case EdgeTypeTTU:
+						if r.node == senders[ndx].edge.GetFrom() {
+							// We are on the specific type and relation that begins the TTU.
+							results = sequence(unseen...)
+							break
+						}
+						// We are on the tupleset node.
+						parts := strings.Split(r.node.GetLabel(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						var errs []Item
+
+						for _, item := range unseen {
+							if item.Err != nil {
+								errs = append(errs, item)
+								continue
+							}
+
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: "",
+							})
+						}
+
+						if len(userFilter) > 0 {
+							results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+						} else {
+							results = emptySequence
+						}
+
+						if len(errs) > 0 {
+							results = mergeOrdered(sequence(errs...), results)
+						}
+					case EdgeTypeComputed, EdgeTypeRewrite:
+						results = sequence(unseen...)
 					}
 
-					if len(errs) > 0 {
-						results = mergeOrdered(sequence(errs...), results)
-					}
-				case EdgeTypeComputed, EdgeTypeRewrite:
-					results = sequence(inGroup.Items...)
-				}
+				AfterQuery:
 
-			AfterQuery:
+					// collect all items produced in results
+					// and send them as a single group to listeners
+					// this ensures that we maintain some semblance of ordering
+					// from the original input stream
+					// while still allowing concurrent processing of multiple input streams
+					// and deduplication within each stream
+					//
+					// NOTE: this does mean that a single slow listener
+					// can hold up the processing of other input streams
+					// but this is a tradeoff we're willing to make for now.
+					// This is specifically a problem when a listener is the current producer,
+					// as it can lead to a deadlock. This is always true for recursive edges.
+					var items []Item
 
-				// collect all items produced in results
-				// and send them as a single group to listeners
-				// this ensures that we maintain some semblance of ordering
-				// from the original input stream
-				// while still allowing concurrent processing of multiple input streams
-				// and deduplication within each stream
-				//
-				// NOTE: this does mean that a single slow listener
-				// can hold up the processing of other input streams
-				// but this is a tradeoff we're willing to make for now.
-				// This is specifically a problem when a listener is the current producer,
-				// as it can lead to a deadlock. This is always true for recursive edges.
-				var items []Item
+					for item := range results {
+						if item.Err != nil {
+							items = append(items, item)
+							goto AfterDedup
+						}
 
-				for item := range results {
-					if item.Err != nil {
-						items = append(items, item)
-						goto AfterDedup
-					}
-
-					muOut.Lock()
-					if _, ok := outBuffer[item.Value]; ok {
+						muOut.Lock()
+						if _, ok := outBuffer[item.Value]; ok {
+							muOut.Unlock()
+							continue
+						}
+						outBuffer[item.Value] = struct{}{}
 						muOut.Unlock()
-						continue
-					}
-					outBuffer[item.Value] = struct{}{}
-					muOut.Unlock()
-					items = append(items, item)
+						items = append(items, item)
 
-				AfterDedup:
+					AfterDedup:
 
-					if len(items) < 10 {
-						continue
+						if len(items) < 10 {
+							continue
+						}
+
+						outGroup := Group{
+							Items: items,
+						}
+
+						items = nil
+
+						for _, lst := range listeners {
+							r.coord.addMessages(1)
+							select {
+							case lst.ch <- outGroup:
+								if lst.node != nil {
+									// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
+								} else {
+									// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
+								}
+							case <-lst.ctx.Done():
+								r.coord.addMessages(-1)
+							}
+						}
 					}
 
 					outGroup := Group{
 						Items: items,
 					}
 
-					items = nil
+					// if no items were produced, skip sending to listeners
+					if len(outGroup.Items) == 0 {
+						mu.Lock()
+						active &^= pID
+						r.coord.setActive(r.id, active != 0)
+						mu.Unlock()
+						continue
+					}
 
+					// send a copy of the produced group to all listeners
 					for _, lst := range listeners {
 						r.coord.addMessages(1)
 						select {
@@ -842,41 +899,15 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 							r.coord.addMessages(-1)
 						}
 					}
-				}
-
-				outGroup := Group{
-					Items: items,
-				}
-
-				// if no items were produced, skip sending to listeners
-				if len(outGroup.Items) == 0 {
 					mu.Lock()
-					active &^= pos
+					active &^= pID
 					r.coord.setActive(r.id, active != 0)
 					mu.Unlock()
-					continue
 				}
+			}(1 << pctr)
 
-				// send a copy of the produced group to all listeners
-				for _, lst := range listeners {
-					r.coord.addMessages(1)
-					select {
-					case lst.ch <- outGroup:
-						if lst.node != nil {
-							// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
-						} else {
-							// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
-						}
-					case <-lst.ctx.Done():
-						r.coord.addMessages(-1)
-					}
-				}
-				mu.Lock()
-				active &^= pos
-				r.coord.setActive(r.id, active != 0)
-				mu.Unlock()
-			}
-		}()
+			pctr++
+		}
 
 		ctr++
 	}
@@ -898,7 +929,7 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var spent atomic.Int64
 
 	defer func() {
-		println(r.node.GetUniqueLabel(), spent.Load(), "us")
+		// println(r.node.GetUniqueLabel(), spent.Load(), "us")
 	}()
 	var wg sync.WaitGroup
 
