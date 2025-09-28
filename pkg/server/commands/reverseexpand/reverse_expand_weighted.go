@@ -596,12 +596,6 @@ type specificTypeAndRelationResolver struct {
 }
 
 func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
-	var spent atomic.Int64
-
-	defer func() {
-		println(r.node.GetUniqueLabel(), spent.Load(), "us")
-	}()
-
 	// nexts holds the next function for each sender sequence
 	nexts := make([]func() (Group, bool), len(senders))
 
@@ -665,7 +659,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				timer.Stop()
-				start := time.Now()
 
 				mu.Lock()
 				active |= pos
@@ -812,7 +805,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				for item := range results {
 					if item.Err != nil {
 						items = append(items, item)
-						continue
+						goto AfterDedup
 					}
 
 					muOut.Lock()
@@ -823,6 +816,32 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					outBuffer[item.Value] = struct{}{}
 					muOut.Unlock()
 					items = append(items, item)
+
+				AfterDedup:
+
+					if len(items) < 10 {
+						continue
+					}
+
+					outGroup := Group{
+						Items: items,
+					}
+
+					items = nil
+
+					for _, lst := range listeners {
+						r.coord.addMessages(1)
+						select {
+						case lst.ch <- outGroup:
+							if lst.node != nil {
+								// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
+							} else {
+								// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
+							}
+						case <-lst.ctx.Done():
+							r.coord.addMessages(-1)
+						}
+					}
 				}
 
 				outGroup := Group{
@@ -856,8 +875,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				active &^= pos
 				r.coord.setActive(r.id, active != 0)
 				mu.Unlock()
-				elapsed := time.Since(start).Microseconds()
-				spent.Add(elapsed)
 			}
 		}()
 
