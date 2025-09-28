@@ -609,13 +609,11 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 	var mu sync.Mutex
 
-	// active is a bitfield representing which senders are currently processing messages
-	var active uint64
+	// active is a bitfield pool representing which senders are currently processing messages
+	var active StatusPool
 
 	// ctr is used to assign a unique bit position to each sender
 	var ctr uint64
-
-	var pctr uint64
 
 	// wg is used to wait for all sender goroutines to finish
 	var wg sync.WaitGroup
@@ -658,7 +656,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 		for range processCount {
 			wg.Add(1)
-			go func(pID uint64) {
+			go func(pID int) {
 				defer wg.Done()
 
 				for {
@@ -668,8 +666,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					}
 
 					mu.Lock()
-					active |= pID
-					r.coord.setActive(r.id, active != 0)
+					active.Set(pID, true)
+					r.coord.setActive(r.id, active.Status())
 					mu.Unlock()
 
 					r.coord.addMessages(-1)
@@ -695,8 +693,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					// If there are no unseen items, skip processing
 					if len(unseen) == 0 {
 						mu.Lock()
-						active &^= pID
-						r.coord.setActive(r.id, active != 0)
+						active.Set(pID, false)
+						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
 						continue
 					}
@@ -861,8 +859,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					// if no items were produced, skip sending to listeners
 					if len(outGroup.Items) == 0 {
 						mu.Lock()
-						active &^= pID
-						r.coord.setActive(r.id, active != 0)
+						active.Set(pID, false)
+						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
 						continue
 					}
@@ -882,13 +880,11 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 						}
 					}
 					mu.Lock()
-					active &^= pID
-					r.coord.setActive(r.id, active != 0)
+					active.Set(pID, false)
+					r.coord.setActive(r.id, active.Status())
 					mu.Unlock()
 				}
-			}(1 << pctr)
-
-			pctr++
+			}(active.Register())
 		}
 
 		ctr++
