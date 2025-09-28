@@ -8,6 +8,7 @@ import (
 	"maps"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -595,8 +596,10 @@ type specificTypeAndRelationResolver struct {
 }
 
 func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners []*listener) {
+	var spent atomic.Int64
+
 	defer func() {
-		// println("RESOLVER DONE", r.node.GetUniqueLabel())
+		println(r.node.GetUniqueLabel(), spent.Load(), "us")
 	}()
 
 	// nexts holds the next function for each sender sequence
@@ -662,6 +665,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				}
 
 				timer.Stop()
+				start := time.Now()
 
 				mu.Lock()
 				active |= pos
@@ -852,6 +856,8 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 				active &^= pos
 				r.coord.setActive(r.id, active != 0)
 				mu.Unlock()
+				elapsed := time.Since(start).Microseconds()
+				spent.Add(elapsed)
 			}
 		}()
 
@@ -872,6 +878,11 @@ type unionResolver struct {
 }
 
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
+	var spent atomic.Int64
+
+	defer func() {
+		println(r.node.GetUniqueLabel(), spent.Load(), "us")
+	}()
 	var wg sync.WaitGroup
 
 	var muIn sync.Mutex
@@ -897,6 +908,7 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 			pos := uint64(1 << i)
 
 			for inGroup := range snd.seq {
+				start := time.Now()
 				mu.Lock()
 				active |= pos
 				r.coord.setActive(r.id, active != 0)
@@ -1040,6 +1052,8 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 				active &^= pos
 				r.coord.setActive(r.id, active != 0)
 				mu.Unlock()
+				elapsed := time.Since(start).Microseconds()
+				spent.Add(elapsed)
 			}
 		}(i, snd)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -71,6 +72,8 @@ type ListObjectsQuery struct {
 
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
+
+	pipelineEnabled bool
 }
 
 type ListObjectsResolver interface {
@@ -475,6 +478,99 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
+	targetObjectType := req.GetType()
+	targetRelation := req.GetRelation()
+
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
+	}
+
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+	}
+
+	wgraph := typesys.GetWeightedGraph()
+
+	if wgraph != nil && q.pipelineEnabled {
+		ds := storagewrappers.NewRequestStorageWrapperWithCache(
+			q.datastore,
+			req.GetContextualTuples().GetTupleKeys(),
+			&storagewrappers.Operation{
+				Method:            apimethod.ListObjects,
+				Concurrency:       q.maxConcurrentReads,
+				ThrottleThreshold: q.datastoreThrottleThreshold,
+				ThrottleDuration:  q.datastoreThrottleDuration,
+			},
+			storagewrappers.DataResourceConfiguration{
+				Resources:      q.sharedDatastoreResources,
+				CacheSettings:  q.cacheSettings,
+				UseShadowCache: q.useShadowCache,
+			},
+		)
+
+		traversal := reverseexpand.NewTraversal(ds, req.GetStoreId(), wgraph)
+
+		var source reverseexpand.Source
+		var target reverseexpand.Target
+
+		if source, ok = traversal.Source(targetObjectType, targetRelation); !ok {
+			panic("target not in graph")
+		}
+
+		userParts := strings.Split(req.GetUser(), "#")
+
+		objectParts := strings.Split(userParts[0], ":")
+		objectType := objectParts[0]
+		objectID := objectParts[1]
+
+		if len(userParts) > 1 {
+			objectType += "#" + userParts[1]
+		}
+
+		if target, ok = traversal.Target(objectType, objectID); !ok {
+			panic("user not in graph")
+		}
+
+		path := traversal.Traverse(source, target)
+
+		seq := path.Objects(ctx)
+
+		var res ListObjectsResponse
+
+		for obj := range seq {
+			if obj.Err != nil {
+				return nil, serverErrors.HandleError("", obj.Err)
+			}
+			res.Objects = append(res.Objects, obj.Value)
+		}
+		return &res, nil
+	}
+
+	// --------- OLD STUFF -----------
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
@@ -500,7 +596,7 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
+	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
 		return nil, err
 	}

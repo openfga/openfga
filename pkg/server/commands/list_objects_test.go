@@ -603,6 +603,7 @@ func runOneBenchmark(
 	ctx context.Context,
 	name string,
 	optimizationsEnabled bool,
+	pipelineEnabled bool,
 	query ListObjectsQuery,
 	request *openfgav1.ListObjectsRequest,
 ) {
@@ -611,6 +612,13 @@ func runOneBenchmark(
 		query.optimizationsEnabled = true
 	} else {
 		query.optimizationsEnabled = false
+	}
+
+	if pipelineEnabled {
+		name += "_with_pipeline"
+		query.pipelineEnabled = true
+	} else {
+		query.pipelineEnabled = false
 	}
 	var latencies []time.Duration
 	b.Run(name, func(b *testing.B) {
@@ -695,8 +703,9 @@ func BenchmarkListObjects(b *testing.B) {
 	}
 
 	// once with optimizations enabled, once without
-	runOneBenchmark(b, ctx, "weight_one_direct", true, *query, weightOneRequest)
-	runOneBenchmark(b, ctx, "weight_one_direct", false, *query, weightOneRequest)
+	runOneBenchmark(b, ctx, "weight_one_direct", true, false, *query, weightOneRequest)
+	runOneBenchmark(b, ctx, "weight_one_direct", false, false, *query, weightOneRequest)
+	runOneBenchmark(b, ctx, "weight_one_direct", false, true, *query, weightOneRequest)
 
 	weightOneComputedRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -707,8 +716,9 @@ func BenchmarkListObjects(b *testing.B) {
 	}
 
 	// once with optimizations enabled, once without
-	runOneBenchmark(b, ctx, "weight_one_computed", true, *query, weightOneComputedRequest)
-	runOneBenchmark(b, ctx, "weight_one_computed", false, *query, weightOneComputedRequest)
+	runOneBenchmark(b, ctx, "weight_one_computed", true, false, *query, weightOneComputedRequest)
+	runOneBenchmark(b, ctx, "weight_one_computed", false, false, *query, weightOneComputedRequest)
+	runOneBenchmark(b, ctx, "weight_one_computed", false, true, *query, weightOneComputedRequest)
 
 	weightTwoRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -718,8 +728,9 @@ func BenchmarkListObjects(b *testing.B) {
 		User:                 "user:justin",
 	}
 	// once with optimizations enabled, once without
-	runOneBenchmark(b, ctx, "weight_two_ttu", true, *query, weightTwoRequest)
-	runOneBenchmark(b, ctx, "weight_two_ttu", false, *query, weightTwoRequest)
+	runOneBenchmark(b, ctx, "weight_two_ttu", true, false, *query, weightTwoRequest)
+	runOneBenchmark(b, ctx, "weight_two_ttu", false, false, *query, weightTwoRequest)
+	runOneBenchmark(b, ctx, "weight_two_ttu", false, true, *query, weightTwoRequest)
 
 	weightThreeRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -730,8 +741,9 @@ func BenchmarkListObjects(b *testing.B) {
 	}
 
 	// once with optimizations enabled, once without
-	runOneBenchmark(b, ctx, "weight_three", true, *query, weightThreeRequest)
-	runOneBenchmark(b, ctx, "weight_three", false, *query, weightThreeRequest)
+	runOneBenchmark(b, ctx, "weight_three", true, false, *query, weightThreeRequest)
+	runOneBenchmark(b, ctx, "weight_three", false, false, *query, weightThreeRequest)
+	runOneBenchmark(b, ctx, "weight_three", false, true, *query, weightThreeRequest)
 
 	recursiveRequest := &openfgav1.ListObjectsRequest{
 		StoreId:              storeID,
@@ -745,7 +757,8 @@ func BenchmarkListObjects(b *testing.B) {
 	// Uncomment this when recursive listObjects work is underway
 	// runOneBenchmark(b, ctx, "recursive_ttu", true, *query, recursiveRequest)
 
-	runOneBenchmark(b, ctx, "recursive_ttu", false, *query, recursiveRequest)
+	runOneBenchmark(b, ctx, "recursive_ttu", false, false, *query, recursiveRequest)
+	runOneBenchmark(b, ctx, "recursive_ttu", false, true, *query, recursiveRequest)
 }
 
 // This helper writes tuples for user:justin with relation "member" to org:0...org:numTuples.
