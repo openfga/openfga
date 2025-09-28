@@ -276,6 +276,46 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 	}
 }
 
+type StatusPool struct {
+	pool []uint64
+	top  int
+}
+
+func (sp *StatusPool) Register() int {
+	capacity := len(sp.pool)
+
+	if sp.top/64 >= capacity {
+		sp.pool = append(sp.pool, 0)
+	}
+	id := sp.top
+	sp.top++
+	return id
+}
+
+// Set is a function that accepts a registered identifier and a boolean status.
+func (sp *StatusPool) Set(id int, status bool) {
+	ndx := id / 64
+	pos := uint64(1 << (id % 64))
+
+	if status {
+		sp.pool[ndx] |= pos
+		return
+	}
+	sp.pool[ndx] &^= pos
+}
+
+// Status is a function that returns the cummulative status of all statuses
+// registered within the pool. If any registered status is set to `true`,
+// the return value of Status will be `true`. The default value is `false`.
+func (sp *StatusPool) Status() bool {
+	var status uint64
+
+	for _, s := range sp.pool {
+		status |= s
+	}
+	return status != 0
+}
+
 // coordinator is responsible for keeping and synchronizing the current
 // state of a pipeline. The state of a pipeline is comprised of an active
 // status as a boolean value, and a count of total in-flight messages within
@@ -287,29 +327,7 @@ type coordinator struct {
 	// mu protects the fields within the coordinator struct.
 	mu sync.Mutex
 
-	// top holds the next available identifier.
-	top int
-
-	status []uint64
-
-	// the following fields are bitpacked flags.
-	// each bit corresponds to a boolean value; 1 = true, 0 = false.
-	// each field has a size of 64 bits and holds 64 distinct boolan values.
-	// the fields are used in order, until their bits have been assigned to capacity.
-	//
-	// identifiers 0 - 63 will be assigned a bit from field a.
-	a uint64
-
-	// identifiers 64 - 127 will be assigned a bit from field b.
-	b uint64
-
-	// identifiers 128 - 191 will be assigned a bit from field c.
-	c uint64
-
-	// identifiers 192 - 255 will be assigned a bit from field d.
-	d uint64
-
-	// more fields can be added to extend the total number of available bit flags.
+	sp StatusPool
 
 	// messageCount holds the total number of in-flight messages within the pipeline.
 	messageCount int64
@@ -320,14 +338,7 @@ type coordinator struct {
 // the register function must be provided when calling the setActive function
 // for a connection.
 func (c *coordinator) register() int {
-	capacity := len(c.status)
-
-	if c.top/64 >= capacity {
-		c.status = append(c.status, 0)
-	}
-	id := c.top
-	c.top++
-	return id
+	return c.sp.Register()
 }
 
 // setActive is a function that accepts a registered connection identifier
@@ -340,14 +351,7 @@ func (c *coordinator) setActive(id int, active bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ndx := id / 64
-	pos := uint64(1 << (id % 64))
-
-	if active {
-		c.status[ndx] |= pos
-		return
-	}
-	c.status[ndx] &^= pos
+	c.sp.Set(id, active)
 }
 
 // getState is a function that returns the pipeline state as a sum
@@ -362,12 +366,7 @@ func (c *coordinator) getState() (bool, int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var status uint64
-
-	for _, s := range c.status {
-		status |= s
-	}
-	return status != 0, c.messageCount
+	return c.sp.Status(), c.messageCount
 }
 
 // addMessages accepts a positive or negative value indicating the amount
