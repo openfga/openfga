@@ -290,6 +290,8 @@ type coordinator struct {
 	// top holds the next available identifier.
 	top int
 
+	status []uint64
+
 	// the following fields are bitpacked flags.
 	// each bit corresponds to a boolean value; 1 = true, 0 = false.
 	// each field has a size of 64 bits and holds 64 distinct boolan values.
@@ -314,18 +316,18 @@ type coordinator struct {
 }
 
 // register is a function that returns a unique identifier for a pipeline
-// connection. A coordinator can support up to 256 registered connections.
-// If more than the supported maximum number of connections is registered,
-// an ErrConnectionOverflow error is returned. The identifier returned by
+// connection. The identifier returned by
 // the register function must be provided when calling the setActive function
 // for a connection.
-func (c *coordinator) register() (int, error) {
-	if c.top >= 256 {
-		return 0, ErrConnectionOverflow
+func (c *coordinator) register() int {
+	capacity := len(c.status)
+
+	if c.top/64 >= capacity {
+		c.status = append(c.status, 0)
 	}
 	id := c.top
 	c.top++
-	return id, nil
+	return id
 }
 
 // setActive is a function that accepts a registered connection identifier
@@ -338,44 +340,14 @@ func (c *coordinator) setActive(id int, active bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	ndx := id / 64
 	pos := uint64(1 << (id % 64))
 
-	if id < 64 {
-		if active {
-			c.a |= pos
-			return
-		}
-		c.a &^= pos
+	if active {
+		c.status[ndx] |= pos
 		return
 	}
-
-	if id < 128 {
-		if active {
-			c.b |= pos
-			return
-		}
-		c.b &^= pos
-		return
-	}
-
-	if id < 192 {
-		if active {
-			c.c |= pos
-			return
-		}
-		c.c &^= pos
-		return
-	}
-
-	if id < 256 {
-		if active {
-			c.d |= pos
-			return
-		}
-		c.d &^= pos
-		return
-	}
-	panic("too many connections")
+	c.status[ndx] &^= pos
 }
 
 // getState is a function that returns the pipeline state as a sum
@@ -389,7 +361,13 @@ func (c *coordinator) setActive(id int, active bool) {
 func (c *coordinator) getState() (bool, int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.a|c.b|c.c|c.d != 0, c.messageCount
+
+	var status uint64
+
+	for _, s := range c.status {
+		status |= s
+	}
+	return status != 0, c.messageCount
 }
 
 // addMessages accepts a positive or negative value indicating the amount
@@ -427,6 +405,15 @@ type sender struct {
 	// message values until the consumer stops iterating, or the
 	// mechanism feeding the seqence signals that it is done.
 	seq iter.Seq[Group]
+
+	// chunkSize is the target number of items to include in each
+	// outbound message. A value less than 1 indicates an unlimited
+	// number of items per message.
+	chunkSize int
+
+	// numProcs is the number of message processors to execute for
+	// the sender.
+	numProcs int
 }
 
 // resolver is an interface that is consumed by a Worker struct.
@@ -638,13 +625,9 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 	for ctr < uint64(len(senders)) {
 		ndx := ctr
 
-		var sndWG sync.WaitGroup
-
 		ch := make(chan Group, 100)
 
-		sndWG.Add(1)
 		go func(ndx uint64) {
-			defer sndWG.Done()
 			defer close(ch)
 
 			for {
@@ -1416,10 +1399,7 @@ type Worker struct {
 func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 	var r resolver
 
-	id, err := coord.register()
-	if err != nil {
-		panic(err)
-	}
+	id := coord.register()
 
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
