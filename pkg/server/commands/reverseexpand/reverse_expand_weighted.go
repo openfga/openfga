@@ -652,9 +652,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 			}
 		}(ndx)
 
-		processCount := 3
-
-		for range processCount {
+		for range senders[ndx].numProcs {
 			wg.Add(1)
 			go func(pID int) {
 				defer wg.Done()
@@ -827,7 +825,7 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 
 					AfterDedup:
 
-						if len(items) < 10 {
+						if len(items) < senders[ndx].chunkSize || senders[ndx].chunkSize == 0 {
 							continue
 						}
 
@@ -1479,10 +1477,12 @@ func (w *Worker) Wait() {
 	w.wg.Wait()
 }
 
-func (w *Worker) Listen(edge *Edge, i iter.Seq[Group]) {
+func (w *Worker) Listen(edge *Edge, i iter.Seq[Group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &sender{
-		edge: edge,
-		seq:  i,
+		edge:      edge,
+		seq:       i,
+		chunkSize: chunkSize,
+		numProcs:  numProcs,
 	})
 }
 
@@ -1589,13 +1589,42 @@ func (t *Traversal) Source(name, relation string) (Source, bool) {
 	return (Source)(sourceNode), ok
 }
 
-func (t *Traversal) Traverse(source Source, target Target) Path {
-	return Path{
+type TraversalOption func(*Path)
+
+func WithChunkSize(size int) TraversalOption {
+	if size < 0 {
+		size = 0
+	}
+
+	return func(path *Path) {
+		path.chunkSize = size
+	}
+}
+
+func WithNumProcs(num int) TraversalOption {
+	if num < 1 {
+		num = 1
+	}
+
+	return func(path *Path) {
+		path.numProcs = num
+	}
+}
+
+func (t *Traversal) Traverse(source Source, target Target, options ...TraversalOption) Path {
+	p := Path{
 		traversal:        t,
 		source:           (*Node)(source),
 		target:           target.node,
 		targetIdentifier: target.id,
+		chunkSize:        100,
+		numProcs:         3,
 	}
+
+	for _, option := range options {
+		option(&p)
+	}
+	return p
 }
 
 type Path struct {
@@ -1603,6 +1632,8 @@ type Path struct {
 	traversal        *Traversal
 	target           *Node
 	targetIdentifier string
+	chunkSize        int
+	numProcs         int
 }
 
 func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
@@ -1683,7 +1714,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 			var group Group
 			group.Items = []Item{Item{Value: p.targetIdentifier}}
 			coord.addMessages(1)
-			worker.Listen(nil, sequence(group))
+			worker.Listen(nil, sequence(group), p.chunkSize, p.numProcs)
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1693,7 +1724,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
 			coord.addMessages(1)
-			worker.Listen(nil, sequence(group))
+			worker.Listen(nil, sequence(group), p.chunkSize, p.numProcs)
 		}
 	}
 
@@ -1717,18 +1748,18 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 
 			if _, ok := tuplesets[tupleset]; !ok {
 				// println("ts", tupleset.GetUniqueLabel(), "->", source.GetUniqueLabel())
-				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source))
+				p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source), p.chunkSize, p.numProcs)
 				tuplesets[tupleset] = struct{}{}
 			}
 			p.resolve(ctx, edge.GetTo(), coord)
 			// println(edge.GetTo().GetUniqueLabel(), "->", "ts", tupleset.GetUniqueLabel())
-			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset))
+			p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset), p.chunkSize, p.numProcs)
 			continue
 		}
 
 		p.resolve(ctx, edge.GetTo(), coord)
 		// println(edge.GetTo().GetUniqueLabel(), "->", source.GetUniqueLabel())
-		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source))
+		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source), p.chunkSize, p.numProcs)
 	}
 }
 
