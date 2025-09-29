@@ -70,7 +70,6 @@ func TestFanInIteratorChannels(t *testing.T) {
 		makeIterChan(ctrl, "4"),
 		makeIterChan(ctrl, "5"),
 	)
-
 	out = FanInIteratorChannels(cancellable, chans)
 	iterations = 0
 	for msg := range out {
