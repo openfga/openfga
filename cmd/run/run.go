@@ -742,7 +742,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
-		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
+		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", lis.Addr().String()))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
 				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
@@ -765,7 +765,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
-				s.Logger.Fatal("", zap.Error(err))
+				s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
 			}
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 		} else {
@@ -778,7 +778,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			s.Logger.Fatal("", zap.Error(err))
+			s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
 		}
 		defer conn.Close()
 
