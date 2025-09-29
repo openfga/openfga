@@ -187,6 +187,12 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	}
 }
 
+func WithPipelineEnabled(value bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineEnabled = value
+	}
+}
+
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
