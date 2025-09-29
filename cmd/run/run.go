@@ -312,7 +312,6 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
-	flags.Duration("planner-initial-guess", defaultConfig.Planner.InitialGuess, "the starting performance assumption for a new resolver")
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
@@ -710,7 +709,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
 		server.WithPlanner(planner.New(&planner.Config{
-			InitialGuess:      config.Planner.InitialGuess,
 			EvictionThreshold: config.Planner.EvictionThreshold,
 			CleanupInterval:   config.Planner.CleanupInterval,
 		})),
