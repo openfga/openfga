@@ -8,7 +8,6 @@ import (
 	"maps"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
@@ -902,11 +901,6 @@ type unionResolver struct {
 }
 
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
-	var spent atomic.Int64
-
-	defer func() {
-		// println(r.node.GetUniqueLabel(), spent.Load(), "us")
-	}()
 	var wg sync.WaitGroup
 
 	var muIn sync.Mutex
@@ -917,169 +911,175 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	outBuffer := make(map[string]struct{})
 
-	errs := make([][]Item, len(senders))
-
 	var mu sync.Mutex
 
-	var active uint64
+	var active StatusPool
 
-	for i, snd := range senders {
-		wg.Add(1)
+	for _, snd := range senders {
+		ch := make(chan Group, 100)
 
-		go func(i int, snd *sender) {
-			defer wg.Done()
+		go func(snd *sender) {
+			defer close(ch)
 
-			pos := uint64(1 << i)
+			for group := range snd.seq {
+				ch <- group
+			}
+		}(snd)
 
-			for inGroup := range snd.seq {
-				start := time.Now()
-				mu.Lock()
-				active |= pos
-				r.coord.setActive(r.id, active != 0)
-				mu.Unlock()
+		for range snd.numProcs {
+			wg.Add(1)
+			go func(pID int) {
+				defer wg.Done()
 
-				r.coord.addMessages(-1)
-
-				output := make(map[string]struct{})
-
-				var unseen []Item
-
-				// Deduplicate items within this group based on the buffer for this sender
-				for _, item := range inGroup.Items {
-					if item.Err != nil {
-						continue
-					}
-
-					var seen bool
-
-					muIn.Lock()
-					if _, ok := inBuffer[item.Value]; ok {
-						seen = true
-					} else {
-						inBuffer[item.Value] = struct{}{}
-					}
-					muIn.Unlock()
-
-					if !seen {
-						unseen = append(unseen, item)
-					}
-				}
-
-				// println("RECEIVED", snd.edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
-
-				// If there are no unseen items, skip processing
-				if len(unseen) == 0 {
+				for group := range ch {
 					mu.Lock()
-					active &^= pos
-					r.coord.setActive(r.id, active != 0)
+					active.Set(pID, true)
+					r.coord.setActive(r.id, active.Status())
 					mu.Unlock()
-					continue
-				}
 
-				var results iter.Seq[Item]
+					r.coord.addMessages(-1)
 
-				switch snd.edge.GetEdgeType() {
-				case EdgeTypeDirect:
-					parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
-					nodeType := parts[0]
-					nodeRelation := parts[1]
+					var unseen []Item
 
-					userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
-
-					var userRelation string
-
-					if len(userParts) > 1 {
-						userRelation = userParts[1]
-					}
-
-					var userFilter []*openfgav1.ObjectRelation
-
-					var errs []Item
-
-					for _, item := range unseen {
+					// Deduplicate items within this group based on the buffer for this sender
+					for _, item := range group.Items {
 						if item.Err != nil {
-							errs = append(errs, item)
 							continue
 						}
 
-						userFilter = append(userFilter, &openfgav1.ObjectRelation{
-							Object:   item.Value,
-							Relation: userRelation,
-						})
+						muIn.Lock()
+						if _, ok := inBuffer[item.Value]; ok {
+							muIn.Unlock()
+							continue
+						}
+						inBuffer[item.Value] = struct{}{}
+						muIn.Unlock()
+						unseen = append(unseen, item)
 					}
 
-					if len(userFilter) > 0 {
-						results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
-					} else {
-						results = emptySequence
+					// println("RECEIVED", snd.edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
+
+					// If there are no unseen items, skip processing
+					if len(unseen) == 0 {
+						mu.Lock()
+						active.Set(pID, false)
+						r.coord.setActive(r.id, active.Status())
+						mu.Unlock()
+						continue
 					}
 
-					if len(errs) > 0 {
-						results = mergeOrdered(sequence(errs...), results)
+					var results iter.Seq[Item]
+
+					switch snd.edge.GetEdgeType() {
+					case EdgeTypeDirect:
+						parts := strings.Split(snd.edge.GetRelationDefinition(), "#")
+						nodeType := parts[0]
+						nodeRelation := parts[1]
+
+						userParts := strings.Split(snd.edge.GetTo().GetLabel(), "#")
+
+						var userRelation string
+
+						if len(userParts) > 1 {
+							userRelation = userParts[1]
+						}
+
+						var userFilter []*openfgav1.ObjectRelation
+
+						var errs []Item
+
+						for _, item := range unseen {
+							if item.Err != nil {
+								errs = append(errs, item)
+								continue
+							}
+
+							userFilter = append(userFilter, &openfgav1.ObjectRelation{
+								Object:   item.Value,
+								Relation: userRelation,
+							})
+						}
+
+						if len(userFilter) > 0 {
+							results = r.backend.query(context.Background(), nodeType, nodeRelation, userFilter)
+						} else {
+							results = emptySequence
+						}
+
+						if len(errs) > 0 {
+							results = mergeOrdered(sequence(errs...), results)
+						}
+					case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
+						results = sequence(unseen...)
+
 					}
-				case EdgeTypeComputed, EdgeTypeRewrite, EdgeTypeTTU:
-					results = sequence(inGroup.Items...)
 
-				}
+					var items []Item
 
-				for item := range results {
-					if item.Err != nil {
-						errs[i] = append(errs[i], item)
-					}
+					for item := range results {
+						if item.Err != nil {
+							items = append(items, item)
+							goto AfterDedup
+						}
 
-					muOut.Lock()
-					if _, ok := outBuffer[item.Value]; !ok {
-						output[item.Value] = struct{}{}
+						muOut.Lock()
+						if _, ok := outBuffer[item.Value]; ok {
+							muOut.Unlock()
+							continue
+						}
 						outBuffer[item.Value] = struct{}{}
+						muOut.Unlock()
+						items = append(items, item)
+
+					AfterDedup:
+
+						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
+							continue
+						}
+
+						outGroup := Group{
+							Items: items,
+						}
+
+						items = nil
+
+						for _, lst := range listeners {
+							r.coord.addMessages(1)
+							select {
+							case lst.ch <- outGroup:
+							case <-lst.ctx.Done():
+								r.coord.addMessages(-1)
+							}
+						}
 					}
-					muOut.Unlock()
 
-				}
-
-				objects := make(map[string]struct{})
-
-				for obj := range output {
-					objects[obj] = struct{}{}
-				}
-
-				var allErrs []Item
-
-				for _, errList := range errs {
-					allErrs = append(allErrs, errList...)
-				}
-
-				seq := mergeOrdered(
-					sequence(allErrs...),
-					transform(maps.Keys(objects), strToItem),
-				)
-
-				var items []Item
-
-				for item := range seq {
-					items = append(items, item)
-				}
-
-				outGroup := Group{
-					Items: items,
-				}
-
-				for _, lst := range listeners {
-					r.coord.addMessages(1)
-					select {
-					case lst.ch <- outGroup:
-						// println("SENT", r.node.GetLabel(), "->", lst.node.GetLabel())
-					case <-lst.ctx.Done():
-						r.coord.addMessages(-1)
+					outGroup := Group{
+						Items: items,
 					}
+
+					if len(outGroup.Items) == 0 {
+						mu.Lock()
+						active.Set(pID, false)
+						r.coord.setActive(r.id, active.Status())
+						mu.Unlock()
+						continue
+					}
+
+					for _, lst := range listeners {
+						r.coord.addMessages(1)
+						select {
+						case lst.ch <- outGroup:
+						case <-lst.ctx.Done():
+							r.coord.addMessages(-1)
+						}
+					}
+					mu.Lock()
+					active.Set(pID, false)
+					r.coord.setActive(r.id, active.Status())
+					mu.Unlock()
 				}
-				mu.Lock()
-				active &^= pos
-				r.coord.setActive(r.id, active != 0)
-				mu.Unlock()
-				elapsed := time.Since(start).Microseconds()
-				spent.Add(elapsed)
-			}
-		}(i, snd)
+			}(active.Register())
+		}
 	}
 	wg.Wait()
 }
