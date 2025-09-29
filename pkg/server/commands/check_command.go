@@ -38,6 +38,7 @@ type CheckQuery struct {
 	shouldCacheIterators       bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
+	optimizationsEnabled       bool
 }
 
 type CheckCommandParams struct {
@@ -73,6 +74,12 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	return func(c *CheckQuery) {
 		c.datastoreThrottleThreshold = threshold
 		c.datastoreThrottleDuration = duration
+	}
+}
+
+func WithCheckOptimizationsEnabled(enabled bool) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.optimizationsEnabled = enabled
 	}
 }
 
@@ -118,6 +125,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			Consistency:               params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
 			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
+			OptimizationsEnabled:      c.optimizationsEnabled,
 		},
 	)
 

@@ -498,6 +498,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(10 * time.Second),
 				commands.WithMaxConcurrentReads(30),
+				// here
 			}
 
 			if test.listObjectsDeadline != 0 {

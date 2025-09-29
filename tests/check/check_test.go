@@ -22,7 +22,6 @@ import (
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -52,7 +51,7 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{string(server.ExperimentalCheckOptimizations)})
+	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{config.ExperimentalCheckOptimizations})
 	RunMatrixTests(t, engine, true, clientWithExperimentals)
 
 	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
@@ -331,7 +330,7 @@ func testRunAll(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 	cfg := config.MustDefaultConfig()
-	cfg.Experimentals = append(cfg.Experimentals, string(server.ExperimentalCheckOptimizations))
+	cfg.Experimentals = append(cfg.Experimentals, config.ExperimentalCheckOptimizations)
 	cfg.Log.Level = "error"
 	cfg.Datastore.Engine = engine
 	// extend the timeout for the tests, coverage makes them slower
