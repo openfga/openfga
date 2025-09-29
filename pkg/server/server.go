@@ -242,6 +242,8 @@ type Server struct {
 	singleflightGroup *singleflight.Group
 
 	planner *planner.Planner
+
+	requestTimeout time.Duration
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -575,6 +577,12 @@ func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
 	}
 }
 
+func WithRequestTimeout(timeout time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.requestTimeout = timeout
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -869,10 +877,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
 		planner: planner.New(&planner.Config{
-			InitialGuess:      serverconfig.DefaultPlannerInitialGuess,
 			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
 			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
 		}),
+		requestTimeout: serverconfig.DefaultRequestTimeout,
 	}
 
 	for _, opt := range opts {
@@ -966,6 +974,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
+			graph.WithUpstreamTimeout(s.requestTimeout),
+			graph.WithLocalCheckerLogger(s.logger),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
