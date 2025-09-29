@@ -95,7 +95,6 @@ const (
 	DefaultSharedIteratorMaxAdmissionTime = 10 * time.Second
 	DefaultSharedIteratorMaxIdleTime      = 1 * time.Second
 
-	DefaultPlannerInitialGuess      = 10 * time.Millisecond
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
 )
@@ -290,7 +289,6 @@ type AccessControlConfig struct {
 }
 
 type PlannerConfig struct {
-	InitialGuess      time.Duration
 	EvictionThreshold time.Duration
 	CleanupInterval   time.Duration
 }
@@ -814,7 +812,6 @@ func DefaultConfig() *Config {
 		RequestTimeout:                DefaultRequestTimeout,
 		ContextPropagationToDatastore: false,
 		Planner: PlannerConfig{
-			InitialGuess:      DefaultPlannerInitialGuess,
 			EvictionThreshold: DefaultPlannerEvictionThreshold,
 			CleanupInterval:   DefaultPlannerCleanupInterval,
 		},

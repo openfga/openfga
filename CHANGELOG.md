@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Changed
+- Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 - Breaking: Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
   > The following breaking changes are related to the `server.Server` interface. If you are not customizing the server, then these changes should not impact your usage of OpenFGA.
     - Removed `WithShadowListObjectsCheckResolverEnabled` server option.

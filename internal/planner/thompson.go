@@ -13,7 +13,6 @@ import (
 // ThompsonStats holds the parameters for the Normal-gamma distribution,
 // which models our belief about the performance (execution time) of a strategy.
 type ThompsonStats struct {
-	runs   int64          // atomic access via atomic.AddInt64/LoadInt64
 	params unsafe.Pointer // *samplingParams - atomic access
 }
 
@@ -107,7 +106,6 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 		// If another goroutine changed the pointer in the meantime, this will fail,
 		// and we will loop again to retry the whole operation.
 		if atomic.CompareAndSwapPointer(&ts.params, oldPtr, unsafe.Pointer(newParams)) {
-			atomic.AddInt64(&ts.runs, 1)
 			return
 		}
 	}
@@ -115,7 +113,7 @@ func (ts *ThompsonStats) Update(duration time.Duration) {
 
 // NewThompsonStats creates a new stats object with a diffuse prior,
 // representing our initial uncertainty about a strategy's performance.
-func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
+func NewThompsonStats(initialGuess time.Duration, lambda, alpha, beta float64) *ThompsonStats {
 	initialMs := float64(initialGuess.Nanoseconds()) / 1e6
 
 	ts := &ThompsonStats{}
@@ -123,9 +121,9 @@ func NewThompsonStats(initialGuess time.Duration) *ThompsonStats {
 	// Create the initial immutable parameter snapshot.
 	params := &samplingParams{
 		mu:     initialMs,
-		lambda: 1.0,
-		alpha:  1.0,
-		beta:   10.0,
+		lambda: lambda,
+		alpha:  alpha,
+		beta:   beta,
 	}
 	atomic.StorePointer(&ts.params, unsafe.Pointer(params))
 
