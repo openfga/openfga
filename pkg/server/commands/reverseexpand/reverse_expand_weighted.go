@@ -482,7 +482,6 @@ func (r *specificTypeWildcardResolver) Resolve(senders []*sender, listeners []*l
 					r.coord.addMessages(1)
 					select {
 					case lst.ch <- mappedGroup:
-						// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel())
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
 					}
@@ -495,7 +494,6 @@ func (r *specificTypeWildcardResolver) Resolve(senders []*sender, listeners []*l
 		}(i, snd)
 	}
 	wg.Wait()
-	// println("RESOLVER DONE", r.node.GetUniqueLabel())
 }
 
 // specificTypeResolver is a struct that implements the resolver interface
@@ -562,7 +560,6 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 					r.coord.addMessages(1)
 					select {
 					case lst.ch <- mappedGroup:
-						// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel())
 					case <-lst.ctx.Done():
 						r.coord.addMessages(-1)
 					}
@@ -575,7 +572,6 @@ func (r *specificTypeResolver) Resolve(senders []*sender, listeners []*listener)
 		}(i, snd)
 	}
 	wg.Wait()
-	// println("RESOLVER DONE", r.node.GetUniqueLabel())
 }
 
 type logicalDirectGroupingResolver struct {
@@ -641,8 +637,6 @@ func (r *logicalDirectGroupingResolver) Resolve(senders []*sender, listeners []*
 						muIn.Unlock()
 						unseen = append(unseen, item)
 					}
-
-					// println("RECEIVED", snd.edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 					// If there are no unseen items, skip processing
 					if len(unseen) == 0 {
@@ -1014,7 +1008,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 					timer.Stop()
 					stops[ndx]()
 					stopped[ndx] = true
-					// println("CLOSING", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel())
 					break
 				}
 
@@ -1068,8 +1061,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 						mu.Unlock()
 						continue
 					}
-
-					// println("RECEIVED", senders[ndx].edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 					var results iter.Seq[Item]
 
@@ -1205,11 +1196,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 							r.coord.addMessages(1)
 							select {
 							case lst.ch <- outGroup:
-								if lst.node != nil {
-									// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
-								} else {
-									// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
-								}
 							case <-lst.ctx.Done():
 								r.coord.addMessages(-1)
 							}
@@ -1234,11 +1220,6 @@ func (r *specificTypeAndRelationResolver) Resolve(senders []*sender, listeners [
 						r.coord.addMessages(1)
 						select {
 						case lst.ch <- outGroup:
-							if lst.node != nil {
-								// println("SENT", r.node.GetUniqueLabel(), "->", lst.node.GetUniqueLabel(), fmt.Sprintf("%#v", outGroup))
-							} else {
-								// println("SENT", r.node.GetLabel(), "->", "OUTPUT", fmt.Sprintf("%#v", outGroup))
-							}
 						case <-lst.ctx.Done():
 							r.coord.addMessages(-1)
 						}
@@ -1270,9 +1251,13 @@ type unionResolver struct {
 func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var wg sync.WaitGroup
 
-	var muIn sync.Mutex
+	mutexes := make([]sync.Mutex, len(senders))
 
-	inBuffer := make(map[string]struct{})
+	inBuffers := make([]map[string]struct{}, len(senders))
+
+	for i := range len(senders) {
+		inBuffers[i] = make(map[string]struct{})
+	}
 
 	var muOut sync.Mutex
 
@@ -1282,7 +1267,7 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	var active StatusPool
 
-	for _, snd := range senders {
+	for ndx, snd := range senders {
 		ch := make(chan Group, 100)
 
 		go func(snd *sender) {
@@ -1314,17 +1299,15 @@ func (r *unionResolver) Resolve(senders []*sender, listeners []*listener) {
 							continue
 						}
 
-						muIn.Lock()
-						if _, ok := inBuffer[item.Value]; ok {
-							muIn.Unlock()
+						mutexes[ndx].Lock()
+						if _, ok := inBuffers[ndx][item.Value]; ok {
+							mutexes[ndx].Unlock()
 							continue
 						}
-						inBuffer[item.Value] = struct{}{}
-						muIn.Unlock()
+						inBuffers[ndx][item.Value] = struct{}{}
+						mutexes[ndx].Unlock()
 						unseen = append(unseen, item)
 					}
-
-					// println("RECEIVED", snd.edge.GetTo().GetUniqueLabel(), "->", r.node.GetUniqueLabel(), fmt.Sprintf("%+v", unseen))
 
 					// If there are no unseen items, skip processing
 					if len(unseen) == 0 {
@@ -2221,34 +2204,8 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		return
 	}
 
-	// tuplesets := make(map[*Node]struct{})
-
 	for _, edge := range edges {
-		/*
-			if edge.GetEdgeType() == EdgeTypeTTU {
-				tupleset, ok := p.traversal.graph.GetNodeByID(edge.GetTuplesetRelation())
-				if !ok {
-					panic("tupleset relation not in graph")
-				}
-
-				if _, ok := p.traversal.pipeline[tupleset]; !ok {
-					p.traversal.pipeline[tupleset] = NewWorker(p.traversal.backend, tupleset, coord)
-				}
-
-				if _, ok := tuplesets[tupleset]; !ok {
-					// println("ts", tupleset.GetUniqueLabel(), "->", source.GetUniqueLabel())
-					p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[tupleset].Subscribe(ctx, source), p.chunkSize, p.numProcs)
-					tuplesets[tupleset] = struct{}{}
-				}
-				p.resolve(ctx, edge.GetTo(), coord)
-				// println(edge.GetTo().GetUniqueLabel(), "->", "ts", tupleset.GetUniqueLabel())
-				p.traversal.pipeline[tupleset].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, tupleset), p.chunkSize, p.numProcs)
-				continue
-			}
-		*/
-
 		p.resolve(ctx, edge.GetTo(), coord)
-		// println(edge.GetTo().GetUniqueLabel(), "->", source.GetUniqueLabel())
 		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source), p.chunkSize, p.numProcs)
 	}
 }
