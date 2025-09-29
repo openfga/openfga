@@ -1994,19 +1994,14 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			// Once with optimization enabled
 			optimizedResultsChan := make(chan *ReverseExpandResult)
 			go func() {
-				q := NewReverseExpandQuery(
-					ds,
-					typesys,
-
-					// turn on weighted graph functionality
-					WithListObjectsOptimizationsEnabled(true),
-				)
+				q := NewReverseExpandQuery(ds, typesys)
 
 				newErr := q.Execute(ctx, &ReverseExpandRequest{
-					StoreID:    storeID,
-					ObjectType: test.objectType,
-					Relation:   test.relation,
-					User:       test.user,
+					StoreID:              storeID,
+					ObjectType:           test.objectType,
+					Relation:             test.relation,
+					User:                 test.user,
+					OptimizationsEnabled: true, // turn on weighted graph
 				}, optimizedResultsChan, NewResolutionMetadata())
 
 				if newErr != nil {
@@ -2105,13 +2100,7 @@ func TestLoopOverEdges(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		typesys2, err := typesystem.New(
 			testutils.MustTransformDSLToProtoWithID(workingModel),
@@ -2125,11 +2114,12 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        nil,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
@@ -2165,13 +2155,7 @@ func TestLoopOverEdges(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		node, ok := typesys.GetNode("document#admin")
 		require.True(t, ok)
@@ -2180,11 +2164,12 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        nil,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
 
 		require.Error(t, newErr)
@@ -2228,13 +2213,7 @@ func TestLoopOverEdges(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		typesys2, err := typesystem.New(
 			testutils.MustTransformDSLToProtoWithID(workingModel),
@@ -2248,11 +2227,12 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        nil,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
@@ -2288,13 +2268,7 @@ func TestLoopOverEdges(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		node, ok := typesys.GetNode("document#admin")
 		require.True(t, ok)
@@ -2303,11 +2277,12 @@ func TestLoopOverEdges(t *testing.T) {
 		require.NoError(t, err)
 
 		newErr := q.loopOverEdges(ctx, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        nil,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "user")
 
 		require.Error(t, newErr)
@@ -2354,13 +2329,7 @@ func TestIntersectionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		typesys2, err := typesystem.New(
 			testutils.MustTransformDSLToProtoWithID(workingModel),
@@ -2372,11 +2341,12 @@ func TestIntersectionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        nil,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
 		require.ErrorContains(t, err, "invalid intersection node")
@@ -2423,13 +2393,7 @@ func TestIntersectionHandler(t *testing.T) {
 			return nil, errorRet
 		})
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2442,11 +2406,12 @@ func TestIntersectionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: newStack,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        newStack,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
@@ -2498,13 +2463,7 @@ func TestIntersectionHandler(t *testing.T) {
 					return nil, nil
 				}
 			})
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2517,11 +2476,12 @@ func TestIntersectionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: newStack,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			relationStack:        newStack,
+			OptimizationsEnabled: true, // turn on weighted graph
 		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
@@ -2566,13 +2526,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-		q := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(mockDatastore, typesys)
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2585,11 +2539,12 @@ func TestIntersectionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.intersectionHandler(pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: newStack,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			OptimizationsEnabled: true, // turn on weighted graph
+			relationStack:        newStack,
 		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
@@ -2636,13 +2591,7 @@ func TestExclusionHandler(t *testing.T) {
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 
 		typesys2, err := typesystem.New(
 			testutils.MustTransformDSLToProtoWithID(workingModel),
@@ -2654,11 +2603,12 @@ func TestExclusionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: nil,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			OptimizationsEnabled: true, // turn on weighted graph
+			relationStack:        nil,
 		}, make(chan *ReverseExpandResult), node, "", NewResolutionMetadata())
 		require.Error(t, err)
 		require.ErrorContains(t, err, "invalid exclusion node")
@@ -2704,13 +2654,7 @@ func TestExclusionHandler(t *testing.T) {
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).Return(func(ctx context.Context) (*graph.ResolveCheckResponse, error) {
 			return nil, errorRet
 		})
-		q := NewReverseExpandQuery(
-			ds,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(ds, typesys)
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2723,11 +2667,12 @@ func TestExclusionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: newStack,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			OptimizationsEnabled: true, // turn on weighted graph
+			relationStack:        newStack,
 		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
@@ -2774,13 +2719,7 @@ func TestExclusionHandler(t *testing.T) {
 
 		mockCheckResolver := graph.NewMockCheckRewriteResolver(ctrl)
 		mockCheckResolver.EXPECT().CheckRewrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-		q := NewReverseExpandQuery(
-			mockDatastore,
-			typesys,
-
-			// turn on weighted graph functionality
-			WithListObjectsOptimizationsEnabled(true),
-		)
+		q := NewReverseExpandQuery(mockDatastore, typesys)
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
@@ -2793,11 +2732,12 @@ func TestExclusionHandler(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 2)
 		err = q.exclusionHandler(ctx, pool, &ReverseExpandRequest{
-			StoreID:       storeID,
-			ObjectType:    objectType,
-			Relation:      relation,
-			User:          user,
-			relationStack: newStack,
+			StoreID:              storeID,
+			ObjectType:           objectType,
+			Relation:             relation,
+			User:                 user,
+			OptimizationsEnabled: true, // turn on weighted graph
+			relationStack:        newStack,
 		}, make(chan *ReverseExpandResult), edges[0].GetTo(), "user", NewResolutionMetadata())
 		require.NoError(t, err)
 		err = pool.Wait()
