@@ -53,9 +53,10 @@ type checkOutcome struct {
 type LocalChecker struct {
 	delegate             CheckResolver
 	concurrencyLimit     int
+	upstreamTimeout      time.Duration
 	planner              *planner.Planner
 	logger               logger.Logger
-  optimizationsEnabled bool
+	optimizationsEnabled bool
 	maxResolutionDepth   uint32
 }
 
