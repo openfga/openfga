@@ -51,11 +51,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate           CheckResolver
-	concurrencyLimit   int
-	planner            *planner.Planner
-	logger             logger.Logger
-	maxResolutionDepth uint32
+	delegate             CheckResolver
+	concurrencyLimit     int
+	planner              *planner.Planner
+	logger               logger.Logger
+  optimizationsEnabled bool
+	maxResolutionDepth   uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -85,6 +86,12 @@ func WithMaxResolutionDepth(depth uint32) LocalCheckerOption {
 	}
 }
 
+func WithUpstreamTimeout(timeout time.Duration) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.upstreamTimeout = timeout
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 //
@@ -94,6 +101,7 @@ func NewLocalChecker(opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxResolutionDepth: serverconfig.DefaultResolveNodeLimit,
+		upstreamTimeout:    serverconfig.DefaultRequestTimeout,
 		logger:             logger.NewNoopLogger(),
 		planner:            planner.NewNoopPlanner(),
 	}
@@ -691,17 +699,18 @@ func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.Tup
 	return isPubliclyAssignable
 }
 
-func profiledCheckHandler(keyPlan *planner.KeyPlan, resolverName string, resolver CheckHandlerFunc) CheckHandlerFunc {
+func (c *LocalChecker) profiledCheckHandler(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy, resolver CheckHandlerFunc) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		start := time.Now()
 		res, err := resolver(ctx)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				keyPlan.UpdateStatsOverGuess(resolverName, time.Since(start))
+			// penalize plans that timeout from the upstream context
+			if errors.Is(err, context.DeadlineExceeded) {
+				keyPlan.UpdateStats(strategy, c.upstreamTimeout)
 			}
 			return nil, err
 		}
-		keyPlan.UpdateStats(resolverName, time.Since(start))
+		keyPlan.UpdateStats(strategy, time.Since(start))
 		return res, nil
 	}
 }
@@ -733,7 +742,9 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			return c.defaultUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 		}
 
-		possibleResolvers := []string{defaultResolver}
+		possibleStrategies := map[string]*planner.KeyPlanStrategy{
+			defaultResolver: defaultPlan,
+		}
 
 		var b strings.Builder
 		b.WriteString("userset|")
@@ -757,16 +768,19 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			if !req.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
-			possibleResolvers = append(possibleResolvers, recursiveResolver)
+
 			b.WriteString("infinite")
-			keyPlan := c.planner.GetKeyPlan(b.String())
-			resolverName := keyPlan.SelectResolver(possibleResolvers)
+			key := b.String()
+			keyPlan := c.planner.GetKeyPlan(key)
+			possibleStrategies[defaultResolver] = defaultRecursivePlan
+			possibleStrategies[recursiveResolver] = recursivePlan
+			plan := keyPlan.SelectStrategy(possibleStrategies)
 
 			resolver := c.defaultUserset
-			if resolverName == recursiveResolver {
+			if plan.Type == recursiveResolver {
 				resolver = c.recursiveUserset
 			}
-			return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
+			return c.profiledCheckHandler(keyPlan, plan, resolver(ctx, req, directlyRelatedUsersetTypes, iter))(ctx)
 		}
 
 		var resolvers []CheckHandlerFunc
@@ -774,7 +788,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 		if req.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
-			possibleResolvers = append(possibleResolvers, weightTwoResolver)
+			possibleStrategies[weightTwoResolver] = weight2Plan
 			for _, userset := range directlyRelatedUsersetTypes {
 				if !typesys.UsersetUseWeight2Resolver(objectType, relation, userType, userset) {
 					remainingUsersetTypes = append(remainingUsersetTypes, userset)
@@ -791,15 +805,15 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 				k.WriteString(keyPlanPrefix)
 				k.WriteString("userset|")
 				k.WriteString(userset.String())
-
-				keyPlan := c.planner.GetKeyPlan(k.String())
-				resolverName := keyPlan.SelectResolver(possibleResolvers)
+				key := k.String()
+				keyPlan := c.planner.GetKeyPlan(key)
+				strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 				resolver := c.defaultUserset
-				if resolverName == weightTwoResolver {
+				if strategy.Type == weightTwoResolver {
 					resolver = c.weight2Userset
 				}
-				resolvers = append(resolvers, profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, usersets, iter)))
+				resolvers = append(resolvers, c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, usersets, iter)))
 			}
 			// for all usersets could not be resolved through weight2 resolver, resolve them all through the default resolver.
 			// they all resolved as a group rather than individually.
@@ -962,15 +976,18 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		defer filteredIter.Stop()
 
 		resolver := c.defaultTTU
-		possibleResolvers := []string{defaultResolver}
+		possibleStrategies := map[string]*planner.KeyPlanStrategy{
+			defaultResolver: defaultPlan,
+		}
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
 			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleResolvers = append(possibleResolvers, weightTwoResolver)
+				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
 			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
-				possibleResolvers = append(possibleResolvers, recursiveResolver)
+				possibleStrategies[defaultResolver] = defaultRecursivePlan
+				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
 			}
 		}
@@ -995,9 +1012,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		b.WriteString(computedRelation)
 		planKey := b.String()
 		keyPlan := c.planner.GetKeyPlan(planKey)
-		resolverName := keyPlan.SelectResolver(possibleResolvers)
+		strategy := keyPlan.SelectStrategy(possibleStrategies)
 
-		switch resolverName {
+		switch strategy.Type {
 		case defaultResolver:
 			resolver = c.defaultTTU
 		case weightTwoResolver:
@@ -1006,7 +1023,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			resolver = c.recursiveTTU
 		}
 
-		return profiledCheckHandler(keyPlan, resolverName, resolver(ctx, req, rewrite, filteredIter))(ctx)
+		return c.profiledCheckHandler(keyPlan, strategy, resolver(ctx, req, rewrite, filteredIter))(ctx)
 	}
 }
 

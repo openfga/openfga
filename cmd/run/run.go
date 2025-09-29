@@ -312,7 +312,6 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
 
-	flags.Duration("planner-initial-guess", defaultConfig.Planner.InitialGuess, "the starting performance assumption for a new resolver")
 	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
 	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
@@ -708,7 +707,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
 		server.WithPlanner(planner.New(&planner.Config{
-			InitialGuess:      config.Planner.InitialGuess,
 			EvictionThreshold: config.Planner.EvictionThreshold,
 			CleanupInterval:   config.Planner.CleanupInterval,
 		})),
@@ -742,7 +740,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
-		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
+		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", lis.Addr().String()))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
 				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
@@ -765,7 +763,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
-				s.Logger.Fatal("", zap.Error(err))
+				s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
 			}
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 		} else {
@@ -778,7 +776,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			s.Logger.Fatal("", zap.Error(err))
+			s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
 		}
 		defer conn.Close()
 
