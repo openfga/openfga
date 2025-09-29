@@ -976,7 +976,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizationsEnabled(true), // New features always enabled
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
@@ -1000,7 +999,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizationsEnabled(true), // New features always enabled
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
