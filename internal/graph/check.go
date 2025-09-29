@@ -51,12 +51,11 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	planner              *planner.Planner
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate           CheckResolver
+	concurrencyLimit   int
+	planner            *planner.Planner
+	logger             logger.Logger
+	maxResolutionDepth uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -755,9 +754,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			// Optimizations can be enabled for a specific request OR for the checker itself (like in shadow tests),
-			// We have to check both.
-			if !req.optimizationsEnabled && !c.optimizationsEnabled {
+			if !req.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 			possibleResolvers = append(possibleResolvers, recursiveResolver)
