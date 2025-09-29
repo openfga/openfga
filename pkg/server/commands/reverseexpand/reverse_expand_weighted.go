@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"maps"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -1677,6 +1678,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 				}
 				break
 			}
+			runtime.Gosched()
 		}
 	}()
 
