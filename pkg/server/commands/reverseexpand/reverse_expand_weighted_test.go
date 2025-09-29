@@ -169,6 +169,43 @@ var cases = []testcase{
 		expected:   []string{"resource:1"},
 	},
 	{
+		name: "double_ttu",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type directs
+			relations
+				define direct: [user]
+				define mixed: [user]
+				define da: [user]
+
+		type usersets-user
+			relations
+				define da: [user]
+				define mixed: [directs#direct, user] and da
+
+		type wrapper
+			relations
+				define parent: [usersets-user, directs]
+				define assigned: mixed from parent but not da from parent
+		`,
+		tuples: []string{
+			"directs:1#mixed@user:bob",
+			"usersets-user:1#da@user:bob",
+			"directs:2#mixed@user:bob",
+			"wrapper:1#parent@directs:1",
+			"wrapper:1#parent@usersets-user:1",
+			"wrapper:2#parent@directs:2",
+		},
+		objectType: "wrapper",
+		relation:   "assigned",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"wrapper:2"},
+	},
+	{
 		name: "simple_userset_child_computed_userset",
 		model: `
 		model
