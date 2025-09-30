@@ -79,23 +79,6 @@ func (m *mockPanicIterator[T]) Head(ctx context.Context) (T, error) {
 	panic(panicErr)
 }
 
-func TestResolver(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	ctx := context.Background()
-
-	t.Run("should_return_error_if_handler_panics", func(t *testing.T) {
-		panicHandler := func(context.Context) (*ResolveCheckResponse, error) {
-			panic(panicErr)
-		}
-		resChan := resolver(ctx, 1, panicHandler)
-		res := <-resChan
-		require.ErrorContains(t, res.err, panicErr)
-	})
-}
-
 func TestCheck_CorrectContext(t *testing.T) {
 	checker := NewLocalChecker()
 	t.Cleanup(checker.Close)

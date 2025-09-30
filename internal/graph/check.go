@@ -139,55 +139,60 @@ type CheckHandlerFunc func(ctx context.Context) (*ResolveCheckResponse, error)
 // in flight at any given time.
 type CheckFuncReducer func(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error)
 
-// resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
-// Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
-// every concurrent check is evaluated. The concurrencyLimit can be set to provide a maximum number of concurrent
-// evaluations in flight at any point.
-func resolver(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) <-chan checkOutcome {
-	pool := concurrency.NewPool(ctx, concurrencyLimit)
-	out := make(chan checkOutcome, len(handlers))
-	go func() {
-		for _, handler := range handlers {
-			pool.Go(func(ctx context.Context) error {
-				recoveredErr := panics.Try(func() {
-					res, err := handler(ctx)
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{res, err}, out)
-				})
-				if recoveredErr != nil {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredErr.AsError())}, out)
-				}
-				return nil
-			})
-		}
-		_ = pool.Wait()
-		close(out)
-	}()
-	return out
+// runHandler safely executes a CheckHandlerFunc, recovers from any panics,
+// and returns the result as a checkOutcome.
+func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
+	var res *ResolveCheckResponse
+	var err error
+
+	recoveredErr := panics.Try(func() {
+		res, err = handler(ctx)
+	})
+	if recoveredErr != nil {
+		err = fmt.Errorf("%w: %s", ErrPanic, recoveredErr.AsError())
+	}
+
+	return checkOutcome{res, err}
 }
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := resolver(cancellableCtx, concurrencyLimit, handlers...)
+	defer cancel()
 
-	var finalErr error
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
+	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	out := make(chan checkOutcome, len(handlers))
+
+	for _, handler := range handlers {
+		h := handler
+		pool.Go(func(ctx context.Context) error {
+			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			return nil
+		})
 	}
 
-ConsumerLoop:
-	for {
+	go func() {
+		_ = pool.Wait()
+		close(out)
+	}()
+
+	var finalErr error
+	finalResult := &ResolveCheckResponse{Allowed: false}
+
+	for i := 0; i < len(handlers); i++ {
 		select {
 		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-outcomeChannel:
+			return nil, ctx.Err()
+
+		case outcome, ok := <-out:
 			if !ok {
-				break ConsumerLoop
+				break
 			}
+
 			if outcome.err != nil {
 				finalErr = outcome.err
-				break // continue
+				continue // Continue to see if we find an 'Allowed: true'
 			}
 
 			if outcome.resp.GetResolutionMetadata().CycleDetected {
@@ -195,17 +200,12 @@ ConsumerLoop:
 			}
 
 			if outcome.resp.Allowed {
-				finalErr = nil
-				finalResult = outcome.resp
-				break ConsumerLoop
+				// Short-circuit success. defer cancel() will clean up workers.
+				return outcome.resp, nil
 			}
 		}
 	}
-	cancel() // prevent further processing of other checks
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
+
 	if finalErr != nil {
 		return nil, finalErr
 	}
@@ -221,50 +221,64 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := resolver(cancellableCtx, concurrencyLimit, handlers...)
+	defer cancel()
+
+	pool := concurrency.NewPool(cancellableCtx, concurrencyLimit)
+	out := make(chan checkOutcome, len(handlers))
+
+	for _, handler := range handlers {
+		h := handler // Capture loop variable for the goroutine
+		pool.Go(func(ctx context.Context) error {
+			concurrency.TrySendThroughChannel(cancellableCtx, runHandler(ctx, h), out)
+			return nil
+		})
+	}
+
+	go func() {
+		_ = pool.Wait()
+		close(out)
+	}()
 
 	var finalErr error
 	finalResult := &ResolveCheckResponse{
 		Allowed: true,
 	}
 
-ConsumerLoop:
-	for {
+	for i := 0; i < len(handlers); i++ {
 		select {
 		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-outcomeChannel:
+			return nil, ctx.Err()
+
+		case outcome, ok := <-out:
 			if !ok {
-				break ConsumerLoop
+				break
 			}
+
 			if outcome.err != nil {
-				finalErr = outcome.err
-				break // continue
+				// Store the first error we see, but don't exit yet.
+				// A definitive 'false' result from another handler can override this.
+				if finalErr == nil {
+					finalErr = outcome.err
+				}
+				continue
 			}
 
-			if outcome.resp.GetResolutionMetadata().CycleDetected {
-				finalErr = nil
-				finalResult.ResolutionMetadata.CycleDetected = true
+			if outcome.resp.GetResolutionMetadata().CycleDetected || !outcome.resp.Allowed {
+				// Short-circuit failure. defer cancel() will clean up workers.
 				finalResult.Allowed = false
-				break ConsumerLoop
-			}
-
-			if !outcome.resp.Allowed {
-				finalErr = nil
-				finalResult.Allowed = false
-				break ConsumerLoop
+				finalResult.ResolutionMetadata.CycleDetected = outcome.resp.GetResolutionMetadata().CycleDetected
+				return finalResult, nil
 			}
 		}
 	}
-	cancel() // prevent further processing of other checks
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
+
+	// If we've processed all handlers without a definitive 'false',
+	// then any error we encountered along the way is the final result.
 	if finalErr != nil {
 		return nil, finalErr
 	}
 
+	// If the loop completes without any "false" outcomes or errors, the result is "true".
 	return finalResult, nil
 }
 
@@ -276,21 +290,33 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 	}
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
-
-	baseChan := resolver(cancellableCtx, 1, handlers[0])
-	subChan := resolver(cancellableCtx, 1, handlers[1])
 	defer cancel()
+
+	baseChan := make(chan checkOutcome, 1)
+	subChan := make(chan checkOutcome, 1)
+
+	// Launch base handler
+	go func() {
+		defer close(baseChan)
+		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[0]), baseChan)
+	}()
+
+	// Launch subtract handler
+	go func() {
+		defer close(subChan)
+		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[1]), subChan)
+	}()
 
 	var baseErr, subErr error
 	var baseDone, subDone bool
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-	}
 
+	// This loop waits for both outcomes, but contains logic to return early if a
+	// definitive answer is found, which is the key to fixing the tests.
 	for !baseDone || !subDone {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
+
 		case baseResult, ok := <-baseChan:
 			if !ok {
 				baseDone = true
@@ -300,7 +326,8 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 				baseErr = baseResult.err
 				continue
 			}
-
+			// A definitive 'false' from base means the whole result is false.
+			// This overrides any error that might come from the 'sub' handler.
 			if baseResult.resp.GetCycleDetected() || !baseResult.resp.GetAllowed() {
 				return &ResolveCheckResponse{
 					Allowed: false,
@@ -319,29 +346,24 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 				subErr = subResult.err
 				continue
 			}
-
-			if subResult.resp.GetCycleDetected() {
+			// A definitive 'true' from sub means the exclusion is false.
+			if subResult.resp.GetCycleDetected() || subResult.resp.GetAllowed() {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
+						CycleDetected: subResult.resp.GetCycleDetected(),
 					},
 				}, nil
-			}
-
-			if subResult.resp.GetAllowed() {
-				return finalResult, nil
 			}
 		}
 	}
 
-	// base is either (true) or error, sub is either (false) or error:
-	// true, false - true
-	// true, error - error
-	// error, false - error
-	// error, error - error
+	// If we get here, it means:
+	// - base was either (Allowed: true) or an error
+	// - sub was either (Allowed: false) or an error
+	// We can now evaluate the errors.
 	if baseErr != nil || subErr != nil {
-		return nil, errors.Join(baseErr, subErr)
+		return nil, errors.Join(baseErr, subErr) // Use errors.Join for cleaner error handling
 	}
 
 	return &ResolveCheckResponse{
