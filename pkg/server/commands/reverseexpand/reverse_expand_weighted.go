@@ -1009,7 +1009,9 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			omni := &omniInterpreter{
-				backend:          backend,
+				backend: backend,
+
+				hndNil:           handleUnsupported,
 				hndDirect:        handleDirectEdge,
 				hndTTU:           handleTTUEdge,
 				hndComputed:      handleIdentity,
@@ -1025,7 +1027,9 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
-				backend:          backend,
+				backend: backend,
+
+				hndNil:           handleUnsupported,
 				hndDirect:        handleDirectEdge,
 				hndTTU:           handleTTUEdge,
 				hndComputed:      handleIdentity,
@@ -1041,7 +1045,9 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
-				backend:          backend,
+				backend: backend,
+
+				hndNil:           handleUnsupported,
 				hndDirect:        handleDirectEdge,
 				hndTTU:           handleTTUEdge,
 				hndComputed:      handleIdentity,
@@ -1060,7 +1066,9 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeLogicalDirectGrouping:
 		omni := &omniInterpreter{
-			backend:          backend,
+			backend: backend,
+
+			hndNil:           handleUnsupported,
 			hndDirect:        handleDirectEdge,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
@@ -1076,7 +1084,9 @@ func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeLogicalTTUGrouping:
 		omni := &omniInterpreter{
-			backend:          backend,
+			backend: backend,
+
+			hndNil:           handleUnsupported,
 			hndDirect:        handleUnsupported,
 			hndTTU:           handleTTUEdge,
 			hndComputed:      handleUnsupported,
