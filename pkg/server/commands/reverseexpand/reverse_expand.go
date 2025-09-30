@@ -130,7 +130,6 @@ type ReverseExpandQuery struct {
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
-	StoreID                 string
 
 	dispatchThrottlerConfig threshold.Config
 
@@ -180,12 +179,6 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
 	return func(d *ReverseExpandQuery) {
 		d.optimizationsEnabled = enabled
-	}
-}
-
-func WithStoreID(storeID string) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.StoreID = storeID
 	}
 }
 
