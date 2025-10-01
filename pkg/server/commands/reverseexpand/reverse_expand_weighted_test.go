@@ -11,7 +11,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	lang "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -33,15 +32,9 @@ type testcase struct {
 	expected   []string
 }
 
-func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
-	backend := &backend{
-		datastore: ds,
-		storeID:   storeID,
-	}
-
+func setup(b *Backend, tc testcase) Path {
 	traversal := &Traversal{
-		graph:   g,
-		backend: backend,
+		backend: b,
 	}
 
 	target, ok := traversal.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
@@ -1858,10 +1851,18 @@ func BenchmarkPipeline(b *testing.B) {
 
 			g := typesys.GetWeightedGraph()
 
+			backend := &Backend{
+				Datastore:  ds,
+				StoreID:    storeID,
+				TypeSystem: typesys,
+				Context:    nil,
+				Graph:      g,
+			}
+
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				path := setup(ds, storeID, g, tc)
+				path := setup(backend, tc)
 
 				seq := path.Objects(ctx)
 
@@ -1893,7 +1894,15 @@ func TestPipeline(t *testing.T) {
 
 			ctx := context.Background()
 
-			path := setup(ds, storeID, g, tc)
+			backend := &Backend{
+				Datastore:  ds,
+				StoreID:    storeID,
+				TypeSystem: typesys,
+				Context:    nil,
+				Graph:      g,
+			}
+
+			path := setup(backend, tc)
 			evaluate(t, ctx, tc, path)
 		})
 	}
