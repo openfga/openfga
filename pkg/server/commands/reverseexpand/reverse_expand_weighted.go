@@ -12,6 +12,7 @@ import (
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
@@ -193,12 +194,21 @@ func strToItem(s string) Item {
 	return Item{Value: s}
 }
 
-type backend struct {
-	datastore storage.RelationshipTupleReader
-	storeID   string
+type Backend struct {
+	Datastore  storage.RelationshipTupleReader
+	StoreID    string
+	TypeSystem *typesystem.TypeSystem
+	Context    *structpb.Struct
 }
 
-func (b *backend) query(ctx context.Context, objectType, objectRelation string, userFilter []*openfgav1.ObjectRelation) iter.Seq[Item] {
+type queryInput struct {
+	objectType     string
+	objectRelation string
+	userFilter     []*openfgav1.ObjectRelation
+	conditions     []string
+}
+
+func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
 	ch := make(chan Item)
@@ -210,13 +220,13 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 		defer close(ch)
 		defer wg.Done()
 
-		it, err := b.datastore.ReadStartingWithUser(
+		it, err := b.Datastore.ReadStartingWithUser(
 			ctx,
-			b.storeID,
+			b.StoreID,
 			storage.ReadStartingWithUserFilter{
-				ObjectType: objectType,
-				Relation:   objectRelation,
-				UserFilter: userFilter,
+				ObjectType: input.objectType,
+				Relation:   input.objectRelation,
+				UserFilter: input.userFilter,
 			},
 			storage.ReadStartingWithUserOptions{},
 		)
@@ -229,10 +239,36 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 			return
 		}
 
-		defer it.Stop()
+		var hasConditions bool
+
+		for _, cond := range input.conditions {
+			if cond != weightedGraph.NoCond {
+				hasConditions = true
+				break
+			}
+		}
+
+		var itr storage.TupleKeyIterator
+
+		if hasConditions {
+			itr = storage.NewConditionsFilteredTupleKeyIterator(
+				storage.NewFilteredTupleKeyIterator(
+					storage.NewTupleKeyIteratorFromTupleIterator(it),
+					validation.FilterInvalidTuples(b.TypeSystem),
+				),
+				checkutil.BuildTupleKeyConditionFilter(ctx, b.Context, b.TypeSystem),
+			)
+		} else {
+			itr = storage.NewFilteredTupleKeyIterator(
+				storage.NewTupleKeyIteratorFromTupleIterator(it),
+				validation.FilterInvalidTuples(b.TypeSystem),
+			)
+		}
+
+		defer itr.Stop()
 
 		for {
-			t, err := it.Next(ctx)
+			t, err := itr.Next(ctx)
 
 			if err != nil {
 				if err == storage.ErrIteratorDone {
@@ -253,7 +289,7 @@ func (b *backend) query(ctx context.Context, objectType, objectRelation string, 
 			select {
 			case <-ctx.Done():
 				return
-			case ch <- Item{Value: t.GetKey().Object}:
+			case ch <- Item{Value: t.GetObject()}:
 			}
 		}
 	}()
@@ -487,6 +523,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					// Deduplicate items within this group based on the buffer for this sender
 					for _, item := range group.Items {
 						if item.Err != nil {
+							unseen = append(unseen, item)
 							continue
 						}
 
@@ -582,9 +619,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 }
 
-type edgeHandler func(*backend, *Edge, []Item) iter.Seq[Item]
+type edgeHandler func(*Backend, *Edge, []Item) iter.Seq[Item]
 
-func handleDirectEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
+func handleDirectEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetRelationDefinition(), "#")
 	nodeType := parts[0]
 	nodeRelation := parts[1]
@@ -616,7 +653,13 @@ func handleDirectEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
 	var results iter.Seq[Item]
 
 	if len(userFilter) > 0 {
-		results = b.query(context.Background(), nodeType, nodeRelation, userFilter)
+		input := queryInput{
+			objectType:     nodeType,
+			objectRelation: nodeRelation,
+			userFilter:     userFilter,
+			conditions:     edge.GetConditions(),
+		}
+		results = b.query(context.Background(), input)
 	} else {
 		results = emptySequence
 	}
@@ -627,7 +670,7 @@ func handleDirectEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
 	return results
 }
 
-func handleTTUEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
+func handleTTUEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
 	nodeType := parts[0]
 	nodeRelation := parts[1]
@@ -651,7 +694,13 @@ func handleTTUEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
 	var results iter.Seq[Item]
 
 	if len(userFilter) > 0 {
-		results = b.query(context.Background(), nodeType, nodeRelation, userFilter)
+		input := queryInput{
+			objectType:     nodeType,
+			objectRelation: nodeRelation,
+			userFilter:     userFilter,
+			conditions:     edge.GetConditions(),
+		}
+		results = b.query(context.Background(), input)
 	} else {
 		results = emptySequence
 	}
@@ -662,16 +711,16 @@ func handleTTUEdge(b *backend, edge *Edge, items []Item) iter.Seq[Item] {
 	return results
 }
 
-func handleIdentity(_ *backend, _ *Edge, items []Item) iter.Seq[Item] {
+func handleIdentity(_ *Backend, _ *Edge, items []Item) iter.Seq[Item] {
 	return sequence(items...)
 }
 
-func handleUnsupported(_ *backend, _ *Edge, _ []Item) iter.Seq[Item] {
+func handleUnsupported(_ *Backend, _ *Edge, _ []Item) iter.Seq[Item] {
 	panic("unsupported state")
 }
 
 func handleLeafNode(node *Node) edgeHandler {
-	return func(_ *backend, _ *Edge, items []Item) iter.Seq[Item] {
+	return func(_ *Backend, _ *Edge, items []Item) iter.Seq[Item] {
 
 		objectType := strings.Split(node.GetLabel(), "#")[0]
 
@@ -694,7 +743,7 @@ func handleLeafNode(node *Node) edgeHandler {
 }
 
 type omniInterpreter struct {
-	backend *backend
+	backend *Backend
 
 	node *Node
 
@@ -945,7 +994,7 @@ type Worker struct {
 	wg        sync.WaitGroup
 }
 
-func NewWorker(backend *backend, node *Node, coord *coordinator) *Worker {
+func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 	var r resolver
 
 	id := coord.register()
@@ -1208,17 +1257,14 @@ func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGrou
 
 type Traversal struct {
 	graph    *Graph
-	backend  *backend
+	backend  *Backend
 	pipeline map[*Node]*Worker
 }
 
-func NewTraversal(ds storage.RelationshipTupleReader, storeID string, graph *Graph) Traversal {
+func NewTraversal(backend *Backend, graph *Graph) Traversal {
 	return Traversal{
-		backend: &backend{
-			datastore: ds,
-			storeID:   storeID,
-		},
-		graph: graph,
+		backend: backend,
+		graph:   graph,
 	}
 }
 

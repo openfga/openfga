@@ -33,15 +33,10 @@ type testcase struct {
 	expected   []string
 }
 
-func setup(ds storage.OpenFGADatastore, storeID string, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
-	backend := &backend{
-		datastore: ds,
-		storeID:   storeID,
-	}
-
+func setup(b *Backend, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
 	traversal := &Traversal{
 		graph:   g,
-		backend: backend,
+		backend: b,
 	}
 
 	target, ok := traversal.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
@@ -1858,10 +1853,17 @@ func BenchmarkPipeline(b *testing.B) {
 
 			g := typesys.GetWeightedGraph()
 
+			backend := &Backend{
+				Datastore:  ds,
+				StoreID:    storeID,
+				TypeSystem: typesys,
+				Context:    nil,
+			}
+
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				path := setup(ds, storeID, g, tc)
+				path := setup(backend, g, tc)
 
 				seq := path.Objects(ctx)
 
@@ -1893,7 +1895,14 @@ func TestPipeline(t *testing.T) {
 
 			ctx := context.Background()
 
-			path := setup(ds, storeID, g, tc)
+			backend := &Backend{
+				Datastore:  ds,
+				StoreID:    storeID,
+				TypeSystem: typesys,
+				Context:    nil,
+			}
+
+			path := setup(backend, g, tc)
 			evaluate(t, ctx, tc, path)
 		})
 	}
