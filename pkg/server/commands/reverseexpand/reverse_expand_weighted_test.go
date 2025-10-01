@@ -11,7 +11,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	lang "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -33,9 +32,8 @@ type testcase struct {
 	expected   []string
 }
 
-func setup(b *Backend, g *lang.WeightedAuthorizationModelGraph, tc testcase) Path {
+func setup(b *Backend, tc testcase) Path {
 	traversal := &Traversal{
-		graph:   g,
 		backend: b,
 	}
 
@@ -1858,12 +1856,13 @@ func BenchmarkPipeline(b *testing.B) {
 				StoreID:    storeID,
 				TypeSystem: typesys,
 				Context:    nil,
+				Graph:      g,
 			}
 
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				path := setup(backend, g, tc)
+				path := setup(backend, tc)
 
 				seq := path.Objects(ctx)
 
@@ -1900,9 +1899,10 @@ func TestPipeline(t *testing.T) {
 				StoreID:    storeID,
 				TypeSystem: typesys,
 				Context:    nil,
+				Graph:      g,
 			}
 
-			path := setup(backend, g, tc)
+			path := setup(backend, tc)
 			evaluate(t, ctx, tc, path)
 		})
 	}

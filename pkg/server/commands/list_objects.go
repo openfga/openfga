@@ -532,7 +532,15 @@ func (q *ListObjectsQuery) Execute(
 			},
 		)
 
-		traversal := reverseexpand.NewTraversal(ds, req.GetStoreId(), wgraph)
+		backend := &reverseexpand.Backend{
+			Datastore:  ds,
+			StoreID:    req.GetStoreId(),
+			TypeSystem: typesys,
+			Context:    req.GetContext(),
+			Graph:      wgraph,
+		}
+
+		traversal := reverseexpand.NewTraversal(backend)
 
 		var source reverseexpand.Source
 		var target reverseexpand.Target

@@ -199,6 +199,7 @@ type Backend struct {
 	StoreID    string
 	TypeSystem *typesystem.TypeSystem
 	Context    *structpb.Struct
+	Graph      *Graph
 }
 
 type queryInput struct {
@@ -619,9 +620,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 }
 
-type edgeHandler func(*Backend, *Edge, []Item) iter.Seq[Item]
+type edgeHandler func(*Edge, []Item) iter.Seq[Item]
 
-func handleDirectEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetRelationDefinition(), "#")
 	nodeType := parts[0]
 	nodeRelation := parts[1]
@@ -670,10 +671,35 @@ func handleDirectEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
 	return results
 }
 
-func handleTTUEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
-	nodeType := parts[0]
-	nodeRelation := parts[1]
+	tuplesetType := parts[0]
+	tuplesetRelation := parts[1]
+
+	tuplesetNode, ok := b.Graph.GetNodeByID(edge.GetTuplesetRelation())
+	if !ok {
+		panic("tupleset node not in graph")
+	}
+
+	edges, ok := b.Graph.GetEdgesFromNode(tuplesetNode)
+	if !ok {
+		panic("no edges found for tupleset node")
+	}
+
+	targetType := strings.Split(edge.GetTo().GetLabel(), "#")[0]
+
+	var targetEdge *Edge
+
+	for _, e := range edges {
+		if e.GetTo().GetLabel() == targetType {
+			targetEdge = e
+			break
+		}
+	}
+
+	if targetEdge == nil {
+		panic("ttu target type is not an edge of tupleset")
+	}
 
 	var userFilter []*openfgav1.ObjectRelation
 
@@ -695,10 +721,10 @@ func handleTTUEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
 
 	if len(userFilter) > 0 {
 		input := queryInput{
-			objectType:     nodeType,
-			objectRelation: nodeRelation,
+			objectType:     tuplesetType,
+			objectRelation: tuplesetRelation,
 			userFilter:     userFilter,
-			conditions:     edge.GetConditions(),
+			conditions:     targetEdge.GetConditions(),
 		}
 		results = b.query(context.Background(), input)
 	} else {
@@ -711,16 +737,16 @@ func handleTTUEdge(b *Backend, edge *Edge, items []Item) iter.Seq[Item] {
 	return results
 }
 
-func handleIdentity(_ *Backend, _ *Edge, items []Item) iter.Seq[Item] {
+func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
 	return sequence(items...)
 }
 
-func handleUnsupported(_ *Backend, _ *Edge, _ []Item) iter.Seq[Item] {
+func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
 	panic("unsupported state")
 }
 
 func handleLeafNode(node *Node) edgeHandler {
-	return func(_ *Backend, _ *Edge, items []Item) iter.Seq[Item] {
+	return func(_ *Edge, items []Item) iter.Seq[Item] {
 
 		objectType := strings.Split(node.GetLabel(), "#")[0]
 
@@ -743,10 +769,6 @@ func handleLeafNode(node *Node) edgeHandler {
 }
 
 type omniInterpreter struct {
-	backend *Backend
-
-	node *Node
-
 	hndNil           edgeHandler
 	hndDirect        edgeHandler
 	hndTTU           edgeHandler
@@ -760,23 +782,23 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 	var results iter.Seq[Item]
 
 	if edge == nil {
-		results = o.hndNil(o.backend, edge, items)
+		results = o.hndNil(edge, items)
 		return results
 	}
 
 	switch edge.GetEdgeType() {
 	case EdgeTypeDirect:
-		results = o.hndDirect(o.backend, edge, items)
+		results = o.hndDirect(edge, items)
 	case EdgeTypeTTU:
-		results = o.hndTTU(o.backend, edge, items)
+		results = o.hndTTU(edge, items)
 	case EdgeTypeComputed:
-		results = o.hndComputed(o.backend, edge, items)
+		results = o.hndComputed(edge, items)
 	case EdgeTypeRewrite:
-		results = o.hndRewrite(o.backend, edge, items)
+		results = o.hndRewrite(edge, items)
 	case EdgeTypeDirectLogical:
-		results = o.hndDirectLogical(o.backend, edge, items)
+		results = o.hndDirectLogical(edge, items)
 	case EdgeTypeTTULogical:
-		results = o.hndTTULogical(o.backend, edge, items)
+		results = o.hndTTULogical(edge, items)
 	default:
 		panic("unexpected edge type")
 	}
@@ -1002,11 +1024,9 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
 		omni := &omniInterpreter{
-			backend: backend,
-
 			hndNil:           handleLeafNode(node),
-			hndDirect:        handleDirectEdge,
-			hndTTU:           handleTTUEdge,
+			hndDirect:        backend.handleDirectEdge,
+			hndTTU:           backend.handleTTUEdge,
 			hndComputed:      handleIdentity,
 			hndRewrite:       handleIdentity,
 			hndDirectLogical: handleUnsupported,
@@ -1020,8 +1040,6 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeSpecificType:
 		omni := &omniInterpreter{
-			backend: backend,
-
 			hndNil:           handleLeafNode(node),
 			hndDirect:        handleUnsupported,
 			hndTTU:           handleUnsupported,
@@ -1038,8 +1056,6 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeSpecificTypeWildcard:
 		omni := &omniInterpreter{
-			backend: backend,
-
 			hndNil:           handleLeafNode(node),
 			hndDirect:        handleUnsupported,
 			hndTTU:           handleUnsupported,
@@ -1058,11 +1074,9 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		switch node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			omni := &omniInterpreter{
-				backend: backend,
-
 				hndNil:           handleUnsupported,
-				hndDirect:        handleDirectEdge,
-				hndTTU:           handleTTUEdge,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1076,11 +1090,9 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
-				backend: backend,
-
 				hndNil:           handleUnsupported,
-				hndDirect:        handleDirectEdge,
-				hndTTU:           handleTTUEdge,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1094,11 +1106,9 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
-				backend: backend,
-
 				hndNil:           handleUnsupported,
-				hndDirect:        handleDirectEdge,
-				hndTTU:           handleTTUEdge,
+				hndDirect:        backend.handleDirectEdge,
+				hndTTU:           backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1115,10 +1125,8 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeLogicalDirectGrouping:
 		omni := &omniInterpreter{
-			backend: backend,
-
 			hndNil:           handleUnsupported,
-			hndDirect:        handleDirectEdge,
+			hndDirect:        backend.handleDirectEdge,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
@@ -1133,11 +1141,9 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 	case NodeTypeLogicalTTUGrouping:
 		omni := &omniInterpreter{
-			backend: backend,
-
 			hndNil:           handleUnsupported,
 			hndDirect:        handleUnsupported,
-			hndTTU:           handleTTUEdge,
+			hndTTU:           backend.handleTTUEdge,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
 			hndDirectLogical: handleUnsupported,
@@ -1225,15 +1231,13 @@ func (w *Worker) Subscribe(ctx context.Context, node *Node) iter.Seq[Group] {
 }
 
 type Traversal struct {
-	graph    *Graph
 	backend  *Backend
 	pipeline map[*Node]*Worker
 }
 
-func NewTraversal(backend *Backend, graph *Graph) Traversal {
+func NewTraversal(backend *Backend) Traversal {
 	return Traversal{
 		backend: backend,
-		graph:   graph,
 	}
 }
 
@@ -1249,7 +1253,7 @@ func (t *Traversal) Target(name, identifier string) (Target, bool) {
 		name += ":*"
 		identifier = ""
 	}
-	targetNode, ok := t.graph.GetNodeByID(name)
+	targetNode, ok := t.backend.Graph.GetNodeByID(name)
 
 	return Target{
 		node: targetNode,
@@ -1258,7 +1262,7 @@ func (t *Traversal) Target(name, identifier string) (Target, bool) {
 }
 
 func (t *Traversal) Source(name, relation string) (Source, bool) {
-	sourceNode, ok := t.graph.GetNodeByID(name + "#" + relation)
+	sourceNode, ok := t.backend.Graph.GetNodeByID(name + "#" + relation)
 	return (Source)(sourceNode), ok
 }
 
@@ -1404,7 +1408,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 		}
 	}
 
-	edges, ok := p.traversal.graph.GetEdgesFromNode(source)
+	edges, ok := p.traversal.backend.Graph.GetEdgesFromNode(source)
 	if !ok {
 		return
 	}
