@@ -1224,37 +1224,6 @@ func (w *Worker) Subscribe(ctx context.Context, node *Node) iter.Seq[Group] {
 	}
 }
 
-func output(cancel context.CancelFunc, seq iter.Seq[Group], outWg *sync.WaitGroup, coord *coordinator) iter.Seq[Item] {
-	ch := make(chan Item, 1)
-
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(ch)
-
-		for group := range seq {
-			coord.addMessages(-1)
-			for _, item := range group.Items {
-				ch <- item
-			}
-		}
-	}()
-
-	return func(yield func(Item) bool) {
-		defer outWg.Wait()
-		defer wg.Wait()
-		defer cancel()
-
-		for item := range ch {
-			if !yield(item) {
-				return
-			}
-		}
-	}
-}
-
 type Traversal struct {
 	graph    *Graph
 	backend  *Backend
@@ -1369,7 +1338,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 			busy, messageCount := coord.getState()
 
-			if !busy && messageCount < 1 {
+			if (!busy && messageCount < 1) || ctx.Err() != nil {
 				// cancel all running workers
 				for _, worker := range p.traversal.pipeline {
 					worker.Cancel()
