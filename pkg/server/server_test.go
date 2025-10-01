@@ -2118,7 +2118,7 @@ func TestShadowListObjectsCheckResolver(t *testing.T) {
 			WithCheckQueryCacheEnabled(true),
 		)
 		t.Cleanup(s.Close)
-		require.True(t, s.cacheSettings.ShadowCheckCacheEnabled)
+		require.True(t, s.shadowListObjectsQueryEnabled)
 	})
 
 	t.Run("shadow_list_objects_query_disabled", func(t *testing.T) {
@@ -2129,7 +2129,7 @@ func TestShadowListObjectsCheckResolver(t *testing.T) {
 			WithCheckQueryCacheEnabled(true),
 		)
 		t.Cleanup(s.Close)
-		require.False(t, s.cacheSettings.ShadowCheckCacheEnabled)
+		require.False(t, s.shadowListObjectsQueryEnabled)
 	})
 }
 

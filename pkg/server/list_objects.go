@@ -76,7 +76,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 			commands.WithShadowListObjectsQueryOptions(
 				// override the default cache with the shadow cache for the shadow queries
-				commands.WithListObjectsCache(s.sharedShadowDatasoreResources, s.cacheSettings),
+				commands.WithListObjectsCache(s.sharedShadowDatastoreResources, s.cacheSettings),
 			),
 		),
 		commands.WithLogger(s.logger),
@@ -216,7 +216,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 			commands.WithShadowListObjectsQueryOptions(
 				// override the default cache with the shadow cache for the shadow queries
-				commands.WithListObjectsCache(s.sharedShadowDatasoreResources, s.cacheSettings),
+				commands.WithListObjectsCache(s.sharedShadowDatastoreResources, s.cacheSettings),
 			),
 		),
 		commands.WithLogger(s.logger),

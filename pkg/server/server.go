@@ -185,8 +185,8 @@ type Server struct {
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
 	// sharedDatastoreResources are created by the server
-	sharedDatastoreResources      *shared.SharedDatastoreResources
-	sharedShadowDatasoreResources *shared.SharedDatastoreResources
+	sharedDatastoreResources       *shared.SharedDatastoreResources
+	sharedShadowDatastoreResources *shared.SharedDatastoreResources
 
 	checkResolverClosers   []graph.CheckResolverCloser
 	sharedDatastoreClosers []*shared.SharedDatastoreResources
@@ -737,13 +737,6 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
-func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.cacheSettings.ShadowCheckCacheEnabled = enabled
-	}
-}
-
 // WithShadowListObjectsQueryEnabled turns on shadow list objects query to allow result comparison.
 func WithShadowListObjectsQueryEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -923,10 +916,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.shadowListObjectsQueryEnabled {
-		s.cacheSettings.ShadowCheckCacheEnabled = true
-	}
-
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
@@ -969,13 +958,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 	)
 
-	s.sharedShadowDatasoreResources = s.sharedDatastoreResources
-	if s.shadowCheckResolverEnabled || s.shadowListObjectsQueryEnabled || s.cacheSettings.ShadowCheckCacheEnabled {
-		s.sharedShadowDatasoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+	s.sharedShadowDatastoreResources = s.sharedDatastoreResources
+	if s.shadowCheckResolverEnabled || s.shadowListObjectsQueryEnabled {
+		s.sharedShadowDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 		if err != nil {
 			return nil, err
 		}
-		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedShadowDatasoreResources)
+		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedShadowDatastoreResources)
 	}
 
 	var shadowCheckCommandConfig commands.ShadowCheckCommandConfig
@@ -1001,7 +990,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 				shadowCheckResolver,
 				commands.WithCheckCommandLogger(s.logger),
 				commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-				commands.WithCheckCommandCache(s.sharedShadowDatasoreResources, s.cacheSettings), // use a separate cache for the shadow checker
+				commands.WithCheckCommandCache(s.sharedShadowDatastoreResources, s.cacheSettings), // use a separate cache for the shadow checker
 				commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
 			),
 			commands.WithShadowCheckQueryEnabled(s.shadowCheckResolverEnabled), // always true here

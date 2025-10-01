@@ -658,93 +658,80 @@ func TestListObjectsWithShadowModeCheck_Error(t *testing.T) {
 }
 
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
-	tests := []struct {
-		shadowEnabled bool
-	}{
-		{
-			shadowEnabled: false,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run("shadow_enabled_"+strconv.FormatBool(test.shadowEnabled), func(t *testing.T) {
-			ds := memory.New()
-			t.Cleanup(ds.Close)
-			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-			ctrl := gomock.NewController(t)
-			t.Cleanup(ctrl.Finish)
-			modelDsl := `model
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	modelDsl := `model
 			schema 1.1
 			type user
 			type folder
 				relations
 					define viewer: [user] but not blocked
 					define blocked: [user]`
-			tuples := []string{
-				"folder:C#viewer@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
-			}
-
-			storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
-			ts, err := typesystem.NewAndValidate(
-				context.Background(),
-				model,
-			)
-			require.NoError(t, err)
-
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
-
-			// Don't care about the resolver for this test
-			mockCheckResolver := graph.NewMockCheckResolver(ctrl)
-			mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				return &graph.ResolveCheckResponse{}, nil
-			})
-			mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
-
-			// Need to make sure list objects attempts to invalidate when cache is enabled
-			mockCacheController := mocks.NewMockCacheController(ctrl)
-			mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
-
-			cacheSettings := serverconfig.CacheSettings{
-				ListObjectsIteratorCacheEnabled:    true,
-				ListObjectsIteratorCacheTTL:        1 * time.Second,
-				ListObjectsIteratorCacheMaxResults: 1000,
-				CacheControllerEnabled:             true,
-				CacheControllerTTL:                 1 * time.Nanosecond,
-				CheckCacheLimit:                    1000,
-				ShadowCheckCacheEnabled:            test.shadowEnabled,
-			}
-
-			sharedResources, err := shared.NewSharedDatastoreResources(
-				ctx,
-				&singleflight.Group{},
-				ds,
-				cacheSettings,
-				shared.WithCacheController(mockCacheController),
-			)
-			require.NoError(t, err)
-
-			checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
-			q, _ := NewListObjectsQuery(
-				ds,
-				mockCheckResolver,
-				checkCfg,
-				WithListObjectsCache(sharedResources, cacheSettings),
-			)
-
-			// Run a check, mockCacheController should receive its invalidate call
-			_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
-				StoreId:  storeID,
-				Type:     "folder",
-				Relation: "viewer",
-				User:     "user:jon",
-			})
-
-			sharedResources.Close()
-			require.NoError(t, err)
-		})
+	tuples := []string{
+		"folder:C#viewer@user:jon",
+		"folder:B#viewer@user:jon",
+		"folder:A#viewer@user:jon",
 	}
+
+	storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+	ts, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+	require.NoError(t, err)
+
+	ctx = typesystem.ContextWithTypesystem(ctx, ts)
+
+	// Don't care about the resolver for this test
+	mockCheckResolver := graph.NewMockCheckResolver(ctrl)
+	mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+		return &graph.ResolveCheckResponse{}, nil
+	})
+	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+	// Need to make sure list objects attempts to invalidate when cache is enabled
+	mockCacheController := mocks.NewMockCacheController(ctrl)
+	mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
+
+	cacheSettings := serverconfig.CacheSettings{
+		ListObjectsIteratorCacheEnabled:    true,
+		ListObjectsIteratorCacheTTL:        1 * time.Second,
+		ListObjectsIteratorCacheMaxResults: 1000,
+		CacheControllerEnabled:             true,
+		CacheControllerTTL:                 1 * time.Nanosecond,
+		CheckCacheLimit:                    1000,
+	}
+
+	sharedResources, err := shared.NewSharedDatastoreResources(
+		ctx,
+		&singleflight.Group{},
+		ds,
+		cacheSettings,
+		shared.WithCacheController(mockCacheController),
+	)
+	require.NoError(t, err)
+
+	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
+	q, _ := NewListObjectsQuery(
+		ds,
+		mockCheckResolver,
+		checkCfg,
+		WithListObjectsCache(sharedResources, cacheSettings),
+	)
+
+	// Run a check, mockCacheController should receive its invalidate call
+	_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "folder",
+		Relation: "viewer",
+		User:     "user:jon",
+	})
+
+	sharedResources.Close()
+	require.NoError(t, err)
 }
 
 func reportLatencies(b *testing.B, latencies []time.Duration) {

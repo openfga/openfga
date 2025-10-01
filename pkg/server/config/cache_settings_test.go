@@ -178,47 +178,4 @@ func TestCacheSettings(t *testing.T) {
 			})
 		}
 	})
-
-	t.Run("should_create_shadow_cache", func(t *testing.T) {
-		tests := []struct {
-			name                            string
-			cacheSettings                   CacheSettings
-			expectedShouldCreateShadowCache bool
-		}{
-			{
-				name: "not_when_query_cache_disabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         0,
-					CheckQueryCacheEnabled:  false,
-					ShadowCheckCacheEnabled: true,
-				},
-				expectedShouldCreateShadowCache: false,
-			},
-			{
-				name: "not_when_shadow_query_cache_disabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					ShadowCheckCacheEnabled: false,
-				},
-				expectedShouldCreateShadowCache: false,
-			},
-			{
-				name: "when_limit_over_zero_and_query_cache_enabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					ShadowCheckCacheEnabled: true,
-				},
-				expectedShouldCreateShadowCache: true,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got := tt.cacheSettings.ShouldCreateShadowNewCache()
-				assert.Equal(t, tt.expectedShouldCreateShadowCache, got)
-			})
-		}
-	})
 }
