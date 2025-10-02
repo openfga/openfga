@@ -181,7 +181,7 @@ func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
-	checkCommandServerConfig CheckCommandServerConfig, // required
+	checkCommandServerConfig CheckCommandServerConfig,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
