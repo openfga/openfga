@@ -109,7 +109,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "mysql")
+	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "mysql")
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -195,7 +195,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError)
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -209,7 +209,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+	return sqlcommon.Write(ctx, s.dbInfo, s.db, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -314,7 +314,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(orConditions)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError)
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -354,7 +354,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
 
-	return sqlcommon.NewSQLTupleIterator(builder, HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(builder), HandleSQLError)
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
