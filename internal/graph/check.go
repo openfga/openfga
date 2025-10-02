@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
+	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -157,7 +158,7 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func unionV2(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -211,6 +212,121 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	}
 
 	return finalResult, nil
+}
+
+func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
+	limiter := make(chan struct{}, concurrencyLimit)
+
+	var wg conc.WaitGroup
+
+	checker := func(fn CheckHandlerFunc) {
+		defer func() {
+			<-limiter
+		}()
+
+		resolved := make(chan checkOutcome, 1)
+
+		if ctx.Err() != nil {
+			resultChan <- checkOutcome{nil, ctx.Err()}
+			return
+		}
+
+		wg.Go(func() {
+			defer close(resolved)
+
+			resp, err := fn(ctx)
+			resolved <- checkOutcome{resp, err}
+		})
+
+		select {
+		case <-ctx.Done():
+			return
+		case res := <-resolved:
+			resultChan <- res
+		}
+	}
+
+	wg.Go(func() {
+	outer:
+		for _, handler := range handlers {
+			fn := handler // capture loop var
+
+			select {
+			case limiter <- struct{}{}:
+				wg.Go(func() {
+					checker(fn)
+				})
+			case <-ctx.Done():
+				break outer
+			}
+		}
+	})
+
+	return func() error {
+		recoveredError := wg.WaitAndRecover()
+		close(limiter)
+
+		if recoveredError != nil {
+			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
+		}
+
+		return nil
+	}
+}
+
+func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	resultChan := make(chan checkOutcome, len(handlers))
+
+	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
+
+	defer func() {
+		cancel()
+		drainErr := drain()
+		if drainErr != nil {
+			err = drainErr
+			resp = nil
+		}
+		close(resultChan)
+	}()
+
+	var elErr error
+	var cycleDetected bool
+	for i := 0; i < len(handlers); i++ {
+		select {
+		case result := <-resultChan:
+			if result.err != nil {
+				elErr = result.err
+				continue
+			}
+
+			if result.resp.GetCycleDetected() {
+				cycleDetected = true
+			}
+
+			if result.resp.GetAllowed() {
+				resp = result.resp
+				return
+			}
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		}
+	}
+
+	if elErr != nil {
+		err = elErr
+		return
+	}
+
+	resp = &ResolveCheckResponse{
+		Allowed: false,
+		ResolutionMetadata: ResolveCheckResponseMetadata{
+			CycleDetected: cycleDetected,
+		},
+	}
+
+	return
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
