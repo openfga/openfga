@@ -124,33 +124,48 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
+			cp := ds.primaryDB.Config().ConnConfig.ConnString()
+			db, err := sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
+
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now())
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
+
+			db, err = sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
 
+			db, err = sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
 
 			iter, err := ds.Read(ctx, store, tuple.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
@@ -229,33 +244,49 @@ func TestCtxCancel(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
+			cp := ds.primaryDB.Config().ConnConfig.ConnString()
+			db, err := sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
+
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now())
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
+
+			db, err = sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
+
+			db, err = sql.Open("pgx/v5", cp)
+			require.NoError(t, err)
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+				db,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
+			require.NoError(t, db.Close())
 
 			iter, err := ds.Read(ctx, store, tuple.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
@@ -292,24 +323,35 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
+	cp := ds.primaryDB.Config().ConnConfig.ConnString()
+	db, err := sql.Open("pgx/v5", cp)
+	require.NoError(t, err)
+
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+		db,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
 		storage.NewTupleWriteOptions(),
 		time.Now())
 	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	db, err = sql.Open("pgx/v5", cp)
+	require.NoError(t, err)
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
+		db,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
 		storage.NewTupleWriteOptions(),
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
+	require.NoError(t, db.Close())
 
 	opts := storage.ReadPageOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),
@@ -344,7 +386,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -369,7 +411,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -411,14 +453,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -432,14 +474,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -478,7 +520,7 @@ func TestAllowNullCondition(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
 	`
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -506,7 +548,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,
 	)
@@ -540,13 +582,13 @@ func TestAllowNullCondition(t *testing.T) {
 		condition_name, condition_context, inserted_at, operation
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9);
 `
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 	)
@@ -581,7 +623,7 @@ func TestMarshalledAssertions(t *testing.T) {
 			store, authorization_model_id, assertions
 		) VALUES ($1, $2, DECODE('0a2b0a270a12666f6c6465723a323032312d62756467657412056f776e65721a0a757365723a616e6e657a1001','hex'));
 	`
-	_, err = ds.primaryDB.ExecContext(ctx, stmt, "store", "model")
+	_, err = ds.primaryDB.Exec(ctx, stmt, "store", "model")
 	require.NoError(t, err)
 
 	assertions, err := ds.ReadAssertions(ctx, "store", "model")
