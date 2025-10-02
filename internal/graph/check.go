@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
@@ -456,7 +457,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome.
-func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func exclusionv2(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
@@ -536,6 +537,133 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 	// We can now evaluate the errors.
 	if baseErr != nil || subErr != nil {
 		return nil, errors.Join(baseErr, subErr) // Use errors.Join for cleaner error handling
+	}
+
+	return &ResolveCheckResponse{
+		Allowed: true,
+	}, nil
+}
+
+func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+	if len(handlers) != 2 {
+		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
+	}
+
+	span := trace.SpanFromContext(ctx)
+
+	limiter := make(chan struct{}, concurrencyLimit)
+
+	ctx, cancel := context.WithCancel(ctx)
+	baseChan := make(chan checkOutcome, 1)
+	subChan := make(chan checkOutcome, 1)
+
+	var wg sync.WaitGroup
+
+	defer func() {
+		cancel()
+		wg.Wait()
+		close(baseChan)
+		close(subChan)
+	}()
+
+	baseHandler := handlers[0]
+	subHandler := handlers[1]
+
+	limiter <- struct{}{}
+	wg.Add(1)
+	go func() {
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := baseHandler(ctx)
+			baseChan <- checkOutcome{resp, err}
+		})
+
+		if recoveredError != nil {
+			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
+	}()
+
+	limiter <- struct{}{}
+	wg.Add(1)
+	go func() {
+		recoveredError := panics.Try(func() {
+			defer func() {
+				wg.Done()
+				<-limiter
+			}()
+
+			resp, err := subHandler(ctx)
+			subChan <- checkOutcome{resp, err}
+		})
+		if recoveredError != nil {
+			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
+		}
+	}()
+
+	response := &ResolveCheckResponse{
+		Allowed: false,
+	}
+
+	var baseErr error
+	var subErr error
+
+	for i := 0; i < len(handlers); i++ {
+		select {
+		case baseResult := <-baseChan:
+			if baseResult.err != nil {
+				telemetry.TraceError(span, baseResult.err)
+				baseErr = baseResult.err
+				continue
+			}
+
+			if baseResult.resp.GetCycleDetected() {
+				return &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: ResolveCheckResponseMetadata{
+						CycleDetected: true,
+					},
+				}, nil
+			}
+
+			if !baseResult.resp.GetAllowed() {
+				return response, nil
+			}
+
+		case subResult := <-subChan:
+			if subResult.err != nil {
+				telemetry.TraceError(span, subResult.err)
+				subErr = subResult.err
+				continue
+			}
+
+			if subResult.resp.GetCycleDetected() {
+				return &ResolveCheckResponse{
+					Allowed: false,
+					ResolutionMetadata: ResolveCheckResponseMetadata{
+						CycleDetected: true,
+					},
+				}, nil
+			}
+
+			if subResult.resp.GetAllowed() {
+				return response, nil
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	// base is either (true) or error, sub is either (false) or error:
+	// true, false - true
+	// true, error - error
+	// error, false - error
+	// error, error - error
+	if baseErr != nil || subErr != nil {
+		return nil, errors.Join(baseErr, subErr)
 	}
 
 	return &ResolveCheckResponse{
