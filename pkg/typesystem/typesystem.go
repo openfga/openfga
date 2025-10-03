@@ -433,7 +433,8 @@ func (t *TypeSystem) UsersetUseWeight2Resolver(objectType, relation, userType st
 	if !ok {
 		return false
 	}
-	if w, ok := node.GetWeight(userType); !ok || w == graph.Infinite {
+
+	if node.IsPartOfTupleCycle() || len(node.GetRecursiveRelation()) > 0 {
 		// if there is a tuple cycle, we have to go through default resolver (or recursive one)
 		return false
 	}
@@ -558,15 +559,17 @@ func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType stri
 		return false
 	}
 
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
+		return false
+	}
+
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
 	if !ok {
 		return false
 	}
 
-	tuplesetRelation := tuple.ToObjectRelationString(objectType, ttu.GetTupleset().GetRelation())
-	computedRelationSuffix := "#" + ttu.GetComputedUserset().GetRelation()
 	recursiveTTUFound := false
-
 	for len(edges) != 0 {
 		innerEdges := make([]*graph.WeightedAuthorizationModelEdge, 0)
 
@@ -576,31 +579,26 @@ func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType stri
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			if w == graph.Infinite {
-				// edge is a set operator thus we have to inspect each node of the operator
-				if edge.GetEdgeType() == graph.RewriteEdge {
-					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-					if !okOpEdge {
-						return false
-					}
-					// these edges will need to be evaluated in subsequent iterations
-					innerEdges = append(innerEdges, operationalEdges...)
-					continue
-				} else if edge.GetEdgeType() == graph.TTUEdge && !recursiveTTUFound && edge.GetTuplesetRelation() == tuplesetRelation && strings.HasSuffix(edge.GetTo().GetUniqueLabel(), computedRelationSuffix) && edge.GetTo() == objRelNode {
-					// find and validate the TTUEdge which is infinite (the one being processed at the current time)
-					// The recursive TTU edge needs to have:
-					// 1. weight infinite for the terminal type
-					// 2. the computed relation for the TTU is the same relation
-					// 3. there can only be one recursive TTU edge
+			if edge.GetRecursiveRelation() == objRel {
+
+				if edge.GetEdgeType() == graph.TTUEdge && edge.GetTo() == objRelNode && !recursiveTTUFound {
 					recursiveTTUFound = true
 					continue
 				}
-			}
 
-			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
-			// thus if an infinite didn't get handled it will exit through here
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, newEdges...)
+					continue
+				}
+
+			}
 			if w > 1 {
+				// for any other edge that is not part of the recursive path, it must be weight 1 or if there is any other edge for the same ttu that is the recursive ttu
 				return false
 			}
 		}
@@ -641,6 +639,11 @@ func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType 
 		return false
 	}
 
+	// if we are not in the presence of a recursive relation or it is part of a tuple cycle, return false
+	if objRelNode.GetRecursiveRelation() != objRelNode.GetUniqueLabel() || objRelNode.IsPartOfTupleCycle() {
+		return false
+	}
+
 	edges, ok := t.authzWeightedGraph.GetEdgesFromNode(objRelNode)
 	if !ok {
 		return false
@@ -657,24 +660,24 @@ func (t *TypeSystem) UsersetUseRecursiveResolver(objectType, relation, userType 
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
-			if w == graph.Infinite {
-				// edge is a set operator thus we have to inspect each node of the operator
-				if edge.GetEdgeType() == graph.RewriteEdge {
-					// if the operator node has weight infinite we need to get all the edges to evaluate the preconditions
-					operationalEdges, okOpEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
-					if !okOpEdge {
-						return false
-					}
-					innerEdges = append(innerEdges, operationalEdges...)
-					continue
-				} else if edge.GetEdgeType() == graph.DirectEdge && !recursiveUsersetFound && edge.GetTo().GetUniqueLabel() == objRelNode.GetUniqueLabel() && edge.GetTo() == objRelNode {
-					// if the edge is a direct edge, and it is the same userset that we are evaluating
-					// and there is a weight to the usertype and that weight is infinite and the to Node of the edge is the same as the relation node
-					// mark as the recursive userset was found
+
+			if edge.GetRecursiveRelation() == objRel {
+				if edge.GetEdgeType() == graph.DirectEdge && edge.GetTo() == objRelNode && !recursiveUsersetFound {
 					recursiveUsersetFound = true
 					continue
 				}
+
+				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.DirectLogicalEdge {
+					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
+					if !okEdge {
+						return false
+					}
+					// these edges will need to be evaluated in subsequent iterations
+					innerEdges = append(innerEdges, newEdges...)
+					continue
+				}
 			}
+
 			// catch all, everything has to be weight 1 regardless of direct, computed, rewrite.
 			// thus if an infinite didn't get handled it will exit through here
 			if w > 1 {
@@ -1560,33 +1563,6 @@ func (t *TypeSystem) GetNode(uniqueID string) (*graph.WeightedAuthorizationModel
 	}
 
 	return t.authzWeightedGraph.GetNodeByID(uniqueID)
-}
-
-func cheapestEdgeTo(edges []*graph.WeightedAuthorizationModelEdge, dst string) *graph.WeightedAuthorizationModelEdge {
-	return utils.Reduce(edges, nil, func(lowest *graph.WeightedAuthorizationModelEdge, current *graph.WeightedAuthorizationModelEdge) *graph.WeightedAuthorizationModelEdge {
-		if lowest == nil {
-			_, ok := current.GetWeight(dst)
-			if ok {
-				return current
-			}
-			return nil
-		}
-
-		a, ok := lowest.GetWeight(dst)
-		if !ok {
-			return current
-		}
-
-		b, ok := current.GetWeight(dst)
-		if !ok {
-			return lowest
-		}
-
-		if b < a {
-			return current
-		}
-		return lowest
-	})
 }
 
 func flattenUserset(relationDef *openfgav1.Userset) []*openfgav1.TupleToUserset {
