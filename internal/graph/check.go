@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
-	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -215,66 +213,6 @@ func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFu
 	return finalResult, nil
 }
 
-func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- checkOutcome, handlers ...CheckHandlerFunc) func() error {
-	limiter := make(chan struct{}, concurrencyLimit)
-
-	var wg conc.WaitGroup
-
-	checker := func(fn CheckHandlerFunc) {
-		defer func() {
-			<-limiter
-		}()
-
-		resolved := make(chan checkOutcome, 1)
-
-		if ctx.Err() != nil {
-			resultChan <- checkOutcome{nil, ctx.Err()}
-			return
-		}
-
-		wg.Go(func() {
-			defer close(resolved)
-
-			resp, err := fn(ctx)
-			resolved <- checkOutcome{resp, err}
-		})
-
-		select {
-		case <-ctx.Done():
-			return
-		case res := <-resolved:
-			resultChan <- res
-		}
-	}
-
-	wg.Go(func() {
-	outer:
-		for _, handler := range handlers {
-			fn := handler // capture loop var
-
-			select {
-			case limiter <- struct{}{}:
-				wg.Go(func() {
-					checker(fn)
-				})
-			case <-ctx.Done():
-				break outer
-			}
-		}
-	})
-
-	return func() error {
-		recoveredError := wg.WaitAndRecover()
-		close(limiter)
-
-		if recoveredError != nil {
-			return fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())
-		}
-
-		return nil
-	}
-}
-
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey causes premature termination of the reducer. Errors are swallowed if there is a false outcome.
 func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
@@ -346,7 +284,7 @@ func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHa
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome.
-func exclusionv2(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
 	if len(handlers) != 2 {
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
@@ -359,31 +297,25 @@ func exclusionv2(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Res
 
 	// Launch base handler
 	go func() {
-		defer close(baseChan)
 		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[0]), baseChan)
+		close(baseChan)
 	}()
 
 	// Launch subtract handler
 	go func() {
-		defer close(subChan)
 		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[1]), subChan)
+		close(subChan)
 	}()
 
 	var baseErr, subErr error
-	var baseDone, subDone bool
 
-	// This loop waits for both outcomes, but contains logic to return early if a
-	// definitive answer is found, which is the key to fixing the tests.
-	for !baseDone || !subDone {
+	// there are only two handlers, so we only need to iterate twice (base and sub)
+	for i := 0; i < 2; i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case baseResult, ok := <-baseChan:
-			if !ok {
-				baseDone = true
-				continue
-			}
+		case baseResult := <-baseChan:
 			if baseResult.err != nil {
 				baseErr = baseResult.err
 				continue
@@ -399,11 +331,7 @@ func exclusionv2(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Res
 				}, nil
 			}
 
-		case subResult, ok := <-subChan:
-			if !ok {
-				subDone = true
-				continue
-			}
+		case subResult := <-subChan:
 			if subResult.err != nil {
 				subErr = subResult.err
 				continue
@@ -426,133 +354,6 @@ func exclusionv2(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Res
 	// We can now evaluate the errors.
 	if baseErr != nil || subErr != nil {
 		return nil, errors.Join(baseErr, subErr) // Use errors.Join for cleaner error handling
-	}
-
-	return &ResolveCheckResponse{
-		Allowed: true,
-	}, nil
-}
-
-func exclusion(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-	if len(handlers) != 2 {
-		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
-	}
-
-	span := trace.SpanFromContext(ctx)
-
-	limiter := make(chan struct{}, concurrencyLimit)
-
-	ctx, cancel := context.WithCancel(ctx)
-	baseChan := make(chan checkOutcome, 1)
-	subChan := make(chan checkOutcome, 1)
-
-	var wg sync.WaitGroup
-
-	defer func() {
-		cancel()
-		wg.Wait()
-		close(baseChan)
-		close(subChan)
-	}()
-
-	baseHandler := handlers[0]
-	subHandler := handlers[1]
-
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
-
-			resp, err := baseHandler(ctx)
-			baseChan <- checkOutcome{resp, err}
-		})
-
-		if recoveredError != nil {
-			baseChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
-	}()
-
-	limiter <- struct{}{}
-	wg.Add(1)
-	go func() {
-		recoveredError := panics.Try(func() {
-			defer func() {
-				wg.Done()
-				<-limiter
-			}()
-
-			resp, err := subHandler(ctx)
-			subChan <- checkOutcome{resp, err}
-		})
-		if recoveredError != nil {
-			subChan <- checkOutcome{nil, fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}
-		}
-	}()
-
-	response := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-	var baseErr error
-	var subErr error
-
-	for i := 0; i < len(handlers); i++ {
-		select {
-		case baseResult := <-baseChan:
-			if baseResult.err != nil {
-				telemetry.TraceError(span, baseResult.err)
-				baseErr = baseResult.err
-				continue
-			}
-
-			if baseResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if !baseResult.resp.GetAllowed() {
-				return response, nil
-			}
-
-		case subResult := <-subChan:
-			if subResult.err != nil {
-				telemetry.TraceError(span, subResult.err)
-				subErr = subResult.err
-				continue
-			}
-
-			if subResult.resp.GetCycleDetected() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: true,
-					},
-				}, nil
-			}
-
-			if subResult.resp.GetAllowed() {
-				return response, nil
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-
-	// base is either (true) or error, sub is either (false) or error:
-	// true, false - true
-	// true, error - error
-	// error, false - error
-	// error, error - error
-	if baseErr != nil || subErr != nil {
-		return nil, errors.Join(baseErr, subErr)
 	}
 
 	return &ResolveCheckResponse{
