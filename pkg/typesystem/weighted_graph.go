@@ -78,7 +78,7 @@ func GetEdgesForExclusion(
 	}
 
 	if !hasPathTo(edges[0], sourceType) {
-		return ExclusionEdges{}, fmt.Errorf("Exclusion edges do not have weight for source type %s", sourceType)
+		return ExclusionEdges{}, fmt.Errorf("exclusion edges do not have weight for source type %s", sourceType)
 	}
 
 	baseEdge := edges[0]
