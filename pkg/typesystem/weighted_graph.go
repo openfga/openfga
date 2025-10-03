@@ -10,8 +10,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const directEdgesKey = "direct_edges"
-
 type weightedGraphItem interface {
 	GetWeight(destinationType string) (int, bool)
 }
@@ -77,6 +75,10 @@ func GetEdgesForExclusion(
 ) (ExclusionEdges, error) {
 	if len(edges) < 2 {
 		return ExclusionEdges{}, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
+	}
+
+	if !hasPathTo(edges[0], sourceType) {
+		return ExclusionEdges{}, fmt.Errorf("Exclusion edges do not have weight for source type %s", sourceType)
 	}
 
 	baseEdge := edges[0]
@@ -168,8 +170,9 @@ func (t *TypeSystem) ConstructExclusionUserset(node *graph.WeightedAuthorization
 		// This should never happen.
 		return nil, fmt.Errorf("incorrect exclusion node: %s", node.GetUniqueLabel())
 	}
+
 	exclusionEdges, err := GetEdgesForExclusion(edges, sourceUserType)
-	if err != nil || exclusionEdges.BaseEdge == nil {
+	if err != nil {
 		return nil, fmt.Errorf("error getting the edges for operation: exclusion: %s", err.Error())
 	}
 

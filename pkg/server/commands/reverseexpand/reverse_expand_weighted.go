@@ -781,7 +781,6 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	// This means the exclusion edge does not have a path to the terminal type.
 	// e.g. `B` in `A but not B` is not relevant to this query.
 	if edges.ExcludedEdge == nil {
-
 		var baseEdges []*weightedGraph.WeightedAuthorizationModelEdge
 		if edges.BaseEdge.GetEdgeType() == weightedGraph.DirectLogicalEdge || edges.BaseEdge.GetEdgeType() == weightedGraph.TTULogicalEdge {
 			logicalEdges, err := c.typesystem.GetConnectedEdges(edges.BaseEdge.GetTo().GetUniqueLabel(), sourceUserType)
