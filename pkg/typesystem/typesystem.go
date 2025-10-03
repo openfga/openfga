@@ -579,13 +579,16 @@ func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType stri
 				// if the edge does not have a weight for the terminal type, we can skip it
 				continue
 			}
+			// if the edge is part of the recursive path
 			if edge.GetRecursiveRelation() == objRel {
-
+				// if the edge is a TTUEdge and points to the original node, and we haven't found any other recursive edge
 				if edge.GetEdgeType() == graph.TTUEdge && edge.GetTo() == objRelNode && !recursiveTTUFound {
 					recursiveTTUFound = true
 					continue
 				}
 
+				// Because we are not in the presence of a tuple cycle, the only rewrite edges that could exist
+				// in a recursive path by definition in the weighted graph is the operational edges or logical TTU edges
 				if edge.GetEdgeType() == graph.RewriteEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
 					newEdges, okEdge := t.authzWeightedGraph.GetEdgesFromNode(edge.GetTo())
 					if !okEdge {
@@ -595,8 +598,8 @@ func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType stri
 					innerEdges = append(innerEdges, newEdges...)
 					continue
 				}
-
 			}
+
 			if w > 1 {
 				// for any other edge that is not part of the recursive path, it must be weight 1 or if there is any other edge for the same ttu that is the recursive ttu
 				return false
