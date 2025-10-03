@@ -571,39 +571,45 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 	})
 }
 
+// checkCandidateInfo holds the information (req, userset, relation) needed to construct check request on a candidate object.
+type checkCandidateInfo struct {
+	req                *ReverseExpandRequest
+	userset            *openfgav1.Userset
+	relation           string
+	isAllowed          bool
+	resolutionMetadata *ResolutionMetadata
+}
+
 // callCheckForCandidates calls check on the list objects candidate against non lowest weight edges.
 func (c *ReverseExpandQuery) callCheckForCandidate(
 	ctx context.Context,
-	req *ReverseExpandRequest,
 	tmpResult *ReverseExpandResult,
 	resultChan chan<- *ReverseExpandResult,
-	userset *openfgav1.Userset,
-	isAllowed bool,
-	resolutionMetadata *ResolutionMetadata,
+	info checkCandidateInfo,
 ) error {
-	resolutionMetadata.CheckCounter.Add(1)
+	info.resolutionMetadata.CheckCounter.Add(1)
 	handlerFunc := c.localCheckResolver.CheckRewrite(ctx,
 		&graph.ResolveCheckRequest{
-			StoreID:              req.StoreID,
+			StoreID:              info.req.StoreID,
 			AuthorizationModelID: c.typesystem.GetAuthorizationModelID(),
-			TupleKey:             tuple.NewTupleKey(tmpResult.Object, req.Relation, req.User.String()),
-			ContextualTuples:     req.ContextualTuples,
-			Context:              req.Context,
-			Consistency:          req.Consistency,
+			TupleKey:             tuple.NewTupleKey(tmpResult.Object, info.relation, info.req.User.String()),
+			ContextualTuples:     info.req.ContextualTuples,
+			Context:              info.req.Context,
+			Consistency:          info.req.Consistency,
 			RequestMetadata:      graph.NewCheckRequestMetadata(),
-		}, userset)
+		}, info.userset)
 	tmpCheckResult, err := handlerFunc(ctx)
 	if err != nil {
 		operation := "intersection"
-		if !isAllowed {
+		if !info.isAllowed {
 			operation = "exclusion"
 		}
 
 		return &ExecutionError{
 			operation: operation,
 			object:    tmpResult.Object,
-			relation:  req.Relation,
-			user:      req.User.String(),
+			relation:  info.relation,
+			user:      info.req.User.String(),
 			cause:     err,
 		}
 	}
@@ -611,19 +617,19 @@ func (c *ReverseExpandQuery) callCheckForCandidate(
 	// If the allowed value does not match what we expect, we skip this candidate.
 	// eg, for intersection we expect the check result to be true
 	// and for exclusion we expect the check result to be false.
-	if tmpCheckResult.GetAllowed() != isAllowed {
+	if tmpCheckResult.GetAllowed() != info.isAllowed {
 		return nil
 	}
 
 	// If the original stack only had 1 value, we can trySendCandidate right away (nothing more to check)
-	if stack.Len(req.relationStack) == 0 {
+	if stack.Len(info.req.relationStack) == 0 {
 		c.trySendCandidate(ctx, false, tmpResult.Object, resultChan)
 		return nil
 	}
 
 	// If the original stack had more than 1 value, we need to query the parent values
 	// new stack with top item in stack
-	err = c.queryForTuples(ctx, req, false, resultChan, tmpResult.Object)
+	err = c.queryForTuples(ctx, info.req, false, resultChan, tmpResult.Object)
 	if err != nil {
 		return err
 	}
@@ -633,12 +639,9 @@ func (c *ReverseExpandQuery) callCheckForCandidate(
 // callCheckForCandidates calls check on the list objects candidates against non lowest weight edges.
 func (c *ReverseExpandQuery) callCheckForCandidates(
 	pool *concurrency.Pool,
-	req *ReverseExpandRequest,
 	tmpResultChan <-chan *ReverseExpandResult,
 	resultChan chan<- *ReverseExpandResult,
-	userset *openfgav1.Userset,
-	isAllowed bool,
-	resolutionMetadata *ResolutionMetadata,
+	info checkCandidateInfo,
 ) {
 	pool.Go(func(ctx context.Context) error {
 		// note that we create a separate goroutine pool instead of the main pool
@@ -648,7 +651,7 @@ func (c *ReverseExpandQuery) callCheckForCandidates(
 
 		for tmpResult := range tmpResultChan {
 			tmpResultPool.Go(func(ctx context.Context) error {
-				return c.callCheckForCandidate(ctx, req, tmpResult, resultChan, userset, isAllowed, resolutionMetadata)
+				return c.callCheckForCandidate(ctx, tmpResult, resultChan, info)
 			})
 		}
 		return tmpResultPool.Wait()
@@ -692,6 +695,10 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 	intersectEdges := intersectionEdges.SiblingEdges
 	usersets := make([]*openfgav1.Userset, 0, len(intersectEdges))
+
+	// the check's relation should be the same for all intersect edges.
+	// It is derived from the definition's relation of the intersect edge
+	checkRelation := ""
 	for _, intersectEdge := range intersectEdges {
 		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
 		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
@@ -702,6 +709,13 @@ func (c *ReverseExpandQuery) intersectionHandler(
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
+		var intersectRelation string
+		_, intersectRelation = tuple.SplitObjectRelation(intersectEdge[0].GetRelationDefinition())
+		if checkRelation != "" && checkRelation != intersectRelation {
+			// this should never happen
+			return fmt.Errorf("%w: operation: intersection: %s", errors.ErrUnsupported, "multiple relations in intersection is not supported")
+		}
+		checkRelation = intersectRelation
 	}
 
 	var userset *openfgav1.Userset
@@ -716,7 +730,8 @@ func (c *ReverseExpandQuery) intersectionHandler(
 
 	// Concurrently find candidates and call check on them as they are found
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, intersectionEdges.LowestEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, true, resolutionMetadata)
+	c.callCheckForCandidates(pool, tmpResultChan, resultChan,
+		checkCandidateInfo{req: req, userset: userset, relation: checkRelation, isAllowed: true, resolutionMetadata: resolutionMetadata})
 
 	return nil
 }
@@ -768,6 +783,9 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
 
+	var checkRelation string
+	// checkRelation is derived from the definition's relation of the exclusion edge
+	_, checkRelation = tuple.SplitObjectRelation(edges.ExcludedEdges[0].GetRelationDefinition())
 	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0], sourceUserType)
 	if err != nil {
 		// This should never happen.
@@ -776,7 +794,8 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	// Concurrently find candidates and call check on them as they are found
 	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, edges.BaseEdges, sourceUserType, resolutionMetadata)
-	c.callCheckForCandidates(pool, req, tmpResultChan, resultChan, userset, false, resolutionMetadata)
+	c.callCheckForCandidates(pool, tmpResultChan, resultChan,
+		checkCandidateInfo{req: req, userset: userset, relation: checkRelation, isAllowed: false, resolutionMetadata: resolutionMetadata})
 
 	return nil
 }
