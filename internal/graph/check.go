@@ -159,7 +159,7 @@ func runHandler(ctx context.Context, handler CheckHandlerFunc) checkOutcome {
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func unionV2(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -275,64 +275,9 @@ func resolver(ctx context.Context, concurrencyLimit int, resultChan chan<- check
 	}
 }
 
-func union(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
-
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
-
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-			resp = nil
-		}
-		close(resultChan)
-	}()
-
-	var elErr error
-	var cycleDetected bool
-	for i := 0; i < len(handlers); i++ {
-		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				elErr = result.err
-				continue
-			}
-
-			if result.resp.GetCycleDetected() {
-				cycleDetected = true
-			}
-
-			if result.resp.GetAllowed() {
-				resp = result.resp
-				return
-			}
-		case <-ctx.Done():
-			err = ctx.Err()
-			return
-		}
-	}
-
-	if elErr != nil {
-		err = elErr
-		return
-	}
-
-	resp = &ResolveCheckResponse{
-		Allowed: false,
-		ResolutionMetadata: ResolveCheckResponseMetadata{
-			CycleDetected: cycleDetected,
-		},
-	}
-
-	return
-}
-
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey causes premature termination of the reducer. Errors are swallowed if there is a false outcome.
-func intersectionv2(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
+func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
 	if len(handlers) < 2 {
 		return nil, fmt.Errorf("%w, expected at least two rewrite operands for intersection operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
@@ -397,62 +342,6 @@ func intersectionv2(ctx context.Context, concurrencyLimit int, handlers ...Check
 
 	// If the loop completes without any "false" outcomes or errors, the result is "true".
 	return finalResult, nil
-}
-
-func intersection(ctx context.Context, concurrencyLimit int, handlers ...CheckHandlerFunc) (resp *ResolveCheckResponse, err error) {
-	if len(handlers) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
-	}
-
-	span := trace.SpanFromContext(ctx)
-
-	ctx, cancel := context.WithCancel(ctx)
-	resultChan := make(chan checkOutcome, len(handlers))
-
-	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
-
-	defer func() {
-		cancel()
-		drainErr := drain()
-		if drainErr != nil {
-			err = drainErr
-		}
-		close(resultChan)
-	}()
-
-	var elErr error
-	for i := 0; i < len(handlers); i++ {
-		select {
-		case result := <-resultChan:
-			if result.err != nil {
-				telemetry.TraceError(span, result.err)
-				elErr = errors.Join(elErr, result.err)
-				continue
-			}
-
-			if result.resp.GetCycleDetected() || !result.resp.GetAllowed() {
-				resp = result.resp
-				return
-			}
-		case <-ctx.Done():
-			err = ctx.Err()
-			return
-		}
-	}
-
-	// all operands are either truthy or we've seen at least one error
-	if elErr != nil {
-		err = elErr
-		return
-	}
-
-	resp = &ResolveCheckResponse{
-		Allowed: true,
-	}
-
-	return
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
