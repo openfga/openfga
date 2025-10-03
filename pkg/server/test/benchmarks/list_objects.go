@@ -92,10 +92,13 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
+	checkCommandServerConfig := commands.NewCheckCommandSettings(commands.NewCheckCommandConfig(ds, checkResolver))
+
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
 			checkResolver,
+			checkCommandServerConfig,
 			commands.WithListObjectsMaxResults(1),
 		)
 		require.NoError(b, err)
@@ -114,6 +117,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(
 			ds,
 			checkResolver,
+			checkCommandServerConfig,
 			commands.WithListObjectsMaxResults(0),
 		)
 		require.NoError(b, err)

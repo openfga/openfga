@@ -39,8 +39,6 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultShadowCheckCacheEnabled = false
-
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
@@ -57,10 +55,6 @@ const (
 	DefaultShadowCheckResolverEnabled  = false
 	DefaultShadowCheckSamplePercentage = 10
 	DefaultShadowCheckResolverTimeout  = 1 * time.Second
-
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
 
 	DefaultShadowListObjectsQueryEnabled          = false
 	DefaultShadowListObjectsQuerySamplePercentage = 10

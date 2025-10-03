@@ -11,6 +11,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.10.2] - 2025-09-29
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
+- Breaking: Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
+  > The following breaking changes are related to the `server.Server` interface. If you are not customizing the server, then these changes should not impact your usage of OpenFGA.
+    - Removed `WithShadowListObjectsCheckResolverEnabled` server option.
+    - Removed `WithShadowListObjectsCheckResolverTimeout` server option.
+    - Removed `WithShadowListObjectsCheckResolverSamplePercentage` server option.
+  > The following breaking changes are related to the `CheckResolver`. If you are not customizing a check resolver, then these changes should not impact your usage of OpenFGA.
+    - Removed `WithLocalShadowCheckerOpts` option.
+    - Removed `WithShadowResolverEnabled` option.
+    - Removed `WithShadowResolverOpts` option.
+    - Removed `ShadowResolver` struct implementation, replaced by `ShadowCheckCommand`.
 - Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
 - Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
 

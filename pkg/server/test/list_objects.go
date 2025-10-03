@@ -516,7 +516,10 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			require.NoError(t, err)
 			t.Cleanup(closer)
 
-			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			checkCommandServerConfig := commands.NewCheckCommandSettings(commands.NewCheckCommandConfig(datastore, checkResolver))
+
+			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, checkCommandServerConfig,
+				opts...)
 			require.NoError(t, err)
 
 			// assertions
