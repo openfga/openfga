@@ -69,8 +69,8 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	optimizationsEnabled     bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
-	checkCommandServerConfig CheckCommandServerConfig
+	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	checkSettings        *CheckCommandSettings
 }
 
 type ListObjectsResolver interface {
@@ -181,7 +181,7 @@ func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
-	checkCommandServerConfig CheckCommandServerConfig,
+	checkSettings *CheckCommandSettings,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -211,8 +211,8 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled:     serverconfig.DefaultListObjectsOptimizationsEnabled,
-		checkCommandServerConfig: checkCommandServerConfig,
+		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		checkSettings:        checkSettings,
 	}
 
 	for _, opt := range opts {
@@ -408,8 +408,8 @@ func (q *ListObjectsQuery) evaluate(
 				furtherEvalRequiredCounter.Inc()
 
 				pool.Go(func(ctx context.Context) error {
-					resp, checkRequestMetadata, err := NewCheckCommand(q.checkCommandServerConfig,
-						CheckCommandParams{
+					resp, checkRequestMetadata, err := NewCheckCommand(q.checkSettings).
+						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
 							TupleKey:         tuple.NewCheckRequestTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 							ContextualTuples: req.GetContextualTuples(),
@@ -417,9 +417,7 @@ func (q *ListObjectsQuery) evaluate(
 							Consistency:      req.GetConsistency(),
 							Typesys:          typesys,
 							Operation:        "list-objects",
-						},
-					).
-						Execute(ctx)
+						})
 					if err != nil {
 						return err
 					}

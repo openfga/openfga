@@ -31,7 +31,7 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(&mockTupleReader{}, &mockCheckResolver{}))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(&mockTupleReader{}, &mockCheckResolver{}))
 		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg,
 			NewShadowListObjectsQueryConfig(
 				WithShadowListObjectsQuerySamplePercentage(13),
@@ -52,14 +52,14 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, &mockCheckResolver{}))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(nil, &mockCheckResolver{}))
 		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, checkCfg, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
 
 	t.Run("check_resolver_error", func(t *testing.T) {
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, &mockCheckResolver{}))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(nil, &mockCheckResolver{}))
 		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, checkCfg, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
@@ -315,7 +315,7 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_isShadowModeEnabled(t *testing.T) {
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
 	q, _ := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(100)))
 	sq, ok := q.(*shadowedListObjectsQuery)
 	require.True(t, ok)
@@ -328,7 +328,7 @@ func TestShadowedListObjectsQuery_isShadowModeEnabled(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_nilConfig(t *testing.T) {
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(mockTupleReader{}, &mockCheckResolver{}))
 	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, checkCfg, nil)
 	require.Error(t, err)
 }

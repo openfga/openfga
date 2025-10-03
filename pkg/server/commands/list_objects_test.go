@@ -37,7 +37,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(nil, checkResolver))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(nil, checkResolver))
 		q, err := NewListObjectsQuery(nil, checkResolver, checkCfg)
 		require.Nil(t, q)
 		require.Error(t, err)
@@ -45,7 +45,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
 		datastore := memory.New()
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, nil))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(datastore, nil))
 		q, err := NewListObjectsQuery(datastore, nil, checkCfg)
 		require.Nil(t, q)
 		require.Error(t, err)
@@ -54,7 +54,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		datastore := memory.New()
 		checkResolver := graph.NewLocalChecker()
-		checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+		checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(datastore, checkResolver))
 		q, err := NewListObjectsQuery(datastore, checkResolver, checkCfg)
 		require.NoError(t, err)
 
@@ -67,7 +67,7 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
 	datastore := memory.New()
 	checkResolver := graph.NewLocalChecker()
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(datastore, checkResolver))
 	q, err := NewListObjectsQueryWithShadowConfig(datastore, checkResolver, checkCfg, NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(true),
 		WithShadowListObjectsQuerySamplePercentage(100),
@@ -87,7 +87,7 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
 	datastore := memory.New()
 	checkResolver := graph.NewLocalChecker()
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(datastore, checkResolver))
 	q, err := NewListObjectsQueryWithShadowConfig(datastore, checkResolver, checkCfg, NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(false),
 	))
@@ -298,7 +298,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(checkResolverCloser)
 
-			checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, checker))
+			checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(ds, checker))
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
@@ -392,7 +392,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, checkResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(ds, checkResolver))
 	q, _ := NewListObjectsQuery(
 		ds,
 		checkResolver,
@@ -487,7 +487,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(ds, mockCheckResolver))
 	q, _ := NewListObjectsQuery(ds, mockCheckResolver, checkCfg)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
@@ -546,7 +546,7 @@ func TestListObjectsWithShadowModeCheck_Runs_Shadow(t *testing.T) {
 	})
 	mockShadowCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	checkCfg := NewCheckCommandServerConfig(
+	checkCfg := NewCheckCommandSettings(
 		NewCheckCommandConfig(ds, mockCheckResolver),
 		WithShadowCheckCommandConfig(
 			NewCheckCommandShadowConfig(
@@ -631,7 +631,7 @@ func TestListObjectsWithShadowModeCheck_Error(t *testing.T) {
 	mockShadowCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Times(0)
 	mockShadowCheckResolver.EXPECT().GetDelegate().Times(0)
 
-	checkCfg := NewCheckCommandServerConfig(
+	checkCfg := NewCheckCommandSettings(
 		NewCheckCommandConfig(ds, mockCheckResolver),
 		WithShadowCheckCommandConfig(
 			NewCheckCommandShadowConfig(
@@ -714,7 +714,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(ds, mockCheckResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(ds, mockCheckResolver))
 	q, _ := NewListObjectsQuery(
 		ds,
 		mockCheckResolver,
@@ -825,7 +825,7 @@ func BenchmarkListObjects(b *testing.B) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
-	checkCfg := NewCheckCommandServerConfig(NewCheckCommandConfig(datastore, checkResolver))
+	checkCfg := NewCheckCommandSettings(NewCheckCommandConfig(datastore, checkResolver))
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,

@@ -61,9 +61,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	var checkCommand commands.CheckCommand
+	checkCommand := commands.NewCheckCommand(s.checkCommandSettings)
 
-	params := commands.CheckCommandParams{
+	resp, checkRequestMetadata, err := checkCommand.Execute(ctx, &commands.CheckCommandParams{
 		StoreID:          storeID,
 		TupleKey:         req.GetTupleKey(),
 		ContextualTuples: req.GetContextualTuples(),
@@ -71,11 +71,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Consistency:      req.GetConsistency(),
 		Typesys:          typesys,
 		Operation:        "check",
-	}
-
-	checkCommand = commands.NewCheckCommand(s.checkCommandServerConfig, params)
-
-	resp, checkRequestMetadata, err := checkCommand.Execute(ctx)
+	})
 
 	endTime := time.Since(startTime).Milliseconds()
 

@@ -191,8 +191,8 @@ type Server struct {
 	checkResolverClosers   []graph.CheckResolverCloser
 	sharedDatastoreClosers []*shared.SharedDatastoreResources
 
-	checkResolver            graph.CheckResolver
-	checkCommandServerConfig commands.CheckCommandServerConfig
+	checkResolver        graph.CheckResolver
+	checkCommandSettings *commands.CheckCommandSettings
 
 	listObjectsCheckResolver graph.CheckResolver
 
@@ -967,39 +967,36 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedShadowDatastoreResources)
 	}
 
-	var shadowCheckCommandConfig commands.ShadowCheckCommandConfig
-	if s.shadowCheckResolverEnabled {
-		shadowCheckResolver, shadowCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-			graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-				graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-				graph.WithOptimizations(true),
-				graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-				graph.WithPlanner(s.planner),
-			}...),
-			graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-			graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-		}...).Build()
-		if err != nil {
-			return nil, err
-		}
-		s.checkResolverClosers = append(s.checkResolverClosers, shadowCheckResolverCloser)
-
-		shadowCheckCommandConfig = commands.NewCheckCommandShadowConfig(
-			commands.NewCheckCommandConfig(
-				s.datastore,
-				shadowCheckResolver,
-				commands.WithCheckCommandLogger(s.logger),
-				commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-				commands.WithCheckCommandCache(s.sharedShadowDatastoreResources, s.cacheSettings), // use a separate cache for the shadow checker
-				commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
-			),
-			commands.WithShadowCheckQueryEnabled(s.shadowCheckResolverEnabled), // always true here
-			commands.WithShadowCheckQueryPct(s.shadowCheckResolverSamplePercentage),
-			commands.WithShadowCheckQueryTimeout(s.shadowCheckResolverTimeout),
-			commands.WithShadowCheckQueryLogger(s.logger),
-		)
+	shadowCheckResolver, shadowCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, err
 	}
-	s.checkCommandServerConfig = commands.NewCheckCommandServerConfig(
+	s.checkResolverClosers = append(s.checkResolverClosers, shadowCheckResolverCloser)
+
+	shadowCheckCommandConfig := commands.NewCheckCommandShadowConfig(
+		commands.NewCheckCommandConfig(
+			s.datastore,
+			shadowCheckResolver,
+			commands.WithCheckCommandLogger(s.logger),
+			commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+			commands.WithCheckCommandCache(s.sharedShadowDatastoreResources, s.cacheSettings), // use a separate cache for the shadow checker
+			commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		),
+		commands.WithShadowCheckQueryEnabled(s.shadowCheckResolverEnabled), // always true here
+		commands.WithShadowCheckQueryPct(s.shadowCheckResolverSamplePercentage),
+		commands.WithShadowCheckQueryTimeout(s.shadowCheckResolverTimeout),
+		commands.WithShadowCheckQueryLogger(s.logger),
+	)
+	s.checkCommandSettings = commands.NewCheckCommandSettings(
 		checkCommandConfig,
 		commands.WithShadowCheckCommandConfig(shadowCheckCommandConfig),
 	)

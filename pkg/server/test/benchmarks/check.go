@@ -384,25 +384,22 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			require.NoError(b, err)
 		}
 
-		checkCfg := commands.NewCheckCommandServerConfig(
+		checkCfg := commands.NewCheckCommandSettings(
 			commands.NewCheckCommandConfig(ds,
 				graph.NewLocalChecker(graph.WithOptimizations(true)),
 				commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
 			),
 		)
-		checkQuery := commands.NewCheckCommand(
-			checkCfg,
-			commands.CheckCommandParams{
-				StoreID:  storeID,
-				TupleKey: bm.tupleKeyToCheck,
-				Context:  bm.contextGenerator(),
-				Typesys:  typeSystem,
-			},
-		)
+		checkQuery := commands.NewCheckCommand(checkCfg)
 
 		b.Run(name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				response, _, err := checkQuery.Execute(ctx)
+				response, _, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
+					StoreID:  storeID,
+					TupleKey: bm.tupleKeyToCheck,
+					Context:  bm.contextGenerator(),
+					Typesys:  typeSystem,
+				})
 
 				require.NoError(b, err)
 				require.Equal(b, bm.expected, response.GetAllowed())
@@ -481,7 +478,7 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	err = ds.WriteAuthorizationModel(context.Background(), storeID, modelTwo)
 	require.NoError(b, err)
 
-	checkCfg := commands.NewCheckCommandServerConfig(
+	checkCfg := commands.NewCheckCommandSettings(
 		commands.NewCheckCommandConfig(
 			ds,
 			graph.NewLocalChecker(graph.WithOptimizations(true)),
@@ -489,18 +486,15 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 		),
 	)
 
-	checkQuery := commands.NewCheckCommand(
-		checkCfg,
-		commands.CheckCommandParams{
-			StoreID:  storeID,
-			TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
-			Typesys:  typeSystemTwo,
-		},
-	)
+	checkQuery := commands.NewCheckCommand(checkCfg)
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			response, _, err := checkQuery.Execute(context.Background())
+			response, _, err := checkQuery.Execute(context.Background(), &commands.CheckCommandParams{
+				StoreID:  storeID,
+				TupleKey: tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
+				Typesys:  typeSystemTwo,
+			})
 
 			require.NoError(b, err)
 			require.False(b, response.GetAllowed())

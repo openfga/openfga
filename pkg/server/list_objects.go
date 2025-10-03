@@ -67,7 +67,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
-		s.checkCommandServerConfig,
+		s.checkCommandSettings,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
@@ -207,7 +207,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
 		s.listObjectsCheckResolver,
-		s.checkCommandServerConfig,
+		s.checkCommandSettings,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),

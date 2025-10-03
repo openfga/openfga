@@ -23,7 +23,7 @@ type BatchCheckQuery struct {
 	logger              logger.Logger
 	maxChecksAllowed    uint32
 	maxConcurrentChecks uint32
-	checkConfig         CheckCommandServerConfig
+	checkSettings       *CheckCommandSettings
 }
 
 type BatchCheckCommandParams struct {
@@ -82,10 +82,10 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func NewBatchCheckCommand(checkConfig CheckCommandServerConfig, opts ...BatchCheckQueryOption) *BatchCheckQuery {
+func NewBatchCheckCommand(checkConfig *CheckCommandSettings, opts ...BatchCheckQueryOption) *BatchCheckQuery {
 	cmd := &BatchCheckQuery{
 		logger:              logger.NewNoopLogger(),
-		checkConfig:         checkConfig,
+		checkSettings:       checkConfig,
 		maxChecksAllowed:    config.DefaultMaxChecksPerBatchCheck,
 		maxConcurrentChecks: config.DefaultMaxConcurrentChecksPerBatchCheck,
 	}
@@ -97,11 +97,6 @@ func NewBatchCheckCommand(checkConfig CheckCommandServerConfig, opts ...BatchChe
 }
 
 func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckCommandParams) (map[CorrelationID]*BatchCheckOutcome, *BatchCheckMetadata, error) {
-	if params.Typesys == nil {
-		return nil, nil, &BatchCheckValidationError{
-			Message: "missing typesystem in batch check params",
-		}
-	}
 	if len(params.Checks) > int(bq.maxChecksAllowed) {
 		return nil, nil, &BatchCheckValidationError{
 			Message: "batchCheck received " + strconv.Itoa(len(params.Checks)) + " checks, the maximum allowed is " + strconv.Itoa(int(bq.maxChecksAllowed)),
@@ -156,7 +151,7 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 			default:
 			}
 
-			checkParams := CheckCommandParams{
+			checkParams := &CheckCommandParams{
 				StoreID:          params.StoreID,
 				TupleKey:         check.GetTupleKey(),
 				ContextualTuples: check.GetContextualTuples(),
@@ -166,9 +161,9 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				Operation:        "batch-check",
 			}
 
-			checkQuery := NewCheckCommand(bq.checkConfig, checkParams)
+			checkQuery := NewCheckCommand(bq.checkSettings)
 
-			response, metadata, err := checkQuery.Execute(ctx)
+			response, metadata, err := checkQuery.Execute(ctx, checkParams)
 
 			resultMap.Store(key, &BatchCheckOutcome{
 				CheckResponse: response,

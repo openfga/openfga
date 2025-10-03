@@ -92,7 +92,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 	require.NoError(b, err)
 	b.Cleanup(checkResolverCloser)
 
-	checkCommandServerConfig := commands.NewCheckCommandServerConfig(commands.NewCheckCommandConfig(ds, checkResolver))
+	checkCommandServerConfig := commands.NewCheckCommandSettings(commands.NewCheckCommandConfig(ds, checkResolver))
 
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery, err := commands.NewListObjectsQuery(

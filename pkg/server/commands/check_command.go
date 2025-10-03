@@ -29,20 +29,19 @@ const (
 
 // CheckCommand interface wraps the Execute method for performing a check operation.
 type CheckCommand interface {
-	Execute(ctx context.Context) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error)
+	Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error)
 }
 
 type CheckQuery struct {
-	params                     CheckCommandParams
 	logger                     logger.Logger
 	checkResolver              graph.CheckResolver
+	datastore                  storage.RelationshipTupleReader
 	sharedCheckResources       *shared.SharedDatastoreResources
 	cacheSettings              config.CacheSettings
 	maxConcurrentReads         uint32
 	shouldCacheIterators       bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
-	datastoreWithTupleCache    *storagewrappers.RequestStorageWrapper
 }
 
 var _ CheckCommand = (*CheckQuery)(nil)
@@ -65,45 +64,12 @@ type CheckCommandConfig struct {
 }
 
 // NewCheckCommandConfig creates a new CheckCommandConfig.
-func NewCheckCommandConfig(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, options ...CheckQueryOption) CheckCommandConfig {
-	return CheckCommandConfig{
+func NewCheckCommandConfig(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, options ...CheckQueryOption) *CheckCommandConfig {
+	return &CheckCommandConfig{
 		datastore:     datastore,
 		checkResolver: checkResolver,
 		options:       options,
 	}
-}
-
-// CheckCommandServerConfig holds the full server configuration including shadow mode settings.
-type CheckCommandServerConfig struct {
-	checkCfg  CheckCommandConfig
-	shadowCfg ShadowCheckCommandConfig
-}
-
-type CheckCommandServerConfigOption func(*CheckCommandServerConfig)
-
-func WithShadowCheckCommandConfig(shadowCfg ShadowCheckCommandConfig) CheckCommandServerConfigOption {
-	return func(c *CheckCommandServerConfig) {
-		c.shadowCfg = shadowCfg
-	}
-}
-
-// NewCheckCommandServerConfig creates a new CheckCommandServerConfig.
-func NewCheckCommandServerConfig(main CheckCommandConfig, opts ...CheckCommandServerConfigOption) CheckCommandServerConfig {
-	serverConfig := CheckCommandServerConfig{
-		checkCfg: main,
-	}
-
-	for _, opt := range opts {
-		opt(&serverConfig)
-	}
-	return serverConfig
-}
-
-// NewCheckCommand creates a CheckCommand that automatically handles shadow mode
-// based on the server configuration. This is the main entry point that should be used
-// throughout the codebase instead of the individual factory functions.
-func NewCheckCommand(serverConfig CheckCommandServerConfig, params CheckCommandParams) CheckCommand {
-	return newCheckCommandWithShadowConfig(serverConfig.checkCfg, serverConfig.shadowCfg, params)
 }
 
 type CheckQueryOption func(*CheckQuery)
@@ -134,10 +100,10 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
-func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, params CheckCommandParams, opts ...CheckQueryOption) *CheckQuery {
+func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
-		params:               params,
 		logger:               logger.NewNoopLogger(),
+		datastore:            datastore,
 		checkResolver:        checkResolver,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
@@ -151,48 +117,30 @@ func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver grap
 		opt(cmd)
 	}
 
-	var ctxTupleKeys []*openfgav1.TupleKey
-	if params.ContextualTuples != nil {
-		ctxTupleKeys = params.ContextualTuples.GetTupleKeys()
-	}
-	cmd.datastoreWithTupleCache = storagewrappers.NewRequestStorageWrapperWithCache(
-		datastore,
-		ctxTupleKeys,
-		&storagewrappers.Operation{
-			Method:            apimethod.Check,
-			Concurrency:       cmd.maxConcurrentReads,
-			ThrottleThreshold: cmd.datastoreThrottleThreshold,
-			ThrottleDuration:  cmd.datastoreThrottleDuration,
-		},
-		storagewrappers.DataResourceConfiguration{
-			Resources:     cmd.sharedCheckResources,
-			CacheSettings: cmd.cacheSettings,
-		},
-	)
 	return cmd
 }
 
-func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(c.params.Typesys, c.params.TupleKey, c.params.ContextualTuples)
+func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
+	err := validateCheckRequest(params.Typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	cacheInvalidationTime := time.Time{}
 
-	if c.params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, c.params.StoreID)
+	if params.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = c.sharedCheckResources.CacheController.DetermineInvalidationTime(ctx, params.StoreID)
 	}
 
 	resolveCheckRequest, err := graph.NewResolveCheckRequest(
 		graph.ResolveCheckRequestParams{
-			StoreID:                   c.params.StoreID,
-			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(c.params.TupleKey),
-			Context:                   c.params.Context,
-			ContextualTuples:          c.params.ContextualTuples,
-			Consistency:               c.params.Consistency,
+			StoreID:                   params.StoreID,
+			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
+			Context:                   params.Context,
+			ContextualTuples:          params.ContextualTuples,
+			Consistency:               params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
-			AuthorizationModelID:      c.params.Typesys.GetAuthorizationModelID(),
+			AuthorizationModelID:      params.Typesys.GetAuthorizationModelID(),
 		},
 	)
 
@@ -200,8 +148,23 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 		return nil, nil, err
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, c.params.Typesys)
-	ctx = storage.ContextWithRelationshipTupleReader(ctx, c.datastoreWithTupleCache)
+	datastoreWithTupleCache := storagewrappers.NewRequestStorageWrapperWithCache(
+		c.datastore,
+		params.ContextualTuples.GetTupleKeys(),
+		&storagewrappers.Operation{
+			Method:            apimethod.Check,
+			Concurrency:       c.maxConcurrentReads,
+			ThrottleThreshold: c.datastoreThrottleThreshold,
+			ThrottleDuration:  c.datastoreThrottleDuration,
+		},
+		storagewrappers.DataResourceConfiguration{
+			Resources:     c.sharedCheckResources,
+			CacheSettings: c.cacheSettings,
+		},
+	)
+
+	ctx = typesystem.ContextWithTypesystem(ctx, params.Typesys)
+	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
 
 	startTime := time.Now()
 	resp, err := c.checkResolver.ResolveCheck(ctx, resolveCheckRequest)
@@ -219,7 +182,7 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 	}
 
 	resp.ResolutionMetadata.Duration = endTime
-	dsMeta := c.datastoreWithTupleCache.GetMetadata()
+	dsMeta := datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
 	// Until dispatch throttling is deprecated, merge the results of both
 	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
@@ -236,9 +199,6 @@ func (c *CheckQuery) Execute(ctx context.Context) (*graph.ResolveCheckResponse, 
 }
 
 func validateCheckRequest(typesys *typesystem.TypeSystem, tupleKey *openfgav1.CheckRequestTupleKey, contextualTuples *openfgav1.ContextualTupleKeys) error {
-	if typesys == nil {
-		return errors.New("typesystem is required")
-	}
 	// The input tuple Key should be validated loosely.
 	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tupleKey)); err != nil {
 		return &InvalidRelationError{Cause: err}

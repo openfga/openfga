@@ -100,29 +100,29 @@ func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *Shad
 func NewListObjectsQueryWithShadowConfig(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
-	checkCommandServerConfig CheckCommandServerConfig,
+	checkSettings *CheckCommandSettings,
 	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
 	if shadowConfig != nil && shadowConfig.shadowEnabled {
-		return newShadowedListObjectsQuery(ds, checkResolver, checkCommandServerConfig, shadowConfig, opts...)
+		return newShadowedListObjectsQuery(ds, checkResolver, checkSettings, shadowConfig, opts...)
 	}
 
-	return NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig, opts...)
+	return NewListObjectsQuery(ds, checkResolver, checkSettings, opts...)
 }
 
 // newShadowedListObjectsQuery creates a new ListObjectsResolver that runs two queries in parallel: one with optimizations and one without.
 func newShadowedListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
-	checkCommandServerConfig CheckCommandServerConfig,
+	checkSettings *CheckCommandSettings,
 	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
 	if shadowConfig == nil {
 		return nil, errors.New("shadowConfig must be set")
 	}
-	standard, err := NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig,
+	standard, err := NewListObjectsQuery(ds, checkResolver, checkSettings,
 		// force disable optimizations
 		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsOptimizationsEnabled(false)})...,
 	)
@@ -130,13 +130,13 @@ func newShadowedListObjectsQuery(
 		return nil, err
 	}
 	shadowOptions := slices.Concat(opts,
-		shadowConfig.opts, // override with any options using shadow config
+		shadowConfig.opts, // override with any options using shadow config, i.e. cache settings
 		[]ListObjectsQueryOption{
 			// force enable optimizations
 			WithListObjectsOptimizationsEnabled(true),
 		})
 
-	optimized, err := NewListObjectsQuery(ds, checkResolver, checkCommandServerConfig, shadowOptions...)
+	optimized, err := NewListObjectsQuery(ds, checkResolver, checkSettings, shadowOptions...)
 	if err != nil {
 		return nil, err
 	}
