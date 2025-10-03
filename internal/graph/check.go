@@ -289,7 +289,7 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		return nil, fmt.Errorf("%w, expected two rewrite operands for exclusion operator, but got '%d'", openfgaErrors.ErrUnknown, len(handlers))
 	}
 
-	cancellableCtx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	baseChan := make(chan checkOutcome, 1)
@@ -297,25 +297,31 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 
 	// Launch base handler
 	go func() {
-		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[0]), baseChan)
+		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[0]), baseChan)
 		close(baseChan)
 	}()
 
 	// Launch subtract handler
 	go func() {
-		concurrency.TrySendThroughChannel(cancellableCtx, runHandler(cancellableCtx, handlers[1]), subChan)
+		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[1]), subChan)
 		close(subChan)
 	}()
 
 	var baseErr, subErr error
+	var baseDone, subDone bool
 
-	// there are only two handlers, so we only need to iterate twice (base and sub)
-	for i := 0; i < 2; i++ {
+	// This loop waits for both outcomes, but contains logic to return early if a
+	// definitive answer is found.
+	for !baseDone || !subDone {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case baseResult := <-baseChan:
+		case baseResult, ok := <-baseChan:
+			if !ok {
+				baseDone = true
+				continue
+			}
 			if baseResult.err != nil {
 				baseErr = baseResult.err
 				continue
@@ -331,7 +337,11 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 				}, nil
 			}
 
-		case subResult := <-subChan:
+		case subResult, ok := <-subChan:
+			if !ok {
+				subDone = true
+				continue
+			}
 			if subResult.err != nil {
 				subErr = subResult.err
 				continue
