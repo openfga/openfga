@@ -498,13 +498,13 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	for ndx, snd := range senders {
 		ch := make(chan Group, 100)
 
-		go func(snd *sender) {
+		go func() {
 			defer close(ch)
 
 			for group := range snd.seq {
 				ch <- group
 			}
-		}(snd)
+		}()
 
 		for range snd.numProcs {
 			wg.Add(1)
@@ -544,6 +544,12 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						active.Set(pID, false)
 						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
+
+						for _, lst := range listeners {
+							if snd.edge != nil && lst.node != nil && snd.edge.GetRecursiveRelation() == lst.node.GetUniqueLabel() {
+								lst.cancel()
+							}
+						}
 						continue
 					}
 
@@ -597,6 +603,12 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						active.Set(pID, false)
 						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
+
+						for _, lst := range listeners {
+							if snd.edge != nil && lst.node != nil && snd.edge.GetRecursiveRelation() == lst.node.GetUniqueLabel() {
+								lst.cancel()
+							}
+						}
 						continue
 					}
 

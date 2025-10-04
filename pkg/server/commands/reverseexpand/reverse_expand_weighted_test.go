@@ -3,8 +3,11 @@ package reverseexpand
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -64,6 +67,57 @@ func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
 }
 
 var cases = []testcase{
+	{
+		name: "labour",
+		model: `
+		model
+  		schema 1.2
+
+		type area
+		  relations
+		    define global: [global]
+		    define parent: [area]
+		    define perm_hub_manage_area: role_chair or role_secretary or role_vicechair or roleset_active_staff_organiser or group_hub_permissions_admins from global or perm_hub_manage_area from parent
+		    define perm_hub_manage_levies: roleset_hub_manage_levies but not group_hub_blocklist from global
+		    define perm_hub_manage_roles: roleset_hub_manage_roles but not group_hub_blocklist from global
+		    define roleset_hub_manage_levies: role_leader or role_deputy_leader or role_group_secretary or role_group_treasurer or group_hub_levy_admins from global
+		    define roleset_hub_manage_roles: role_chair or role_secretary or role_vicechair or roleset_active_staff_organiser or roleset_hub_manage_levies or group_hub_permissions_admins from global or roleset_hub_manage_roles from parent
+		    define role_chair: [user with non_expired_role]
+		    define role_deputy_leader: [user with non_expired_role]
+		    define role_group_secretary: [user with non_expired_role]
+		    define role_group_treasurer: [user with non_expired_role]
+		    define role_leader: [user with non_expired_role]
+		    define role_secretary: [user with non_expired_role]
+		    define role_staff_organiser: [user with non_expired_role]
+		    define role_vicechair: [user with non_expired_role]
+		    define roleset_active_staff_organiser: role_staff_organiser and group_staff from global
+
+		type global
+		  relations
+		    define group_hub_blocklist: [group#member]
+		    define group_hub_levy_admins: [group#member]
+		    define group_hub_permissions_admins: [group#member]
+		    define group_staff: [group#member]
+
+		type user
+
+		type group
+		  relations
+		    define member: [user, user with non_expired_role, group#member]
+
+		condition non_expired_role(current_time: timestamp, expiry_time: timestamp) {
+		  current_time < expiry_time
+		}
+		`,
+		tuples: []string{
+			"group:g_1#member@user:u_1",
+			"global:global#group_staff@group:g_1#member",
+		},
+		objectType: "global",
+		relation:   "group_staff",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "u_1"}},
+		expected:   []string{"global:global"},
+	},
 	{
 		name: "userset_as_user",
 		model: `
@@ -1828,6 +1882,146 @@ var cases = []testcase{
 			"thing:7",
 		},
 	},
+}
+
+var labourModel = `
+model
+schema 1.2
+
+type area
+  relations
+    define global: [global]
+    define parent: [area]
+    define perm_hub_manage_area: role_chair or role_secretary or role_vicechair or roleset_active_staff_organiser or group_hub_permissions_admins from global or perm_hub_manage_area from parent
+    define perm_hub_manage_levies: roleset_hub_manage_levies but not group_hub_blocklist from global
+    define perm_hub_manage_roles: roleset_hub_manage_roles but not group_hub_blocklist from global
+    define roleset_hub_manage_levies: role_leader or role_deputy_leader or role_group_secretary or role_group_treasurer or group_hub_levy_admins from global
+    define roleset_hub_manage_roles: role_chair or role_secretary or role_vicechair or roleset_active_staff_organiser or roleset_hub_manage_levies or group_hub_permissions_admins from global or roleset_hub_manage_roles from parent
+    define role_chair: [user with non_expired_role]
+    define role_deputy_leader: [user with non_expired_role]
+    define role_group_secretary: [user with non_expired_role]
+    define role_group_treasurer: [user with non_expired_role]
+    define role_leader: [user with non_expired_role]
+    define role_secretary: [user with non_expired_role]
+    define role_staff_organiser: [user]
+    define role_vicechair: [user with non_expired_role]
+    define roleset_active_staff_organiser: role_staff_organiser and group_staff from global
+
+type global
+  relations
+    define group_hub_blocklist: [group#member]
+    define group_hub_levy_admins: [group#member]
+    define group_hub_permissions_admins: [group#member]
+    define group_staff: [group#member]
+
+type user
+
+type group
+  relations
+    define member: [user, user with non_expired_role, group#member]
+
+condition non_expired_role(current_time: timestamp, expiry_time: timestamp) {
+  current_time < expiry_time
+}
+`
+
+func BenchmarkPipelineLabour(b *testing.B) {
+	ds := memory.New()
+	b.Cleanup(ds.Close)
+
+	ctx := context.Background()
+
+	var tuples []string
+
+	const LevelOneFactor = 2
+	const LevelTwoFactor = 1
+
+	const NumberOfUsers = 1
+	const NumberOfAreas = 8
+
+	t := time.Now()
+
+	var userIDs []string
+
+	for _ = range NumberOfUsers {
+		currentUser := ulid.MustNewDefault(t)
+		userIDs = append(userIDs, currentUser.String())
+		groupNum := ulid.MustNewDefault(t)
+
+		tupleA := fmt.Sprintf("group:g_%s#member@user:u_%s", groupNum.String(), currentUser.String())
+		tupleB := fmt.Sprintf("global:global#group_staff@group:g_%s#member", groupNum.String())
+
+		tuples = append(tuples, tupleA, tupleB)
+
+		for _ = range NumberOfAreas {
+			areaLevel1 := ulid.MustNewDefault(t)
+
+			tupleC := fmt.Sprintf("area:a_%s#role_staff_organiser@user:u_%s", areaLevel1.String(), currentUser.String())
+			tupleD := fmt.Sprintf("area:a_%s#global@global:global", areaLevel1.String())
+
+			tuples = append(tuples, tupleC, tupleD)
+
+			for range LevelOneFactor {
+				areaLevel2 := ulid.MustNewDefault(t)
+
+				tupleE := fmt.Sprintf("area:a_%s#parent@area:a_%s", areaLevel2.String(), areaLevel1.String())
+				tuples = append(tuples, tupleE)
+
+				for range LevelTwoFactor {
+					areaLevel3 := ulid.MustNewDefault(t)
+
+					tupleF := fmt.Sprintf("area:a_%s#parent@area:a_%s", areaLevel3.String(), areaLevel2.String())
+					tuples = append(tuples, tupleF)
+				}
+			}
+
+		}
+	}
+
+	expectedCount := NumberOfAreas + (NumberOfAreas * LevelOneFactor) + (NumberOfAreas * LevelOneFactor * LevelTwoFactor)
+
+	tc := testcase{
+		objectType: "area",
+		relation:   "perm_hub_manage_area",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "u_" + userIDs[0]}},
+	}
+
+	storeID, model := storagetest.BootstrapFGAStore(b, ds, labourModel, tuples)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	g := typesys.GetWeightedGraph()
+
+	backend := &Backend{
+		Datastore:  ds,
+		StoreID:    storeID,
+		TypeSystem: typesys,
+		Context:    nil,
+		Graph:      g,
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		path := setup(backend, tc)
+
+		seq := path.Objects(ctx)
+
+		countItems := 0
+
+		for range seq {
+			countItems++
+		}
+		require.Equal(b, expectedCount, countItems)
+	}
+
 }
 
 func BenchmarkPipeline(b *testing.B) {
