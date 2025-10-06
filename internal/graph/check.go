@@ -295,13 +295,10 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
-	// Launch base handler
 	go func() {
 		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[0]), baseChan)
 		close(baseChan)
 	}()
-
-	// Launch subtract handler
 	go func() {
 		concurrency.TrySendThroughChannel(ctx, runHandler(ctx, handlers[1]), subChan)
 		close(subChan)
@@ -313,6 +310,9 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 	resultsReceived := 0
 	for resultsReceived < 2 {
 		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
 		case res, ok := <-baseChan:
 			if !ok {
 				baseChan = nil // Stop selecting this case.
@@ -346,9 +346,6 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 			if res.resp.GetCycleDetected() || res.resp.GetAllowed() {
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
-
-		case <-ctx.Done():
-			return nil, ctx.Err()
 		}
 	}
 
