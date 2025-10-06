@@ -4,18 +4,44 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/sourcegraph/conc/panics"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const defaultResolver = "default"
+
+var defaultPlan = &planner.KeyPlanStrategy{
+	Type:         defaultResolver,
+	InitialGuess: 50 * time.Millisecond,
+	// Low Lambda: Represents zero confidence. It's a pure guess.
+	Lambda: 1,
+	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
+	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
+	// helping out with the cold start when we don't have enough data.
+	Alpha: 0.5,
+	Beta:  0.5,
+}
+
+var defaultRecursivePlan = &planner.KeyPlanStrategy{
+	Type:         defaultResolver,
+	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
+	// Low Lambda: Represents zero confidence. It's a pure guess.
+	Lambda: 1,
+	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
+	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
+	// helping out with the cold start when we don't have enough data.
+	Alpha: 0.5,
+	Beta:  0.5,
+}
 
 type dispatchParams struct {
 	parentReq *ResolveCheckRequest
