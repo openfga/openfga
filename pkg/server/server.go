@@ -24,6 +24,7 @@ import (
 	"github.com/openfga/openfga/internal/authz"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler"
 	"github.com/openfga/openfga/internal/utils"
@@ -133,7 +134,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"require_authorize_check"})
+	}, []string{"require_authorize_check", "on_duplicate_write", "on_missing_delete"})
 
 	checkDurationHistogramName = "check_duration_ms"
 	checkDurationHistogram     = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -159,7 +160,6 @@ type Server struct {
 	transport                        gateway.Transport
 	resolveNodeLimit                 uint32
 	resolveNodeBreadthLimit          uint32
-	usersetBatchSize                 uint32
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
@@ -240,6 +240,10 @@ type Server struct {
 
 	// singleflightGroup can be shared across caches, deduplicators, etc.
 	singleflightGroup *singleflight.Group
+
+	planner *planner.Planner
+
+	requestTimeout time.Duration
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -310,30 +314,6 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
-	}
-}
-
-// WithUsersetBatchSize in Check requests, configures how many usersets are collected
-// before we start processing them.
-//
-// For example in this model:
-// type user
-// type folder
-//
-//	relations
-//	   define viewer: [user]
-//
-// type doc
-//
-//	relations
-//	   define viewer: viewer from parent
-//	   define parent: [folder]
-//
-// If the Check(user:maria, viewer,doc:1) and this setting is 100,
-// we will find 100 parent folders of doc:1 and immediately start processing them.
-func WithUsersetBatchSize(usersetBatchSize uint32) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.usersetBatchSize = usersetBatchSize
 	}
 }
 
@@ -591,6 +571,18 @@ func WithContextPropagationToDatastore(enable bool) OpenFGAServiceV1Option {
 	}
 }
 
+func WithPlanner(planner *planner.Planner) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.planner = planner
+	}
+}
+
+func WithRequestTimeout(timeout time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.requestTimeout = timeout
+	}
+}
+
 // MustNewServerWithOpts see NewServerWithOpts.
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
@@ -745,6 +737,13 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
+// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
+func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.cacheSettings.ShadowCheckCacheEnabled = enabled
+	}
+}
+
 // WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
 // Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -877,6 +876,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		tokenSerializer:   encoder.NewStringContinuationTokenSerializer(),
 		singleflightGroup: &singleflight.Group{},
 		authorizer:        authz.NewAuthorizerNoop(),
+		planner: planner.New(&planner.Config{
+			EvictionThreshold: serverconfig.DefaultPlannerEvictionThreshold,
+			CleanupInterval:   serverconfig.DefaultPlannerCleanupInterval,
+		}),
+		requestTimeout: serverconfig.DefaultRequestTimeout,
 	}
 
 	for _, opt := range opts {
@@ -969,11 +973,15 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+			graph.WithUpstreamTimeout(s.requestTimeout),
+			graph.WithLocalCheckerLogger(s.logger),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
 		}...),
 		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
@@ -1036,6 +1044,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 // Close releases the server resources.
 func (s *Server) Close() {
 	s.checkResolverCloser()
+	if s.planner != nil {
+		s.planner.StopCleanup()
+	}
 	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 

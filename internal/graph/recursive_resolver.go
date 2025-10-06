@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
 	"go.opentelemetry.io/otel/attribute"
@@ -13,11 +14,33 @@ import (
 
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
+
+const recursiveResolver = "recursive"
+
+// In general these values tell the query planner that the recursive strategy usually performs around 150 ms but occasionally spikes.
+// However, even when it spikes we want to keep it using it or exploring it despite variance, rather than over-penalizing single slow runs.
+var recursivePlan = &planner.KeyPlanStrategy{
+	Type:         recursiveResolver,
+	InitialGuess: 150 * time.Millisecond,
+	// Medium Lambda: Represents medium confidence in the initial guess. It's like
+	// starting with the belief of having already seen 5 good runs.
+	Lambda: 5.0,
+	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
+	// Low Alpha/Beta values create a wider belief curve, telling the planner
+	// to expect and not be overly surprised by performance variations.
+	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 2.0/2.5 = 0.8.
+	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
+	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
+	// When β > α, we expect lower precision and higher variance
+	Alpha: 2.0,
+	Beta:  2.5,
+}
 
 type recursiveMapping struct {
 	kind                        storage.TupleMapperKind
@@ -25,7 +48,7 @@ type recursiveMapping struct {
 	allowedUserTypeRestrictions []*openfgav1.RelationReference
 }
 
-func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequest, _ []*openfgav1.RelationReference, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
@@ -41,17 +64,19 @@ func (c *LocalChecker) recursiveUserset(_ context.Context, req *ResolveCheckRequ
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
-func (c *LocalChecker) recursiveTTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) (*ResolveCheckResponse, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+func (c *LocalChecker) recursiveTTU(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, rightIter storage.TupleKeyIterator) CheckHandlerFunc {
+	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		typesys, _ := typesystem.TypesystemFromContext(ctx)
 
-	ttu := rewrite.GetTupleToUserset()
+		ttu := rewrite.GetTupleToUserset()
 
-	objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
+		objectProvider := newRecursiveTTUObjectProvider(typesys, ttu)
 
-	return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
-		kind:             storage.TTUKind,
-		tuplesetRelation: ttu.GetTupleset().GetRelation(),
-	}, objectProvider)
+		return c.recursiveFastPath(ctx, req, rightIter, &recursiveMapping{
+			kind:             storage.TTUKind,
+			tuplesetRelation: ttu.GetTupleset().GetRelation(),
+		}, objectProvider)
+	}
 }
 
 func (c *LocalChecker) recursiveFastPath(ctx context.Context, req *ResolveCheckRequest, iter storage.TupleKeyIterator, mapping *recursiveMapping, objectProvider objectProvider) (*ResolveCheckResponse, error) {

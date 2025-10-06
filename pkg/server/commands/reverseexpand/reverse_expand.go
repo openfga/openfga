@@ -394,7 +394,7 @@ func (c *ReverseExpandQuery) execute(
 			node, ok := c.typesystem.GetNode(typeRel)
 			if !ok {
 				// The weighted graph is not guaranteed to be present.
-				// If there's no weighted graph, which can happen for models with tuple cycles, we will log an error below
+				// If there's no weighted graph, which can happen for models with disconnected types, we will log an error below
 				// and then fall back to the non-weighted version of reverse_expand
 				c.logger.InfoWithContext(ctx, "unable to find node in weighted graph", zap.String("node_id", typeRel))
 				req.skipWeightedGraph = true
@@ -412,12 +412,12 @@ func (c *ReverseExpandQuery) execute(
 				req.relationStack = stack.Push(nil, typeRelEntry{typeRel: typeRel})
 			}
 
-			// we can ignore this error, if the weighted graph failed to build, req.skipWeightedGraph would
-			// have prevented us from entering this block.
-			edges, needsCheck, _ := c.typesystem.GetEdgesForListObjects(
+			edges, _ := c.typesystem.GetConnectedEdges(
 				typeRel,
 				sourceUserType,
 			)
+			// error should never happen as if the weighted graph failed to build, req.skipWeightedGraph would
+			// have prevented us from entering this block
 
 			// Set value to indicate that the weighted graph was used
 			resolutionMetadata.WasWeightedGraphUsed.Store(true)
@@ -426,7 +426,7 @@ func (c *ReverseExpandQuery) execute(
 				ctx,
 				req,
 				edges,
-				needsCheck || intersectionOrExclusionInPreviousEdges,
+				intersectionOrExclusionInPreviousEdges,
 				resolutionMetadata,
 				resultChan,
 				sourceUserType,

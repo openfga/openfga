@@ -336,5 +336,11 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("requestTimeout", flags.Lookup("request-timeout"))
 		util.MustBindEnv("requestTimeout", "OPENFGA_REQUEST_TIMEOUT")
+
+		// these are irrelevant unless the check-experimental flag is enabled at the current time
+		util.MustBindPFlag("planner.evictionThreshold", flags.Lookup("planner-eviction-threshold"))
+		util.MustBindEnv("planner.evictionThreshold", "OPENFGA_PLANNER_EVICTION_THRESHOLD")
+		util.MustBindPFlag("planner.cleanupInterval", flags.Lookup("planner-cleanup-interval"))
+		util.MustBindEnv("planner.cleanupInterval", "OPENFGA_PLANNER_CLEANUP_INTERVAL")
 	}
 }

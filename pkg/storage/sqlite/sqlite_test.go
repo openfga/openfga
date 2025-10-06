@@ -25,6 +25,15 @@ func TestSQLiteDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
+
+	// Run tests with a custom large max_tuples_per_write value.
+	dsCustom, err := New(uri, sqlcommon.NewConfig(
+		sqlcommon.WithMaxTuplesPerWrite(5000),
+	))
+	require.NoError(t, err)
+	defer dsCustom.Close()
+
+	t.Run("WriteTuplesWithMaxTuplesPerWrite", test.WriteTuplesWithMaxTuplesPerWrite(dsCustom, context.Background()))
 }
 
 func TestSQLiteDatastoreAfterCloseIsNotReady(t *testing.T) {
@@ -76,6 +85,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
+				storage.TupleWriteOptions{},
 				time.Now())
 			require.NoError(t, err)
 
@@ -84,6 +94,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
+				storage.TupleWriteOptions{},
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
@@ -91,6 +102,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
+				storage.TupleWriteOptions{},
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
@@ -164,6 +176,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
+		storage.TupleWriteOptions{},
 		time.Now())
 	require.NoError(t, err)
 
@@ -172,6 +185,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
+		storage.TupleWriteOptions{},
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
