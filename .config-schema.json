@@ -501,17 +501,6 @@
                 }
             }
         },
-        "cache": {
-            "type": "object",
-            "properties": {
-                "limit": {
-                    "description": "DEPRECATED use checkCache.limit. If caching of Check and ListObjects calls is enabled, this is the size limit (in items) of the cache",
-                    "type": "integer",
-                    "default": "10000",
-                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
-                }
-            }
-        },
         "checkCache": {
             "type": "object",
             "properties": {
@@ -586,75 +575,6 @@
                     "format": "duration",
                     "default": "10s",
                     "x-env-variable": "OPENFGA_CACHE_CONTROLLER_TTL"
-                }
-            }
-        },
-        "checkDatastoreThrottle": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED"
-                },
-                "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
-                },
-                "duration": {
-                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
-                    "format": "duration",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION"
-                }
-            }
-        },
-        "listObjectsDatastoreThrottle": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED"
-                },
-                "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
-                },
-                "duration": {
-                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
-                    "format": "duration",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION"
-                }
-            }
-        },
-        "listUsersDatastoreThrottle": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED"
-                },
-                "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"
-                },
-                "duration": {
-                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
-                    "format": "duration",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION"
                 }
             }
         },

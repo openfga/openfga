@@ -1171,10 +1171,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckCache.Limit)
 
-	val = res.Get("properties.cache.properties.limit.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, 10000, val.Int())
-
 	val = res.Get("properties.checkQueryCache.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
@@ -1291,39 +1287,39 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.checkDatastoreThrottle.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.CheckDatabaseThrottle.Enabled)
+	require.Equal(t, val.Bool(), cfg.CheckDatastoreThrottle.Enabled)
 
 	val = res.Get("properties.checkDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.CheckDatabaseThrottle.Threshold)
+	require.EqualValues(t, val.Int(), cfg.CheckDatastoreThrottle.Threshold)
 
 	val = res.Get("properties.checkDatastoreThrottle.properties.duration.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.CheckDatabaseThrottle.Duration.String())
+	require.Equal(t, val.String(), cfg.CheckDatastoreThrottle.Duration.String())
 
 	val = res.Get("properties.listObjectsDatastoreThrottle.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListObjectsDatabaseThrottle.Enabled)
+	require.Equal(t, val.Bool(), cfg.ListObjectsDatastoreThrottle.Enabled)
 
 	val = res.Get("properties.listObjectsDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListObjectsDatabaseThrottle.Threshold)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDatastoreThrottle.Threshold)
 
 	val = res.Get("properties.listObjectsDatastoreThrottle.properties.duration.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.ListObjectsDatabaseThrottle.Duration.String())
+	require.Equal(t, val.String(), cfg.ListObjectsDatastoreThrottle.Duration.String())
 
 	val = res.Get("properties.listUsersDatastoreThrottle.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ListUsersDatabaseThrottle.Enabled)
+	require.Equal(t, val.Bool(), cfg.ListUsersDatastoreThrottle.Enabled)
 
 	val = res.Get("properties.listUsersDatastoreThrottle.properties.threshold.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ListUsersDatabaseThrottle.Threshold)
+	require.EqualValues(t, val.Int(), cfg.ListUsersDatastoreThrottle.Threshold)
 
 	val = res.Get("properties.listUsersDatastoreThrottle.properties.duration.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.ListUsersDatabaseThrottle.Duration.String())
+	require.Equal(t, val.String(), cfg.ListUsersDatastoreThrottle.Duration.String())
 
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
