@@ -555,12 +555,9 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 		topItemStack = stack.Push(nil, topItem)
 	}
 
-	var edges []*weightedGraph.WeightedAuthorizationModelEdge
-	if edge.GetEdgeType() == weightedGraph.DirectLogicalEdge || edge.GetEdgeType() == weightedGraph.TTULogicalEdge {
-		logicalEdges, _ := c.typesystem.GetConnectedEdges(edge.GetTo().GetUniqueLabel(), sourceUserType)
-		edges = append(edges, logicalEdges...)
-	} else {
-		edges = append(edges, edge)
+	edges, err := c.typesystem.GetInternalEdges(edge, sourceUserType)
+	if err != nil {
+		return
 	}
 
 	// getting list object candidates from the lowest weight edge and have its result
@@ -781,15 +778,9 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	// This means the exclusion edge does not have a path to the terminal type.
 	// e.g. `B` in `A but not B` is not relevant to this query.
 	if edges.ExcludedEdge == nil {
-		var baseEdges []*weightedGraph.WeightedAuthorizationModelEdge
-		if edges.BaseEdge.GetEdgeType() == weightedGraph.DirectLogicalEdge || edges.BaseEdge.GetEdgeType() == weightedGraph.TTULogicalEdge {
-			logicalEdges, err := c.typesystem.GetConnectedEdges(edges.BaseEdge.GetTo().GetUniqueLabel(), sourceUserType)
-			if err != nil {
-				return fmt.Errorf("%w: operation: exclusion: failed to get logical edges: %s", ErrLowestWeightFail, err.Error())
-			}
-			baseEdges = append(baseEdges, logicalEdges...)
-		} else {
-			baseEdges = append(baseEdges, edges.BaseEdge)
+		baseEdges, err := c.typesystem.GetInternalEdges(edges.BaseEdge, sourceUserType)
+		if err != nil {
+			return fmt.Errorf("%w: operation: exclusion: failed to get base edges: %s", ErrLowestWeightFail, err.Error())
 		}
 
 		newReq := req.clone()

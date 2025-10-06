@@ -1540,6 +1540,21 @@ func (t *TypeSystem) GetEdgesFromNode(
 	return edges, nil
 }
 
+// GetInternalEdges returns a slice with all the edges linked to a grouping logical node, otherwise the slice contains the original edge.
+func (t *TypeSystem) GetInternalEdges(edge *graph.WeightedAuthorizationModelEdge, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
+	var edges []*graph.WeightedAuthorizationModelEdge
+	if edge.GetEdgeType() == graph.DirectLogicalEdge || edge.GetEdgeType() == graph.TTULogicalEdge {
+		logicalEdges, err := t.GetConnectedEdges(edge.GetTo().GetUniqueLabel(), sourceType)
+		if err != nil {
+			return nil, err
+		}
+		edges = append(edges, logicalEdges...)
+	} else {
+		edges = append(edges, edge)
+	}
+	return edges, nil
+}
+
 // GetConnectedEdges returns all edges which have a path to the source type.
 func (t *TypeSystem) GetConnectedEdges(targetTypeRelation string, sourceType string) ([]*graph.WeightedAuthorizationModelEdge, error) {
 	currentNode, ok := t.GetNode(targetTypeRelation)

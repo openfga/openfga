@@ -73,12 +73,12 @@ func GetEdgesForExclusion(
 	edges []*graph.WeightedAuthorizationModelEdge,
 	sourceType string,
 ) (ExclusionEdges, error) {
-	if len(edges) < 2 {
-		return ExclusionEdges{}, fmt.Errorf("invalid exclusion edges for source type %s", sourceType)
+	if len(edges) != 2 {
+		return ExclusionEdges{}, fmt.Errorf("invalid number of edges in an exclusion operation: expected 2, got %d", len(edges))
 	}
 
 	if !hasPathTo(edges[0], sourceType) {
-		return ExclusionEdges{}, fmt.Errorf("exclusion edges do not have weight for source type %s", sourceType)
+		return ExclusionEdges{}, fmt.Errorf("the base edge does not have a path to the source type %s", sourceType)
 	}
 
 	baseEdge := edges[0]
@@ -111,6 +111,7 @@ func (t *TypeSystem) ConstructUserset(currentEdge *graph.WeightedAuthorizationMo
 		if len(edges) == 0 {
 			return nil, fmt.Errorf("no edges found for node %s", currentNode.GetUniqueLabel())
 		}
+		// we just need to get the ttu information out of the first edge of the ttu logical group as the all belong to the same ttu definition
 		return t.ConstructUserset(edges[0], sourceUserType)
 	case graph.SpecificTypeAndRelation:
 		switch edgeType {
