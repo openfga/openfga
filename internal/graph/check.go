@@ -307,7 +307,7 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		close(subChan)
 	}()
 
-	var baseResult, subResult *checkOutcome
+	var baseErr, subErr error
 
 	// Loop until we have received one result from each of the two channels.
 	resultsReceived := 0
@@ -320,11 +320,15 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 			}
 			resultsReceived++
 
+			if res.err != nil {
+				baseErr = res.err
+				continue
+			}
+
 			// Short-circuit: If base is false, the whole expression is false.
 			if res.resp != nil && (res.resp.GetCycleDetected() || !res.resp.GetAllowed()) {
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
-			baseResult = &res
 
 		case res, ok := <-subChan:
 			if !ok {
@@ -333,11 +337,15 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 			}
 			resultsReceived++
 
+			if res.err != nil {
+				subErr = res.err
+				continue
+			}
+
 			// Short-circuit: If subtract is true, the whole expression is false.
 			if res.resp != nil && (res.resp.GetCycleDetected() || res.resp.GetAllowed()) {
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
-			subResult = &res
 
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -345,11 +353,11 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 	}
 
 	// At this point, we are guaranteed to have both results (or to have already short-circuited).
-	if baseResult.err != nil {
-		return nil, baseResult.err
+	if baseErr != nil {
+		return nil, baseErr
 	}
-	if subResult.err != nil {
-		return nil, subResult.err
+	if subErr != nil {
+		return nil, subErr
 	}
 
 	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
