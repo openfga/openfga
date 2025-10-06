@@ -307,68 +307,53 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 		close(subChan)
 	}()
 
-	var baseErr, subErr error
-	var baseDone, subDone bool
+	var baseResult, subResult *checkOutcome
 
-	// This loop waits for both outcomes, but contains logic to return early if a
-	// definitive answer is found.
-	for !baseDone || !subDone {
+	// Loop until we have received one result from each of the two channels.
+	resultsReceived := 0
+	for resultsReceived < 2 {
 		select {
+		case res, ok := <-baseChan:
+			if !ok {
+				baseChan = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			// Short-circuit: If base is false, the whole expression is false.
+			if res.resp != nil && (res.resp.GetCycleDetected() || !res.resp.GetAllowed()) {
+				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
+			}
+			baseResult = &res
+
+		case res, ok := <-subChan:
+			if !ok {
+				subChan = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			// Short-circuit: If subtract is true, the whole expression is false.
+			if res.resp != nil && (res.resp.GetCycleDetected() || res.resp.GetAllowed()) {
+				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
+			}
+			subResult = &res
+
 		case <-ctx.Done():
 			return nil, ctx.Err()
-
-		case baseResult, ok := <-baseChan:
-			if !ok {
-				baseDone = true
-				continue
-			}
-			if baseResult.err != nil {
-				baseErr = baseResult.err
-				continue
-			}
-			// A definitive 'false' from base means the whole result is false.
-			// This overrides any error that might come from the 'sub' handler.
-			if baseResult.resp.GetCycleDetected() || !baseResult.resp.GetAllowed() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: baseResult.resp.GetCycleDetected(),
-					},
-				}, nil
-			}
-
-		case subResult, ok := <-subChan:
-			if !ok {
-				subDone = true
-				continue
-			}
-			if subResult.err != nil {
-				subErr = subResult.err
-				continue
-			}
-			// A definitive 'true' from sub means the exclusion is false.
-			if subResult.resp.GetCycleDetected() || subResult.resp.GetAllowed() {
-				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: ResolveCheckResponseMetadata{
-						CycleDetected: subResult.resp.GetCycleDetected(),
-					},
-				}, nil
-			}
 		}
 	}
 
-	// If we get here, it means:
-	// - base was either (Allowed: true) or an error
-	// - sub was either (Allowed: false) or an error
-	// We can now evaluate the errors.
-	if baseErr != nil || subErr != nil {
-		return nil, errors.Join(baseErr, subErr) // Use errors.Join for cleaner error handling
+	// At this point, we are guaranteed to have both results (or to have already short-circuited).
+	if baseResult.err != nil {
+		return nil, baseResult.err
+	}
+	if subResult.err != nil {
+		return nil, subResult.err
 	}
 
-	return &ResolveCheckResponse{
-		Allowed: true,
-	}, nil
+	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	return &ResolveCheckResponse{Allowed: true}, nil
 }
 
 // Close is a noop.
