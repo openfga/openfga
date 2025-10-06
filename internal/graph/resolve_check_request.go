@@ -25,6 +25,7 @@ type ResolveCheckRequest struct {
 	VisitedPaths              map[string]struct{}
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
+	optimizationsEnabled      bool
 
 	// Invariant parts of a check request are those that don't change in sub-problems
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
@@ -56,6 +57,7 @@ type ResolveCheckRequestParams struct {
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
 	AuthorizationModelID      string
+	OptimizationsEnabled      bool
 }
 
 func NewCheckRequestMetadata() *ResolveCheckRequestMetadata {
@@ -87,6 +89,7 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
+		optimizationsEnabled:      params.OptimizationsEnabled,
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -132,6 +135,7 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		optimizationsEnabled:      r.GetOptimizationsEnabled(),
 	}
 }
 
@@ -203,4 +207,11 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetOptimizationsEnabled() bool {
+	if r == nil {
+		return false
+	}
+	return r.optimizationsEnabled
 }

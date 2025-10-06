@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 
-## [1.10.2] - 2025-09-29
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
+- Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
 - Breaking: Replace shadow check resolver with shadow check command. [#2698](https://github.com/openfga/openfga/pull/2698)
   > The following breaking changes are related to the `server.Server` interface. If you are not customizing the server, then these changes should not impact your usage of OpenFGA.
     - Removed `WithShadowListObjectsCheckResolverEnabled` server option.
@@ -21,11 +23,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     - Removed `WithShadowResolverEnabled` option.
     - Removed `WithShadowResolverOpts` option.
     - Removed `ShadowResolver` struct implementation, replaced by `ShadowCheckCommand`.
-- Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
-- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
 
-### Fixed
-- Fixed a bug where experimental ReverseExpand constructed the underlying check relation incorrectly for intersection and exclusion in ListObjects. [#2721](https://github.com/openfga/openfga/pull/2721)
+## [1.10.0] - 2025-09-11
+### Added
+- Make number of querying goroutines in experimental reverse_expand configurable via `resolveNodeBreadthLimit`. [#2652](https://github.com/openfga/openfga/pull/2652)
+- Add microsecond latency numbers and datastore query count in shadow check resolver. [#2658](https://github.com/openfga/openfga/pull/2658)
+- Add `NewWithDB` support for sqlite storage. [#2679](https://github.com/openfga/openfga/pull/2679)
+- Add planner for selecting check resolution strategies based on runtime statistics, behind the `enable-check-optimization` flag. [#2624](https://github.com/openfga/openfga/pull/2624)
+- Add `server.WithShadowCheckCacheEnabled` to enable creation of a separate cache for shadow check resolver. [#2683](https://github.com/openfga/openfga/pull/2683)
+- Run weight 2 optimization for cases where there are more than 1 directly assignable userset. [#2684](https://github.com/openfga/openfga/pull/2684)
 
 ## [1.10.1] - 2025-09-22
 ### Fixed

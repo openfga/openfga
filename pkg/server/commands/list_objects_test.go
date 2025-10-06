@@ -23,6 +23,7 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"
 	"github.com/openfga/openfga/internal/throttler/threshold"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/storage"
@@ -761,9 +762,9 @@ func runOneBenchmark(
 ) {
 	if optimizationsEnabled {
 		name += "_with_optimization"
-		query.optimizationsEnabled = true
+		query.ff = featureflags.NewHardcodedBooleanClient(true)
 	} else {
-		query.optimizationsEnabled = false
+		query.ff = featureflags.NewHardcodedBooleanClient(false)
 	}
 	var latencies []time.Duration
 	b.Run(name, func(b *testing.B) {
@@ -830,7 +831,7 @@ func BenchmarkListObjects(b *testing.B) {
 		datastore,
 		checkResolver,
 		checkCfg,
-		WithListObjectsOptimizationsEnabled(true),
+		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 
 		// unlimited results, these tests are designed to return `n` results per iteration
 		WithListObjectsMaxResults(0),

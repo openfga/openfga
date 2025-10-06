@@ -42,6 +42,7 @@ type CheckQuery struct {
 	shouldCacheIterators       bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
+	optimizationsEnabled       bool
 }
 
 var _ CheckCommand = (*CheckQuery)(nil)
@@ -100,6 +101,12 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
+func WithCheckOptimizationsEnabled(enabled bool) CheckQueryOption {
+	return func(c *CheckQuery) {
+		c.optimizationsEnabled = enabled
+	}
+}
+
 func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:               logger.NewNoopLogger(),
@@ -141,6 +148,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			Consistency:               params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
 			AuthorizationModelID:      params.Typesys.GetAuthorizationModelID(),
+			OptimizationsEnabled:      c.optimizationsEnabled,
 		},
 	)
 
