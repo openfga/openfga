@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
@@ -487,16 +488,25 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 		inBuffers[i] = make(map[string]struct{})
 	}
 
-	var muOut sync.Mutex
+	// var muOut sync.Mutex
 
-	outBuffer := make(map[string]struct{})
+	// outBuffer := make(map[string]struct{})
 
 	var mu sync.Mutex
 
 	var active StatusPool
 
+	var status StatusPool
+
+	var messageCount atomic.Int64
+
+	var processes []func()
+
 	for ndx, snd := range senders {
 		ch := make(chan Group, 100)
+
+		sID := status.Register()
+		status.Set(sID, true)
 
 		go func() {
 			defer close(ch)
@@ -506,127 +516,195 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 			}
 		}()
 
+		var recursiveRelation string
+
+		if snd.edge != nil {
+			recursiveRelation = snd.edge.GetRecursiveRelation()
+		}
+
+		isRecursive := len(recursiveRelation) > 0
+
+		var procCount atomic.Int64
+
 		for range snd.numProcs {
-			wg.Add(1)
-			go func(pID int) {
+			pID := active.Register()
+
+			procCount.Add(1)
+
+			proc := func() {
 				defer wg.Done()
-
-				for group := range ch {
-					mu.Lock()
-					active.Set(pID, true)
-					r.coord.setActive(r.id, active.Status())
-					mu.Unlock()
-
-					r.coord.addMessages(-1)
-
-					var unseen []Item
-
-					// Deduplicate items within this group based on the buffer for this sender
-					for _, item := range group.Items {
-						if item.Err != nil {
-							unseen = append(unseen, item)
-							continue
-						}
-
-						mutexes[ndx].Lock()
-						if _, ok := inBuffers[ndx][item.Value]; ok {
-							mutexes[ndx].Unlock()
-							continue
-						}
-						inBuffers[ndx][item.Value] = struct{}{}
-						mutexes[ndx].Unlock()
-						unseen = append(unseen, item)
-					}
-
-					// If there are no unseen items, skip processing
-					if len(unseen) == 0 {
+				defer func() {
+					remaining := procCount.Add(-1)
+					if remaining == 0 {
 						mu.Lock()
-						active.Set(pID, false)
+						status.Set(sID, false)
+						mu.Unlock()
+					}
+					println("CLOSING", r.id, ndx, sID, pID)
+				}()
+
+			ProcessLoop:
+				for {
+					select {
+					case group, ok := <-ch:
+						if !ok {
+							break ProcessLoop
+						}
+						mu.Lock()
+						active.Set(pID, true)
 						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
 
-						for _, lst := range listeners {
-							if snd.edge != nil && lst.node != nil && snd.edge.GetRecursiveRelation() == lst.node.GetUniqueLabel() {
-								lst.cancel()
+						r.coord.addMessages(-1)
+
+						if snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() {
+							messageCount.Add(-1)
+						}
+
+						var unseen []Item
+
+						// Deduplicate items within this group based on the buffer for this sender
+						for _, item := range group.Items {
+							if item.Err != nil {
+								unseen = append(unseen, item)
+								continue
 							}
+
+							mutexes[ndx].Lock()
+							if _, ok := inBuffers[ndx][item.Value]; ok {
+								mutexes[ndx].Unlock()
+								continue
+							}
+							inBuffers[ndx][item.Value] = struct{}{}
+							mutexes[ndx].Unlock()
+							unseen = append(unseen, item)
 						}
-						continue
-					}
 
-					results := r.interpreter.Interpret(snd.edge, unseen)
+						// If there are no unseen items, skip processing
+						if len(unseen) == 0 {
+							mu.Lock()
+							active.Set(pID, false)
+							r.coord.setActive(r.id, active.Status())
+							mu.Unlock()
+							continue
+						}
 
-					var items []Item
+						results := r.interpreter.Interpret(snd.edge, unseen)
 
-					for item := range results {
-						if item.Err != nil {
+						var items []Item
+
+						for item := range results {
+							if item.Err != nil {
+								items = append(items, item)
+								goto AfterDedup
+							}
+
+							/*
+								muOut.Lock()
+								if _, ok := outBuffer[item.Value]; ok {
+									muOut.Unlock()
+									continue
+								}
+								outBuffer[item.Value] = struct{}{}
+								muOut.Unlock()
+							*/
 							items = append(items, item)
-							goto AfterDedup
-						}
 
-						muOut.Lock()
-						if _, ok := outBuffer[item.Value]; ok {
-							muOut.Unlock()
-							continue
-						}
-						outBuffer[item.Value] = struct{}{}
-						muOut.Unlock()
-						items = append(items, item)
+						AfterDedup:
 
-					AfterDedup:
+							if len(items) < snd.chunkSize || snd.chunkSize == 0 {
+								continue
+							}
 
-						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
-							continue
+							outGroup := Group{
+								Items: items,
+							}
+
+							items = nil
+
+							for _, lst := range listeners {
+								r.coord.addMessages(1)
+
+								if snd.edge != nil && (snd.edge.GetTo() == lst.node || snd.edge.GetFrom() == lst.node) {
+									messageCount.Add(1)
+								}
+								select {
+								case lst.ch <- outGroup:
+								case <-lst.ctx.Done():
+									r.coord.addMessages(-1)
+
+									if snd.edge != nil && (snd.edge.GetTo() == lst.node || snd.edge.GetFrom() == lst.node) {
+										messageCount.Add(-1)
+									}
+								}
+							}
 						}
 
 						outGroup := Group{
 							Items: items,
 						}
 
-						items = nil
+						if len(outGroup.Items) == 0 {
+							mu.Lock()
+							active.Set(pID, false)
+							r.coord.setActive(r.id, active.Status())
+							mu.Unlock()
+							continue
+						}
 
 						for _, lst := range listeners {
 							r.coord.addMessages(1)
+
+							if snd.edge != nil && (snd.edge.GetTo() == lst.node || snd.edge.GetFrom() == lst.node) {
+								messageCount.Add(1)
+							}
 							select {
 							case lst.ch <- outGroup:
 							case <-lst.ctx.Done():
 								r.coord.addMessages(-1)
+
+								if snd.edge != nil && (snd.edge.GetTo() == lst.node || snd.edge.GetFrom() == lst.node) {
+									messageCount.Add(-1)
+								}
 							}
 						}
-					}
-
-					outGroup := Group{
-						Items: items,
-					}
-
-					if len(outGroup.Items) == 0 {
 						mu.Lock()
 						active.Set(pID, false)
 						r.coord.setActive(r.id, active.Status())
 						mu.Unlock()
+					default:
+						if !isRecursive {
+							break
+						}
 
-						for _, lst := range listeners {
-							if snd.edge != nil && lst.node != nil && snd.edge.GetRecursiveRelation() == lst.node.GetUniqueLabel() {
-								lst.cancel()
+						mu.Lock()
+						status.Set(sID, false)
+						otherSenderActive := status.Status()
+						status.Set(sID, true)
+						anyProcessorActive := active.Status()
+						mu.Unlock()
+
+						println("STATUS", r.id, ndx, pID, otherSenderActive, anyProcessorActive, messageCount.Load())
+						if !otherSenderActive && !anyProcessorActive && messageCount.Load() == 0 {
+							for _, lst := range listeners {
+								if lst.node != nil && recursiveRelation == lst.node.GetUniqueLabel() {
+									lst.cancel()
+									break
+								}
 							}
 						}
-						continue
 					}
-
-					for _, lst := range listeners {
-						r.coord.addMessages(1)
-						select {
-						case lst.ch <- outGroup:
-						case <-lst.ctx.Done():
-							r.coord.addMessages(-1)
-						}
-					}
-					mu.Lock()
-					active.Set(pID, false)
-					r.coord.setActive(r.id, active.Status())
-					mu.Unlock()
+					runtime.Gosched()
 				}
-			}(active.Register())
+			}
+
+			processes = append(processes, proc)
 		}
+	}
+
+	for _, proc := range processes {
+		wg.Add(1)
+		go proc()
 	}
 	wg.Wait()
 
