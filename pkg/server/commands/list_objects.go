@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -53,6 +54,7 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -65,11 +67,12 @@ type ListObjectsQuery struct {
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 
-	checkResolver            graph.CheckResolver
-	cacheSettings            serverconfig.CacheSettings
-	sharedDatastoreResources *shared.SharedDatastoreResources
+	checkResolver             graph.CheckResolver
+	checkOptimizationsEnabled bool
+	cacheSettings             serverconfig.CacheSettings
+	sharedDatastoreResources  *shared.SharedDatastoreResources
 
-	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
+	optimizationsEnabled bool
 	checkSettings        *CheckCommandSettings
 }
 
@@ -172,9 +175,14 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
+func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.optimizationsEnabled = enabled
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -211,12 +219,21 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		optimizationsEnabled: false,
 		checkSettings:        checkSettings,
+		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
+		query.optimizationsEnabled = true
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalCheckOptimizations, nil) {
+		query.checkOptimizationsEnabled = true
 	}
 
 	return query, nil
@@ -342,7 +359,6 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
-			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
@@ -353,13 +369,14 @@ func (q *ListObjectsQuery) evaluate(
 		pool.Go(func(ctx context.Context) error {
 			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 			err := reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
-				StoreID:          req.GetStoreId(),
-				ObjectType:       targetObjectType,
-				Relation:         targetRelation,
-				User:             sourceUserRef,
-				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-				Context:          req.GetContext(),
-				Consistency:      req.GetConsistency(),
+				StoreID:              req.GetStoreId(),
+				ObjectType:           targetObjectType,
+				Relation:             targetRelation,
+				User:                 sourceUserRef,
+				ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+				Context:              req.GetContext(),
+				Consistency:          req.GetConsistency(),
+				OptimizationsEnabled: q.optimizationsEnabled,
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
 				reverseExpandDoneWithError <- struct{}{}

@@ -196,7 +196,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, "", "", ""),
 			)
 		})
@@ -209,7 +209,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), ""),
 			)
 		})
@@ -222,7 +222,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, "not-a-valid-ulid", ulid.Make().String(), "oidc"),
 			)
 		})
@@ -235,7 +235,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			_ = MustNewServerWithOpts(
 				WithDatastore(mockDatastore),
-				WithExperimentals(ExperimentalAccessControlParams),
+				WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 				WithAccessControlParams(true, ulid.Make().String(), "not-a-valid-ulid", "oidc"),
 			)
 		})
@@ -2028,48 +2028,6 @@ func TestDelegateCheckResolver(t *testing.T) {
 	})
 }
 
-func TestIsExperimentallyEnabled(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-	ds := memory.New() // Datastore required for server instantiation
-	someExperimentalFlag := ExperimentalFeatureFlag("some-experimental-feature-to-enable")
-	t.Cleanup(ds.Close)
-
-	t.Run("returns_false_if_experimentals_is_empty", func(t *testing.T) {
-		s := MustNewServerWithOpts(WithDatastore(ds))
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_true_if_experimentals_has_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_true_if_experimentals_has_matching_element_and_other_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(someExperimentalFlag, ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-
-	t.Run("returns_false_if_experimentals_has_no_matching_element", func(t *testing.T) {
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.IsExperimentallyEnabled(someExperimentalFlag))
-	})
-}
-
 func TestIsAccessControlEnabled(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2080,7 +2038,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_false_if_experimentals_does_not_have_access_control", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalFeatureFlag("some-other-feature")),
+			WithExperimentals("some-other-feature"),
 			WithAccessControlParams(true, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
@@ -2090,7 +2048,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_false_if_access_control_is_disabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalAccessControlParams),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 			WithAccessControlParams(false, "some-model-id", "some-store-id", ""),
 		)
 		t.Cleanup(s.Close)
@@ -2100,7 +2058,7 @@ func TestIsAccessControlEnabled(t *testing.T) {
 	t.Run("returns_true_if_access_control_is_enabled", func(t *testing.T) {
 		s := MustNewServerWithOpts(
 			WithDatastore(ds),
-			WithExperimentals(ExperimentalAccessControlParams),
+			WithExperimentals(serverconfig.ExperimentalAccessControlParams),
 			WithAccessControlParams(true, ulid.Make().String(), ulid.Make().String(), "oidc"),
 		)
 		t.Cleanup(s.Close)
