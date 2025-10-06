@@ -89,7 +89,7 @@ The Cache Controller manages cache invalidation by monitoring data changes and p
 
 #### Cache Controller
 
-With the Cache Controller enabled, the controller TTL sets the maximum staleness window. Cache TTLs primarily affect hit rate and memory usage, not freshness. Choose:
+With the Cache Controller enabled, the controller TTL sets the maximum staleness window. Check/ListObjects cache TTLs primarily affect hit rate and memory usage, not freshness. Choose:
 
 - Controller TTL ≤ your maximum acceptable staleness (e.g., 10–60s).
 - Cache TTLs as long as your memory budget and workload allow.
@@ -166,28 +166,7 @@ OpenFGA provides comprehensive metrics for cache monitoring:
 - `openfga_cachecontroller_cache_invalidation_count`: Number of invalidations performed
 - `openfga_cachecontroller_invalidation_duration_ms`: Time spent on invalidation operations
 
-## Performance Tuning Guidelines
-
-### Cache Hit Rate Optimization
-
-1. **Monitor hit rates**: Aim for >80% hit rate for query caches, >60% for iterator caches
-2. **Adjust TTL**: Longer TTL = higher hit rates but potentially stale data
-3. **Increase cache size**: More items can be cached, improving hit rates
-
-### Memory Usage Optimization
-
-1. **Right-size cache limits**: Based on available memory and usage patterns
-2. **Monitor eviction rates**: High evictions indicate undersized caches
-3. **Balance cache types**: Allocate memory across different cache types based on workload
-4. **Use iterator result limits**: Prevent large iterators from consuming excessive memory
-
 ## Best Practices
-
-### Development and Testing
-
-1. **Start with defaults**: Begin with conservative cache settings
-2. **Enable monitoring**: Always enable metrics collection
-3. **Test cache behavior**: Verify cache hits and invalidation work as expected
 
 ### Production Deployment
 
@@ -210,8 +189,8 @@ OpenFGA provides comprehensive metrics for cache monitoring:
 
 **Low Cache Hit Rates**
 - **Symptoms**: High response times, increased database load
-- **Causes**: Cache size too small, TTL too short, highly dynamic data
-- **Solutions**: Increase cache limits, extend TTL, analyze access patterns
+- **Causes**: Cache size too small, Cache TTLs too short, highly dynamic data
+- **Solutions**: Increase cache limits, extend TTLs
 
 **Memory Issues**
 - **Symptoms**: Out of memory errors, high memory usage
