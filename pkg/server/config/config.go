@@ -449,7 +449,7 @@ func (cfg *Config) VerifyServerSettings() error {
 		return err
 	}
 
-	err = cfg.VerifyDatabaseThrottlesConfig()
+	err = cfg.VerifyDatastoreThrottlesConfig()
 	if err != nil {
 		return err
 	}
@@ -585,8 +585,8 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 	return nil
 }
 
-// VerifyDatabaseThrottlesConfig ensures VerifyDatabaseThrottlesConfig is called so that the right values are verified.
-func (cfg *Config) VerifyDatabaseThrottlesConfig() error {
+// VerifyDatastoreThrottlesConfig ensures VerifyDatastoreThrottlesConfig is called so that the right values are verified.
+func (cfg *Config) VerifyDatastoreThrottlesConfig() error {
 	if cfg.CheckDatastoreThrottle.Enabled {
 		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
 			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
