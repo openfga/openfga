@@ -326,7 +326,7 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 			}
 
 			// Short-circuit: If base is false, the whole expression is false.
-			if res.resp != nil && (res.resp.GetCycleDetected() || !res.resp.GetAllowed()) {
+			if res.resp.GetCycleDetected() || !res.resp.GetAllowed() {
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
 
@@ -343,7 +343,7 @@ func exclusion(ctx context.Context, _ int, handlers ...CheckHandlerFunc) (*Resol
 			}
 
 			// Short-circuit: If subtract is true, the whole expression is false.
-			if res.resp != nil && (res.resp.GetCycleDetected() || res.resp.GetAllowed()) {
+			if res.resp.GetCycleDetected() || res.resp.GetAllowed() {
 				return &ResolveCheckResponse{Allowed: false, ResolutionMetadata: ResolveCheckResponseMetadata{CycleDetected: res.resp.GetCycleDetected()}}, nil
 			}
 
