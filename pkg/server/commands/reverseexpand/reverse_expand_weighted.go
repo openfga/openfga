@@ -482,6 +482,7 @@ type baseResolver struct {
 
 func (r *baseResolver) Active() bool {
 	busy, messages := r.lcoord.getState()
+	println("STAT", r.id, r.done, busy, messages)
 	return !r.done || busy || messages > 0
 }
 
@@ -545,7 +546,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					mu.Lock()
 					active.Set(pID, true)
 					r.coord.setActive(r.id, active.Status())
-					r.lcoord.setActive(lID, active.Status())
+					r.lcoord.setActive(lID, true)
 					mu.Unlock()
 
 					r.coord.addMessages(-1)
@@ -626,7 +627,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					mu.Lock()
 					active.Set(pID, false)
 					r.coord.setActive(r.id, active.Status())
-					r.lcoord.setActive(lID, active.Status())
+					r.lcoord.setActive(lID, false)
 					mu.Unlock()
 				}
 			}
@@ -653,6 +654,8 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 		go proc(&wgRecursive)
 	}
 	wgStandard.Wait()
+
+	r.done = true
 
 	wgRecursive.Wait()
 }
@@ -1059,6 +1062,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 }
 
 type Worker struct {
+	name      string
 	senders   []*sender
 	listeners []*listener
 	resolver  resolver
@@ -1069,6 +1073,10 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 	var r resolver
 
 	id := coord.register()
+
+	if node != nil {
+		println("NODE", id, node.GetUniqueLabel())
+	}
 
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
@@ -1208,7 +1216,16 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		panic("unsupported node type for reverse expand worker")
 	}
 
+	var name string
+
+	if node == nil {
+		name = "nil"
+	} else {
+		name = node.GetUniqueLabel()
+	}
+
 	return &Worker{
+		name:     name,
 		resolver: r,
 	}
 }
@@ -1411,6 +1428,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 				}
 				break
 			}
+
 			runtime.Gosched()
 		}
 	}()
