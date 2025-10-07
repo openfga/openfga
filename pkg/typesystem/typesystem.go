@@ -540,9 +540,11 @@ func (t *TypeSystem) TTUUseWeight2Resolver(objectType, relation, userType string
 // TTUUseRecursiveResolver returns true fast path can be applied to user/relation.
 // For it to return true, all of these conditions:
 // 1. Node[objectType#relation].weights[userType] = infinite
-// 2. Node[objectType#relation] has only 1 edge, and it's to an OR node
-// 3. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
-// 4. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
+// 2. Node[objectType#relation].RecursiveRelation = objectType#relation
+// 3. Node[objectType#relation].IsPartOfTupleCycle == false
+// 4. Node[objectType#relation] has only 1 edge, and it's to an OR node
+// 5. The OR node has one or more TTU edge with weight infinite for the terminal type and the computed relation for the TTU is the same
+// 6. Any other edge coming out of the OR node that has a weight for terminal type, it should be weight 1
 // must be all true.
 func (t *TypeSystem) TTUUseRecursiveResolver(objectType, relation, userType string, ttu *openfgav1.TupleToUserset) bool {
 	if t.authzWeightedGraph == nil {
