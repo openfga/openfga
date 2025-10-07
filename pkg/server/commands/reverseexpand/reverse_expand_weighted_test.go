@@ -235,7 +235,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 			name: "intersection_with_multiple_directs",
 			model: `model
 				  schema 1.1
-		
+
 				type user
 				type doc
 				  relations
@@ -1026,7 +1026,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 				type doc
 					relations
 						define parent: [group, team]
-						define owner: [type2#member] and member from parent	
+						define owner: [type2#member] and member from parent
 		`,
 			tuples: []string{
 				"doc:1#parent@group:1",
@@ -2686,7 +2686,7 @@ func TestIntersectionHandler(t *testing.T) {
 
 		errorRet := errors.New("test")
 		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
-		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any())
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
 		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)
@@ -2894,7 +2894,7 @@ func TestExclusionHandler(t *testing.T) {
 
 		errorRet := errors.New("test")
 		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
-		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any())
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 		mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
 		mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errorRet)

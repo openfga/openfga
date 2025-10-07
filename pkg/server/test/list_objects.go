@@ -474,8 +474,9 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 			// arrange: write model
 			model := testutils.MustTransformDSLToProtoWithID(test.model)
 
-			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			// arrange: write tuples in random order
 			test.tuples = testutils.Shuffle(test.tuples)

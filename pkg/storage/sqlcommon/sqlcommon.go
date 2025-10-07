@@ -890,17 +890,29 @@ func WriteAuthorizationModel(
 	dbInfo *DBInfo,
 	store string,
 	model *openfgav1.AuthorizationModel,
-) error {
+	hash string,
+) (string, error) {
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) < 1 {
-		return nil
+		return model.GetId(), nil
 	}
 
 	pbdata, err := proto.Marshal(model)
 	if err != nil {
-		return err
+		return "", err
+	}
+	var id string
+
+	err = dbInfo.stbl.
+		Select("authorization_model").Column("id").
+		Where(sq.Eq{"hash": hash}).QueryRowContext(ctx).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", dbInfo.HandleSQLError(err)
 	}
 
 	_, err = dbInfo.stbl.
@@ -909,10 +921,9 @@ func WriteAuthorizationModel(
 		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
 		ExecContext(ctx)
 	if err != nil {
-		return dbInfo.HandleSQLError(err)
+		return "", dbInfo.HandleSQLError(err)
 	}
-
-	return nil
+	return model.GetId(), nil
 }
 
 // constructAuthorizationModelFromSQLRows tries first to read and return a model that was written in one row (the new format).
