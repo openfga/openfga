@@ -119,6 +119,28 @@ var cases = []testcase{
 		expected:   []string{"global:global"},
 	},
 	{
+		name: "ttu_recursive",
+		model: `model
+				  schema 1.1
+
+				type user
+				type org
+				  relations
+					define parent: [org]
+					define ttu_recursive: [user] or ttu_recursive from parent
+		`,
+		tuples: []string{
+			"org:a#ttu_recursive@user:justin",
+			"org:b#parent@org:a", // org:a is parent of b
+			"org:c#parent@org:b", // org:b is parent of org:c
+			"org:d#parent@org:c", // org:c is parent of org:d
+		},
+		objectType: "org",
+		relation:   "ttu_recursive",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "justin"}},
+		expected:   []string{"org:a", "org:b", "org:c", "org:d"},
+	},
+	{
 		name: "userset_as_user",
 		model: `
 		model

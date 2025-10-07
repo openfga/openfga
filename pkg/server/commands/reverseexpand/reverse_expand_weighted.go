@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
@@ -371,6 +372,19 @@ type coordinator struct {
 
 	// messageCount holds the total number of in-flight messages within the pipeline.
 	messageCount int64
+
+	parent *coordinator
+	pID    int
+}
+
+func newCoordinator(parent *coordinator) *coordinator {
+	var coord coordinator
+
+	if parent != nil {
+		coord.pID = parent.register()
+		coord.parent = parent
+	}
+	return &coord
 }
 
 // register is a function that returns a unique identifier for a pipeline
@@ -392,6 +406,10 @@ func (c *coordinator) setActive(id int, active bool) {
 	defer c.mu.Unlock()
 
 	c.sp.Set(id, active)
+
+	if c.parent != nil {
+		c.parent.setActive(c.pID, c.sp.Status())
+	}
 }
 
 // getState is a function that returns the pipeline state as a sum
@@ -405,7 +423,6 @@ func (c *coordinator) setActive(id int, active bool) {
 func (c *coordinator) getState() (bool, int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	return c.sp.Status(), c.messageCount
 }
 
@@ -416,43 +433,10 @@ func (c *coordinator) addMessages(n int64) {
 	defer c.mu.Unlock()
 
 	c.messageCount += n
-}
 
-// listener is a struct that contains fields relevant to the listening
-// end of a pipeline connection.
-type listener struct {
-	// ch is input channel of the listener.
-	ch chan Group
-
-	// ctx manages the lifetime of the listener.
-	ctx context.Context
-
-	// cancel will end the listeners lifetime when invoked.
-	cancel context.CancelFunc
-
-	// node is the weighted graph node that is listening.
-	node *Node
-}
-
-// sender is a struct that contains fields relevant to the producing
-// end of a pipeline connection.
-type sender struct {
-	// edge is the weighted graph edge that is producing.
-	edge *Edge
-
-	// seq is the continuous sequence of messages that will yield
-	// message values until the consumer stops iterating, or the
-	// mechanism feeding the seqence signals that it is done.
-	seq iter.Seq[Group]
-
-	// chunkSize is the target number of items to include in each
-	// outbound message. A value less than 1 indicates an unlimited
-	// number of items per message.
-	chunkSize int
-
-	// numProcs is the number of message processors to execute for
-	// the sender.
-	numProcs int
+	if c.parent != nil {
+		c.parent.addMessages(n)
+	}
 }
 
 // resolver is an interface that is consumed by a Worker struct.
@@ -465,7 +449,7 @@ type resolver interface {
 	// the consumed messages to the provided listeners.
 	Resolve(senders []*sender, listeners []*listener)
 
-	Active() bool
+	Ready() bool
 }
 
 type interpreter interface {
@@ -473,17 +457,13 @@ type interpreter interface {
 }
 
 type baseResolver struct {
-	id          int
 	coord       *coordinator
 	interpreter interpreter
-	done        bool
-	lcoord      coordinator
+	done        atomic.Bool
 }
 
-func (r *baseResolver) Active() bool {
-	busy, messages := r.lcoord.getState()
-	println("STAT", r.id, r.done, busy, messages)
-	return !r.done || busy || messages > 0
+func (r *baseResolver) Ready() bool {
+	return !r.done.Load()
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -495,64 +475,60 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 		inBuffers[i] = make(map[string]struct{})
 	}
 
-	// var muOut sync.Mutex
-
-	// outBuffer := make(map[string]struct{})
-
-	var mu sync.Mutex
-	var active StatusPool
-
 	var standard []func(*sync.WaitGroup)
 	var recursive []func(*sync.WaitGroup)
 
-	var recursiveListeners []*listener
-
 	for ndx, snd := range senders {
-		ch := make(chan Group, 100)
-
-		go func() {
-			defer close(ch)
-
-			for group := range snd.seq {
-				r.lcoord.addMessages(1)
-				ch <- group
-			}
-		}()
-
 		var recursiveRelation string
+		var tupleCycle bool
+		var ttu bool
 
 		if snd.edge != nil {
 			recursiveRelation = snd.edge.GetRecursiveRelation()
+			tupleCycle = snd.edge.IsPartOfTupleCycle()
+			ttu = snd.edge.GetEdgeType() == EdgeTypeTTU
 		}
 
-		isRecursive := len(recursiveRelation) > 0
+		isRecursive := len(recursiveRelation) > 0 && !tupleCycle && !ttu
+		isRecursive = false
 
 		if isRecursive {
-			for _, lst := range listeners {
-				if lst.node != nil && lst.node.GetUniqueLabel() == recursiveRelation {
-					recursiveListeners = append(recursiveListeners, lst)
-				}
-			}
+			println(snd.edge.GetEdgeType())
+			println("RECURSIVE", recursiveRelation, snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+		}
+
+		var end atomic.Bool
+
+		if snd.edge != nil {
+			fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
 		}
 
 		for range snd.numProcs {
-			pID := active.Register()
-			lID := r.lcoord.register()
+			pID := r.coord.register()
 
 			proc := func(wg *sync.WaitGroup) {
 				defer wg.Done()
+				defer func() {
+					if snd.edge != nil {
+						fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+					}
+				}()
 
-				for group := range ch {
-					mu.Lock()
-					active.Set(pID, true)
-					r.coord.setActive(r.id, active.Status())
-					r.lcoord.setActive(lID, true)
-					mu.Unlock()
+				for snd.more() {
+					var results iter.Seq[Item]
+					var outGroup Group
+					var items, unseen []Item
 
-					r.coord.addMessages(-1)
-					r.lcoord.addMessages(-1)
+					r.coord.setActive(pID, true)
 
-					var unseen []Item
+					group, ok := snd.recv()
+					if !ok {
+						goto ProcessEnd
+					}
+
+					if snd.edge != nil {
+						fmt.Printf("RECEIVED %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+					}
 
 					// Deduplicate items within this group based on the buffer for this sender
 					for _, item := range group.Items {
@@ -571,12 +547,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						unseen = append(unseen, item)
 					}
 
-					var results iter.Seq[Item]
-					var items []Item
-					var outGroup Group
-
 					// If there are no unseen items, skip processing
 					if len(unseen) == 0 {
+						end.Store(true)
 						goto ProcessEnd
 					}
 
@@ -596,39 +569,35 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						items = nil
 
 						for _, lst := range listeners {
-							r.coord.addMessages(1)
-							select {
-							case lst.ch <- outGroup:
-							case <-lst.ctx.Done():
-								r.coord.addMessages(-1)
-							}
+							lst.send(outGroup)
 						}
 					}
 
 					if len(items) == 0 {
+						if snd.edge != nil {
+							fmt.Printf("ENDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+						}
+						end.Store(true)
 						goto ProcessEnd
 					}
 
 					outGroup.Items = items
 
 					for _, lst := range listeners {
-						r.coord.addMessages(1)
-						if lst.node != nil {
-							// fmt.Printf("SENT %s %d %d %#v\n", lst.node.GetUniqueLabel(), r.id, pID, outGroup.Items)
+						if lst.node != nil && snd.edge != nil {
+							fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel())
+						} else if lst.node != nil {
+							fmt.Printf("SENDING %s -> %s\n", "nil", lst.node.GetUniqueLabel())
+						} else {
+							fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), "nil")
 						}
-						select {
-						case lst.ch <- outGroup:
-						case <-lst.ctx.Done():
-							r.coord.addMessages(-1)
-						}
+						lst.send(outGroup)
 					}
 
 				ProcessEnd:
-					mu.Lock()
-					active.Set(pID, false)
-					r.coord.setActive(r.id, active.Status())
-					r.lcoord.setActive(lID, false)
-					mu.Unlock()
+					r.coord.setActive(pID, false)
+
+					runtime.Gosched()
 				}
 			}
 
@@ -655,7 +624,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 	wgStandard.Wait()
 
-	r.done = true
+	r.done.Store(true)
 
 	wgRecursive.Wait()
 }
@@ -852,7 +821,7 @@ type intersectionResolver struct {
 	done        bool
 }
 
-func (r *intersectionResolver) Active() bool {
+func (r *intersectionResolver) Ready() bool {
 	return !r.done
 }
 
@@ -872,7 +841,9 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 
 	errs := make([][]Item, len(senders))
 
-	r.coord.setActive(r.id, true)
+	pID := r.coord.register()
+
+	r.coord.setActive(pID, true)
 
 	for i, snd := range senders {
 		wg.Add(1)
@@ -880,8 +851,12 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for inGroup := range snd.seq {
-				r.coord.addMessages(-1)
+			for snd.more() {
+				inGroup, ok := snd.recv()
+				if !ok {
+					runtime.Gosched()
+					continue
+				}
 
 				var unseen []Item
 
@@ -949,15 +924,10 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		Items: items,
 	}
 
-	for _, sub := range listeners {
-		r.coord.addMessages(1)
-		select {
-		case sub.ch <- outGroup:
-		case <-sub.ctx.Done():
-			r.coord.addMessages(-1)
-		}
+	for _, lst := range listeners {
+		lst.send(outGroup)
 	}
-	r.coord.setActive(r.id, false)
+	r.coord.setActive(pID, false)
 	r.done = true
 }
 
@@ -968,7 +938,7 @@ type exclusionResolver struct {
 	done        bool
 }
 
-func (r *exclusionResolver) Active() bool {
+func (r *exclusionResolver) Ready() bool {
 	return !r.done
 }
 
@@ -978,86 +948,79 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	pID := r.coord.register()
+	r.coord.setActive(pID, true)
 
-		included := make(map[string]struct{})
-		excluded := make(map[string]struct{})
+	included := make(map[string]struct{})
+	excluded := make(map[string]struct{})
 
-		errs := make([][]Item, len(senders))
+	errs := make([][]Item, len(senders))
 
-		var mu1 sync.Mutex
-		var mu2 sync.Mutex
+	var mu1 sync.Mutex
+	var mu2 sync.Mutex
 
-		var wg sync.WaitGroup
+	for i, snd := range senders {
+		wg.Add(1)
 
-		r.coord.setActive(r.id, true)
+		go func(i int, snd *sender) {
+			defer wg.Done()
 
-		for i, snd := range senders {
-			wg.Add(1)
+			for snd.more() {
+				group, ok := snd.recv()
+				if !ok {
+					runtime.Gosched()
+					continue
+				}
 
-			go func(i int, snd *sender) {
-				defer wg.Done()
+				results := r.interpreter.Interpret(snd.edge, group.Items)
 
-				for group := range snd.seq {
-					r.coord.addMessages(-1)
-
-					results := r.interpreter.Interpret(snd.edge, group.Items)
-
-					for item := range results {
-						if item.Err != nil {
-							errs[i] = append(errs[i], item)
-							continue
-						}
-						if i == len(senders)-1 {
-							mu2.Lock()
-							excluded[item.Value] = struct{}{}
-							mu2.Unlock()
-						} else {
-							mu1.Lock()
-							included[item.Value] = struct{}{}
-							mu1.Unlock()
-						}
+				for item := range results {
+					if item.Err != nil {
+						errs[i] = append(errs[i], item)
+						continue
+					}
+					if i == len(senders)-1 {
+						mu2.Lock()
+						excluded[item.Value] = struct{}{}
+						mu2.Unlock()
+					} else {
+						mu1.Lock()
+						included[item.Value] = struct{}{}
+						mu1.Unlock()
 					}
 				}
-			}(i, snd)
-		}
-		wg.Wait()
-
-		for obj := range excluded {
-			delete(included, obj)
-		}
-
-		var allErrs []Item
-
-		for _, errList := range errs {
-			allErrs = append(allErrs, errList...)
-		}
-
-		seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), strToItem))
-
-		var items []Item
-
-		for item := range seq {
-			items = append(items, item)
-		}
-
-		outGroup := Group{
-			Items: items,
-		}
-
-		for _, sub := range listeners {
-			r.coord.addMessages(1)
-			select {
-			case sub.ch <- outGroup:
-			case <-sub.ctx.Done():
-				r.coord.addMessages(-1)
 			}
-		}
-		r.coord.setActive(r.id, false)
-	}()
+		}(i, snd)
+	}
 	wg.Wait()
+
+	for obj := range excluded {
+		delete(included, obj)
+	}
+
+	var allErrs []Item
+
+	for _, errList := range errs {
+		allErrs = append(allErrs, errList...)
+	}
+
+	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), strToItem))
+
+	var items []Item
+
+	for item := range seq {
+		items = append(items, item)
+	}
+
+	outGroup := Group{
+		Items: items,
+	}
+
+	for _, lst := range listeners {
+		lst.send(outGroup)
+	}
+
+	r.coord.setActive(pID, false)
 	r.done = true
 }
 
@@ -1066,17 +1029,15 @@ type Worker struct {
 	senders   []*sender
 	listeners []*listener
 	resolver  resolver
+	coord     *coordinator
 	wg        sync.WaitGroup
 }
 
 func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 	var r resolver
+	var w Worker
 
-	id := coord.register()
-
-	if node != nil {
-		println("NODE", id, node.GetUniqueLabel())
-	}
+	w.coord = newCoordinator(coord)
 
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
@@ -1091,8 +1052,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			coord:       coord,
+			coord:       w.coord,
 			interpreter: omni,
 		}
 	case NodeTypeSpecificType:
@@ -1107,8 +1067,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			coord:       coord,
+			coord:       w.coord,
 			interpreter: omni,
 		}
 	case NodeTypeSpecificTypeWildcard:
@@ -1123,8 +1082,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			coord:       coord,
+			coord:       w.coord,
 			interpreter: omni,
 		}
 	case NodeTypeOperator:
@@ -1141,8 +1099,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 			}
 
 			r = &intersectionResolver{
-				id:          id,
-				coord:       coord,
+				coord:       w.coord,
 				interpreter: omni,
 			}
 		case weightedGraph.UnionOperator:
@@ -1157,8 +1114,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 			}
 
 			r = &baseResolver{
-				id:          id,
-				coord:       coord,
+				coord:       w.coord,
 				interpreter: omni,
 			}
 		case weightedGraph.ExclusionOperator:
@@ -1173,8 +1129,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 			}
 
 			r = &exclusionResolver{
-				id:          id,
-				coord:       coord,
+				coord:       w.coord,
 				interpreter: omni,
 			}
 		default:
@@ -1192,8 +1147,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			coord:       coord,
+			coord:       w.coord,
 			interpreter: omni,
 		}
 	case NodeTypeLogicalTTUGrouping:
@@ -1208,8 +1162,7 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		}
 
 		r = &baseResolver{
-			id:          id,
-			coord:       coord,
+			coord:       w.coord,
 			interpreter: omni,
 		}
 	default:
@@ -1224,14 +1177,15 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 		name = node.GetUniqueLabel()
 	}
 
-	return &Worker{
-		name:     name,
-		resolver: r,
-	}
+	w.name = name
+	w.resolver = r
+
+	return &w
 }
 
 func (w *Worker) Active() bool {
-	return w.resolver.Active()
+	busy, messages := w.coord.getState()
+	return w.resolver.Ready() || busy || messages > 0
 }
 
 func (w *Worker) Start() {
@@ -1242,7 +1196,7 @@ func (w *Worker) Start() {
 
 		defer func() {
 			for _, lst := range w.listeners {
-				close(lst.ch)
+				lst.close()
 			}
 		}()
 
@@ -1250,9 +1204,9 @@ func (w *Worker) Start() {
 	}()
 }
 
-func (w *Worker) Cancel() {
+func (w *Worker) Close() {
 	for _, lst := range w.listeners {
-		lst.cancel()
+		lst.close()
 	}
 }
 
@@ -1260,43 +1214,148 @@ func (w *Worker) Wait() {
 	w.wg.Wait()
 }
 
-func (w *Worker) Listen(edge *Edge, i iter.Seq[Group], chunkSize int, numProcs int) {
+type Producer interface {
+	Recv() (Group, bool)
+	Done() bool
+}
+
+type Consumer interface {
+	Send(Group)
+	Close()
+}
+
+type Pipe struct {
+	ch    chan Group
+	mu    sync.Mutex
+	done  bool
+	coord *coordinator
+}
+
+func (p *Pipe) Send(g Group) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.coord.addMessages(1)
+	p.ch <- g
+}
+
+func (p *Pipe) Recv() (Group, bool) {
+	select {
+	case group, ok := <-p.ch:
+		p.coord.addMessages(-1)
+		return group, ok
+	default:
+	}
+	return Group{}, false
+}
+
+func (p *Pipe) Done() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, messages := p.coord.getState()
+	return p.done && messages == 0
+}
+
+func (p *Pipe) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.done {
+		return
+	}
+	close(p.ch)
+	p.done = true
+}
+
+// listener is a struct that contains fields relevant to the listening
+// end of a pipeline connection.
+type listener struct {
+	cons Consumer
+
+	// node is the weighted graph node that is listening.
+	node *Node
+}
+
+func (lst *listener) send(g Group) {
+	lst.cons.Send(g)
+}
+
+func (lst *listener) close() {
+	lst.cons.Close()
+}
+
+// sender is a struct that contains fields relevant to the producing
+// end of a pipeline connection.
+type sender struct {
+	// edge is the weighted graph edge that is producing.
+	edge *Edge
+
+	prod Producer
+
+	// chunkSize is the target number of items to include in each
+	// outbound message. A value less than 1 indicates an unlimited
+	// number of items per message.
+	chunkSize int
+
+	// numProcs is the number of message processors to execute for
+	// the sender.
+	numProcs int
+}
+
+func (snd *sender) recv() (Group, bool) {
+	return snd.prod.Recv()
+}
+
+func (snd *sender) more() bool {
+	return !snd.prod.Done()
+}
+
+func (w *Worker) Listen(edge *Edge, p Producer, chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &sender{
 		edge:      edge,
-		seq:       i,
+		prod:      p,
 		chunkSize: chunkSize,
 		numProcs:  numProcs,
 	})
 }
 
-func (w *Worker) Subscribe(ctx context.Context, node *Node) iter.Seq[Group] {
-	ctx, cancel := context.WithCancel(ctx)
+func (w *Worker) Subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
+	p := &Pipe{
+		ch:    ch,
+		coord: w.coord,
+	}
+
 	w.listeners = append(w.listeners, &listener{
-		ch:     ch,
-		ctx:    ctx,
-		cancel: cancel,
-		node:   node,
+		cons: p,
+		node: node,
 	})
 
-	return func(yield func(Group) bool) {
-		defer cancel()
+	return p
+}
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case items, ok := <-ch:
-				if !ok {
-					return
-				}
+type staticProducer struct {
+	groups []Group
+	pos    int
+}
 
-				if !yield(items) {
-					return
-				}
-			}
-		}
+func (s *staticProducer) Recv() (Group, bool) {
+	if s.pos < len(s.groups) {
+		value := s.groups[s.pos]
+		s.pos++
+		return value, true
+	}
+	return Group{}, false
+}
+
+func (s *staticProducer) Done() bool {
+	return s.pos >= len(s.groups)
+}
+
+func StaticProducer(groups ...Group) Producer {
+	return &staticProducer{
+		groups: groups,
 	}
 }
 
@@ -1363,6 +1422,7 @@ func (t *Traversal) Traverse(source Source, target Target, options ...TraversalO
 		traversal:        t,
 		source:           (*Node)(source),
 		target:           target.node,
+		coord:            newCoordinator(nil),
 		targetIdentifier: target.id,
 		chunkSize:        100,
 		numProcs:         3,
@@ -1378,6 +1438,7 @@ type Path struct {
 	source           *Node
 	traversal        *Traversal
 	target           *Node
+	coord            *coordinator
 	targetIdentifier string
 	chunkSize        int
 	numProcs         int
@@ -1386,9 +1447,10 @@ type Path struct {
 func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	var coord coordinator
+	pID := p.coord.register()
+	p.coord.setActive(pID, true)
 
-	p.resolve(ctx, p.source, &coord)
+	p.resolve(p.source)
 
 	sourceWorker, ok := p.traversal.pipeline[p.source]
 	if !ok {
@@ -1397,7 +1459,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 	var wg sync.WaitGroup
 
-	results := sourceWorker.Subscribe(context.Background(), nil)
+	results := sourceWorker.Subscribe(nil)
 
 	for _, worker := range p.traversal.pipeline {
 		worker.Start()
@@ -1408,18 +1470,26 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 		defer wg.Done()
 
 		for {
+			var inactiveCount int
+
 			for _, worker := range p.traversal.pipeline {
-				if !worker.Active() {
-					worker.Cancel()
+				if !worker.Active() || ctx.Err() != nil {
+					// println("INACTIVE", worker.name)
+					worker.Close()
+					inactiveCount++
 				}
 			}
 
-			busy, messageCount := coord.getState()
+			if inactiveCount == len(p.traversal.pipeline) {
+				break
+			}
+
+			busy, messageCount := p.coord.getState()
 
 			if (!busy && messageCount < 1) || ctx.Err() != nil {
 				// cancel all running workers
 				for _, worker := range p.traversal.pipeline {
-					worker.Cancel()
+					worker.Close()
 				}
 
 				// wait for all workers to finish
@@ -1428,19 +1498,24 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 				}
 				break
 			}
-
 			runtime.Gosched()
 		}
 	}()
 
 	return func(yield func(Item) bool) {
 		defer wg.Wait()
+		defer results.Close()
 		defer cancel()
 
-		for g := range results {
-			coord.addMessages(-1)
+		for !results.Done() {
+			group, ok := results.Recv()
+			if !ok {
+				runtime.Gosched()
+				continue
+			}
+			p.coord.setActive(pID, false)
 
-			for _, item := range g.Items {
+			for _, item := range group.Items {
 				if !yield(item) {
 					return
 				}
@@ -1449,7 +1524,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	}
 }
 
-func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
+func (p *Path) resolve(source *Node) {
 	if p.traversal.pipeline == nil {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
@@ -1457,7 +1532,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
-	worker := NewWorker(p.traversal.backend, source, coord)
+	worker := NewWorker(p.traversal.backend, source, p.coord)
 
 	p.traversal.pipeline[source] = worker
 
@@ -1467,8 +1542,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: p.targetIdentifier}}
-			coord.addMessages(1)
-			worker.Listen(nil, sequence(group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1478,8 +1552,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			coord.addMessages(1)
-			worker.Listen(nil, sequence(group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1489,8 +1562,8 @@ func (p *Path) resolve(ctx context.Context, source *Node, coord *coordinator) {
 	}
 
 	for _, edge := range edges {
-		p.resolve(ctx, edge.GetTo(), coord)
-		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(ctx, source), p.chunkSize, p.numProcs)
+		p.resolve(edge.GetTo())
+		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize, p.numProcs)
 	}
 }
 
