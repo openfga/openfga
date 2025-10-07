@@ -479,25 +479,11 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	var recursive []func(*sync.WaitGroup)
 
 	for ndx, snd := range senders {
-		var recursiveRelation string
-		var tupleCycle bool
-		var ttu bool
-
-		if snd.edge != nil {
-			recursiveRelation = snd.edge.GetRecursiveRelation()
-			tupleCycle = snd.edge.IsPartOfTupleCycle()
-			ttu = snd.edge.GetEdgeType() == EdgeTypeTTU
-		}
-
-		isRecursive := len(recursiveRelation) > 0 && !tupleCycle && !ttu
-		isRecursive = false
+		isRecursive := snd.edge != nil && snd.edge.GetTo() == snd.edge.GetFrom()
 
 		if isRecursive {
-			println(snd.edge.GetEdgeType())
-			println("RECURSIVE", recursiveRelation, snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+			println("RECURSIVE", snd.edge.GetRecursiveRelation())
 		}
-
-		var end atomic.Bool
 
 		if snd.edge != nil {
 			fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
@@ -549,7 +535,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 					// If there are no unseen items, skip processing
 					if len(unseen) == 0 {
-						end.Store(true)
 						goto ProcessEnd
 					}
 
@@ -574,10 +559,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					}
 
 					if len(items) == 0 {
-						if snd.edge != nil {
-							fmt.Printf("ENDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-						}
-						end.Store(true)
 						goto ProcessEnd
 					}
 
@@ -1242,7 +1223,9 @@ func (p *Pipe) Send(g Group) {
 func (p *Pipe) Recv() (Group, bool) {
 	select {
 	case group, ok := <-p.ch:
-		p.coord.addMessages(-1)
+		if ok {
+			p.coord.addMessages(-1)
+		}
 		return group, ok
 	default:
 	}
@@ -1485,7 +1468,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 			}
 
 			busy, messageCount := p.coord.getState()
-
+			println("STUCK?", busy, messageCount)
 			if (!busy && messageCount < 1) || ctx.Err() != nil {
 				// cancel all running workers
 				for _, worker := range p.traversal.pipeline {

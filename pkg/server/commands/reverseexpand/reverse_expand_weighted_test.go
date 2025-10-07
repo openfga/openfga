@@ -119,6 +119,35 @@ var cases = []testcase{
 		expected:   []string{"global:global"},
 	},
 	{
+		name: "recursive_intersection",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type org
+			relations
+				define member: [user, org#member]
+				define admin: [user]
+				define moderator: admin and member
+
+		type doc
+			relations
+				define viewer: [org#moderator]
+		`,
+		tuples: []string{
+			"org:2#member@user:1",
+			"org:1#admin@user:1",
+			"org:1#member@org:2#member",
+			"doc:1#viewer@org:1#moderator",
+		},
+		objectType: "doc",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "1"}},
+		expected:   []string{"doc:1"},
+	},
+	{
 		name: "ttu_recursive",
 		model: `model
 				  schema 1.1
