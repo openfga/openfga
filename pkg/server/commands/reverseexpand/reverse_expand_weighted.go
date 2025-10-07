@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	aq "github.com/emirpasic/gods/queues/arrayqueue"
 	"go.opentelemetry.io/otel/trace"
@@ -465,6 +464,8 @@ type resolver interface {
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
 	Resolve(senders []*sender, listeners []*listener)
+
+	Active() bool
 }
 
 type interpreter interface {
@@ -475,6 +476,13 @@ type baseResolver struct {
 	id          int
 	coord       *coordinator
 	interpreter interpreter
+	done        bool
+	lcoord      coordinator
+}
+
+func (r *baseResolver) Active() bool {
+	busy, messages := r.lcoord.getState()
+	return !r.done || busy || messages > 0
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -498,8 +506,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	var recursiveListeners []*listener
 
-	var msgCount atomic.Int64
-
 	for ndx, snd := range senders {
 		ch := make(chan Group, 100)
 
@@ -507,6 +513,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 			defer close(ch)
 
 			for group := range snd.seq {
+				r.lcoord.addMessages(1)
 				ch <- group
 			}
 		}()
@@ -529,6 +536,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 		for range snd.numProcs {
 			pID := active.Register()
+			lID := r.lcoord.register()
 
 			proc := func(wg *sync.WaitGroup) {
 				defer wg.Done()
@@ -537,17 +545,11 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					mu.Lock()
 					active.Set(pID, true)
 					r.coord.setActive(r.id, active.Status())
+					r.lcoord.setActive(lID, active.Status())
 					mu.Unlock()
 
-					var sent bool
-
-					if snd.edge != nil {
-						fmt.Printf("RECEIVED %s %d %d %#v\n", snd.edge.GetFrom().GetUniqueLabel(), r.id, pID, group.Items)
-					}
-					println("MSGC", r.id, msgCount.Load())
-
 					r.coord.addMessages(-1)
-					msgCount.Add(-1)
+					r.lcoord.addMessages(-1)
 
 					var unseen []Item
 
@@ -596,7 +598,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 							r.coord.addMessages(1)
 							select {
 							case lst.ch <- outGroup:
-								sent = true
 							case <-lst.ctx.Done():
 								r.coord.addMessages(-1)
 							}
@@ -612,11 +613,10 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					for _, lst := range listeners {
 						r.coord.addMessages(1)
 						if lst.node != nil {
-							fmt.Printf("SENT %s %d %d %#v\n", lst.node.GetUniqueLabel(), r.id, pID, outGroup.Items)
+							// fmt.Printf("SENT %s %d %d %#v\n", lst.node.GetUniqueLabel(), r.id, pID, outGroup.Items)
 						}
 						select {
 						case lst.ch <- outGroup:
-							sent = true
 						case <-lst.ctx.Done():
 							r.coord.addMessages(-1)
 						}
@@ -626,12 +626,8 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					mu.Lock()
 					active.Set(pID, false)
 					r.coord.setActive(r.id, active.Status())
+					r.lcoord.setActive(lID, active.Status())
 					mu.Unlock()
-
-					if !sent {
-						println("NONE", r.id, pID)
-						break
-					}
 				}
 			}
 
@@ -658,11 +654,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 	wgStandard.Wait()
 
-	var emptyGroup Group
-
-	for _, lst := range recursiveListeners {
-		lst.ch <- emptyGroup
-	}
 	wgRecursive.Wait()
 }
 
@@ -855,6 +846,11 @@ type intersectionResolver struct {
 	id          int
 	coord       *coordinator
 	interpreter interpreter
+	done        bool
+}
+
+func (r *intersectionResolver) Active() bool {
+	return !r.done
 }
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -959,12 +955,18 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		}
 	}
 	r.coord.setActive(r.id, false)
+	r.done = true
 }
 
 type exclusionResolver struct {
 	id          int
 	coord       *coordinator
 	interpreter interpreter
+	done        bool
+}
+
+func (r *exclusionResolver) Active() bool {
+	return !r.done
 }
 
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -1053,6 +1055,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 		r.coord.setActive(r.id, false)
 	}()
 	wg.Wait()
+	r.done = true
 }
 
 type Worker struct {
@@ -1208,6 +1211,10 @@ func NewWorker(backend *Backend, node *Node, coord *coordinator) *Worker {
 	return &Worker{
 		resolver: r,
 	}
+}
+
+func (w *Worker) Active() bool {
+	return w.resolver.Active()
 }
 
 func (w *Worker) Start() {
@@ -1384,7 +1391,11 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 		defer wg.Done()
 
 		for {
-			var busy bool
+			for _, worker := range p.traversal.pipeline {
+				if !worker.Active() {
+					worker.Cancel()
+				}
+			}
 
 			busy, messageCount := coord.getState()
 
