@@ -29,9 +29,8 @@ type RequestStorageWrapper struct {
 }
 
 type DataResourceConfiguration struct {
-	Resources      *shared.SharedDatastoreResources
-	CacheSettings  config.CacheSettings
-	UseShadowCache bool
+	Resources     *shared.SharedDatastoreResources
+	CacheSettings config.CacheSettings
 }
 
 var _ StorageInstrumentation = (*RequestStorageWrapper)(nil)
@@ -60,14 +59,10 @@ func NewRequestStorageWrapperWithCache(
 			WithCachedDatastoreMethodName(string(op.Method)),
 		)
 	} else if op.Method == apimethod.ListObjects && dataResourceConfiguration.CacheSettings.ShouldCacheListObjectsIterators() {
-		checkCache := dataResourceConfiguration.Resources.CheckCache
-		if dataResourceConfiguration.UseShadowCache {
-			checkCache = dataResourceConfiguration.Resources.ShadowCheckCache
-		}
 		tupleReader = NewCachedDatastore(
 			dataResourceConfiguration.Resources.ServerCtx,
 			tupleReader,
-			checkCache,
+			dataResourceConfiguration.Resources.CheckCache,
 			int(dataResourceConfiguration.CacheSettings.ListObjectsIteratorCacheMaxResults),
 			dataResourceConfiguration.CacheSettings.ListObjectsIteratorCacheTTL,
 			dataResourceConfiguration.Resources.SingleflightGroup,

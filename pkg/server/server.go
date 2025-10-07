@@ -33,6 +33,7 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -184,21 +185,20 @@ type Server struct {
 	// cacheSettings are given by the user
 	cacheSettings serverconfig.CacheSettings
 	// sharedDatastoreResources are created by the server
-	sharedDatastoreResources *shared.SharedDatastoreResources
+	sharedDatastoreResources       *shared.SharedDatastoreResources
+	sharedShadowDatastoreResources *shared.SharedDatastoreResources
 
-	checkResolver       graph.CheckResolver
-	checkResolverCloser func()
+	checkResolverClosers   []graph.CheckResolverCloser
+	sharedDatastoreClosers []*shared.SharedDatastoreResources
 
-	listObjectsCheckResolver       graph.CheckResolver
-	listObjectsCheckResolverCloser func()
+	checkResolver        graph.CheckResolver
+	checkCommandSettings *commands.CheckCommandSettings
+
+	listObjectsCheckResolver graph.CheckResolver
 
 	shadowCheckResolverEnabled          bool
 	shadowCheckResolverSamplePercentage int
 	shadowCheckResolverTimeout          time.Duration
-
-	shadowListObjectsCheckResolverEnabled          bool
-	shadowListObjectsCheckResolverSamplePercentage int
-	shadowListObjectsCheckResolverTimeout          time.Duration
 
 	shadowListObjectsQueryEnabled          bool
 	shadowListObjectsQuerySamplePercentage int
@@ -737,35 +737,6 @@ func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	}
 }
 
-// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
-func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.cacheSettings.ShadowCheckCacheEnabled = enabled
-	}
-}
-
-// WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
-// Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
-func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverEnabled = enabled
-	}
-}
-
-// WithShadowListObjectsCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
-func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverTimeout = threshold
-	}
-}
-
-// WithShadowListObjectsCheckResolverSamplePercentage is the percentage of requests to sample.
-func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverSamplePercentage = rate
-	}
-}
-
 // WithShadowListObjectsQueryEnabled turns on shadow list objects query to allow result comparison.
 func WithShadowListObjectsQueryEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -838,17 +809,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		cacheSettings:            serverconfig.NewDefaultCacheSettings(),
-		checkResolver:            nil,
-		listObjectsCheckResolver: nil,
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
+		checkResolver: nil,
 
 		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
 		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
 		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
-
-		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
-		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
-		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
 
 		shadowListObjectsQueryEnabled:          serverconfig.DefaultShadowListObjectsQueryEnabled,
 		shadowListObjectsQuerySamplePercentage: serverconfig.DefaultShadowListObjectsQuerySamplePercentage,
@@ -950,14 +916,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	if s.shadowListObjectsQueryEnabled {
-		s.cacheSettings.ShadowCheckCacheEnabled = true
-	}
-
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
 	if err != nil {
 		return nil, err
 	}
+	s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedDatastoreResources)
 
 	var checkCacheOptions []graph.CachedCheckResolverOpt
 	if s.cacheSettings.ShouldCacheCheckQueries() {
@@ -968,7 +931,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		)
 	}
 
-	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	var checkResolverCloser graph.CheckResolverCloser
+	s.checkResolver, checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
@@ -977,49 +941,80 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 			graph.WithUpstreamTimeout(s.requestTimeout),
 			graph.WithLocalCheckerLogger(s.logger),
 		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, err
+	}
+	s.checkResolverClosers = append(s.checkResolverClosers, checkResolverCloser)
+
+	checkCommandConfig := commands.NewCheckCommandConfig(
+		s.datastore,
+		s.checkResolver,
+		commands.WithCheckCommandLogger(s.logger),
+		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
+		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+	)
+
+	s.sharedShadowDatastoreResources = s.sharedDatastoreResources
+	if s.shadowCheckResolverEnabled || s.shadowListObjectsQueryEnabled {
+		s.sharedShadowDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
+		if err != nil {
+			return nil, err
+		}
+		s.sharedDatastoreClosers = append(s.sharedDatastoreClosers, s.sharedShadowDatastoreResources)
+	}
+
+	shadowCheckResolver, shadowCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
-		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
 	if err != nil {
 		return nil, err
 	}
+	s.checkResolverClosers = append(s.checkResolverClosers, shadowCheckResolverCloser)
 
-	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	shadowCheckCommandConfig := commands.NewCheckCommandShadowConfig(
+		commands.NewCheckCommandConfig(
+			s.datastore,
+			shadowCheckResolver,
+			commands.WithCheckCommandLogger(s.logger),
+			commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+			commands.WithCheckCommandCache(s.sharedShadowDatastoreResources, s.cacheSettings), // use a separate cache for the shadow checker
+			commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		),
+		commands.WithShadowCheckQueryEnabled(s.shadowCheckResolverEnabled), // always true here
+		commands.WithShadowCheckQueryPct(s.shadowCheckResolverSamplePercentage),
+		commands.WithShadowCheckQueryTimeout(s.shadowCheckResolverTimeout),
+		commands.WithShadowCheckQueryLogger(s.logger),
+	)
+	s.checkCommandSettings = commands.NewCheckCommandSettings(
+		checkCommandConfig,
+		commands.WithShadowCheckCommandConfig(shadowCheckCommandConfig),
+	)
+
+	var listObjectsCheckResolverCloser graph.CheckResolverCloser
+	s.listObjectsCheckResolver, listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithName("list-objects"),
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
-		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
 	if err != nil {
 		return nil, err
 	}
+	s.checkResolverClosers = append(s.checkResolverClosers, listObjectsCheckResolverCloser)
 
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
@@ -1043,11 +1038,12 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	s.checkResolverCloser()
+	for _, closeCheckResolver := range s.checkResolverClosers {
+		closeCheckResolver()
+	}
 	if s.planner != nil {
 		s.planner.StopCleanup()
 	}
-	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
 	if s.listObjectsDispatchThrottler != nil {
@@ -1057,7 +1053,9 @@ func (s *Server) Close() {
 		s.listUsersDispatchThrottler.Close()
 	}
 
-	s.sharedDatastoreResources.Close()
+	for _, datastoreCloser := range s.sharedDatastoreClosers {
+		datastoreCloser.Close()
+	}
 	s.datastore.Close()
 }
 

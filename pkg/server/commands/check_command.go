@@ -27,10 +27,14 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
+// CheckCommand interface wraps the Execute method for performing a check operation.
+type CheckCommand interface {
+	Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error)
+}
+
 type CheckQuery struct {
 	logger                     logger.Logger
 	checkResolver              graph.CheckResolver
-	typesys                    *typesystem.TypeSystem
 	datastore                  storage.RelationshipTupleReader
 	sharedCheckResources       *shared.SharedDatastoreResources
 	cacheSettings              config.CacheSettings
@@ -40,12 +44,32 @@ type CheckQuery struct {
 	datastoreThrottleDuration  time.Duration
 }
 
+var _ CheckCommand = (*CheckQuery)(nil)
+
 type CheckCommandParams struct {
 	StoreID          string
 	TupleKey         *openfgav1.CheckRequestTupleKey
 	ContextualTuples *openfgav1.ContextualTupleKeys
 	Context          *structpb.Struct
 	Consistency      openfgav1.ConsistencyPreference
+	Typesys          *typesystem.TypeSystem
+	Operation        string
+}
+
+// CheckCommandConfig server config required to run a CheckCommand.
+type CheckCommandConfig struct {
+	datastore     storage.RelationshipTupleReader
+	checkResolver graph.CheckResolver
+	options       []CheckQueryOption
+}
+
+// NewCheckCommandConfig creates a new CheckCommandConfig.
+func NewCheckCommandConfig(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, options ...CheckQueryOption) *CheckCommandConfig {
+	return &CheckCommandConfig{
+		datastore:     datastore,
+		checkResolver: checkResolver,
+		options:       options,
+	}
 }
 
 type CheckQueryOption func(*CheckQuery)
@@ -76,13 +100,11 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
-// TODO accept CheckCommandParams so we can build the datastore object right away.
-func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, typesys *typesystem.TypeSystem, opts ...CheckQueryOption) *CheckQuery {
+func NewCheckQuery(datastore storage.RelationshipTupleReader, checkResolver graph.CheckResolver, opts ...CheckQueryOption) *CheckQuery {
 	cmd := &CheckQuery{
 		logger:               logger.NewNoopLogger(),
 		datastore:            datastore,
 		checkResolver:        checkResolver,
-		typesys:              typesys,
 		maxConcurrentReads:   defaultMaxConcurrentReadsForCheck,
 		shouldCacheIterators: false,
 		cacheSettings:        config.NewDefaultCacheSettings(),
@@ -94,11 +116,12 @@ func NewCheckCommand(datastore storage.RelationshipTupleReader, checkResolver gr
 	for _, opt := range opts {
 		opt(cmd)
 	}
+
 	return cmd
 }
 
 func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*graph.ResolveCheckResponse, *graph.ResolveCheckRequestMetadata, error) {
-	err := validateCheckRequest(c.typesys, params.TupleKey, params.ContextualTuples)
+	err := validateCheckRequest(params.Typesys, params.TupleKey, params.ContextualTuples)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -117,7 +140,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			ContextualTuples:          params.ContextualTuples,
 			Consistency:               params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
-			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),
+			AuthorizationModelID:      params.Typesys.GetAuthorizationModelID(),
 		},
 	)
 
@@ -135,13 +158,12 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			ThrottleDuration:  c.datastoreThrottleDuration,
 		},
 		storagewrappers.DataResourceConfiguration{
-			Resources:      c.sharedCheckResources,
-			CacheSettings:  c.cacheSettings,
-			UseShadowCache: false,
+			Resources:     c.sharedCheckResources,
+			CacheSettings: c.cacheSettings,
 		},
 	)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, c.typesys)
+	ctx = typesystem.ContextWithTypesystem(ctx, params.Typesys)
 	ctx = storage.ContextWithRelationshipTupleReader(ctx, datastoreWithTupleCache)
 
 	startTime := time.Now()
