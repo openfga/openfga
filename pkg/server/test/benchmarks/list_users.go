@@ -158,8 +158,9 @@ func BenchmarkListUsers(b *testing.B, ds storage.OpenFGADatastore) {
 		model := testutils.MustTransformDSLToProtoWithID(bm.inputModel)
 		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(b, err)
-		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+		modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 		require.NoError(b, err)
+		require.Equal(b, modelId, model.GetId())
 
 		// arrange: write tuples in random order
 		tuples := bm.tupleGenerator()
