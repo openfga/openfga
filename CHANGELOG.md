@@ -10,6 +10,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Migrate `grpc.DialContext` to `grpc.NewClient` for grpc-gateway client [#2714](https://github.com/openfga/openfga/pull/2714)
 
+### Fixed
+- Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+
 ## [1.10.2] - 2025-09-29
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
