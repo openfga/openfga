@@ -2391,7 +2391,7 @@ func TestLoopOverEdges(t *testing.T) {
 		}, edges, false, NewResolutionMetadata(), make(chan *ReverseExpandResult), "")
 
 		require.Error(t, newErr)
-		require.ErrorContains(t, newErr, "invalid exclusion edges for source type")
+		require.ErrorContains(t, newErr, "invalid number of edges in an exclusion operation: expected 2, got 0")
 	})
 	t.Run("returns_error_when_exclusionHandler_errors", func(t *testing.T) {
 		model := `

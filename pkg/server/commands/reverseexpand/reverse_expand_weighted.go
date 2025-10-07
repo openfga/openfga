@@ -285,6 +285,10 @@ func (c *ReverseExpandQuery) loopOverEdges(
 			default:
 				return fmt.Errorf("unsupported operator node: %s", toNode.GetLabel())
 			}
+		case weightedGraph.TTULogicalEdge, weightedGraph.DirectLogicalEdge:
+			pool.Go(func(ctx context.Context) error {
+				return c.dispatch(ctx, newReq, resultChan, needsCheck, resolutionMetadata)
+			})
 		default:
 			return fmt.Errorf("unsupported edge type: %v", edge.GetEdgeType())
 		}
@@ -536,7 +540,7 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 	pool *concurrency.Pool,
 	req *ReverseExpandRequest,
 	tmpResultChan chan<- *ReverseExpandResult,
-	edges []*weightedGraph.WeightedAuthorizationModelEdge,
+	edge *weightedGraph.WeightedAuthorizationModelEdge,
 	sourceUserType string,
 	resolutionMetadata *ResolutionMetadata,
 ) {
@@ -549,6 +553,11 @@ func (c *ReverseExpandQuery) findCandidatesForLowestWeightEdge(
 		topItem, newStack := stack.Pop(req.relationStack)
 		req.relationStack = newStack
 		topItemStack = stack.Push(nil, topItem)
+	}
+
+	edges, err := c.typesystem.GetInternalEdges(edge, sourceUserType)
+	if err != nil {
+		return
 	}
 
 	// getting list object candidates from the lowest weight edge and have its result
@@ -677,6 +686,7 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	}
 
 	// verify if the node has weight to the sourceUserType
+
 	edges, err := c.typesystem.GetEdgesFromNode(intersectionNode, sourceUserType)
 	if err != nil {
 		return err
@@ -702,15 +712,15 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	for _, intersectEdge := range intersectEdges {
 		// no matter how many direct edges we have, or ttu edges  they for typesystem only required this
 		// no matter how many parent types have for the same ttu rel from parent will be only one created in the typesystem
-		// for any other case, does not have more than one edge, the groupings only occur in direct edges or ttu edges
-		userset, err := c.typesystem.ConstructUserset(intersectEdge[0], sourceUserType)
+		// for any other case, does not have more than one edge, the logical groupings only occur in direct edges or ttu edges
+		userset, err := c.typesystem.ConstructUserset(intersectEdge, sourceUserType)
 		if err != nil {
 			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", ErrConstructUsersetFail, err.Error())
 		}
 		usersets = append(usersets, userset)
 		var intersectRelation string
-		_, intersectRelation = tuple.SplitObjectRelation(intersectEdge[0].GetRelationDefinition())
+		_, intersectRelation = tuple.SplitObjectRelation(intersectEdge.GetRelationDefinition())
 		if checkRelation != "" && checkRelation != intersectRelation {
 			// this should never happen
 			return fmt.Errorf("%w: operation: intersection: %s", errors.ErrUnsupported, "multiple relations in intersection is not supported")
@@ -729,10 +739,9 @@ func (c *ReverseExpandQuery) intersectionHandler(
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, intersectionEdges.LowestEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, intersectionEdges.LowestEdge, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, tmpResultChan, resultChan,
 		checkCandidateInfo{req: req, userset: userset, relation: checkRelation, isAllowed: true, resolutionMetadata: resolutionMetadata})
-
 	return nil
 }
 
@@ -760,6 +769,7 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	if err != nil {
 		return err
 	}
+
 	edges, err := typesystem.GetEdgesForExclusion(exclusionEdges, sourceUserType)
 	if err != nil {
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrLowestWeightFail, err.Error())
@@ -767,13 +777,17 @@ func (c *ReverseExpandQuery) exclusionHandler(
 
 	// This means the exclusion edge does not have a path to the terminal type.
 	// e.g. `B` in `A but not B` is not relevant to this query.
-	if edges.ExcludedEdges == nil {
-		newReq := req.clone()
+	if edges.ExcludedEdge == nil {
+		baseEdges, err := c.typesystem.GetInternalEdges(edges.BaseEdge, sourceUserType)
+		if err != nil {
+			return fmt.Errorf("%w: operation: exclusion: failed to get base edges: %s", ErrLowestWeightFail, err.Error())
+		}
 
+		newReq := req.clone()
 		return c.shallowClone().loopOverEdges(
 			ctx,
 			newReq,
-			edges.BaseEdges,
+			baseEdges,
 			false,
 			resolutionMetadata,
 			resultChan,
@@ -782,20 +796,17 @@ func (c *ReverseExpandQuery) exclusionHandler(
 	}
 
 	tmpResultChan := make(chan *ReverseExpandResult, listObjectsResultChannelLength)
-
 	var checkRelation string
-	// checkRelation is derived from the definition's relation of the exclusion edge
-	_, checkRelation = tuple.SplitObjectRelation(edges.ExcludedEdges[0].GetRelationDefinition())
-	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdges[0], sourceUserType)
+	_, checkRelation = tuple.SplitObjectRelation(edges.ExcludedEdge.GetRelationDefinition())
+	userset, err := c.typesystem.ConstructUserset(edges.ExcludedEdge, sourceUserType)
 	if err != nil {
 		// This should never happen.
 		return fmt.Errorf("%w: operation: exclusion: %s", ErrConstructUsersetFail, err.Error())
 	}
 
 	// Concurrently find candidates and call check on them as they are found
-	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, edges.BaseEdges, sourceUserType, resolutionMetadata)
+	c.findCandidatesForLowestWeightEdge(pool, req, tmpResultChan, edges.BaseEdge, sourceUserType, resolutionMetadata)
 	c.callCheckForCandidates(pool, tmpResultChan, resultChan,
 		checkCandidateInfo{req: req, userset: userset, relation: checkRelation, isAllowed: false, resolutionMetadata: resolutionMetadata})
-
 	return nil
 }
