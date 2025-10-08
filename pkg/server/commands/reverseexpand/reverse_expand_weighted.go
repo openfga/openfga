@@ -478,7 +478,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	var recursive []func(*sync.WaitGroup)
 
 	for ndx, snd := range senders {
-		isRecursive := snd.edge != nil && snd.edge.GetTo() == snd.edge.GetFrom()
+		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
 
 		/*
 			if isRecursive {
@@ -490,32 +490,36 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 			}
 		*/
 
+		var unload atomic.Bool
+
+		nums := 0
+
 		for range snd.numProcs {
+			pID := nums
+			nums++
+
 			proc := func(wg *sync.WaitGroup) {
 				defer wg.Done()
-				/*
-					defer func() {
-						if snd.edge != nil {
-							fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-						}
-					}()
-				*/
+				defer func() {
+					if snd.edge != nil {
+						fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+					}
+				}()
 
 				for snd.more() {
 					var results iter.Seq[Item]
 					var outGroup Group
 					var items, unseen []Item
+					var sent bool
 
 					msg, ok := snd.recv()
 					if !ok {
 						goto ProcessEnd
 					}
 
-					/*
-						if snd.edge != nil {
-							fmt.Printf("RECEIVED %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-						}
-					*/
+					if snd.edge != nil {
+						fmt.Printf("RECEIVED %d %s -> %s %#v\n", pID, snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
+					}
 
 					// Deduplicate items within this group based on the buffer for this sender
 					for _, item := range msg.Value.Items {
@@ -556,6 +560,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 						for _, lst := range listeners {
 							lst.send(outGroup)
+							sent = true
 						}
 					}
 
@@ -566,28 +571,40 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					outGroup.Items = items
 
 					for _, lst := range listeners {
-						/*
-							if lst.node != nil && snd.edge != nil {
-								fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel())
-							} else if lst.node != nil {
-								fmt.Printf("SENDING %s -> %s\n", "nil", lst.node.GetUniqueLabel())
-							} else {
-								fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), "nil")
-							}
-						*/
+						if lst.node != nil && snd.edge != nil {
+							fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel())
+						} else if lst.node != nil {
+							fmt.Printf("SENDING %s -> %s\n", "nil", lst.node.GetUniqueLabel())
+						} else {
+							fmt.Printf("SENDING %s -> %s\n", snd.edge.GetFrom().GetUniqueLabel(), "nil")
+						}
 						lst.send(outGroup)
+						sent = true
 					}
 
 				ProcessEnd:
 					msg.Done()
-					runtime.Gosched()
+					if !ok && unload.Load() {
+						return
+					}
+
+					if !ok || sent {
+						runtime.Gosched()
+						continue
+					}
+
+					if !sent && isRecursive {
+						unload.Store(true)
+						return
+					}
 				}
 			}
-
-			if isRecursive {
-				recursive = append(recursive, proc)
-				continue
-			}
+			/*
+				if isRecursive {
+					recursive = append(recursive, proc)
+					continue
+				}
+			*/
 			standard = append(standard, proc)
 		}
 	}
@@ -809,6 +826,9 @@ func (r *intersectionResolver) Ready() bool {
 }
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
+	defer func() {
+		r.done = true
+	}()
 	var wg sync.WaitGroup
 
 	objects := make(map[string]struct{})
@@ -821,6 +841,16 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		buffers[i] = make(map[string]struct{})
 		output[i] = make(map[string]struct{})
 	}
+
+	msgs := make([][]Message[Group], len(senders))
+
+	defer func() {
+		for _, ms := range msgs {
+			for _, m := range ms {
+				m.Done()
+			}
+		}
+	}()
 
 	errs := make([][]Item, len(senders))
 
@@ -836,6 +866,8 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 					runtime.Gosched()
 					continue
 				}
+
+				msgs[i] = append(msgs[i], msg)
 
 				var unseen []Item
 
@@ -865,7 +897,6 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 					}
 					output[i][item.Value] = struct{}{}
 				}
-				msg.Done()
 			}
 		}(i, snd)
 	}
@@ -907,7 +938,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	for _, lst := range listeners {
 		lst.send(outGroup)
 	}
-	r.done = true
+
 }
 
 type exclusionResolver struct {
@@ -920,6 +951,10 @@ func (r *exclusionResolver) Ready() bool {
 }
 
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
+	defer func() {
+		r.done = true
+	}()
+
 	if len(senders) < 2 {
 		panic("exclusion resolver requires at least two senders")
 	}
@@ -933,6 +968,16 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var mu1 sync.Mutex
 	var mu2 sync.Mutex
 
+	msgs := make([][]Message[Group], len(senders))
+
+	defer func() {
+		for _, ms := range msgs {
+			for _, m := range ms {
+				m.Done()
+			}
+		}
+	}()
+
 	for i, snd := range senders {
 		wg.Add(1)
 
@@ -945,6 +990,8 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 					runtime.Gosched()
 					continue
 				}
+
+				msgs[i] = append(msgs[i], msg)
 
 				results := r.interpreter.Interpret(snd.edge, msg.Value.Items)
 
@@ -963,7 +1010,6 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 						mu1.Unlock()
 					}
 				}
-				msg.Done()
 			}
 		}(i, snd)
 	}
@@ -994,8 +1040,6 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	for _, lst := range listeners {
 		lst.send(outGroup)
 	}
-
-	r.done = true
 }
 
 type Worker struct {
@@ -1503,21 +1547,22 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 			if inactiveCount == len(p.traversal.pipeline) {
 				break
 			}
-			/*
-				busy, messageCount := p.coord.getState()
-				if (!busy && messageCount < 1) || ctx.Err() != nil {
-					// cancel all running workers
-					for _, worker := range p.traversal.pipeline {
-						worker.Close()
-					}
 
-					// wait for all workers to finish
-					for _, worker := range p.traversal.pipeline {
-						worker.Wait()
-					}
-					break
+			messageCount := p.msgs.Load()
+			println("MESSAGES", messageCount)
+			if messageCount < 1 || ctx.Err() != nil {
+				// cancel all running workers
+				for _, worker := range p.traversal.pipeline {
+					worker.Close()
 				}
-			*/
+
+				// wait for all workers to finish
+				for _, worker := range p.traversal.pipeline {
+					worker.Wait()
+				}
+				break
+			}
+
 			runtime.Gosched()
 		}
 	}()
