@@ -35,7 +35,7 @@ type testcase struct {
 	expected   []string
 }
 
-func setup(b *Backend, tc testcase) Path {
+func setup(b *Backend, tc testcase) *Path {
 	traversal := &Traversal{
 		backend: b,
 	}
@@ -55,7 +55,7 @@ func setup(b *Backend, tc testcase) Path {
 	return path
 }
 
-func evaluate(t *testing.T, ctx context.Context, tc testcase, path Path) {
+func evaluate(t *testing.T, ctx context.Context, tc testcase, path *Path) {
 	objects := path.Objects(ctx)
 
 	var results []string
