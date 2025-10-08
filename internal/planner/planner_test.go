@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ func TestPlanner_New(t *testing.T) {
 
 func TestPlanner_SelectResolver(t *testing.T) {
 	p := New(&Config{})
-	key := "test_key"
 	resolvers := map[string]*KeyPlanStrategy{
 		"fast": {
 			Type:         "fast",
@@ -30,16 +30,25 @@ func TestPlanner_SelectResolver(t *testing.T) {
 			Alpha:        1,
 			Beta:         1,
 		}}
-	kp := p.GetKeyPlan(key)
-	choice := kp.SelectStrategy(resolvers)
-	// It should favor "fast" since it has a better initial guess.
-	require.Equal(t, resolvers["fast"], choice)
 
-	require.NotNil(t, kp)
-	_, ok := kp.stats.Load("fast")
-	require.True(t, ok)
-	_, ok = kp.stats.Load("slow")
-	require.True(t, ok)
+	// Test probabilistically over multiple runs instead of expecting deterministic behavior
+	counts := make(map[string]int)
+	for i := 0; i < 100; i++ {
+		key := fmt.Sprintf("test_key_%d", i)
+		kp := p.GetKeyPlan(key)
+		choice := kp.SelectStrategy(resolvers)
+		counts[choice.Type]++
+
+		// Verify stats are created for both strategies
+		_, ok := kp.stats.Load("fast")
+		require.True(t, ok)
+		_, ok = kp.stats.Load("slow")
+		require.True(t, ok)
+	}
+
+	// "fast" should be chosen more often due to better InitialGuess
+	require.Greater(t, counts["fast"], 75, "fast should be chosen more than 75% of the time")
+	require.Equal(t, 100, counts["fast"]+counts["slow"], "all selections should be accounted for")
 }
 
 func TestProfiler_Update(t *testing.T) {

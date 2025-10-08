@@ -10,9 +10,17 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 
+### Fixed
+- Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+
+## [1.10.2] - 2025-09-29
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 - Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
+- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+
+### Fixed
+- Fixed a bug where experimental ReverseExpand constructed the underlying check relation incorrectly for intersection and exclusion in ListObjects. [#2721](https://github.com/openfga/openfga/pull/2721)
 
 ## [1.10.1] - 2025-09-22
 ### Fixed
@@ -1431,7 +1439,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.2...HEAD
+[1.10.2]: https://github.com/openfga/openfga/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/openfga/openfga/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openfga/openfga/compare/v1.9.5...v1.10.0
 [1.9.5]: https://github.com/openfga/openfga/compare/v1.9.4...v1.9.5
