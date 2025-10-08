@@ -36,13 +36,14 @@ import (
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
 
 type ReverseExpandRequest struct {
-	StoreID          string
-	ObjectType       string
-	Relation         string
-	User             IsUserRef
-	ContextualTuples []*openfgav1.TupleKey // TODO remove
-	Context          *structpb.Struct
-	Consistency      openfgav1.ConsistencyPreference
+	StoreID              string
+	ObjectType           string
+	Relation             string
+	User                 IsUserRef
+	ContextualTuples     []*openfgav1.TupleKey // TODO remove
+	Context              *structpb.Struct
+	Consistency          openfgav1.ConsistencyPreference
+	OptimizationsEnabled bool
 
 	edge              *graph.RelationshipEdge
 	skipWeightedGraph bool
@@ -143,8 +144,7 @@ type ReverseExpandQuery struct {
 	queryDedupeMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver   graph.CheckRewriteResolver
-	optimizationsEnabled bool
+	localCheckResolver graph.CheckRewriteResolver
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -173,12 +173,6 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 		if found {
 			d.localCheckResolver = localCheckResolver
 		}
-	}
-}
-
-func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
-	return func(d *ReverseExpandQuery) {
-		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -385,7 +379,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if c.optimizationsEnabled && !req.skipWeightedGraph {
+	if req.OptimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {
 			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()

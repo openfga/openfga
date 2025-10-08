@@ -18,6 +18,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -31,17 +32,18 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
-			WithShadowListObjectsQuerySamplePercentage(13),
-			WithShadowListObjectsQueryMaxDeltaItems(99),
-			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-		), WithListObjectsOptimizationsEnabled(true))
+		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{},
+			NewShadowListObjectsQueryConfig(
+				WithShadowListObjectsQuerySamplePercentage(13),
+				WithShadowListObjectsQueryMaxDeltaItems(99),
+				WithShadowListObjectsQueryTimeout(66*time.Millisecond),
+			),
+			WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
-		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
 		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
-		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
 		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
 		assert.Equal(t, noopLogger, query.logger)
 		assert.Equal(t, 13, query.shadowPct)

@@ -67,12 +67,6 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithOptimizations(enabled bool) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.optimizationsEnabled = enabled
-	}
-}
-
 func WithPlanner(p *planner.Planner) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.planner = p
@@ -683,7 +677,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 			}
 			defer iter.Stop()
 
-			if !c.optimizationsEnabled {
+			if !req.optimizationsEnabled {
 				return c.recursiveUserset(ctx, req, directlyRelatedUsersetTypes, iter)(ctx)
 			}
 
@@ -703,7 +697,7 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 
 		var resolvers []CheckHandlerFunc
 
-		if c.optimizationsEnabled {
+		if req.optimizationsEnabled {
 			var remainingUsersetTypes []*openfgav1.RelationReference
 			keyPlanPrefix := b.String()
 			possibleStrategies[weightTwoResolver] = weight2Plan
@@ -910,7 +904,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if len(possibleStrategies) == 1 || !c.optimizationsEnabled {
+		if len(possibleResolvers) == 1 || !req.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}
