@@ -321,7 +321,15 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}
 
-		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
+		bufferSize := 10
+		if q.listObjectsMaxResults > 0 && q.listObjectsMaxResults < 1000 {
+			bufferSize = int(q.listObjectsMaxResults / 10) // 10% of max results
+			if bufferSize < 10 {
+				bufferSize = 10
+			}
+		}
+
+		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, bufferSize)
 		objectsFound := atomic.Uint32{}
 
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
