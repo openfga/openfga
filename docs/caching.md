@@ -6,7 +6,7 @@ OpenFGA provides a sophisticated multi-layered caching system designed to improv
 
 OpenFGA implements several complementary types of caching:
 
-1. **Check Query Cache**: Caches results of Check API requests to avoid recomputing identical authorization checks
+1. **Check Query Cache**: Caches results of subproblems within Check API requests to avoid recomputing them
 2. **Check Iterator Cache**: Caches database query results (iterators) to reduce database load during Check operations
 3. **ListObjects Iterator Cache**: Caches database iterators specifically for ListObjects API calls
 4. **Cache Controller**: Manages cache invalidation based on data changes to maintain consistency. It works in background, and it's not involved in the query resolution. After each TTL period, it checks the changelog, and invalidates the cache if tuples were written.
