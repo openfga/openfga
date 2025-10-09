@@ -345,48 +345,30 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-			cp := ds.primaryDB.Config().ConnConfig.ConnString()
-			db, err := sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
-
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now())
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
-
-			db, err = sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
 
-			db, err = sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
 
 			iter, err := ds.Read(ctx, store, tuple.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
@@ -465,49 +447,30 @@ func TestCtxCancel(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-			cp := ds.primaryDB.Config().ConnConfig.ConnString()
-			db, err := sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
-
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now())
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
-
-			db, err = sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
 
-			db, err = sql.Open("pgx/v5", cp)
-			require.NoError(t, err)
-
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-				db,
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
 				storage.NewTupleWriteOptions(),
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
-			require.NoError(t, db.Close())
 
 			iter, err := ds.Read(ctx, store, tuple.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
@@ -544,35 +507,22 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
-	cp := ds.primaryDB.Config().ConnConfig.ConnString()
-	db, err := sql.Open("pgx/v5", cp)
-	require.NoError(t, err)
-
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-		db,
+	err = ds.write(ctx,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
 		storage.NewTupleWriteOptions(),
 		time.Now())
 	require.NoError(t, err)
-	require.NoError(t, db.Close())
-
-	db, err = sql.Open("pgx/v5", cp)
-	require.NoError(t, err)
 
 	// Tweak time so that ULID is smaller.
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "postgres"),
-		db,
+	err = ds.write(ctx,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
 		storage.NewTupleWriteOptions(),
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
-	require.NoError(t, db.Close())
 
 	opts := storage.ReadPageOptions{
 		Pagination: storage.NewPaginationOptions(storage.DefaultPageSize, ""),

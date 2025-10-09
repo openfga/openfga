@@ -428,7 +428,9 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		sqlcommon.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		sqlcommon.WithMinOpenConns(config.Datastore.MinOpenConns),
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	}

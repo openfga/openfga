@@ -318,8 +318,17 @@ func (s *Datastore) Write(
 ) error {
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
-	now := time.Now().UTC()
+	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+}
 
+func (s *Datastore) write(
+	ctx context.Context,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+	opts storage.TupleWriteOptions,
+	now time.Time,
+) error {
 	txn, err := s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return HandleSQLError(err)
@@ -353,7 +362,7 @@ func (s *Datastore) Write(
 	}
 
 	// 4. Construct the deleteConditions, write and changelog items to be written
-	deleteConditions, writeItems, changeLogItems, err := sqlcommon.GetDeleteWriteChangelogItems(store, existing, deletes, writes, storage.NewTupleWriteOptions(opts...), now)
+	deleteConditions, writeItems, changeLogItems, err := sqlcommon.GetDeleteWriteChangelogItems(store, existing, deletes, writes, opts, now)
 	if err != nil {
 		return err
 	}
