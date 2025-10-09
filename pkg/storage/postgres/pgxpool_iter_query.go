@@ -70,6 +70,7 @@ func (p *pgxtxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	return &pgxRowsWrapper{row: rows}, nil
 }
 
+// pgxRowsWrapper wraps pgx.Rows to implement sqlcommon.Rows interface.
 type pgxRowsWrapper struct {
 	row pgx.Rows
 }

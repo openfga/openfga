@@ -312,14 +312,14 @@ func SQLIteratorColumns() []string {
 }
 
 // NewSQLTupleIterator returns a SQL tuple iterator.
-func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandlerFn) (*SQLTupleIterator, error) {
+func NewSQLTupleIterator(rowGetter SQLIteratorRowGetter, errHandler errorHandlerFn) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		rows:           nil,
 		handleSQLError: errHandler,
 		firstRow:       nil,
 		mu:             sync.Mutex{},
 		rowGetter:      rowGetter,
-	}, nil
+	}
 }
 
 func (t *SQLTupleIterator) fetchBuffer(ctx context.Context) error {
@@ -651,10 +651,7 @@ func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store strin
 		Suffix("FOR UPDATE").
 		RunWith(txn) // make sure to run in the same transaction
 
-	iter, err := NewSQLTupleIterator(NewSBIteratorQuery(selectBuilder), dbInfo.HandleSQLError)
-	if err != nil {
-		return err
-	}
+	iter := NewSQLTupleIterator(NewSBIteratorQuery(selectBuilder), dbInfo.HandleSQLError)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})

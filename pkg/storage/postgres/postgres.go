@@ -305,7 +305,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		return nil, HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -600,7 +600,7 @@ func (s *Datastore) ReadUsersetTuples(
 		return nil, HandleSQLError(err)
 	}
 
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -646,7 +646,7 @@ func (s *Datastore) ReadStartingWithUser(
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
+	return sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.
@@ -1244,7 +1244,7 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 	}
 
 	// sqlcommon.NewSQLTupleIterator will never return error
-	iter, _ := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
+	iter := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
