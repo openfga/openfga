@@ -1243,10 +1243,8 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		return HandleSQLError(err)
 	}
 
-	iter, err := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
-	if err != nil {
-		return HandleSQLError(err)
-	}
+	// sqlcommon.NewSQLTupleIterator will never return error
+	iter, _ := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
 	defer iter.Stop()
 
 	items, _, err := iter.ToArray(ctx, storage.PaginationOptions{PageSize: len(keys)})
