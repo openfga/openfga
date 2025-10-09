@@ -7,12 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -90,6 +94,223 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	status, err := ds.IsReady(context.Background())
 	require.Error(t, err)
 	require.False(t, status.IsReady)
+}
+
+func TestParseConfig(t *testing.T) {
+	defaultConfig, err := pgxpool.ParseConfig("postgres://default@localhost:9999/dbname")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		uri         string
+		override    bool
+		cfg         sqlcommon.Config
+		expected    pgxpool.Config
+		expectedErr bool
+	}{
+		{
+			name:     "default_with_no_overrides",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: false,
+			cfg:      sqlcommon.Config{},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "abc",
+						Password: "passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          defaultConfig.MinIdleConns,
+				MaxConns:              defaultConfig.MaxConns,
+				MinConns:              defaultConfig.MinConns,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:     "override_username_and_password",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:        "override_user",
+				Password:        "override_passwd",
+				MinIdleConns:    10,
+				MaxOpenConns:    50,
+				MinOpenConns:    15,
+				ConnMaxLifetime: time.Minute * 20,
+				ConnMaxIdleTime: 1 * time.Minute,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "override_user",
+						Password: "override_passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       1 * time.Minute,
+				MaxConnLifetimeJitter: 2 * time.Minute,
+				MaxConnLifetime:       20 * time.Minute,
+			},
+		},
+		{
+			name:     "override_password_only",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:     "",
+				Password:     "override_passwd",
+				MinIdleConns: 10,
+				MaxOpenConns: 50,
+				MinOpenConns: 15,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "abc",
+						Password: "override_passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:     "override_username_only",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:     "override_user",
+				Password:     "",
+				MinIdleConns: 10,
+				MaxOpenConns: 50,
+				MinOpenConns: 15,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "override_user",
+						Password: "passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:        "bad_uri",
+			uri:         "bad_uri",
+			override:    true,
+			expectedErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
+			if tt.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+
+				require.Equal(t, tt.expected.ConnConfig.Host, parsed.ConnConfig.Host)
+				require.Equal(t, tt.expected.ConnConfig.Port, parsed.ConnConfig.Port)
+				require.Equal(t, tt.expected.ConnConfig.Database, parsed.ConnConfig.Database)
+				require.Equal(t, tt.expected.ConnConfig.User, parsed.ConnConfig.User)
+				require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+				require.Equal(t, tt.expected.MaxConns, parsed.MaxConns)
+				require.Equal(t, tt.expected.MinConns, parsed.MinConns)
+				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
+				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
+				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+			}
+		})
+	}
+}
+
+// mostly test various error scenarios.
+func TestNewDB(t *testing.T) {
+	t.Run("bad_uri", func(t *testing.T) {
+		uri := "bad_uri"
+		_, err := New(uri, &sqlcommon.Config{})
+		require.Error(t, err)
+	})
+	t.Run("bad_secondary_uri", func(t *testing.T) {
+		primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+		primaryURI := primaryDatastore.GetConnectionURI(true)
+		_, err := New(primaryURI, &sqlcommon.Config{
+			SecondaryURI: "bad_uri",
+			Logger:       logger.NewNoopLogger(),
+		})
+		require.Error(t, err)
+	})
+	t.Run("cannot_ping_primary_uri", func(t *testing.T) {
+		uri :=
+			"postgres://abc:passwd@localhost:5346/dbname"
+		cfg := sqlcommon.Config{
+			Username:        "override_user",
+			Password:        "override_passwd",
+			MinIdleConns:    10,
+			MaxOpenConns:    50,
+			MinOpenConns:    15,
+			ConnMaxLifetime: time.Minute * 20,
+			ConnMaxIdleTime: 1 * time.Minute,
+			Logger:          logger.NewNoopLogger(),
+		}
+		_, err := New(uri, &cfg)
+		require.Error(t, err)
+	})
+}
+
+func TestGetPgxPool(t *testing.T) {
+	pool1 := &pgxpool.Pool{}
+	pool2 := &pgxpool.Pool{}
+	t.Run("high_consistency", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB:   pool1,
+			secondaryDB: pool2,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY)
+		require.Equal(t, dut, pool1)
+	})
+	t.Run("min_latency", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB:   pool1,
+			secondaryDB: pool2,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
+		require.Equal(t, dut, pool2)
+	})
+	t.Run("no_secondary_DB_specified", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB: pool1,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
+		require.Equal(t, dut, pool1)
+	})
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.

@@ -668,6 +668,7 @@ func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store strin
 	return nil
 }
 
+// GetDeleteWriteChangelogItems constructs the delete conditions, write items, and changelog items.
 func GetDeleteWriteChangelogItems(
 	store string,
 	existing map[string]*openfgav1.Tuple,

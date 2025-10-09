@@ -54,47 +54,31 @@ type Datastore struct {
 // Ensures that Datastore implements the OpenFGADatastore interface.
 var _ storage.OpenFGADatastore = (*Datastore)(nil)
 
-func parseConfig(uri string, username string, password string, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
+func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres connection uri: %w", err)
 	}
 
-	if username != "" || password != "" {
+	if override {
 		parsed, err := url.Parse(uri)
 		if err != nil {
 			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
 		}
 
-		// If cfg.Username is specified, cfg.Username takes precedence over the username in the URI.
-		// If uri has a username and cfg.Username is not specified, use the username in the URI.
-		// Otherwise, use the specified username parameter.
 		if cfg.Username != "" {
-			username = cfg.Username
+			c.ConnConfig.User = cfg.Username
 		} else if parsed.User != nil {
-			username = parsed.User.Username()
+			c.ConnConfig.User = parsed.User.Username()
 		}
 
-		// For the password,
-		// If cfg.Password is specified, cfg.Password takes precedence over the password in the URI.
-		// Otherwise, if the uri has password, use the password in the URI if it exists.
-		// Otherwise, use the specified password in the parameter.
 		switch {
 		case cfg.Password != "":
-			c.ConnConfig.User = username
 			c.ConnConfig.Password = cfg.Password
-
 		case parsed.User != nil:
-			if parsedPassword, ok := parsed.User.Password(); ok {
-				c.ConnConfig.User = username
-				c.ConnConfig.Password = parsedPassword
-			} else {
-				c.ConnConfig.User = username
+			if password, ok := parsed.User.Password(); ok {
 				c.ConnConfig.Password = password
 			}
-		default:
-			c.ConnConfig.User = username
-			c.ConnConfig.Password = password
 		}
 	}
 
@@ -123,15 +107,15 @@ func parseConfig(uri string, username string, password string, cfg *sqlcommon.Co
 }
 
 // initDB initializes a new postgres database connection.
-func initDB(uri string, username string, password string, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
-	c, err := parseConfig(uri, username, password, cfg)
+func initDB(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Pool, error) {
+	c, err := parseConfig(uri, override, cfg)
 	if err != nil {
 		return nil, err
 	}
 
 	db, err := pgxpool.NewWithConfig(context.Background(), c)
 	if err != nil {
-		return nil, fmt.Errorf("initialize crdb connection: %w", err)
+		return nil, fmt.Errorf("failed to establish connection: %w", err)
 	}
 
 	return db, nil
@@ -139,14 +123,14 @@ func initDB(uri string, username string, password string, cfg *sqlcommon.Config)
 
 // New creates a new [Datastore] storage.
 func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
-	primaryDB, err := initDB(uri, cfg.Username, cfg.Password, cfg)
+	primaryDB, err := initDB(uri, cfg.Username != "" || cfg.Password != "", cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
 	var secondaryDB *pgxpool.Pool
 	if cfg.SecondaryURI != "" {
-		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername, cfg.SecondaryPassword, cfg)
+		secondaryDB, err = initDB(cfg.SecondaryURI, cfg.SecondaryUsername != "" || cfg.SecondaryPassword != "", cfg)
 		if err != nil {
 			return nil, fmt.Errorf("initialize postgres connection: %w", err)
 		}
@@ -236,8 +220,8 @@ func (s *Datastore) Close() {
 }
 
 // getPgxPool returns the pgxpool.Pool based on consistency options.
-func (s *Datastore) getPgxPool(consistency *openfgav1.ConsistencyPreference) *pgxpool.Pool {
-	if consistency != nil && *consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+func (s *Datastore) getPgxPool(consistency openfgav1.ConsistencyPreference) *pgxpool.Pool {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
 		// If we are using higher consistency, we need to use the write database.
 		return s.primaryDB
 	}
@@ -259,7 +243,7 @@ func (s *Datastore) Read(
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	readPool := s.getPgxPool(&options.Consistency.Preference)
+	readPool := s.getPgxPool(options.Consistency.Preference)
 	return s.read(ctx, store, tupleKey, nil, readPool)
 }
 
@@ -268,7 +252,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	readPool := s.getPgxPool(&options.Consistency.Preference)
+	readPool := s.getPgxPool(options.Consistency.Preference)
 	iter, err := s.read(ctx, store, tupleKey, &options, readPool)
 	if err != nil {
 		return nil, "", err
@@ -523,7 +507,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	db := s.getPgxPool(&options.Consistency.Preference)
+	db := s.getPgxPool(options.Consistency.Preference)
 	row := db.QueryRow(ctx, stmt, args...)
 
 	err = row.Scan(
@@ -564,7 +548,7 @@ func (s *Datastore) ReadUsersetTuples(
 	_, span := startTrace(ctx, "ReadUsersetTuples")
 	defer span.End()
 
-	db := s.getPgxPool(&options.Consistency.Preference)
+	db := s.getPgxPool(options.Consistency.Preference)
 	sb := s.stbl.
 		Select(
 			"store", "object_type", "object_id", "relation",
@@ -620,7 +604,7 @@ func (s *Datastore) ReadStartingWithUser(
 	_, span := startTrace(ctx, "ReadStartingWithUser")
 	defer span.End()
 
-	db := s.getPgxPool(&options.Consistency.Preference)
+	db := s.getPgxPool(options.Consistency.Preference)
 	readStbl := s.stbl
 	var targetUsersArg []string
 	for _, u := range filter.UserFilter {
@@ -666,7 +650,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := startTrace(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := s.stbl.
 		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
@@ -696,7 +680,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 	ctx, span := startTrace(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
 	sb := s.stbl.
 		Select("authorization_model_id").
@@ -767,7 +751,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	ctx, span := startTrace(ctx, "FindLatestAuthorizationModel")
 	defer span.End()
 
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := s.stbl.
 		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
@@ -867,7 +851,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	ctx, span := startTrace(ctx, "GetStore")
 	defer span.End()
 
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	stmt, args, err := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
@@ -921,7 +905,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 		whereClause = append(whereClause, sq.GtOrEq{"id": options.Pagination.From})
 	}
 
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 	sb := s.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
@@ -1029,7 +1013,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 	defer span.End()
 
 	var marshalledAssertions []byte
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
 	stmt, args, err := s.stbl.
 		Select("assertions").
@@ -1072,7 +1056,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	if options.SortDesc {
 		orderBy = "ulid desc"
 	}
-	db := s.getPgxPool(nil)
+	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
 	sb := s.stbl.
 		Select(
