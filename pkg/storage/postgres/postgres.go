@@ -1243,7 +1243,6 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		return HandleSQLError(err)
 	}
 
-	// sqlcommon.NewSQLTupleIterator will never return error
 	iter := sqlcommon.NewSQLTupleIterator(poolGetRows, HandleSQLError)
 	defer iter.Stop()
 
