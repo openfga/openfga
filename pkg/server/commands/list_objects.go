@@ -322,8 +322,8 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		var bufferSize uint32
-		maxResults := uint32(math.Min(float64(q.listObjectsMaxResults), 1000)) // cap max results at 1000
-		bufferSize = uint32(math.Max(float64(q.listObjectsMaxResults/10), 10)) // 10% of max results, but make it at least 10
+		cappedMaxResults := uint32(math.Min(float64(maxResults), 1000)) // cap max results at 1000
+		bufferSize = uint32(math.Max(float64(cappedMaxResults/10), 10)) // 10% of max results, but make it at least 10
 
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, bufferSize)
 		objectsFound := atomic.Uint32{}
