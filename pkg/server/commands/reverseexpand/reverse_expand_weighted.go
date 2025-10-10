@@ -1483,7 +1483,6 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 			for _, worker := range p.traversal.pipeline {
 				if !worker.Active() {
-					// println("INACTIVE", worker.name)
 					worker.Close()
 					inactiveCount++
 				}
@@ -1494,6 +1493,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 			}
 
 			messageCount := p.msgs.Load()
+
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
 				for _, worker := range p.traversal.pipeline {

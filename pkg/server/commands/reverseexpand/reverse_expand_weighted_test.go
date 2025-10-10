@@ -148,6 +148,34 @@ var cases = []testcase{
 		expected:   []string{"doc:1"},
 	},
 	{
+		name: "recursive_recursion",
+		model: `
+		model
+		schema 1.1
+
+		type user
+
+		type org
+			relations
+				define parent: [org]
+				define member: [user, org#member] or member from parent
+
+		type doc
+			relations
+				define viewer: [org#member]
+		`,
+		tuples: []string{
+			"org:1#member@user:bob",
+			"org:2#member@org:1#member",
+			"org:3#parent@org:2",
+			"doc:1#viewer@org:3#member",
+		},
+		objectType: "doc",
+		relation:   "viewer",
+		user:       &UserRefObject{Object: &openfgav1.Object{Type: "user", Id: "bob"}},
+		expected:   []string{"doc:1"},
+	},
+	{
 		name: "ttu_recursive",
 		model: `model
 				  schema 1.1
