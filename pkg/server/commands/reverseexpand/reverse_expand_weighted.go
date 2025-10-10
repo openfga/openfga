@@ -480,43 +480,24 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	var recursive []func(*sync.WaitGroup)
 
 	for ndx, snd := range senders {
-		/*
-			if snd.edge != nil {
-				fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-			}
-		*/
 		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
 
-		isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU && !snd.edge.IsPartOfTupleCycle()
+		// isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU && !snd.edge.IsPartOfTupleCycle()
 
 		var unload atomic.Bool
 
 		proc := func(wg *sync.WaitGroup) {
 			defer wg.Done()
-			/*
-				defer func() {
-					if snd.edge != nil {
-						fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-					}
-				}()
-			*/
 
 			for snd.more() && !unload.Load() && r.ctx.Err() == nil {
 				var results iter.Seq[Item]
 				var outGroup Group
 				var items, unseen []Item
-				var sent bool
 
 				msg, ok := snd.recv()
 				if !ok {
 					goto ProcessEnd
 				}
-
-				/*
-					if snd.edge != nil {
-						fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
-					}
-				*/
 
 				// Deduplicate items within this group based on the buffer for this sender
 				for _, item := range msg.Value.Items {
@@ -562,7 +543,6 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 					for _, lst := range listeners {
 						lst.send(outGroup)
-						sent = true
 					}
 				}
 
@@ -573,49 +553,11 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 				outGroup.Items = items
 
 				for _, lst := range listeners {
-					/*
-						if lst.node != nil && snd.edge != nil {
-							fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-						} else if lst.node != nil {
-							fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-						} else {
-							fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
-						}
-					*/
 					lst.send(outGroup)
-					/*
-						if lst.node != nil && snd.edge != nil {
-							fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-						} else if lst.node != nil {
-							fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-						} else {
-							fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
-						}
-					*/
-					sent = true
 				}
 
 			ProcessEnd:
 				msg.Done()
-
-				if ok && !sent && isRecursiveTTU {
-					unload.Store(true)
-				}
-				/*
-					if !ok && unload.Load() {
-						return
-					}
-
-					if !ok || sent {
-						runtime.Gosched()
-						continue
-					}
-
-					if !sent && isRecursive {
-						unload.Store(true)
-						return
-					}
-				*/
 				runtime.Gosched()
 			}
 		}
@@ -1063,7 +1005,7 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) 
 	var r resolver
 	var w Worker
 
-	w.msgs = EchoTracker(msgs)
+	w.msgs = msgs
 
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
@@ -1517,7 +1459,7 @@ type Path struct {
 func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	p.resolve(ctx, p.source)
+	p.resolve(ctx, p.source, nil)
 
 	sourceWorker, ok := p.traversal.pipeline[p.source]
 	if !ok {
@@ -1592,7 +1534,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	}
 }
 
-func (p *Path) resolve(ctx context.Context, source *Node) {
+func (p *Path) resolve(ctx context.Context, source *Node, shared Tracker) {
 	if p.traversal.pipeline == nil {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
@@ -1600,7 +1542,15 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
-	worker := NewWorker(ctx, p.traversal.backend, source, &p.msgs)
+
+	var tracker Tracker
+
+	if shared != nil {
+		tracker = shared
+	} else {
+		tracker = EchoTracker(&p.msgs)
+	}
+	worker := NewWorker(ctx, p.traversal.backend, source, tracker)
 
 	p.traversal.pipeline[source] = worker
 
@@ -1630,8 +1580,13 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 	}
 
 	for _, edge := range edges {
-		p.resolve(ctx, edge.GetTo())
-		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize)
+		var propagate Tracker
+
+		if len(edge.GetRecursiveRelation()) > 0 && edge.GetEdgeType() == EdgeTypeTTU {
+			propagate = worker.msgs
+		}
+		p.resolve(ctx, edge.GetTo(), propagate)
+		worker.Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize)
 	}
 }
 
