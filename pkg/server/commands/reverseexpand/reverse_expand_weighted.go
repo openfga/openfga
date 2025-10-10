@@ -457,12 +457,13 @@ type interpreter interface {
 }
 
 type baseResolver struct {
+	ctx         context.Context
 	interpreter interpreter
 	done        atomic.Bool
 }
 
 func (r *baseResolver) Ready() bool {
-	return !r.done.Load()
+	return true // !r.done.Load()
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -493,14 +494,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 			}
 		*/
 
-		// var unload atomic.Bool
-
-		nums := 0
+		var unload atomic.Bool
 
 		for range snd.numProcs {
-			pID := nums
-			nums++
-
 			proc := func(wg *sync.WaitGroup) {
 				defer wg.Done()
 				defer func() {
@@ -509,11 +505,11 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					}
 				}()
 
-				for snd.more() {
+				for snd.more() && !unload.Load() && r.ctx.Err() == nil {
 					var results iter.Seq[Item]
 					var outGroup Group
 					var items, unseen []Item
-					// var sent bool
+					var sent bool
 
 					msg, ok := snd.recv()
 					if !ok {
@@ -521,7 +517,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					}
 
 					if snd.edge != nil {
-						fmt.Printf("RECEIVED %d %s -> %s %#v\n", pID, snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
+						fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
 					}
 
 					// Deduplicate items within this group based on the buffer for this sender
@@ -563,7 +559,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 						for _, lst := range listeners {
 							lst.send(outGroup)
-							// sent = true
+							sent = true
 						}
 					}
 
@@ -579,14 +575,25 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						} else if lst.node != nil {
 							fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
 						} else {
-							fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), "nil", items)
+							fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
 						}
 						lst.send(outGroup)
-						// sent = true
+						if lst.node != nil && snd.edge != nil {
+							fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
+						} else if lst.node != nil {
+							fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
+						} else {
+							fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
+						}
+						sent = true
 					}
 
 				ProcessEnd:
 					msg.Done()
+
+					if ok && !sent {
+						unload.Store(true)
+					}
 					/*
 						if !ok && unload.Load() {
 							return
@@ -819,8 +826,7 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 }
 
 type intersectionResolver struct {
-	id          int
-	coord       *coordinator
+	ctx         context.Context
 	interpreter interpreter
 	done        bool
 }
@@ -831,6 +837,7 @@ func (r *intersectionResolver) Ready() bool {
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
+		println("INTERSECTION DONE")
 		r.done = true
 	}()
 	var wg sync.WaitGroup
@@ -854,7 +861,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for snd.more() {
+			for snd.more() && r.ctx.Err() == nil {
 				msg, ok := snd.recv()
 				if !ok {
 					runtime.Gosched()
@@ -878,6 +885,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 
 				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
+					msg.Done()
 					continue
 				}
 
@@ -935,6 +943,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 }
 
 type exclusionResolver struct {
+	ctx         context.Context
 	interpreter interpreter
 	done        bool
 }
@@ -945,6 +954,7 @@ func (r *exclusionResolver) Ready() bool {
 
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
+		println("EXCLUSION DONE")
 		r.done = true
 	}()
 
@@ -967,7 +977,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for snd.more() {
+			for snd.more() && r.ctx.Err() == nil {
 				msg, ok := snd.recv()
 				if !ok {
 					runtime.Gosched()
@@ -1033,7 +1043,7 @@ type Worker struct {
 	wg        sync.WaitGroup
 }
 
-func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
+func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) *Worker {
 	var r resolver
 	var w Worker
 
@@ -1050,6 +1060,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 		}
 
 		r = &baseResolver{
+			ctx:         ctx,
 			interpreter: omni,
 		}
 	case NodeTypeSpecificType:
@@ -1064,6 +1075,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 		}
 
 		r = &baseResolver{
+			ctx:         ctx,
 			interpreter: omni,
 		}
 	case NodeTypeSpecificTypeWildcard:
@@ -1078,6 +1090,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 		}
 
 		r = &baseResolver{
+			ctx:         ctx,
 			interpreter: omni,
 		}
 	case NodeTypeOperator:
@@ -1094,6 +1107,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 			}
 
 			r = &intersectionResolver{
+				ctx:         ctx,
 				interpreter: omni,
 			}
 		case weightedGraph.UnionOperator:
@@ -1108,6 +1122,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 			}
 
 			r = &baseResolver{
+				ctx:         ctx,
 				interpreter: omni,
 			}
 		case weightedGraph.ExclusionOperator:
@@ -1122,6 +1137,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 			}
 
 			r = &exclusionResolver{
+				ctx:         ctx,
 				interpreter: omni,
 			}
 		default:
@@ -1139,6 +1155,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 		}
 
 		r = &baseResolver{
+			ctx:         ctx,
 			interpreter: omni,
 		}
 	case NodeTypeLogicalTTUGrouping:
@@ -1153,6 +1170,7 @@ func NewWorker(backend *Backend, node *Node, msgs Tracker) *Worker {
 		}
 
 		r = &baseResolver{
+			ctx:         ctx,
 			interpreter: omni,
 		}
 	default:
@@ -1266,6 +1284,7 @@ func (p *Pipe) Send(g Group) {
 	defer p.mu.Unlock()
 
 	if p.done {
+		fmt.Printf("CLOSED PIPE %#v", g)
 		panic("called Send on a closed Pipe")
 	}
 	p.msgs.Add(1)
@@ -1293,6 +1312,9 @@ func (p *Pipe) Recv() (Message[Group], bool) {
 func (p *Pipe) Done() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.msgs.Load() > 0 {
+		println("MESSAGES", p.msgs.Load())
+	}
 	return p.done && p.msgs.Load() == 0
 }
 
@@ -1496,7 +1518,7 @@ type Path struct {
 func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	p.resolve(p.source)
+	p.resolve(ctx, p.source)
 
 	sourceWorker, ok := p.traversal.pipeline[p.source]
 	if !ok {
@@ -1515,11 +1537,11 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	go func() {
 		defer wg.Done()
 
-		for {
+		for ctx.Err() == nil {
 			var inactiveCount int
 
 			for _, worker := range p.traversal.pipeline {
-				if !worker.Active() || ctx.Err() != nil {
+				if !worker.Active() {
 					println("INACTIVE", worker.name)
 					worker.Close()
 					inactiveCount++
@@ -1574,7 +1596,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 	}
 }
 
-func (p *Path) resolve(source *Node) {
+func (p *Path) resolve(ctx context.Context, source *Node) {
 	if p.traversal.pipeline == nil {
 		p.traversal.pipeline = make(map[*Node]*Worker)
 	}
@@ -1582,7 +1604,7 @@ func (p *Path) resolve(source *Node) {
 	if _, ok := p.traversal.pipeline[source]; ok {
 		return
 	}
-	worker := NewWorker(p.traversal.backend, source, &p.msgs)
+	worker := NewWorker(ctx, p.traversal.backend, source, &p.msgs)
 
 	p.traversal.pipeline[source] = worker
 
@@ -1612,7 +1634,7 @@ func (p *Path) resolve(source *Node) {
 	}
 
 	for _, edge := range edges {
-		p.resolve(edge.GetTo())
+		p.resolve(ctx, edge.GetTo())
 		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize, p.numProcs)
 	}
 }
