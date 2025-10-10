@@ -467,8 +467,6 @@ func (r *baseResolver) Ready() bool {
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
-	mutexes := make([]sync.Mutex, len(senders))
-
 	inBuffers := make([]map[string]struct{}, len(senders))
 
 	var outMu sync.Mutex
@@ -493,144 +491,140 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 		var unload atomic.Bool
 
-		for range snd.numProcs {
-			proc := func(wg *sync.WaitGroup) {
-				defer wg.Done()
+		proc := func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			/*
+				defer func() {
+					if snd.edge != nil {
+						fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+					}
+				}()
+			*/
+
+			for snd.more() && !unload.Load() && r.ctx.Err() == nil {
+				var results iter.Seq[Item]
+				var outGroup Group
+				var items, unseen []Item
+				var sent bool
+
+				msg, ok := snd.recv()
+				if !ok {
+					goto ProcessEnd
+				}
+
 				/*
-					defer func() {
-						if snd.edge != nil {
-							fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-						}
-					}()
+					if snd.edge != nil {
+						fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
+					}
 				*/
 
-				for snd.more() && !unload.Load() && r.ctx.Err() == nil {
-					var results iter.Seq[Item]
-					var outGroup Group
-					var items, unseen []Item
-					var sent bool
-
-					msg, ok := snd.recv()
-					if !ok {
-						goto ProcessEnd
-					}
-
-					/*
-						if snd.edge != nil {
-							fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
-						}
-					*/
-
-					// Deduplicate items within this group based on the buffer for this sender
-					for _, item := range msg.Value.Items {
-						if item.Err != nil {
-							unseen = append(unseen, item)
-							continue
-						}
-
-						mutexes[ndx].Lock()
-						if _, ok := inBuffers[ndx][item.Value]; ok {
-							mutexes[ndx].Unlock()
-							continue
-						}
-						inBuffers[ndx][item.Value] = struct{}{}
-						mutexes[ndx].Unlock()
+				// Deduplicate items within this group based on the buffer for this sender
+				for _, item := range msg.Value.Items {
+					if item.Err != nil {
 						unseen = append(unseen, item)
+						continue
 					}
 
-					// If there are no unseen items, skip processing
-					if len(unseen) == 0 {
-						goto ProcessEnd
+					if _, ok := inBuffers[ndx][item.Value]; ok {
+						continue
 					}
+					inBuffers[ndx][item.Value] = struct{}{}
+					unseen = append(unseen, item)
+				}
 
-					results = r.interpreter.Interpret(snd.edge, unseen)
+				// If there are no unseen items, skip processing
+				if len(unseen) == 0 {
+					goto ProcessEnd
+				}
 
-					for item := range results {
-						outMu.Lock()
-						if _, ok := outBuffer[item.Value]; ok {
-							outMu.Unlock()
-							continue
-						}
-						outBuffer[item.Value] = struct{}{}
+				results = r.interpreter.Interpret(snd.edge, unseen)
+
+				for item := range results {
+					outMu.Lock()
+					if _, ok := outBuffer[item.Value]; ok {
 						outMu.Unlock()
+						continue
+					}
+					outBuffer[item.Value] = struct{}{}
+					outMu.Unlock()
 
-						items = append(items, item)
+					items = append(items, item)
 
-						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
-							continue
-						}
-
-						outGroup := Group{
-							Items: items,
-						}
-
-						items = nil
-
-						for _, lst := range listeners {
-							lst.send(outGroup)
-							sent = true
-						}
+					if len(items) < snd.chunkSize || snd.chunkSize == 0 {
+						continue
 					}
 
-					if len(items) == 0 {
-						goto ProcessEnd
+					outGroup := Group{
+						Items: items,
 					}
 
-					outGroup.Items = items
+					items = nil
 
 					for _, lst := range listeners {
-						/*
-							if lst.node != nil && snd.edge != nil {
-								fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-							} else if lst.node != nil {
-								fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-							} else {
-								fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
-							}
-						*/
 						lst.send(outGroup)
-						/*
-							if lst.node != nil && snd.edge != nil {
-								fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-							} else if lst.node != nil {
-								fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-							} else {
-								fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
-							}
-						*/
 						sent = true
 					}
+				}
 
-				ProcessEnd:
-					msg.Done()
+				if len(items) == 0 {
+					goto ProcessEnd
+				}
 
-					if ok && !sent && isRecursiveTTU {
-						unload.Store(true)
-					}
+				outGroup.Items = items
+
+				for _, lst := range listeners {
 					/*
-						if !ok && unload.Load() {
-							return
-						}
-
-						if !ok || sent {
-							runtime.Gosched()
-							continue
-						}
-
-						if !sent && isRecursive {
-							unload.Store(true)
-							return
+						if lst.node != nil && snd.edge != nil {
+							fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
+						} else if lst.node != nil {
+							fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
+						} else {
+							fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
 						}
 					*/
-					runtime.Gosched()
+					lst.send(outGroup)
+					/*
+						if lst.node != nil && snd.edge != nil {
+							fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
+						} else if lst.node != nil {
+							fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
+						} else {
+							fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
+						}
+					*/
+					sent = true
 				}
+
+			ProcessEnd:
+				msg.Done()
+
+				if ok && !sent && isRecursiveTTU {
+					unload.Store(true)
+				}
+				/*
+					if !ok && unload.Load() {
+						return
+					}
+
+					if !ok || sent {
+						runtime.Gosched()
+						continue
+					}
+
+					if !sent && isRecursive {
+						unload.Store(true)
+						return
+					}
+				*/
+				runtime.Gosched()
 			}
-			if isRecursiveUserset {
-				recursive = append(recursive, proc)
-				continue
-			}
-			standard = append(standard, proc)
 		}
+
+		if isRecursiveUserset {
+			recursive = append(recursive, proc)
+			continue
+		}
+		standard = append(standard, proc)
 	}
 
 	var wgStandard sync.WaitGroup
@@ -1380,10 +1374,6 @@ type sender struct {
 	// outbound message. A value less than 1 indicates an unlimited
 	// number of items per message.
 	chunkSize int
-
-	// numProcs is the number of message processors to execute for
-	// the sender.
-	numProcs int
 }
 
 func (snd *sender) recv() (Message[Group], bool) {
@@ -1394,12 +1384,11 @@ func (snd *sender) more() bool {
 	return !snd.prod.Done()
 }
 
-func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int, numProcs int) {
+func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int) {
 	w.senders = append(w.senders, &sender{
 		edge:      edge,
 		prod:      p,
 		chunkSize: chunkSize,
-		numProcs:  numProcs,
 	})
 }
 
@@ -1501,16 +1490,6 @@ func WithChunkSize(size int) TraversalOption {
 	}
 }
 
-func WithNumProcs(num int) TraversalOption {
-	if num < 1 {
-		num = 1
-	}
-
-	return func(path *Path) {
-		path.numProcs = num
-	}
-}
-
 func (t *Traversal) Traverse(source Source, target Target, options ...TraversalOption) *Path {
 	p := &Path{
 		traversal:        t,
@@ -1518,7 +1497,6 @@ func (t *Traversal) Traverse(source Source, target Target, options ...TraversalO
 		target:           target.node,
 		targetIdentifier: target.id,
 		chunkSize:        100,
-		numProcs:         3,
 	}
 
 	for _, option := range options {
@@ -1533,7 +1511,6 @@ type Path struct {
 	target           *Node
 	targetIdentifier string
 	chunkSize        int
-	numProcs         int
 	msgs             atomic.Int64
 }
 
@@ -1633,7 +1610,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: p.targetIdentifier}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1643,7 +1620,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1654,7 +1631,7 @@ func (p *Path) resolve(ctx context.Context, source *Node) {
 
 	for _, edge := range edges {
 		p.resolve(ctx, edge.GetTo())
-		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize, p.numProcs)
+		p.traversal.pipeline[source].Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize)
 	}
 }
 
