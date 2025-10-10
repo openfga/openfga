@@ -463,7 +463,7 @@ type baseResolver struct {
 }
 
 func (r *baseResolver) Ready() bool {
-	return !r.done.Load() // !r.done.Load()
+	return !r.done.Load()
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -485,7 +485,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 		if snd.edge != nil {
 			fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
 		}
-		isRecursive := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
+		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
+
+		isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU
 
 		/*
 			if isRecursive {
@@ -602,7 +604,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 				ProcessEnd:
 					msg.Done()
 
-					if ok && !sent {
+					if ok && !sent && snd.edge != nil && isRecursiveTTU {
 						unload.Store(true)
 					}
 					/*
@@ -623,7 +625,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					runtime.Gosched()
 				}
 			}
-			if isRecursive {
+			if isRecursiveUserset {
 				recursive = append(recursive, proc)
 				continue
 			}
