@@ -463,7 +463,7 @@ type baseResolver struct {
 }
 
 func (r *baseResolver) Ready() bool {
-	return true // !r.done.Load()
+	return !r.done.Load() // !r.done.Load()
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
@@ -485,7 +485,7 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 		if snd.edge != nil {
 			fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
 		}
-		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
+		isRecursive := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
 
 		/*
 			if isRecursive {
@@ -1334,9 +1334,7 @@ func (p *Pipe) Recv() (Message[Group], bool) {
 func (p *Pipe) Done() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.msgs.Load() > 0 {
-		println("MESSAGES", p.msgs.Load())
-	}
+
 	return p.done && p.msgs.Load() == 0
 }
 
