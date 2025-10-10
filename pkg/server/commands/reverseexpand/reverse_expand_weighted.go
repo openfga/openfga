@@ -829,6 +829,7 @@ type intersectionResolver struct {
 	ctx         context.Context
 	interpreter interpreter
 	done        bool
+	msgs        Tracker
 }
 
 func (r *intersectionResolver) Ready() bool {
@@ -838,8 +839,12 @@ func (r *intersectionResolver) Ready() bool {
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		println("INTERSECTION DONE")
+		r.msgs.Add(-1)
 		r.done = true
 	}()
+
+	r.msgs.Add(1)
+
 	var wg sync.WaitGroup
 
 	objects := make(map[string]struct{})
@@ -946,6 +951,7 @@ type exclusionResolver struct {
 	ctx         context.Context
 	interpreter interpreter
 	done        bool
+	msgs        Tracker
 }
 
 func (r *exclusionResolver) Ready() bool {
@@ -955,8 +961,11 @@ func (r *exclusionResolver) Ready() bool {
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		println("EXCLUSION DONE")
+		r.msgs.Add(-1)
 		r.done = true
 	}()
+
+	r.msgs.Add(1)
 
 	if len(senders) < 2 {
 		panic("exclusion resolver requires at least two senders")
@@ -1047,6 +1056,8 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) 
 	var r resolver
 	var w Worker
 
+	w.msgs = EchoTracker(msgs)
+
 	switch node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
 		omni := &omniInterpreter{
@@ -1109,6 +1120,7 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) 
 			r = &intersectionResolver{
 				ctx:         ctx,
 				interpreter: omni,
+				msgs:        w.msgs,
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
@@ -1139,6 +1151,7 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) 
 			r = &exclusionResolver{
 				ctx:         ctx,
 				interpreter: omni,
+				msgs:        w.msgs,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
@@ -1187,8 +1200,6 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, msgs Tracker) 
 
 	w.name = name
 	w.resolver = r
-
-	w.msgs = EchoTracker(msgs)
 
 	return &w
 }
@@ -1552,22 +1563,19 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 				break
 			}
 
-			/*
-				messageCount := p.msgs.Load()
-				println("MESSAGES", messageCount)
-				if messageCount < 1 || ctx.Err() != nil {
-					// cancel all running workers
-					for _, worker := range p.traversal.pipeline {
-						worker.Close()
-					}
-
-					// wait for all workers to finish
-					for _, worker := range p.traversal.pipeline {
-						worker.Wait()
-					}
-					break
+			messageCount := p.msgs.Load()
+			if messageCount < 1 || ctx.Err() != nil {
+				// cancel all running workers
+				for _, worker := range p.traversal.pipeline {
+					worker.Close()
 				}
-			*/
+
+				// wait for all workers to finish
+				for _, worker := range p.traversal.pipeline {
+					worker.Wait()
+				}
+				break
+			}
 
 			runtime.Gosched()
 		}
