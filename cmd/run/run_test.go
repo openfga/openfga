@@ -1285,6 +1285,42 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListUsersDispatchThrottling.MaxThreshold)
 
+	val = res.Get("properties.checkDatastoreThrottle.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckDatastoreThrottle.Enabled)
+
+	val = res.Get("properties.checkDatastoreThrottle.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckDatastoreThrottle.Threshold)
+
+	val = res.Get("properties.checkDatastoreThrottle.properties.duration.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckDatastoreThrottle.Duration.String())
+
+	val = res.Get("properties.listObjectsDatastoreThrottle.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListObjectsDatastoreThrottle.Enabled)
+
+	val = res.Get("properties.listObjectsDatastoreThrottle.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListObjectsDatastoreThrottle.Threshold)
+
+	val = res.Get("properties.listObjectsDatastoreThrottle.properties.duration.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListObjectsDatastoreThrottle.Duration.String())
+
+	val = res.Get("properties.listUsersDatastoreThrottle.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.ListUsersDatastoreThrottle.Enabled)
+
+	val = res.Get("properties.listUsersDatastoreThrottle.properties.threshold.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ListUsersDatastoreThrottle.Threshold)
+
+	val = res.Get("properties.listUsersDatastoreThrottle.properties.duration.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.ListUsersDatastoreThrottle.Duration.String())
+
 	val = res.Get("properties.requestTimeout.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.RequestTimeout.String())
@@ -1300,7 +1336,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.False(t, viper.GetBool("context-propagation-to-datastore"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
-		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
+		require.Empty(t, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 

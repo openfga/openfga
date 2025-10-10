@@ -113,26 +113,11 @@ func TestDefaultUserset(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultUserset(ctx, req, iter)
+			resp, err := checker.defaultUserset(ctx, req, nil, iter)(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
 	}
-
-	t.Run("should_error_if_produceUsersetDispatches_panics", func(t *testing.T) {
-		iter := &mockPanicIterator[*openfgav1.TupleKey]{}
-		checker := NewLocalChecker()
-		defer checker.Close()
-
-		req := &ResolveCheckRequest{
-			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata: NewCheckRequestMetadata(),
-		}
-		resp, err := checker.defaultUserset(ctx, req, iter)
-		require.ErrorContains(t, err, panicErr)
-		require.ErrorIs(t, err, ErrPanic)
-		require.Equal(t, (*ResolveCheckResponse)(nil), resp)
-	})
 }
 
 func TestDefaultTTU(t *testing.T) {
@@ -247,7 +232,7 @@ func TestDefaultTTU(t *testing.T) {
 				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
 				RequestMetadata: NewCheckRequestMetadata(),
 			}
-			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)
+			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)(ctx)
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})

@@ -692,7 +692,80 @@
                 }
             }
         },
+        "checkDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED"
+                },
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listObjectsDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED"
+                },
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
+        "listUsersDatastoreThrottle": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED"
+                },
+                "threshold": {
+                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "type": "integer",
+                    "default": 0,
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"
+                },
+                "duration": {
+                    "description": "defines the time for which the datastore request will be suspended for being throttled.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0s",
+                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_DURATION"
+                }
+            }
+        },
         "sharedIterator": {
+            "type": "object",
             "properties": {
                 "enabled": {
                     "description": "enabling sharing of datastore iterators with different consumers. Each iterator is the result of a database query, for example usersets related to a specific object, or objects related to a specific user, up to a certain number of tuples per iterator.",
@@ -703,7 +776,7 @@
                 "limit": {
                     "description": "if shared-iterator-enabled is enabled, this is the limit of the number of iterators that can be shared.",
                     "type": "integer",
-                    "default": "1000000",
+                    "default": 1000000,
                     "x-env-variable": "OPENFGA_SHARED_ITERATOR_LIMIT"
                 }
             }
@@ -714,6 +787,31 @@
             "format": "duration",
             "default": "3s",
             "x-env-variable": "OPENFGA_REQUEST_TIMEOUT"
+        },
+        "planner": {
+            "type": "object",
+            "properties": {
+                "initialGuess": {
+                    "description": "The initial guess for the planners estimation.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10ms",
+                    "x-env-variable": "OPENFGA_PLANNER_INITIAL_GUESS"
+                },
+                "evictionThreshold": {
+                    "description": "How long a planner key can be unused before being evicted.",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_EVICTION_THRESHOLD"
+                },
+                "cleanupInterval": {
+                    "description": "How often the planner checks for stale keys.",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_PLANNER_CLEANUP_INTERVAL"
+                }
+            }
         }
     },
     "definitions": {

@@ -52,6 +52,7 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
+	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/gateway"
 	"github.com/openfga/openfga/pkg/logger"
@@ -291,25 +292,28 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listUsers-dispatch-throttling-max-threshold", defaultConfig.ListUsersDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list users requests will be throttled. 0 will use the 'listUsers-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("check-datastore-throttle-enabled", defaultConfig.CheckDatabaseThrottle.Enabled, "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
+	flags.Bool("check-datastore-throttle-enabled", defaultConfig.CheckDatastoreThrottle.Enabled, "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
 
-	flags.Int("check-datastore-throttle-threshold", defaultConfig.CheckDatabaseThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
+	flags.Int("check-datastore-throttle-threshold", defaultConfig.CheckDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
-	flags.Duration("check-datastore-throttle-duration", defaultConfig.CheckDatabaseThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
+	flags.Duration("check-datastore-throttle-duration", defaultConfig.CheckDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
-	flags.Bool("listObjects-datastore-throttle-enabled", defaultConfig.ListObjectsDatabaseThrottle.Enabled, "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
+	flags.Bool("listObjects-datastore-throttle-enabled", defaultConfig.ListObjectsDatastoreThrottle.Enabled, "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
 
-	flags.Int("listObjects-datastore-throttle-threshold", defaultConfig.ListObjectsDatabaseThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
+	flags.Int("listObjects-datastore-throttle-threshold", defaultConfig.ListObjectsDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
-	flags.Duration("listObjects-datastore-throttle-duration", defaultConfig.ListObjectsDatabaseThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
+	flags.Duration("listObjects-datastore-throttle-duration", defaultConfig.ListObjectsDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
-	flags.Bool("listUsers-datastore-throttle-enabled", defaultConfig.ListUsersDatabaseThrottle.Enabled, "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
+	flags.Bool("listUsers-datastore-throttle-enabled", defaultConfig.ListUsersDatastoreThrottle.Enabled, "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
 
-	flags.Int("listUsers-datastore-throttle-threshold", defaultConfig.ListUsersDatabaseThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
+	flags.Int("listUsers-datastore-throttle-threshold", defaultConfig.ListUsersDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
-	flags.Duration("listUsers-datastore-throttle-duration", defaultConfig.ListUsersDatabaseThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
+	flags.Duration("listUsers-datastore-throttle-duration", defaultConfig.ListUsersDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
 	flags.Duration("request-timeout", defaultConfig.RequestTimeout, "configures request timeout.  If both HTTP upstream timeout and request timeout are specified, request timeout will be used.")
+
+	flags.Duration("planner-eviction-threshold", defaultConfig.Planner.EvictionThreshold, "how long a planner key can be unused before being evicted")
+	flags.Duration("planner-cleanup-interval", defaultConfig.Planner.CleanupInterval, "how often the planner checks for stale keys")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -628,7 +632,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
 
 			if err := profilerServer.ListenAndServe(); err != nil {
-				if err != http.ErrServerClosed {
+				if !errors.Is(err, http.ErrServerClosed) {
 					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
 				}
 			}
@@ -646,7 +650,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		go func() {
 			s.Logger.Info(fmt.Sprintf("📈 starting prometheus metrics server on '%s'", config.Metrics.Addr))
 			if err := metricsServer.ListenAndServe(); err != nil {
-				if err != http.ErrServerClosed {
+				if !errors.Is(err, http.ErrServerClosed) {
 					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
 			}
@@ -694,9 +698,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithListUsersDispatchThrottlingFrequency(config.ListUsersDispatchThrottling.Frequency),
 		server.WithListUsersDispatchThrottlingThreshold(config.ListUsersDispatchThrottling.Threshold),
 		server.WithListUsersDispatchThrottlingMaxThreshold(config.ListUsersDispatchThrottling.MaxThreshold),
-		server.WithCheckDatabaseThrottle(config.CheckDatabaseThrottle.Threshold, config.CheckDatabaseThrottle.Duration),
-		server.WithListObjectsDatabaseThrottle(config.ListObjectsDatabaseThrottle.Threshold, config.ListObjectsDatabaseThrottle.Duration),
-		server.WithListUsersDatabaseThrottle(config.ListUsersDatabaseThrottle.Threshold, config.ListUsersDatabaseThrottle.Duration),
+		server.WithCheckDatabaseThrottle(config.CheckDatastoreThrottle.Threshold, config.CheckDatastoreThrottle.Duration),
+		server.WithListObjectsDatabaseThrottle(config.ListObjectsDatastoreThrottle.Threshold, config.ListObjectsDatastoreThrottle.Duration),
+		server.WithListUsersDatabaseThrottle(config.ListUsersDatastoreThrottle.Threshold, config.ListUsersDatastoreThrottle.Duration),
 		server.WithListObjectsIteratorCacheEnabled(config.ListObjectsIteratorCache.Enabled),
 		server.WithListObjectsIteratorCacheMaxResults(config.ListObjectsIteratorCache.MaxResults),
 		server.WithListObjectsIteratorCacheTTL(config.ListObjectsIteratorCache.TTL),
@@ -704,6 +708,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithMaxConcurrentChecksPerBatchCheck(config.MaxConcurrentChecksPerBatchCheck),
 		server.WithSharedIteratorEnabled(config.SharedIterator.Enabled),
 		server.WithSharedIteratorLimit(config.SharedIterator.Limit),
+		server.WithPlanner(planner.New(&planner.Config{
+			EvictionThreshold: config.Planner.EvictionThreshold,
+			CleanupInterval:   config.Planner.CleanupInterval,
+		})),
 		// The shared iterator watchdog timeout is set to config.RequestTimeout + 2 seconds
 		// to provide a small buffer for operations that might slightly exceed the request timeout.
 		server.WithSharedIteratorTTL(config.RequestTimeout+2*time.Second),
@@ -734,7 +742,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	go func() {
-		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", config.GRPC.Addr))
+		s.Logger.Info(fmt.Sprintf("🚀 starting gRPC server on '%s'...", lis.Addr().String()))
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
 				s.Logger.Fatal("failed to start gRPC server", zap.Error(err))
@@ -757,7 +765,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
-				s.Logger.Fatal("", zap.Error(err))
+				s.Logger.Fatal("failed to load gRPC credentials", zap.Error(err))
 			}
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 		} else {
@@ -770,7 +778,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		// nolint:staticcheck // ignoring gRPC deprecations
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			s.Logger.Fatal("", zap.Error(err))
+			s.Logger.Fatal("failed to connect to gRPC server", zap.Error(err))
 		}
 		defer conn.Close()
 
