@@ -39,10 +39,8 @@ func startTrace(ctx context.Context, name string) (context.Context, trace.Span) 
 
 // Datastore provides a PostgreSQL based implementation of [storage.OpenFGADatastore].
 type Datastore struct {
-	stbl                      sq.StatementBuilderType
 	primaryDB                 *pgxpool.Pool
 	secondaryDB               *pgxpool.Pool
-	dbInfo                    *sqlcommon.DBInfo
 	logger                    logger.Logger
 	primaryDBStatsCollector   prometheus.Collector
 	secondaryDBStatsCollector prometheus.Collector
@@ -139,8 +137,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Datastore, error) {
 	return NewWithDB(primaryDB, secondaryDB, cfg)
 }
 
-func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (*sqlcommon.DBInfo, sq.StatementBuilderType, prometheus.Collector, error) {
-	var stbl sq.StatementBuilderType
+func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (prometheus.Collector, error) {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
@@ -154,7 +151,7 @@ func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (*sqlco
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, stbl, nil, fmt.Errorf("ping db: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
 	var collector prometheus.Collector
@@ -162,36 +159,31 @@ func configureDB(db *pgxpool.Pool, cfg *sqlcommon.Config, dbName string) (*sqlco
 	if cfg.ExportMetrics {
 		collector = pgxpoolprometheus.NewCollector(db, map[string]string{"db_name": dbName})
 		if err := prometheus.Register(collector); err != nil {
-			return nil, stbl, nil, fmt.Errorf("initialize metrics: %w", err)
+			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
 
-	stbl = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
-	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "postgres")
-
-	return dbInfo, stbl, collector, nil
+	return collector, nil
 }
 
 // NewWithDB creates a new [Datastore] storage with the provided database connection.
 func NewWithDB(primaryDB, secondaryDB *pgxpool.Pool, cfg *sqlcommon.Config) (*Datastore, error) {
-	primaryDBInfo, primaryStbl, primaryCollector, err := configureDB(primaryDB, cfg, "openfga")
+	primaryCollector, err := configureDB(primaryDB, cfg, "openfga")
 	if err != nil {
 		return nil, fmt.Errorf("configure primary db: %w", err)
 	}
 
 	var secondaryCollector prometheus.Collector
 	if secondaryDB != nil {
-		_, _, secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
+		secondaryCollector, err = configureDB(secondaryDB, cfg, "openfga_secondary")
 		if err != nil {
 			return nil, fmt.Errorf("configure secondary db: %w", err)
 		}
 	}
 
 	return &Datastore{
-		stbl:                      primaryStbl,
 		primaryDB:                 primaryDB,
 		secondaryDB:               secondaryDB,
-		dbInfo:                    primaryDBInfo,
 		logger:                    cfg.Logger,
 		primaryDBStatsCollector:   primaryCollector,
 		secondaryDBStatsCollector: secondaryCollector,
@@ -265,9 +257,8 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions, db *pgxpool.Pool) (*sqlcommon.SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
-	readStbl := s.stbl
 
-	sb := readStbl.
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -346,6 +337,7 @@ func (s *Datastore) write(
 		return nil
 	}
 
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	existing := make(map[string]*openfgav1.Tuple, total)
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
@@ -356,7 +348,7 @@ func (s *Datastore) write(
 		}
 		keys := lockKeys[start:end]
 
-		if err := selectExistingRowsForWrite(ctx, s.stbl, txn, store, keys, existing); err != nil {
+		if err := selectExistingRowsForWrite(ctx, stbl, txn, store, keys, existing); err != nil {
 			return err
 		}
 	}
@@ -375,7 +367,7 @@ func (s *Datastore) write(
 
 		deleteConditionsBatch := deleteConditions[start:end]
 
-		stmt, args, err := s.stbl.Delete("tuple").Where(sq.Eq{"store": store}).
+		stmt, args, err := stbl.Delete("tuple").Where(sq.Eq{"store": store}).
 			Where(deleteConditionsBatch).ToSql()
 		if err != nil {
 			return HandleSQLError(err)
@@ -401,7 +393,7 @@ func (s *Datastore) write(
 
 		writesBatch := writeItems[start:end]
 
-		insertBuilder := s.stbl.
+		insertBuilder := stbl.
 			Insert("tuple").
 			Columns(
 				"store",
@@ -445,7 +437,7 @@ func (s *Datastore) write(
 
 		changeLogBatch := changeLogItems[start:end]
 
-		changelogBuilder := s.stbl.
+		changelogBuilder := stbl.
 			Insert("changelog").
 			Columns(
 				"store",
@@ -489,7 +481,7 @@ func (s *Datastore) ReadUserTuple(ctx context.Context, store string, tupleKey *o
 	ctx, span := startTrace(ctx, "ReadUserTuple")
 	defer span.End()
 
-	readStbl := s.stbl
+	readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
@@ -558,7 +550,7 @@ func (s *Datastore) ReadUsersetTuples(
 	defer span.End()
 
 	db := s.getPgxPool(options.Consistency.Preference)
-	sb := s.stbl.
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
 			"store", "object_type", "object_id", "relation",
 			"_user",
@@ -614,7 +606,7 @@ func (s *Datastore) ReadStartingWithUser(
 	defer span.End()
 
 	db := s.getPgxPool(options.Consistency.Preference)
-	readStbl := s.stbl
+	readStbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	var targetUsersArg []string
 	for _, u := range filter.UserFilter {
 		targetUser := u.GetObject()
@@ -660,7 +652,7 @@ func (s *Datastore) ReadAuthorizationModel(ctx context.Context, store string, mo
 	defer span.End()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{
@@ -691,7 +683,7 @@ func (s *Datastore) ReadAuthorizationModels(ctx context.Context, store string, o
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
-	sb := s.stbl.
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
@@ -761,7 +753,7 @@ func (s *Datastore) FindLatestAuthorizationModel(ctx context.Context, store stri
 	defer span.End()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -804,19 +796,17 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	}
 
-	dbInfo := s.dbInfo
-
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Insert("authorization_model").
 		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
 		Values(store, model.GetId(), schemaVersion, "", nil, pbdata).
 		ToSql()
 	if err != nil {
-		return dbInfo.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 	_, err = s.primaryDB.Exec(ctx, stmt, args...)
 	if err != nil {
-		return dbInfo.HandleSQLError(err)
+		return HandleSQLError(err)
 	}
 
 	return nil
@@ -830,7 +820,7 @@ func (s *Datastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*o
 	var id, name string
 	var createdAt, updatedAt time.Time
 
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
 		Values(store.GetId(), store.GetName(), sq.Expr("NOW()"), sq.Expr("NOW()")).
@@ -861,7 +851,7 @@ func (s *Datastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, 
 	defer span.End()
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{
@@ -915,7 +905,7 @@ func (s *Datastore) ListStores(ctx context.Context, options storage.ListStoresOp
 	}
 
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
-	sb := s.stbl.
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(whereClause).
@@ -971,7 +961,7 @@ func (s *Datastore) DeleteStore(ctx context.Context, id string) error {
 	defer span.End()
 
 	db := s.primaryDB
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Update("store").
 		Set("deleted_at", sq.Expr("NOW()")).
 		Where(sq.Eq{"id": id}).ToSql()
@@ -999,7 +989,7 @@ func (s *Datastore) WriteAssertions(ctx context.Context, store, modelID string, 
 
 	db := s.primaryDB
 
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Insert("assertion").
 		Columns("store", "authorization_model_id", "assertions").
 		Values(store, modelID, marshalledAssertions).
@@ -1024,7 +1014,7 @@ func (s *Datastore) ReadAssertions(ctx context.Context, store, modelID string) (
 	var marshalledAssertions []byte
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
-	stmt, args, err := s.stbl.
+	stmt, args, err := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
@@ -1067,7 +1057,7 @@ func (s *Datastore) ReadChanges(ctx context.Context, store string, filter storag
 	}
 	db := s.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
 
-	sb := s.stbl.
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
 			"ulid", "object_type", "object_id", "relation",
 			"_user",
@@ -1165,7 +1155,9 @@ func isDBReady(ctx context.Context, versionReady bool, db *pgxpool.Pool) (storag
 	}
 
 	sqlDB := stdlib.OpenDBFromPool(db)
-	defer sqlDB.Close()
+	defer func() {
+		_ = sqlDB.Close()
+	}()
 	return sqlcommon.IsVersionReady(ctx, versionReady, sqlDB)
 }
 
