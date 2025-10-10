@@ -471,6 +471,9 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	inBuffers := make([]map[string]struct{}, len(senders))
 
+	var outMu sync.Mutex
+	outBuffer := make(map[string]struct{})
+
 	for i := range len(senders) {
 		inBuffers[i] = make(map[string]struct{})
 	}
@@ -545,6 +548,14 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					results = r.interpreter.Interpret(snd.edge, unseen)
 
 					for item := range results {
+						outMu.Lock()
+						if _, ok := outBuffer[item.Value]; ok {
+							outMu.Unlock()
+							continue
+						}
+						outBuffer[item.Value] = struct{}{}
+						outMu.Unlock()
+
 						items = append(items, item)
 
 						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
