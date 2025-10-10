@@ -227,6 +227,10 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsPipeline, nil) {
+		query.pipelineEnabled = true
+	}
+
 	return query, nil
 }
 
@@ -582,6 +586,10 @@ func (q *ListObjectsQuery) Execute(
 			}
 			res.Objects = append(res.Objects, obj.Value)
 		}
+
+		dsMeta := ds.GetMetadata()
+		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+
 		return &res, nil
 	}
 
@@ -755,6 +763,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				return nil, serverErrors.HandleError("", err)
 			}
 		}
+
+		dsMeta := ds.GetMetadata()
+		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+
 		return &resolutionMetadata, nil
 	}
 

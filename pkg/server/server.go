@@ -50,6 +50,7 @@ const (
 	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
+	ExperimentalListObjectsPipeline      ExperimentalFeatureFlag = "enable-list-objects-pipeline"
 	allowedLabel                                                 = "allowed"
 )
 
