@@ -482,33 +482,27 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	var recursive []func(*sync.WaitGroup)
 
 	for ndx, snd := range senders {
-		if snd.edge != nil {
-			fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-		}
-		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
-
-		isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU
-
 		/*
-			if isRecursive {
-				println("RECURSIVE", snd.edge.GetRecursiveRelation())
-			}
-
 			if snd.edge != nil {
 				fmt.Printf("BUILDING %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
 			}
 		*/
+		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
+
+		isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU && !snd.edge.IsPartOfTupleCycle()
 
 		var unload atomic.Bool
 
 		for range snd.numProcs {
 			proc := func(wg *sync.WaitGroup) {
 				defer wg.Done()
-				defer func() {
-					if snd.edge != nil {
-						fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
-					}
-				}()
+				/*
+					defer func() {
+						if snd.edge != nil {
+							fmt.Printf("DONE %s -> %s\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel())
+						}
+					}()
+				*/
 
 				for snd.more() && !unload.Load() && r.ctx.Err() == nil {
 					var results iter.Seq[Item]
@@ -521,9 +515,11 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 						goto ProcessEnd
 					}
 
-					if snd.edge != nil {
-						fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
-					}
+					/*
+						if snd.edge != nil {
+							fmt.Printf("RECEIVED %s -> %s %#v\n", snd.edge.GetTo().GetUniqueLabel(), snd.edge.GetFrom().GetUniqueLabel(), msg.Value.Items)
+						}
+					*/
 
 					// Deduplicate items within this group based on the buffer for this sender
 					for _, item := range msg.Value.Items {
@@ -583,28 +579,32 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 					outGroup.Items = items
 
 					for _, lst := range listeners {
-						if lst.node != nil && snd.edge != nil {
-							fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-						} else if lst.node != nil {
-							fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-						} else {
-							fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
-						}
+						/*
+							if lst.node != nil && snd.edge != nil {
+								fmt.Printf("SENDING %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
+							} else if lst.node != nil {
+								fmt.Printf("SENDING %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
+							} else {
+								fmt.Printf("SENDING %s -> %s %#v\n", "nil", "nil", items)
+							}
+						*/
 						lst.send(outGroup)
-						if lst.node != nil && snd.edge != nil {
-							fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
-						} else if lst.node != nil {
-							fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
-						} else {
-							fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
-						}
+						/*
+							if lst.node != nil && snd.edge != nil {
+								fmt.Printf("SENT %s -> %s %#v\n", snd.edge.GetFrom().GetUniqueLabel(), lst.node.GetUniqueLabel(), items)
+							} else if lst.node != nil {
+								fmt.Printf("SENT %s -> %s %#v\n", "nil", lst.node.GetUniqueLabel(), items)
+							} else {
+								fmt.Printf("SENT %s -> %s %#v\n", "nil", "nil", items)
+							}
+						*/
 						sent = true
 					}
 
 				ProcessEnd:
 					msg.Done()
 
-					if ok && !sent && snd.edge != nil && isRecursiveTTU {
+					if ok && !sent && isRecursiveTTU {
 						unload.Store(true)
 					}
 					/*
@@ -851,7 +851,7 @@ func (r *intersectionResolver) Ready() bool {
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		println("INTERSECTION DONE")
+		// println("INTERSECTION DONE")
 		r.msgs.Add(-1)
 		r.done = true
 	}()
@@ -973,7 +973,7 @@ func (r *exclusionResolver) Ready() bool {
 
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		println("EXCLUSION DONE")
+		// println("EXCLUSION DONE")
 		r.msgs.Add(-1)
 		r.done = true
 	}()
@@ -1308,7 +1308,7 @@ func (p *Pipe) Send(g Group) {
 	defer p.mu.Unlock()
 
 	if p.done {
-		fmt.Printf("CLOSED PIPE %#v", g)
+		// fmt.Printf("CLOSED PIPE %#v", g)
 		panic("called Send on a closed Pipe")
 	}
 	p.msgs.Add(1)
@@ -1564,7 +1564,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 			for _, worker := range p.traversal.pipeline {
 				if !worker.Active() {
-					println("INACTIVE", worker.name)
+					// println("INACTIVE", worker.name)
 					worker.Close()
 					inactiveCount++
 				}
