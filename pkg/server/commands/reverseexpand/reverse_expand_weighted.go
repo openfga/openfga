@@ -431,111 +431,114 @@ type baseResolver struct {
 	ctx         context.Context
 	interpreter interpreter
 	done        atomic.Bool
+	mutexes     []sync.Mutex
+	inBuffers   []map[string]struct{}
+	outMu       sync.Mutex
+	outBuffer   map[string]struct{}
 }
 
 func (r *baseResolver) Ready() bool {
 	return !r.done.Load()
 }
 
-func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
-	mutexes := make([]sync.Mutex, len(senders))
-	inBuffers := make([]map[string]struct{}, len(senders))
+func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
+	for senders[ndx].more() && r.ctx.Err() == nil {
+		var results iter.Seq[Item]
+		var outGroup Group
+		var items, unseen []Item
 
-	var outMu sync.Mutex
-	outBuffer := make(map[string]struct{})
+		msg, ok := senders[ndx].recv()
+		if !ok {
+			goto ProcessEnd
+		}
 
-	for i := range len(senders) {
-		inBuffers[i] = make(map[string]struct{})
-	}
-
-	var standard []func(*sync.WaitGroup)
-	var recursive []func(*sync.WaitGroup)
-
-	for ndx, snd := range senders {
-		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
-
-		// isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU && !snd.edge.IsPartOfTupleCycle()
-
-		for range snd.numProcs {
-			proc := func(wg *sync.WaitGroup) {
-				defer wg.Done()
-
-				for snd.more() && r.ctx.Err() == nil {
-					var results iter.Seq[Item]
-					var outGroup Group
-					var items, unseen []Item
-
-					msg, ok := snd.recv()
-					if !ok {
-						goto ProcessEnd
-					}
-
-					// Deduplicate items within this group based on the buffer for this sender
-					for _, item := range msg.Value.Items {
-						if item.Err != nil {
-							unseen = append(unseen, item)
-							continue
-						}
-
-						mutexes[ndx].Lock()
-						if _, ok := inBuffers[ndx][item.Value]; ok {
-							mutexes[ndx].Unlock()
-							continue
-						}
-						inBuffers[ndx][item.Value] = struct{}{}
-						mutexes[ndx].Unlock()
-						unseen = append(unseen, item)
-					}
-
-					// If there are no unseen items, skip processing
-					if len(unseen) == 0 {
-						goto ProcessEnd
-					}
-
-					results = r.interpreter.Interpret(snd.edge, unseen)
-
-					for item := range results {
-						outMu.Lock()
-						if _, ok := outBuffer[item.Value]; ok {
-							outMu.Unlock()
-							continue
-						}
-						outBuffer[item.Value] = struct{}{}
-						outMu.Unlock()
-
-						items = append(items, item)
-
-						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
-							continue
-						}
-
-						outGroup := Group{
-							Items: items,
-						}
-
-						items = nil
-
-						for _, lst := range listeners {
-							lst.send(outGroup)
-						}
-					}
-
-					if len(items) == 0 {
-						goto ProcessEnd
-					}
-
-					outGroup.Items = items
-
-					for _, lst := range listeners {
-						lst.send(outGroup)
-					}
-
-				ProcessEnd:
-					msg.Done()
-					runtime.Gosched()
-				}
+		// Deduplicate items within this group based on the buffer for this sender
+		for _, item := range msg.Value.Items {
+			if item.Err != nil {
+				unseen = append(unseen, item)
+				continue
 			}
 
+			r.mutexes[ndx].Lock()
+			if _, ok := r.inBuffers[ndx][item.Value]; ok {
+				r.mutexes[ndx].Unlock()
+				continue
+			}
+			r.inBuffers[ndx][item.Value] = struct{}{}
+			r.mutexes[ndx].Unlock()
+			unseen = append(unseen, item)
+		}
+
+		// If there are no unseen items, skip processing
+		if len(unseen) == 0 {
+			goto ProcessEnd
+		}
+
+		results = r.interpreter.Interpret(senders[ndx].edge, unseen)
+
+		for item := range results {
+			r.outMu.Lock()
+			if _, ok := r.outBuffer[item.Value]; ok {
+				r.outMu.Unlock()
+				continue
+			}
+			r.outBuffer[item.Value] = struct{}{}
+			r.outMu.Unlock()
+
+			items = append(items, item)
+
+			if len(items) < senders[ndx].chunkSize || senders[ndx].chunkSize == 0 {
+				continue
+			}
+
+			outGroup := Group{
+				Items: items,
+			}
+
+			items = nil
+
+			for _, lst := range listeners {
+				lst.send(outGroup)
+			}
+		}
+
+		if len(items) == 0 {
+			goto ProcessEnd
+		}
+
+		outGroup.Items = items
+
+		for _, lst := range listeners {
+			lst.send(outGroup)
+		}
+
+	ProcessEnd:
+		msg.Done()
+		runtime.Gosched()
+	}
+}
+
+func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
+	r.mutexes = make([]sync.Mutex, len(senders))
+	r.inBuffers = make([]map[string]struct{}, len(senders))
+	r.outBuffer = make(map[string]struct{})
+
+	for ndx := range len(senders) {
+		r.inBuffers[ndx] = make(map[string]struct{})
+	}
+
+	var standard []func()
+	var recursive []func()
+
+	for ndx := range len(senders) {
+		snd := senders[ndx]
+		isRecursiveUserset := snd.edge != nil && snd.edge.GetFrom() == snd.edge.GetTo() && !snd.edge.IsPartOfTupleCycle()
+
+		proc := func() {
+			r.process(ndx, senders, listeners)
+		}
+
+		for range snd.numProcs {
 			if isRecursiveUserset {
 				recursive = append(recursive, proc)
 				continue
@@ -548,14 +551,20 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	for _, proc := range standard {
 		wgStandard.Add(1)
-		go proc(&wgStandard)
+		go func() {
+			defer wgStandard.Done()
+			proc()
+		}()
 	}
 
 	var wgRecursive sync.WaitGroup
 
 	for _, proc := range recursive {
 		wgRecursive.Add(1)
-		go proc(&wgRecursive)
+		go func() {
+			defer wgRecursive.Done()
+			proc()
+		}()
 	}
 	wgStandard.Wait()
 
