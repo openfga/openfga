@@ -288,46 +288,6 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-type StatusPool struct {
-	pool []uint64
-	top  int
-}
-
-func (sp *StatusPool) Register() int {
-	capacity := len(sp.pool)
-
-	if sp.top/64 >= capacity {
-		sp.pool = append(sp.pool, 0)
-	}
-	id := sp.top
-	sp.top++
-	return id
-}
-
-// Set is a function that accepts a registered identifier and a boolean status.
-func (sp *StatusPool) Set(id int, status bool) {
-	ndx := id / 64
-	pos := uint64(1 << (id % 64))
-
-	if status {
-		sp.pool[ndx] |= pos
-		return
-	}
-	sp.pool[ndx] &^= pos
-}
-
-// Status is a function that returns the cummulative status of all statuses
-// registered within the pool. If any registered status is set to `true`,
-// the return value of Status will be `true`. The default value is `false`.
-func (sp *StatusPool) Status() bool {
-	var status uint64
-
-	for _, s := range sp.pool {
-		status |= s
-	}
-	return status != 0
-}
-
 // resolver is an interface that is consumed by a Worker struct.
 // a resolver is responsible for consuming messages from a Worker's
 // senders and broadcasting the result of processing the consumed
