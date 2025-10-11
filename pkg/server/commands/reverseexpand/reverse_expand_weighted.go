@@ -120,6 +120,7 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 	return job, true
 }
 
+// emptySequence represents an `iter.Seq[Item]` that does nothing.
 var emptySequence = func(yield func(Item) bool) {}
 
 type (
@@ -151,15 +152,21 @@ var (
 	ErrTupleCycle         = errors.New("cycle detected in tuples")
 )
 
+// Item is a struct that contains an object `string` as its `Value` or an
+// encountered error as its `Err`. Item is the primary container used to
+// communicate values as they pass through a `Pipeline`.
 type Item struct {
 	Value string
 	Err   error
 }
 
+// Group is a struct that acts as a container for a set of `Item` values.
 type Group struct {
 	Items []Item
 }
 
+// sequence is a function that turns its input into an `iter.Seq[T]` that
+// yields values in the order that they were provided to the function.
 func sequence[T any](items ...T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, item := range items {
@@ -170,7 +177,11 @@ func sequence[T any](items ...T) iter.Seq[T] {
 	}
 }
 
-func mergeOrdered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+// flatten is a function that merges a set of provided `iter.Seq[T]`
+// values into a single `iter.Seq[T]` value. The values of each input are
+// yielded in the order yielded by each `iter.Seq[T]`, in the order provided
+// to the function.
+func flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, seq := range seqs {
 			for item := range seq {
@@ -182,6 +193,9 @@ func mergeOrdered[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
+// transform is a function that maps the values yielded by the input `seq`
+// to values produced by the input function `fn`, and returns an `iter.Seq`
+// that yields those new values.
 func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	return func(yield func(U) bool) {
 		for item := range seq {
@@ -190,6 +204,8 @@ func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	}
 }
 
+// strtoItem is a function that accepts a string input and returns an Item
+// that contains the input as its `Value` value.
 func strToItem(s string) Item {
 	return Item{Value: s}
 }
@@ -524,7 +540,7 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = mergeOrdered(sequence(errs...), results)
+		results = flatten(sequence(errs...), results)
 	}
 	return results
 }
@@ -590,7 +606,7 @@ func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = mergeOrdered(sequence(errs...), results)
+		results = flatten(sequence(errs...), results)
 	}
 	return results
 }
@@ -767,7 +783,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(objects), strToItem))
+	seq := flatten(sequence(allErrs...), transform(maps.Keys(objects), strToItem))
 
 	var items []Item
 
@@ -864,7 +880,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := mergeOrdered(sequence(allErrs...), transform(maps.Keys(included), strToItem))
+	seq := flatten(sequence(allErrs...), transform(maps.Keys(included), strToItem))
 
 	var items []Item
 
