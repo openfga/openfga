@@ -213,105 +213,76 @@ type queryInput struct {
 func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	ch := make(chan Item)
+	it, err := b.Datastore.ReadStartingWithUser(
+		ctx,
+		b.StoreID,
+		storage.ReadStartingWithUserFilter{
+			ObjectType: input.objectType,
+			Relation:   input.objectRelation,
+			UserFilter: input.userFilter,
+		},
+		storage.ReadStartingWithUserOptions{},
+	)
 
-	var wg sync.WaitGroup
+	if err != nil {
+		cancel()
+		return sequence(Item{Err: err})
+	}
 
-	wg.Add(1)
-	go func() {
-		defer close(ch)
-		defer wg.Done()
+	var hasConditions bool
 
-		it, err := b.Datastore.ReadStartingWithUser(
-			ctx,
-			b.StoreID,
-			storage.ReadStartingWithUserFilter{
-				ObjectType: input.objectType,
-				Relation:   input.objectRelation,
-				UserFilter: input.userFilter,
-			},
-			storage.ReadStartingWithUserOptions{},
-		)
-
-		if err != nil {
-			select {
-			case <-ctx.Done():
-			case ch <- Item{Err: err}:
-			}
-			return
+	for _, cond := range input.conditions {
+		if cond != weightedGraph.NoCond {
+			hasConditions = true
+			break
 		}
+	}
 
-		var hasConditions bool
+	var itr storage.TupleKeyIterator
 
-		for _, cond := range input.conditions {
-			if cond != weightedGraph.NoCond {
-				hasConditions = true
-				break
-			}
-		}
-
-		var itr storage.TupleKeyIterator
-
-		if hasConditions {
-			itr = storage.NewConditionsFilteredTupleKeyIterator(
-				storage.NewFilteredTupleKeyIterator(
-					storage.NewTupleKeyIteratorFromTupleIterator(it),
-					validation.FilterInvalidTuples(b.TypeSystem),
-				),
-				checkutil.BuildTupleKeyConditionFilter(ctx, b.Context, b.TypeSystem),
-			)
-		} else {
-			itr = storage.NewFilteredTupleKeyIterator(
+	if hasConditions {
+		itr = storage.NewConditionsFilteredTupleKeyIterator(
+			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(it),
 				validation.FilterInvalidTuples(b.TypeSystem),
-			)
-		}
+			),
+			checkutil.BuildTupleKeyConditionFilter(ctx, b.Context, b.TypeSystem),
+		)
+	} else {
+		itr = storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(it),
+			validation.FilterInvalidTuples(b.TypeSystem),
+		)
+	}
 
+	return func(yield func(Item) bool) {
+		defer cancel()
 		defer itr.Stop()
 
-		for {
+		for ctx.Err() == nil {
 			t, err := itr.Next(ctx)
+
+			var item Item
 
 			if err != nil {
 				if err == storage.ErrIteratorDone {
 					break
 				}
 
-				select {
-				case <-ctx.Done():
-				case ch <- Item{Err: err}:
-				}
-				return
+				item.Err = err
+
+				yield(item)
+				break
 			}
 
 			if t == nil {
 				continue
 			}
 
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- Item{Value: t.GetObject()}:
-			}
-		}
-	}()
+			item.Value = t.GetObject()
 
-	return func(yield func(Item) bool) {
-		defer wg.Wait()
-		defer cancel()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case result, ok := <-ch:
-				if !ok {
-					return
-				}
-
-				if !yield(result) {
-					return
-				}
+			if !yield(item) {
+				break
 			}
 		}
 	}
