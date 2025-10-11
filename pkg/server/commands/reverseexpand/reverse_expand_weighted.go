@@ -423,18 +423,46 @@ type resolver interface {
 	Ready() bool
 }
 
+// interpreter is an interface that exposes a method for interpreting input for an edge into output.
 type interpreter interface {
 	Interpret(edge *Edge, items []Item) iter.Seq[Item]
 }
 
+// baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
+// workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
+// status will remain `true` until all of its senders that produce input from external sources have finished, and
+// there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
+// this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
-	ctx         context.Context
+	ctx context.Context
+
+	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
+	// of the parent worker's listeners.
 	interpreter interpreter
-	done        atomic.Bool
-	mutexes     []sync.Mutex
-	inBuffers   []map[string]struct{}
-	outMu       sync.Mutex
-	outBuffer   map[string]struct{}
+
+	// done indicates when all of the senders that produce input from external sources have completed.
+	// done is used as the resolver's "ready" indicator, which is exposed by the resolver's `Status` method.
+	// When done is `true`, it is possible for recursive senders to still be processing messages. The
+	// resolver's parent worker's watchdog process won't kill the parent worker until both done is `true`, and
+	// there a no more messages in-flight for this resolver.
+	done atomic.Bool
+
+	// mutexes each protect map access for a buffer within inBuffers at the same index.
+	mutexes []sync.Mutex
+
+	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual sender's
+	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
+	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
+	// edges producing to the same node. This is specifically true in the case of recursive edges, where
+	// a single resolver may have multiple recursive edges that must receive the same objects.
+	inBuffers []map[string]struct{}
+
+	// outMu protects map access to outBuffer.
+	outMu sync.Mutex
+
+	// outBuffer contains a map, used as a hash set, for deduplicating each resolver's output. A single
+	// resolver should only output an object once.
+	outBuffer map[string]struct{}
 }
 
 func (r *baseResolver) Ready() bool {
