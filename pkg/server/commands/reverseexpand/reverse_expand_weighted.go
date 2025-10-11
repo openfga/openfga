@@ -121,7 +121,6 @@ func (q *jobQueue) dequeue() (queryJob, bool) {
 }
 
 var emptySequence = func(yield func(Item) bool) {}
-var emptyGroupSequence = func(yield func(Group) bool) {}
 
 type (
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
