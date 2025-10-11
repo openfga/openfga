@@ -467,6 +467,7 @@ func (r *baseResolver) Ready() bool {
 }
 
 func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
+	mutexes := make([]sync.Mutex, len(senders))
 	inBuffers := make([]map[string]struct{}, len(senders))
 
 	var outMu sync.Mutex
@@ -484,89 +485,92 @@ func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 
 		// isRecursiveTTU := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && snd.edge.GetEdgeType() == EdgeTypeTTU && !snd.edge.IsPartOfTupleCycle()
 
-		var unload atomic.Bool
+		for range snd.numProcs {
+			proc := func(wg *sync.WaitGroup) {
+				defer wg.Done()
 
-		proc := func(wg *sync.WaitGroup) {
-			defer wg.Done()
+				for snd.more() && r.ctx.Err() == nil {
+					var results iter.Seq[Item]
+					var outGroup Group
+					var items, unseen []Item
 
-			for snd.more() && !unload.Load() && r.ctx.Err() == nil {
-				var results iter.Seq[Item]
-				var outGroup Group
-				var items, unseen []Item
+					msg, ok := snd.recv()
+					if !ok {
+						goto ProcessEnd
+					}
 
-				msg, ok := snd.recv()
-				if !ok {
-					goto ProcessEnd
-				}
+					// Deduplicate items within this group based on the buffer for this sender
+					for _, item := range msg.Value.Items {
+						if item.Err != nil {
+							unseen = append(unseen, item)
+							continue
+						}
 
-				// Deduplicate items within this group based on the buffer for this sender
-				for _, item := range msg.Value.Items {
-					if item.Err != nil {
+						mutexes[ndx].Lock()
+						if _, ok := inBuffers[ndx][item.Value]; ok {
+							mutexes[ndx].Unlock()
+							continue
+						}
+						inBuffers[ndx][item.Value] = struct{}{}
+						mutexes[ndx].Unlock()
 						unseen = append(unseen, item)
-						continue
 					}
 
-					if _, ok := inBuffers[ndx][item.Value]; ok {
-						continue
+					// If there are no unseen items, skip processing
+					if len(unseen) == 0 {
+						goto ProcessEnd
 					}
-					inBuffers[ndx][item.Value] = struct{}{}
-					unseen = append(unseen, item)
-				}
 
-				// If there are no unseen items, skip processing
-				if len(unseen) == 0 {
-					goto ProcessEnd
-				}
+					results = r.interpreter.Interpret(snd.edge, unseen)
 
-				results = r.interpreter.Interpret(snd.edge, unseen)
-
-				for item := range results {
-					outMu.Lock()
-					if _, ok := outBuffer[item.Value]; ok {
+					for item := range results {
+						outMu.Lock()
+						if _, ok := outBuffer[item.Value]; ok {
+							outMu.Unlock()
+							continue
+						}
+						outBuffer[item.Value] = struct{}{}
 						outMu.Unlock()
-						continue
+
+						items = append(items, item)
+
+						if len(items) < snd.chunkSize || snd.chunkSize == 0 {
+							continue
+						}
+
+						outGroup := Group{
+							Items: items,
+						}
+
+						items = nil
+
+						for _, lst := range listeners {
+							lst.send(outGroup)
+						}
 					}
-					outBuffer[item.Value] = struct{}{}
-					outMu.Unlock()
 
-					items = append(items, item)
-
-					if len(items) < snd.chunkSize || snd.chunkSize == 0 {
-						continue
+					if len(items) == 0 {
+						goto ProcessEnd
 					}
 
-					outGroup := Group{
-						Items: items,
-					}
-
-					items = nil
+					outGroup.Items = items
 
 					for _, lst := range listeners {
 						lst.send(outGroup)
 					}
+
+				ProcessEnd:
+					msg.Done()
+					runtime.Gosched()
 				}
-
-				if len(items) == 0 {
-					goto ProcessEnd
-				}
-
-				outGroup.Items = items
-
-				for _, lst := range listeners {
-					lst.send(outGroup)
-				}
-
-			ProcessEnd:
-				msg.Done()
-				runtime.Gosched()
 			}
-		}
 
-		if isRecursiveUserset {
-			recursive = append(recursive, proc)
-			continue
+			if isRecursiveUserset {
+				recursive = append(recursive, proc)
+				continue
+			}
+			standard = append(standard, proc)
 		}
-		standard = append(standard, proc)
 	}
 
 	var wgStandard sync.WaitGroup
@@ -1316,6 +1320,8 @@ type sender struct {
 	// outbound message. A value less than 1 indicates an unlimited
 	// number of items per message.
 	chunkSize int
+
+	numProcs int
 }
 
 func (snd *sender) recv() (Message[Group], bool) {
@@ -1326,11 +1332,12 @@ func (snd *sender) more() bool {
 	return !snd.prod.Done()
 }
 
-func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int) {
+func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &sender{
 		edge:      edge,
 		prod:      p,
 		chunkSize: chunkSize,
+		numProcs:  numProcs,
 	})
 }
 
@@ -1432,6 +1439,16 @@ func WithChunkSize(size int) TraversalOption {
 	}
 }
 
+func WithNumProcs(num int) TraversalOption {
+	if num < 1 {
+		num = 1
+	}
+
+	return func(path *Path) {
+		path.numProcs = num
+	}
+}
+
 func (t *Traversal) Traverse(source Source, target Target, options ...TraversalOption) *Path {
 	p := &Path{
 		traversal:        t,
@@ -1439,6 +1456,7 @@ func (t *Traversal) Traverse(source Source, target Target, options ...TraversalO
 		target:           target.node,
 		targetIdentifier: target.id,
 		chunkSize:        100,
+		numProcs:         3,
 	}
 
 	for _, option := range options {
@@ -1453,6 +1471,7 @@ type Path struct {
 	target           *Node
 	targetIdentifier string
 	chunkSize        int
+	numProcs         int
 	msgs             atomic.Int64
 }
 
@@ -1560,7 +1579,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, shared Tracker) {
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: p.targetIdentifier}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1570,7 +1589,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, shared Tracker) {
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1586,7 +1605,7 @@ func (p *Path) resolve(ctx context.Context, source *Node, shared Tracker) {
 			propagate = worker.msgs
 		}
 		p.resolve(ctx, edge.GetTo(), propagate)
-		worker.Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize)
+		worker.Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize, p.numProcs)
 	}
 }
 
