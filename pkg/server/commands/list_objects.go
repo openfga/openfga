@@ -547,12 +547,12 @@ func (q *ListObjectsQuery) Execute(
 			Graph:      wgraph,
 		}
 
-		traversal := reverseexpand.NewTraversal(backend)
+		pipeline := reverseexpand.NewPipeline(backend)
 
 		var source reverseexpand.Source
 		var target reverseexpand.Target
 
-		if source, ok = traversal.Source(targetObjectType, targetRelation); !ok {
+		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
 			panic("target not in graph")
 		}
 
@@ -566,13 +566,11 @@ func (q *ListObjectsQuery) Execute(
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = traversal.Target(objectType, objectID); !ok {
+		if target, ok = pipeline.Target(objectType, objectID); !ok {
 			panic("user not in graph")
 		}
 
-		path := traversal.Traverse(source, target)
-
-		seq := path.Objects(timeoutCtx)
+		seq := pipeline.Build(timeoutCtx, source, target)
 
 		var res ListObjectsResponse
 
@@ -714,12 +712,12 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			Graph:      wgraph,
 		}
 
-		traversal := reverseexpand.NewTraversal(backend)
+		pipeline := reverseexpand.NewPipeline(backend)
 
 		var source reverseexpand.Source
 		var target reverseexpand.Target
 
-		if source, ok = traversal.Source(targetObjectType, targetRelation); !ok {
+		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
 			panic("target not in graph")
 		}
 
@@ -733,13 +731,11 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			objectType += "#" + userParts[1]
 		}
 
-		if target, ok = traversal.Target(objectType, objectID); !ok {
+		if target, ok = pipeline.Target(objectType, objectID); !ok {
 			panic("user not in graph")
 		}
 
-		path := traversal.Traverse(source, target)
-
-		seq := path.Objects(timeoutCtx)
+		seq := pipeline.Build(timeoutCtx, source, target)
 
 		for obj := range seq {
 			if obj.Err != nil {

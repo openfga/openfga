@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"testing"
 	"time"
 
@@ -35,31 +36,9 @@ type testcase struct {
 	expected   []string
 }
 
-func setup(b *Backend, tc testcase) *Path {
-	traversal := &Traversal{
-		backend: b,
-	}
-
-	target, ok := traversal.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
-	if !ok {
-		panic("no such target")
-	}
-
-	source, ok := traversal.Source(tc.objectType, tc.relation)
-	if !ok {
-		panic("no such source")
-	}
-
-	path := traversal.Traverse(source, target)
-
-	return path
-}
-
-func evaluate(t *testing.T, ctx context.Context, tc testcase, path *Path) {
-	objects := path.Objects(ctx)
-
+func evaluate(t *testing.T, tc testcase, seq iter.Seq[Item]) {
 	var results []string
-	for item := range objects {
+	for item := range seq {
 		require.NoError(t, item.Err)
 		results = append(results, item.Value)
 	}
@@ -2089,9 +2068,19 @@ func BenchmarkPipelineLabour(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		path := setup(backend, tc)
+		pipeline := NewPipeline(backend)
 
-		seq := path.Objects(ctx)
+		target, ok := pipeline.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source(tc.objectType, tc.relation)
+		if !ok {
+			panic("no such source")
+		}
+
+		seq := pipeline.Build(ctx, source, target)
 
 		countItems := 0
 
@@ -2135,9 +2124,19 @@ func BenchmarkPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				path := setup(backend, tc)
+				pipeline := NewPipeline(backend)
 
-				seq := path.Objects(ctx)
+				target, ok := pipeline.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
+				if !ok {
+					panic("no such target")
+				}
+
+				source, ok := pipeline.Source(tc.objectType, tc.relation)
+				if !ok {
+					panic("no such source")
+				}
+
+				seq := pipeline.Build(ctx, source, target)
 
 				for range seq {
 				}
@@ -2175,8 +2174,21 @@ func TestPipeline(t *testing.T) {
 				Graph:      g,
 			}
 
-			path := setup(backend, tc)
-			evaluate(t, ctx, tc, path)
+			pipeline := NewPipeline(backend)
+
+			target, ok := pipeline.Target(tc.user.GetObjectType(), tc.user.Object.GetId())
+			if !ok {
+				panic("no such target")
+			}
+
+			source, ok := pipeline.Source(tc.objectType, tc.relation)
+			if !ok {
+				panic("no such source")
+			}
+
+			seq := pipeline.Build(ctx, source, target)
+
+			evaluate(t, tc, seq)
 		})
 	}
 }

@@ -210,6 +210,8 @@ func strToItem(s string) Item {
 	return Item{Value: s}
 }
 
+// Backend is a struct that serves as a container for all backend elements
+// necessary for creating and running a `Pipeline`.
 type Backend struct {
 	Datastore  storage.RelationshipTupleReader
 	StoreID    string
@@ -1292,15 +1294,23 @@ func StaticProducer(msgs Tracker, groups ...Group) Producer[Group] {
 	}
 }
 
-type Traversal struct {
-	backend  *Backend
-	pipeline map[*Node]*Worker
+type Pipeline struct {
+	backend   *Backend
+	chunkSize int
+	numProcs  int
 }
 
-func NewTraversal(backend *Backend) Traversal {
-	return Traversal{
-		backend: backend,
+func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
+	p := &Pipeline{
+		backend:   backend,
+		chunkSize: 100,
+		numProcs:  3,
 	}
+
+	for _, option := range options {
+		option(p)
+	}
+	return p
 }
 
 type Target struct {
@@ -1310,12 +1320,12 @@ type Target struct {
 
 type Source *Node
 
-func (t *Traversal) Target(name, identifier string) (Target, bool) {
+func (pipe *Pipeline) Target(name, identifier string) (Target, bool) {
 	if identifier == "*" {
 		name += ":*"
 		identifier = ""
 	}
-	targetNode, ok := t.backend.Graph.GetNodeByID(name)
+	targetNode, ok := pipe.backend.Graph.GetNodeByID(name)
 
 	return Target{
 		node: targetNode,
@@ -1323,65 +1333,101 @@ func (t *Traversal) Target(name, identifier string) (Target, bool) {
 	}, ok
 }
 
-func (t *Traversal) Source(name, relation string) (Source, bool) {
-	sourceNode, ok := t.backend.Graph.GetNodeByID(name + "#" + relation)
+func (pipe *Pipeline) Source(name, relation string) (Source, bool) {
+	sourceNode, ok := pipe.backend.Graph.GetNodeByID(name + "#" + relation)
 	return (Source)(sourceNode), ok
 }
 
-type TraversalOption func(*Path)
+type PipelineOption func(*Pipeline)
 
-func WithChunkSize(size int) TraversalOption {
+func WithChunkSize(size int) PipelineOption {
 	if size < 0 {
 		size = 0
 	}
 
-	return func(path *Path) {
-		path.chunkSize = size
+	return func(pipe *Pipeline) {
+		pipe.chunkSize = size
 	}
 }
 
-func WithNumProcs(num int) TraversalOption {
+func WithNumProcs(num int) PipelineOption {
 	if num < 1 {
 		num = 1
 	}
 
-	return func(path *Path) {
-		path.numProcs = num
+	return func(pipe *Pipeline) {
+		pipe.numProcs = num
 	}
 }
 
-func (t *Traversal) Traverse(source Source, target Target, options ...TraversalOption) *Path {
-	p := &Path{
-		traversal:        t,
-		source:           (*Node)(source),
-		target:           target.node,
-		targetIdentifier: target.id,
-		chunkSize:        100,
-		numProcs:         3,
-	}
-
-	for _, option := range options {
-		option(p)
-	}
-	return p
+type path struct {
+	pipe    *Pipeline
+	workers map[*Node]*Worker
+	msgs    atomic.Int64
 }
 
-type Path struct {
-	source           *Node
-	traversal        *Traversal
-	target           *Node
-	targetIdentifier string
-	chunkSize        int
-	numProcs         int
-	msgs             atomic.Int64
+func (p *path) resolve(ctx context.Context, source *Node, target Target, shared Tracker) {
+	if _, ok := p.workers[source]; ok {
+		return
+	}
+
+	var tracker Tracker
+
+	if shared != nil {
+		tracker = shared
+	} else {
+		tracker = EchoTracker(&p.msgs)
+	}
+	worker := NewWorker(ctx, p.pipe.backend, source, tracker)
+
+	p.workers[source] = worker
+
+	switch source.GetNodeType() {
+	case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
+		if source == target.node {
+			// source node is the target node.
+			var group Group
+			group.Items = []Item{Item{Value: target.id}}
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+		}
+	case NodeTypeSpecificTypeWildcard:
+		label := source.GetLabel()
+		typePart := strings.Split(label, ":")[0]
+
+		if source == target.node || typePart == target.node.GetLabel() {
+			// source node is the target node or has the same type as the target.
+			var group Group
+			group.Items = []Item{Item{Value: "*"}}
+			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+		}
+	}
+
+	edges, ok := p.pipe.backend.Graph.GetEdgesFromNode(source)
+	if !ok {
+		return
+	}
+
+	for _, edge := range edges {
+		var propagate Tracker
+
+		if len(edge.GetRecursiveRelation()) > 0 && edge.GetEdgeType() == EdgeTypeTTU {
+			propagate = worker.msgs
+		}
+		p.resolve(ctx, edge.GetTo(), target, propagate)
+		worker.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+	}
 }
 
-func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
+func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
 	ctx, cancel := context.WithCancel(ctx)
 
-	p.resolve(ctx, p.source, nil)
+	p := path{
+		pipe:    pipe,
+		workers: make(map[*Node]*Worker),
+	}
+	p.resolve(ctx, (*Node)(source), target, nil)
 
-	sourceWorker, ok := p.traversal.pipeline[p.source]
+	sourceWorker, ok := p.workers[(*Node)(source)]
 	if !ok {
 		panic("no such source worker")
 	}
@@ -1390,7 +1436,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 	results := sourceWorker.Subscribe(nil)
 
-	for _, worker := range p.traversal.pipeline {
+	for _, worker := range p.workers {
 		worker.Start()
 	}
 
@@ -1401,14 +1447,14 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 		for ctx.Err() == nil {
 			var inactiveCount int
 
-			for _, worker := range p.traversal.pipeline {
+			for _, worker := range p.workers {
 				if !worker.Active() {
 					worker.Close()
 					inactiveCount++
 				}
 			}
 
-			if inactiveCount == len(p.traversal.pipeline) {
+			if inactiveCount == len(p.workers) {
 				break
 			}
 
@@ -1416,12 +1462,12 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
-				for _, worker := range p.traversal.pipeline {
+				for _, worker := range p.workers {
 					worker.Close()
 				}
 
 				// wait for all workers to finish
-				for _, worker := range p.traversal.pipeline {
+				for _, worker := range p.workers {
 					worker.Wait()
 				}
 				break
@@ -1452,62 +1498,7 @@ func (p *Path) Objects(ctx context.Context) iter.Seq[Item] {
 			msg.Done()
 		}
 	}
-}
 
-func (p *Path) resolve(ctx context.Context, source *Node, shared Tracker) {
-	if p.traversal.pipeline == nil {
-		p.traversal.pipeline = make(map[*Node]*Worker)
-	}
-
-	if _, ok := p.traversal.pipeline[source]; ok {
-		return
-	}
-
-	var tracker Tracker
-
-	if shared != nil {
-		tracker = shared
-	} else {
-		tracker = EchoTracker(&p.msgs)
-	}
-	worker := NewWorker(ctx, p.traversal.backend, source, tracker)
-
-	p.traversal.pipeline[source] = worker
-
-	switch source.GetNodeType() {
-	case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
-		if source == p.target {
-			// source node is the target node.
-			var group Group
-			group.Items = []Item{Item{Value: p.targetIdentifier}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
-		}
-	case NodeTypeSpecificTypeWildcard:
-		label := source.GetLabel()
-		typePart := strings.Split(label, ":")[0]
-
-		if source == p.target || typePart == p.target.GetLabel() {
-			// source node is the target node or has the same type as the target.
-			var group Group
-			group.Items = []Item{Item{Value: "*"}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.chunkSize, 1) // only one value to consume, so only one processor necessary.
-		}
-	}
-
-	edges, ok := p.traversal.backend.Graph.GetEdgesFromNode(source)
-	if !ok {
-		return
-	}
-
-	for _, edge := range edges {
-		var propagate Tracker
-
-		if len(edge.GetRecursiveRelation()) > 0 && edge.GetEdgeType() == EdgeTypeTTU {
-			propagate = worker.msgs
-		}
-		p.resolve(ctx, edge.GetTo(), propagate)
-		worker.Listen(edge, p.traversal.pipeline[edge.GetTo()].Subscribe(source), p.chunkSize, p.numProcs)
-	}
 }
 
 // loopOverEdges iterates over a set of weightedGraphEdges and acts as a dispatcher,
