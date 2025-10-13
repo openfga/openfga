@@ -1,16 +1,9 @@
 name: Claude Code PR Review
-
 on:
   issue_comment:
     types: [ created ]
   pull_request_review_comment:
     types: [ created ]
-  pull_request_review:
-    types: [ submitted ]
-
-permissions:
-  contents: read
-
 jobs:
   claude-review:
     permissions:
@@ -18,4 +11,4 @@ jobs:
       issues: write
       pull-requests: write
       id-token: write
-    uses: openfga/ai-pr-analyzer-gh-action/.github/workflows/claude-code-review.yml@707da7c9e19accae1bf9a5bac634e6f928067099
+    uses: auth0/auth0-ai-pr-analyzer-gh-action/.github/workflows/claude-code-review.yml@main
