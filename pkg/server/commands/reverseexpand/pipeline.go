@@ -230,13 +230,16 @@ func (r *baseResolver) Ready() bool {
 }
 
 func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener) {
+	// Loop while the sender has a potential to yield a message.
 	for senders[ndx].More() {
 		var results iter.Seq[Item]
 		var outGroup Group
 		var items, unseen []Item
 
+		// attempt to pull a message from the sender (non-blocking)
 		msg, ok := senders[ndx].Recv()
 		if !ok {
+			// no message was currently ready. proceed to end of function.
 			goto ProcessEnd
 		}
 
@@ -264,6 +267,7 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 
 		results = r.interpreter.Interpret(senders[ndx].edge, unseen)
 
+		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
 			r.outMu.Lock()
 			if _, ok := r.outBuffer[item.Value]; ok {
@@ -301,7 +305,12 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 		}
 
 	ProcessEnd:
+		// Important: Indicating that the message is done will clear its count from the
+		// origin Worker's Tracker.
 		msg.Done()
+
+		// Important: This is a tight loop and needs to defer to the Go runtime so as not
+		// to starve other goroutines for CPU time.
 		runtime.Gosched()
 	}
 }
@@ -315,11 +324,19 @@ func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
 		r.inBuffers[ndx] = make(map[string]struct{})
 	}
 
+	// Any senders with a non-recursive edge will be processed in the "standard" queue.
 	var standard []func()
+
+	// Any senders with a recursive edge will be processed in the "recursive" queue.
 	var recursive []func()
 
 	for ndx := range len(senders) {
 		snd := senders[ndx]
+
+		// Any sender with an edge that has a value for its recursive relation will be treated
+		// as recursive, so long as it is not part of a tuple cycle. When the edge is part of
+		// a tuple cycle, treating it as recursive would cause the parent Worker to be closed
+		// too early.
 		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
 
 		proc := func() {
@@ -354,15 +371,24 @@ func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
 			proc()
 		}()
 	}
+
+	// All standard senders are guaranteed to end at some point, with the exception of the presence
+	// of a tuple cycle.
 	wgStandard.Wait()
 
+	// Once the standard senders have all finished processing, we set the resolver's status to `false`
+	// indicating that the parent is ready for cleanup once all messages have finished processing.
 	r.status.Set(r.id, false)
 
+	// Recursive senders will process infinitely until the parent Worker's watchdog goroutine kills
+	// them.
 	wgRecursive.Wait()
 }
 
 type edgeHandler func(*Edge, []Item) iter.Seq[Item]
 
+// handleDirectEdge is a function that interprets input on a direct edge and provides output from
+// a query to the backend datastore.
 func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetRelationDefinition(), "#")
 	nodeType := parts[0]
@@ -412,6 +438,8 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	return results
 }
 
+// handleTTUEdge is a function that interprets input on a TTU edge and provides output from
+// a query to the backend datastore.
 func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
 	tuplesetType := parts[0]
