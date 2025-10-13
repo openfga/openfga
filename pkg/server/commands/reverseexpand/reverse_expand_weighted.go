@@ -687,7 +687,7 @@ type intersectionResolver struct {
 	ctx         context.Context
 	interpreter interpreter
 	done        bool
-	msgs        Tracker
+	tracker     Tracker
 }
 
 func (r *intersectionResolver) Ready() bool {
@@ -696,11 +696,11 @@ func (r *intersectionResolver) Ready() bool {
 
 func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		r.msgs.Add(-1)
+		r.tracker.Add(-1)
 		r.done = true
 	}()
 
-	r.msgs.Add(1)
+	r.tracker.Add(1)
 
 	var wg sync.WaitGroup
 
@@ -808,7 +808,7 @@ type exclusionResolver struct {
 	ctx         context.Context
 	interpreter interpreter
 	done        bool
-	msgs        Tracker
+	tracker     Tracker
 }
 
 func (r *exclusionResolver) Ready() bool {
@@ -817,11 +817,11 @@ func (r *exclusionResolver) Ready() bool {
 
 func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
-		r.msgs.Add(-1)
+		r.tracker.Add(-1)
 		r.done = true
 	}()
 
-	r.msgs.Add(1)
+	r.tracker.Add(1)
 
 	if len(senders) < 2 {
 		panic("exclusion resolver requires at least two senders")
@@ -966,25 +966,53 @@ type Worker struct {
 	senders   []*sender
 	listeners []*listener
 	resolver  resolver
-	msgs      Tracker
+	tracker   Tracker
 	wg        sync.WaitGroup
 }
 
-func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracker, status *StatusPool) *Worker {
+type resolverFactory struct {
+	ctx     context.Context
+	backend *Backend
+}
+
+func (rf *resolverFactory) builder(node *Node) *resolverBuilder {
+	return &resolverBuilder{
+		ctx:     rf.ctx,
+		backend: rf.backend,
+		node:    node,
+	}
+}
+
+type resolverBuilder struct {
+	ctx     context.Context
+	backend *Backend
+	node    *Node
+	tracker Tracker
+	status  *StatusPool
+}
+
+func (b *resolverBuilder) WithTracker(tracker Tracker) *resolverBuilder {
+	b.tracker = tracker
+	return b
+}
+
+func (b *resolverBuilder) WithStatus(status *StatusPool) *resolverBuilder {
+	b.status = status
+	return b
+}
+
+func (b *resolverBuilder) build() resolver {
 	var r resolver
-	var w Worker
 
-	id := status.Register()
-	status.Set(id, true)
-	w.status = status
-	w.msgs = tracker
+	id := b.status.Register()
+	b.status.Set(id, true)
 
-	switch node.GetNodeType() {
+	switch b.node.GetNodeType() {
 	case NodeTypeSpecificTypeAndRelation:
 		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
-			hndDirect:        backend.handleDirectEdge,
-			hndTTU:           backend.handleTTUEdge,
+			hndNil:           handleLeafNode(b.node),
+			hndDirect:        b.backend.handleDirectEdge,
+			hndTTU:           b.backend.handleTTUEdge,
 			hndComputed:      handleIdentity,
 			hndRewrite:       handleIdentity,
 			hndDirectLogical: handleUnsupported,
@@ -993,13 +1021,13 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         ctx,
+			ctx:         b.ctx,
 			interpreter: omni,
-			status:      w.status,
+			status:      b.status,
 		}
 	case NodeTypeSpecificType:
 		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
+			hndNil:           handleLeafNode(b.node),
 			hndDirect:        handleUnsupported,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
@@ -1010,13 +1038,13 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         ctx,
+			ctx:         b.ctx,
 			interpreter: omni,
-			status:      w.status,
+			status:      b.status,
 		}
 	case NodeTypeSpecificTypeWildcard:
 		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(node),
+			hndNil:           handleLeafNode(b.node),
 			hndDirect:        handleUnsupported,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
@@ -1027,17 +1055,17 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         ctx,
+			ctx:         b.ctx,
 			interpreter: omni,
-			status:      w.status,
+			status:      b.status,
 		}
 	case NodeTypeOperator:
-		switch node.GetLabel() {
+		switch b.node.GetLabel() {
 		case weightedGraph.IntersectionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        backend.handleDirectEdge,
-				hndTTU:           backend.handleTTUEdge,
+				hndDirect:        b.backend.handleDirectEdge,
+				hndTTU:           b.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1045,15 +1073,15 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 			}
 
 			r = &intersectionResolver{
-				ctx:         ctx,
+				ctx:         b.ctx,
 				interpreter: omni,
-				msgs:        w.msgs,
+				tracker:     b.tracker,
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        backend.handleDirectEdge,
-				hndTTU:           backend.handleTTUEdge,
+				hndDirect:        b.backend.handleDirectEdge,
+				hndTTU:           b.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1062,15 +1090,15 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 			r = &baseResolver{
 				id:          id,
-				ctx:         ctx,
+				ctx:         b.ctx,
 				interpreter: omni,
-				status:      w.status,
+				status:      b.status,
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        backend.handleDirectEdge,
-				hndTTU:           backend.handleTTUEdge,
+				hndDirect:        b.backend.handleDirectEdge,
+				hndTTU:           b.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1078,9 +1106,9 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 			}
 
 			r = &exclusionResolver{
-				ctx:         ctx,
+				ctx:         b.ctx,
 				interpreter: omni,
-				msgs:        w.msgs,
+				tracker:     b.tracker,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
@@ -1088,7 +1116,7 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 	case NodeTypeLogicalDirectGrouping:
 		omni := &omniInterpreter{
 			hndNil:           handleUnsupported,
-			hndDirect:        backend.handleDirectEdge,
+			hndDirect:        b.backend.handleDirectEdge,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
@@ -1098,15 +1126,15 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         ctx,
+			ctx:         b.ctx,
 			interpreter: omni,
-			status:      w.status,
+			status:      b.status,
 		}
 	case NodeTypeLogicalTTUGrouping:
 		omni := &omniInterpreter{
 			hndNil:           handleUnsupported,
 			hndDirect:        handleUnsupported,
-			hndTTU:           backend.handleTTUEdge,
+			hndTTU:           b.backend.handleTTUEdge,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
 			hndDirectLogical: handleUnsupported,
@@ -1115,30 +1143,27 @@ func NewWorker(ctx context.Context, backend *Backend, node *Node, tracker Tracke
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         ctx,
+			ctx:         b.ctx,
 			interpreter: omni,
-			status:      w.status,
+			status:      b.status,
 		}
 	default:
 		panic("unsupported node type for reverse expand worker")
 	}
 
-	var name string
+	return r
+}
 
-	if node == nil {
-		name = "nil"
-	} else {
-		name = node.GetUniqueLabel()
+func NewWorker(r resolver, tracker Tracker, status *StatusPool) *Worker {
+	return &Worker{
+		status:   status,
+		tracker:  tracker,
+		resolver: r,
 	}
-
-	w.name = name
-	w.resolver = r
-
-	return &w
 }
 
 func (w *Worker) Active() bool {
-	return w.resolver.Ready() || w.msgs.Load() != 0
+	return w.resolver.Ready() || w.tracker.Load() != 0
 }
 
 func (w *Worker) Start() {
@@ -1217,10 +1242,10 @@ type Consumer[T any] interface {
 }
 
 type Pipe struct {
-	ch   chan Group
-	mu   sync.Mutex
-	msgs Tracker
-	done bool
+	ch      chan Group
+	mu      sync.Mutex
+	tracker Tracker
+	done    bool
 }
 
 func (p *Pipe) Send(g Group) {
@@ -1231,7 +1256,7 @@ func (p *Pipe) Send(g Group) {
 		// fmt.Printf("CLOSED PIPE %#v", g)
 		panic("called Send on a closed Pipe")
 	}
-	p.msgs.Add(1)
+	p.tracker.Add(1)
 	p.ch <- g
 }
 
@@ -1245,7 +1270,7 @@ func (p *Pipe) Recv() (Message[Group], bool) {
 		fn := func() {
 			p.mu.Lock()
 			defer p.mu.Unlock()
-			p.msgs.Add(-1)
+			p.tracker.Add(-1)
 		}
 		return Message[Group]{Value: group, done: sync.OnceFunc(fn)}, ok
 	default:
@@ -1257,7 +1282,7 @@ func (p *Pipe) Done() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	return p.done && p.msgs.Load() == 0
+	return p.done && p.tracker.Load() == 0
 }
 
 func (p *Pipe) Close() {
@@ -1325,8 +1350,8 @@ func (w *Worker) Subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
 	p := &Pipe{
-		ch:   ch,
-		msgs: EchoTracker(w.msgs),
+		ch:      ch,
+		tracker: EchoTracker(w.tracker),
 	}
 
 	w.listeners = append(w.listeners, &listener{
@@ -1338,9 +1363,9 @@ func (w *Worker) Subscribe(node *Node) *Pipe {
 }
 
 type staticProducer struct {
-	groups []Group
-	pos    int
-	msgs   Tracker
+	groups  []Group
+	pos     int
+	tracker Tracker
 }
 
 func (s *staticProducer) Recv() (Message[Group], bool) {
@@ -1349,7 +1374,7 @@ func (s *staticProducer) Recv() (Message[Group], bool) {
 		s.pos++
 
 		fn := func() {
-			s.msgs.Add(-1)
+			s.tracker.Add(-1)
 		}
 		return Message[Group]{Value: value, done: sync.OnceFunc(fn)}, true
 	}
@@ -1360,14 +1385,14 @@ func (s *staticProducer) Done() bool {
 	return s.pos >= len(s.groups)
 }
 
-func StaticProducer(msgs Tracker, groups ...Group) Producer[Group] {
-	if msgs != nil {
-		msgs.Add(int64(len(groups)))
+func StaticProducer(tracker Tracker, groups ...Group) Producer[Group] {
+	if tracker != nil {
+		tracker.Add(int64(len(groups)))
 	}
 
 	return &staticProducer{
-		groups: groups,
-		msgs:   msgs,
+		groups:  groups,
+		tracker: tracker,
 	}
 }
 
@@ -1438,9 +1463,10 @@ func WithNumProcs(num int) PipelineOption {
 }
 
 type path struct {
-	pipe    *Pipeline
-	workers map[*Node]*Worker
-	msgs    atomic.Int64
+	pipe     *Pipeline
+	rfactory *resolverFactory
+	workers  map[*Node]*Worker
+	tracker  atomic.Int64
 }
 
 func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker Tracker, status *StatusPool) bool {
@@ -1449,14 +1475,19 @@ func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker
 	}
 
 	if tracker == nil {
-		tracker = EchoTracker(&p.msgs)
+		tracker = EchoTracker(&p.tracker)
 	}
 
 	if status == nil {
 		status = new(StatusPool)
 	}
 
-	worker := NewWorker(ctx, p.pipe.backend, source, tracker, status)
+	r := p.rfactory.builder(source).
+		WithTracker(tracker).
+		WithStatus(status).
+		build()
+
+	worker := NewWorker(r, tracker, status)
 
 	p.workers[source] = worker
 
@@ -1466,7 +1497,7 @@ func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: target.id}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1476,7 +1507,7 @@ func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			worker.Listen(nil, StaticProducer(&p.msgs, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			worker.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1492,7 +1523,7 @@ func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
 		if isRecursive {
-			track = worker.msgs
+			track = worker.tracker
 			stat = worker.status
 		}
 
@@ -1510,6 +1541,10 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 	p := path{
 		pipe:    pipe,
 		workers: make(map[*Node]*Worker),
+		rfactory: &resolverFactory{
+			ctx:     ctx,
+			backend: pipe.backend,
+		},
 	}
 	p.resolve(ctx, (*Node)(source), target, nil, nil)
 
@@ -1544,7 +1579,7 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 				break
 			}
 
-			messageCount := p.msgs.Load()
+			messageCount := p.tracker.Load()
 
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
