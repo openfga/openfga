@@ -7,12 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -92,6 +96,223 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	require.False(t, status.IsReady)
 }
 
+func TestParseConfig(t *testing.T) {
+	defaultConfig, err := pgxpool.ParseConfig("postgres://default@localhost:9999/dbname")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		uri         string
+		override    bool
+		cfg         sqlcommon.Config
+		expected    pgxpool.Config
+		expectedErr bool
+	}{
+		{
+			name:     "default_with_no_overrides",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: false,
+			cfg:      sqlcommon.Config{},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "abc",
+						Password: "passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          defaultConfig.MinIdleConns,
+				MaxConns:              defaultConfig.MaxConns,
+				MinConns:              defaultConfig.MinConns,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:     "override_username_and_password",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:        "override_user",
+				Password:        "override_passwd",
+				MinIdleConns:    10,
+				MaxOpenConns:    50,
+				MinOpenConns:    15,
+				ConnMaxLifetime: time.Minute * 20,
+				ConnMaxIdleTime: 1 * time.Minute,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "override_user",
+						Password: "override_passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       1 * time.Minute,
+				MaxConnLifetimeJitter: 2 * time.Minute,
+				MaxConnLifetime:       20 * time.Minute,
+			},
+		},
+		{
+			name:     "override_password_only",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:     "",
+				Password:     "override_passwd",
+				MinIdleConns: 10,
+				MaxOpenConns: 50,
+				MinOpenConns: 15,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "abc",
+						Password: "override_passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:     "override_username_only",
+			uri:      "postgres://abc:passwd@localhost:5346/dbname",
+			override: true,
+			cfg: sqlcommon.Config{
+				Username:     "override_user",
+				Password:     "",
+				MinIdleConns: 10,
+				MaxOpenConns: 50,
+				MinOpenConns: 15,
+			},
+			expected: pgxpool.Config{
+				ConnConfig: &pgx.ConnConfig{
+					Config: pgconn.Config{
+						User:     "override_user",
+						Password: "passwd",
+						Host:     "localhost",
+						Port:     5346,
+						Database: "dbname",
+					},
+				},
+				MinIdleConns:          10,
+				MaxConns:              50,
+				MinConns:              15,
+				MaxConnIdleTime:       defaultConfig.MaxConnIdleTime,
+				MaxConnLifetimeJitter: defaultConfig.MaxConnLifetimeJitter,
+				MaxConnLifetime:       defaultConfig.MaxConnLifetime,
+			},
+		},
+		{
+			name:        "bad_uri",
+			uri:         "bad_uri",
+			override:    true,
+			expectedErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := parseConfig(tt.uri, tt.override, &tt.cfg)
+			if tt.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+
+				require.Equal(t, tt.expected.ConnConfig.Host, parsed.ConnConfig.Host)
+				require.Equal(t, tt.expected.ConnConfig.Port, parsed.ConnConfig.Port)
+				require.Equal(t, tt.expected.ConnConfig.Database, parsed.ConnConfig.Database)
+				require.Equal(t, tt.expected.ConnConfig.User, parsed.ConnConfig.User)
+				require.Equal(t, tt.expected.ConnConfig.Password, parsed.ConnConfig.Password)
+				require.Equal(t, tt.expected.MaxConns, parsed.MaxConns)
+				require.Equal(t, tt.expected.MinConns, parsed.MinConns)
+				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+				require.Equal(t, tt.expected.MaxConnLifetime, parsed.MaxConnLifetime)
+				require.Equal(t, tt.expected.MaxConnLifetimeJitter, parsed.MaxConnLifetimeJitter)
+				require.Equal(t, tt.expected.MaxConnIdleTime, parsed.MaxConnIdleTime)
+			}
+		})
+	}
+}
+
+// mostly test various error scenarios.
+func TestNewDB(t *testing.T) {
+	t.Run("bad_uri", func(t *testing.T) {
+		uri := "bad_uri"
+		_, err := New(uri, &sqlcommon.Config{})
+		require.Error(t, err)
+	})
+	t.Run("bad_secondary_uri", func(t *testing.T) {
+		primaryDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+		primaryURI := primaryDatastore.GetConnectionURI(true)
+		_, err := New(primaryURI, &sqlcommon.Config{
+			SecondaryURI: "bad_uri",
+			Logger:       logger.NewNoopLogger(),
+		})
+		require.Error(t, err)
+	})
+	t.Run("cannot_ping_primary_uri", func(t *testing.T) {
+		uri :=
+			"postgres://abc:passwd@localhost:5346/dbname"
+		cfg := sqlcommon.Config{
+			Username:        "override_user",
+			Password:        "override_passwd",
+			MinIdleConns:    10,
+			MaxOpenConns:    50,
+			MinOpenConns:    15,
+			ConnMaxLifetime: time.Minute * 20,
+			ConnMaxIdleTime: 1 * time.Minute,
+			Logger:          logger.NewNoopLogger(),
+		}
+		_, err := New(uri, &cfg)
+		require.Error(t, err)
+	})
+}
+
+func TestGetPgxPool(t *testing.T) {
+	pool1 := &pgxpool.Pool{}
+	pool2 := &pgxpool.Pool{}
+	t.Run("high_consistency", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB:   pool1,
+			secondaryDB: pool2,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY)
+		require.Equal(t, dut, pool1)
+	})
+	t.Run("min_latency", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB:   pool1,
+			secondaryDB: pool2,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
+		require.Equal(t, dut, pool2)
+	})
+	t.Run("no_secondary_DB_specified", func(t *testing.T) {
+		ds := &Datastore{
+			primaryDB: pool1,
+		}
+		dut := ds.getPgxPool(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY)
+		require.Equal(t, dut, pool1)
+	})
+}
+
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid.
 func TestReadEnsureNoOrder(t *testing.T) {
 	tests := []struct {
@@ -124,8 +345,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -134,8 +354,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -143,8 +362,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -229,8 +447,7 @@ func TestCtxCancel(t *testing.T) {
 			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{firstTuple},
@@ -239,8 +456,7 @@ func TestCtxCancel(t *testing.T) {
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{secondTuple},
@@ -248,8 +464,7 @@ func TestCtxCancel(t *testing.T) {
 				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
-			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+			err = ds.write(ctx,
 				store,
 				[]*openfgav1.TupleKeyWithoutCondition{},
 				[]*openfgav1.TupleKey{thirdTuple},
@@ -292,8 +507,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
 	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+	err = ds.write(ctx,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{firstTuple},
@@ -302,8 +516,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tweak time so that ULID is smaller.
-	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
+	err = ds.write(ctx,
 		store,
 		[]*openfgav1.TupleKeyWithoutCondition{},
 		[]*openfgav1.TupleKey{secondTuple},
@@ -344,7 +557,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.NoError(t, err)
 	pbdata := []byte{0x01, 0x02, 0x03}
 
-	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
 	require.NoError(t, err)
 
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
@@ -369,7 +582,7 @@ func TestReadAuthorizationModelReturnValue(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
+	_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, nil)
 
 	require.NoError(t, err)
 
@@ -411,14 +624,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -432,14 +645,14 @@ func TestFindLatestModel(t *testing.T) {
 		// write type "document"
 		bytesDocumentType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "document", bytesDocumentType, nil)
 		require.NoError(t, err)
 
 		// write type "user"
 		bytesUserType, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "user"})
 		require.NoError(t, err)
-		_, err = ds.primaryDB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
+		_, err = ds.primaryDB.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)",
 			store, modelID, schemaVersion, "user", bytesUserType, nil)
 		require.NoError(t, err)
 
@@ -478,7 +691,7 @@ func TestAllowNullCondition(t *testing.T) {
 			condition_name, condition_context, inserted_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
 	`
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
 		ulid.Make().String(), nil, nil,
 	)
@@ -506,7 +719,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, userTuple.GetKey())
 
 	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,
 	)
@@ -540,13 +753,13 @@ func TestAllowNullCondition(t *testing.T) {
 		condition_name, condition_context, inserted_at, operation
 	) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9);
 `
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 	)
 	require.NoError(t, err)
 
-	_, err = ds.primaryDB.ExecContext(
+	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
 		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 	)
@@ -581,7 +794,7 @@ func TestMarshalledAssertions(t *testing.T) {
 			store, authorization_model_id, assertions
 		) VALUES ($1, $2, DECODE('0a2b0a270a12666f6c6465723a323032312d62756467657412056f776e65721a0a757365723a616e6e657a1001','hex'));
 	`
-	_, err = ds.primaryDB.ExecContext(ctx, stmt, "store", "model")
+	_, err = ds.primaryDB.Exec(ctx, stmt, "store", "model")
 	require.NoError(t, err)
 
 	assertions, err := ds.ReadAssertions(ctx, "store", "model")
