@@ -199,7 +199,23 @@ func flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	return func(yield func(U) bool) {
 		for item := range seq {
-			yield(fn(item))
+			if !yield(fn(item)) {
+				return
+			}
+		}
+	}
+}
+
+// filter is a function the yields only values for which the predicate
+// returns `true`.
+func filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for item := range seq {
+			if fn(item) {
+				if !yield(item) {
+					return
+				}
+			}
 		}
 	}
 }
@@ -815,70 +831,89 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 
 	r.tracker.Add(1)
 
-	if len(senders) < 2 {
-		panic("exclusion resolver requires at least two senders")
+	if len(senders) != 2 {
+		panic("exclusion resolver requires two senders")
 	}
 	var wg sync.WaitGroup
 
 	included := make(map[string]struct{})
 	excluded := make(map[string]struct{})
 
-	errs := make([][]Item, len(senders))
+	var includedErrs []Item
+	var excludedErrs []Item
 
-	var mu1 sync.Mutex
-	var mu2 sync.Mutex
+	var procIncluded func(*sender)
+	var procExcluded func(*sender)
 
-	for i, snd := range senders {
-		wg.Add(1)
+	procIncluded = func(snd *sender) {
+		defer wg.Done()
 
-		go func(i int, snd *sender) {
-			defer wg.Done()
+		for snd.more() && r.ctx.Err() == nil {
+			msg, ok := snd.recv()
+			if !ok {
+				runtime.Gosched()
+				continue
+			}
 
-			for snd.more() && r.ctx.Err() == nil {
-				msg, ok := snd.recv()
-				if !ok {
-					runtime.Gosched()
+			results := r.interpreter.Interpret(snd.edge, msg.Value.Items)
+
+			for item := range results {
+				if item.Err != nil {
+					includedErrs = append(includedErrs, item)
 					continue
 				}
-
-				results := r.interpreter.Interpret(snd.edge, msg.Value.Items)
-
-				for item := range results {
-					if item.Err != nil {
-						errs[i] = append(errs[i], item)
-						continue
-					}
-					if i == len(senders)-1 {
-						mu2.Lock()
-						excluded[item.Value] = struct{}{}
-						mu2.Unlock()
-					} else {
-						mu1.Lock()
-						included[item.Value] = struct{}{}
-						mu1.Unlock()
-					}
-				}
-				msg.Done()
+				included[item.Value] = struct{}{}
 			}
-		}(i, snd)
+			msg.Done()
+		}
 	}
-	wg.Wait()
 
-	for obj := range excluded {
-		delete(included, obj)
+	procExcluded = func(snd *sender) {
+		defer wg.Done()
+
+		for snd.more() && r.ctx.Err() == nil {
+			msg, ok := snd.recv()
+			if !ok {
+				runtime.Gosched()
+				continue
+			}
+
+			results := r.interpreter.Interpret(snd.edge, msg.Value.Items)
+
+			for item := range results {
+				if item.Err != nil {
+					excludedErrs = append(excludedErrs, item)
+					continue
+				}
+				excluded[item.Value] = struct{}{}
+			}
+			msg.Done()
+		}
 	}
+
+	wg.Add(1)
+	go procIncluded(senders[0])
+
+	wg.Add(1)
+	go procExcluded(senders[1])
+
+	wg.Wait()
 
 	var allErrs []Item
 
-	for _, errList := range errs {
-		allErrs = append(allErrs, errList...)
-	}
+	allErrs = append(allErrs, includedErrs...)
+	allErrs = append(allErrs, excludedErrs...)
 
-	seq := flatten(sequence(allErrs...), transform(maps.Keys(included), strToItem))
+	filteredSeq := filter(maps.Keys(included), func(v string) bool {
+		_, ok := excluded[v]
+		return !ok
+	})
+
+	flattenedSeq := flatten(sequence(allErrs...), transform(filteredSeq, strToItem))
 
 	var items []Item
 
-	for item := range seq {
+	for item := range flattenedSeq {
 		items = append(items, item)
 	}
 
