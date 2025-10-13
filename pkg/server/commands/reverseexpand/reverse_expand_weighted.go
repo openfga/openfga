@@ -345,19 +345,11 @@ type interpreter interface {
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
-	id  int
-	ctx context.Context
+	id int
 
 	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
 	interpreter interpreter
-
-	// done indicates when all of the senders that produce input from external sources have completed.
-	// done is used as the resolver's "ready" indicator, which is exposed by the resolver's `Status` method.
-	// When done is `true`, it is possible for recursive senders to still be processing messages. The
-	// resolver's parent worker's watchdog process won't kill the parent worker until both done is `true`, and
-	// there a no more messages in-flight for this resolver.
-	done atomic.Bool
 
 	// mutexes each protect map access for a buffer within inBuffers at the same index.
 	mutexes []sync.Mutex
@@ -384,7 +376,7 @@ func (r *baseResolver) Ready() bool {
 }
 
 func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
-	for senders[ndx].more() && r.ctx.Err() == nil {
+	for senders[ndx].more() {
 		var results iter.Seq[Item]
 		var outGroup Group
 		var items, unseen []Item
@@ -700,7 +692,6 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 }
 
 type intersectionResolver struct {
-	ctx         context.Context
 	interpreter interpreter
 	done        bool
 	tracker     Tracker
@@ -737,7 +728,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for snd.more() && r.ctx.Err() == nil {
+			for snd.more() {
 				msg, ok := snd.recv()
 				if !ok {
 					runtime.Gosched()
@@ -813,7 +804,6 @@ OutputLoop:
 }
 
 type exclusionResolver struct {
-	ctx         context.Context
 	interpreter interpreter
 	done        bool
 	tracker     Tracker
@@ -848,7 +838,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	procIncluded = func(snd *sender) {
 		defer wg.Done()
 
-		for snd.more() && r.ctx.Err() == nil {
+		for snd.more() {
 			msg, ok := snd.recv()
 			if !ok {
 				runtime.Gosched()
@@ -871,7 +861,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	procExcluded = func(snd *sender) {
 		defer wg.Done()
 
-		for snd.more() && r.ctx.Err() == nil {
+		for snd.more() {
 			msg, ok := snd.recv()
 			if !ok {
 				runtime.Gosched()
@@ -998,20 +988,17 @@ type Worker struct {
 }
 
 type resolverFactory struct {
-	ctx     context.Context
 	backend *Backend
 }
 
 func (rf *resolverFactory) builder(node *Node) *resolverBuilder {
 	return &resolverBuilder{
-		ctx:     rf.ctx,
 		backend: rf.backend,
 		node:    node,
 	}
 }
 
 type resolverBuilder struct {
-	ctx     context.Context
 	backend *Backend
 	node    *Node
 	tracker Tracker
@@ -1048,7 +1035,6 @@ func (b *resolverBuilder) build() resolver {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         b.ctx,
 			interpreter: omni,
 			status:      b.status,
 		}
@@ -1065,7 +1051,6 @@ func (b *resolverBuilder) build() resolver {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         b.ctx,
 			interpreter: omni,
 			status:      b.status,
 		}
@@ -1082,7 +1067,6 @@ func (b *resolverBuilder) build() resolver {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         b.ctx,
 			interpreter: omni,
 			status:      b.status,
 		}
@@ -1100,7 +1084,6 @@ func (b *resolverBuilder) build() resolver {
 			}
 
 			r = &intersectionResolver{
-				ctx:         b.ctx,
 				interpreter: omni,
 				tracker:     b.tracker,
 			}
@@ -1117,7 +1100,6 @@ func (b *resolverBuilder) build() resolver {
 
 			r = &baseResolver{
 				id:          id,
-				ctx:         b.ctx,
 				interpreter: omni,
 				status:      b.status,
 			}
@@ -1133,7 +1115,6 @@ func (b *resolverBuilder) build() resolver {
 			}
 
 			r = &exclusionResolver{
-				ctx:         b.ctx,
 				interpreter: omni,
 				tracker:     b.tracker,
 			}
@@ -1153,7 +1134,6 @@ func (b *resolverBuilder) build() resolver {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         b.ctx,
 			interpreter: omni,
 			status:      b.status,
 		}
@@ -1170,7 +1150,6 @@ func (b *resolverBuilder) build() resolver {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         b.ctx,
 			interpreter: omni,
 			status:      b.status,
 		}
@@ -1496,7 +1475,7 @@ type path struct {
 	tracker  atomic.Int64
 }
 
-func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker Tracker, status *StatusPool) bool {
+func (p *path) resolve(source *Node, target Target, tracker Tracker, status *StatusPool) bool {
 	if _, ok := p.workers[source]; ok {
 		return true
 	}
@@ -1554,7 +1533,7 @@ func (p *path) resolve(ctx context.Context, source *Node, target Target, tracker
 			stat = worker.status
 		}
 
-		p.resolve(ctx, edge.GetTo(), target, track, stat)
+		p.resolve(edge.GetTo(), target, track, stat)
 
 		worker.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
 	}
@@ -1569,11 +1548,10 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 		pipe:    pipe,
 		workers: make(map[*Node]*Worker),
 		rfactory: &resolverFactory{
-			ctx:     ctx,
 			backend: pipe.backend,
 		},
 	}
-	p.resolve(ctx, (*Node)(source), target, nil, nil)
+	p.resolve((*Node)(source), target, nil, nil)
 
 	sourceWorker, ok := p.workers[(*Node)(source)]
 	if !ok {
@@ -1592,7 +1570,7 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 	go func() {
 		defer wg.Done()
 
-		for ctx.Err() == nil {
+		for {
 			var inactiveCount int
 
 			for _, worker := range p.workers {
