@@ -167,7 +167,7 @@ type Group struct {
 
 // sequence is a function that turns its input into an `iter.Seq[T]` that
 // yields values in the order that they were provided to the function.
-func sequence[T any](items ...T) iter.Seq[T] {
+func Sequence[T any](items ...T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, item := range items {
 			if !yield(item) {
@@ -181,7 +181,7 @@ func sequence[T any](items ...T) iter.Seq[T] {
 // values into a single `iter.Seq[T]` value. The values of each input are
 // yielded in the order yielded by each `iter.Seq[T]`, in the order provided
 // to the function.
-func flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
+func Flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, seq := range seqs {
 			for item := range seq {
@@ -196,7 +196,7 @@ func flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 // transform is a function that maps the values yielded by the input `seq`
 // to values produced by the input function `fn`, and returns an `iter.Seq`
 // that yields those new values.
-func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
+func Transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	return func(yield func(U) bool) {
 		for item := range seq {
 			if !yield(fn(item)) {
@@ -208,7 +208,7 @@ func transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 
 // filter is a function the yields only values for which the predicate
 // returns `true`.
-func filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
+func Filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for item := range seq {
 			if fn(item) {
@@ -222,7 +222,7 @@ func filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
 
 // strtoItem is a function that accepts a string input and returns an Item
 // that contains the input as its `Value` value.
-func strToItem(s string) Item {
+func StrToItem(s string) Item {
 	return Item{Value: s}
 }
 
@@ -259,7 +259,7 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 
 	if err != nil {
 		cancel()
-		return sequence(Item{Err: err})
+		return Sequence(Item{Err: err})
 	}
 
 	var hasConditions bool
@@ -321,51 +321,51 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-// resolver is an interface that is consumed by a Worker struct.
-// a resolver is responsible for consuming messages from a Worker's
-// senders and broadcasting the result of processing the consumed
-// messages to the Worker's listeners.
-type resolver interface {
+// Resolver is an interface that is consumed by a Worker struct.
+// a Resolver is responsible for consuming messages from a Worker's
+// Senders and broadcasting the result of processing the consumed
+// messages to the Worker's Listeners.
+type Resolver interface {
 	// Resolve is a function that consumes messages from the
-	// provided senders, and broadcasts the results of processing
-	// the consumed messages to the provided listeners.
-	Resolve(senders []*sender, listeners []*listener)
+	// provided Senders, and broadcasts the results of processing
+	// the consumed messages to the provided Listeners.
+	Resolve(senders []*Sender, listeners []*Listener)
 
 	Ready() bool
 }
 
-// interpreter is an interface that exposes a method for interpreting input for an edge into output.
-type interpreter interface {
+// Interpreter is an interface that exposes a method for interpreting input for an edge into output.
+type Interpreter interface {
 	Interpret(edge *Edge, items []Item) iter.Seq[Item]
 }
 
-// baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
+// baseResolver is a struct that implements the `Resolver` interface and acts as the standard Resolver for most
 // workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
-// status will remain `true` until all of its senders that produce input from external sources have finished, and
+// status will remain `true` until all of its Senders that produce input from external sources have finished, and
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
-// this resolver type requires its internal watchdog process to initiate a shutdown.
+// this Resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
 	id int
 
-	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
-	// of the parent worker's listeners.
-	interpreter interpreter
+	// interpreter is an `Interpreter` that transforms a Sender's input into output which it broadcasts to all
+	// of the parent worker's Listeners.
+	interpreter Interpreter
 
 	// mutexes each protect map access for a buffer within inBuffers at the same index.
 	mutexes []sync.Mutex
 
-	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual sender's
-	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
+	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual Sender's
+	// input feed. Each buffer's index corresponds to its associated Sender's index. Each Sender needs
 	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
 	// edges producing to the same node. This is specifically true in the case of recursive edges, where
-	// a single resolver may have multiple recursive edges that must receive the same objects.
+	// a single Resolver may have multiple recursive edges that must receive the same objects.
 	inBuffers []map[string]struct{}
 
 	// outMu protects map access to outBuffer.
 	outMu sync.Mutex
 
-	// outBuffer contains a map, used as a hash set, for deduplicating each resolver's output. A single
-	// resolver should only output an object once.
+	// outBuffer contains a map, used as a hash set, for deduplicating each Resolver's output. A single
+	// Resolver should only output an object once.
 	outBuffer map[string]struct{}
 
 	status *StatusPool
@@ -375,18 +375,18 @@ func (r *baseResolver) Ready() bool {
 	return r.status.Status()
 }
 
-func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
-	for senders[ndx].more() {
+func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener) {
+	for senders[ndx].More() {
 		var results iter.Seq[Item]
 		var outGroup Group
 		var items, unseen []Item
 
-		msg, ok := senders[ndx].recv()
+		msg, ok := senders[ndx].Recv()
 		if !ok {
 			goto ProcessEnd
 		}
 
-		// Deduplicate items within this group based on the buffer for this sender
+		// Deduplicate items within this group based on the buffer for this Sender
 		for _, item := range msg.Value.Items {
 			if item.Err != nil {
 				unseen = append(unseen, item)
@@ -432,7 +432,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 			items = nil
 
 			for _, lst := range listeners {
-				lst.send(outGroup)
+				lst.Send(outGroup)
 			}
 		}
 
@@ -443,7 +443,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 		outGroup.Items = items
 
 		for _, lst := range listeners {
-			lst.send(outGroup)
+			lst.Send(outGroup)
 		}
 
 	ProcessEnd:
@@ -452,7 +452,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 	}
 }
 
-func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	r.mutexes = make([]sync.Mutex, len(senders))
 	r.inBuffers = make([]map[string]struct{}, len(senders))
 	r.outBuffer = make(map[string]struct{})
@@ -553,7 +553,7 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = flatten(sequence(errs...), results)
+		results = Flatten(Sequence(errs...), results)
 	}
 	return results
 }
@@ -619,13 +619,13 @@ func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = flatten(sequence(errs...), results)
+		results = Flatten(Sequence(errs...), results)
 	}
 	return results
 }
 
 func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
-	return sequence(items...)
+	return Sequence(items...)
 }
 
 func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
@@ -636,7 +636,7 @@ func handleLeafNode(node *Node) edgeHandler {
 	return func(_ *Edge, items []Item) iter.Seq[Item] {
 		objectType := strings.Split(node.GetLabel(), "#")[0]
 
-		results := transform(sequence(items...), func(item Item) Item {
+		results := Transform(Sequence(items...), func(item Item) Item {
 			var value string
 
 			switch node.GetNodeType() {
@@ -692,7 +692,7 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 }
 
 type intersectionResolver struct {
-	interpreter interpreter
+	interpreter Interpreter
 	done        bool
 	tracker     Tracker
 }
@@ -701,7 +701,7 @@ func (r *intersectionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *intersectionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	defer func() {
 		r.tracker.Add(-1)
 		r.done = true
@@ -725,11 +725,11 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	for i, snd := range senders {
 		wg.Add(1)
 
-		go func(i int, snd *sender) {
+		go func(i int, snd *Sender) {
 			defer wg.Done()
 
-			for snd.more() {
-				msg, ok := snd.recv()
+			for snd.More() {
+				msg, ok := snd.Recv()
 				if !ok {
 					runtime.Gosched()
 					continue
@@ -737,7 +737,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 
 				var unseen []Item
 
-				// Deduplicate items within this group based on the buffer for this sender
+				// Deduplicate items within this group based on the buffer for this Sender
 				for _, item := range msg.Value.Items {
 					if item.Err != nil {
 						continue
@@ -786,7 +786,7 @@ OutputLoop:
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := flatten(sequence(allErrs...), transform(maps.Keys(objects), strToItem))
+	seq := Flatten(Sequence(allErrs...), Transform(maps.Keys(objects), StrToItem))
 
 	var items []Item
 
@@ -799,12 +799,12 @@ OutputLoop:
 	}
 
 	for _, lst := range listeners {
-		lst.send(outGroup)
+		lst.Send(outGroup)
 	}
 }
 
 type exclusionResolver struct {
-	interpreter interpreter
+	interpreter Interpreter
 	done        bool
 	tracker     Tracker
 }
@@ -813,7 +813,7 @@ func (r *exclusionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
+func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	defer func() {
 		r.tracker.Add(-1)
 		r.done = true
@@ -822,7 +822,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	r.tracker.Add(1)
 
 	if len(senders) != 2 {
-		panic("exclusion resolver requires two senders")
+		panic("exclusion Resolver requires two Senders")
 	}
 	var wg sync.WaitGroup
 
@@ -832,14 +832,14 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	var includedErrs []Item
 	var excludedErrs []Item
 
-	var procIncluded func(*sender)
-	var procExcluded func(*sender)
+	var procIncluded func(*Sender)
+	var procExcluded func(*Sender)
 
-	procIncluded = func(snd *sender) {
+	procIncluded = func(snd *Sender) {
 		defer wg.Done()
 
-		for snd.more() {
-			msg, ok := snd.recv()
+		for snd.More() {
+			msg, ok := snd.Recv()
 			if !ok {
 				runtime.Gosched()
 				continue
@@ -858,11 +858,11 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 		}
 	}
 
-	procExcluded = func(snd *sender) {
+	procExcluded = func(snd *Sender) {
 		defer wg.Done()
 
-		for snd.more() {
-			msg, ok := snd.recv()
+		for snd.More() {
+			msg, ok := snd.Recv()
 			if !ok {
 				runtime.Gosched()
 				continue
@@ -894,12 +894,12 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	allErrs = append(allErrs, includedErrs...)
 	allErrs = append(allErrs, excludedErrs...)
 
-	filteredSeq := filter(maps.Keys(included), func(v string) bool {
+	filteredSeq := Filter(maps.Keys(included), func(v string) bool {
 		_, ok := excluded[v]
 		return !ok
 	})
 
-	flattenedSeq := flatten(sequence(allErrs...), transform(filteredSeq, strToItem))
+	flattenedSeq := Flatten(Sequence(allErrs...), Transform(filteredSeq, StrToItem))
 
 	var items []Item
 
@@ -912,7 +912,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 
 	for _, lst := range listeners {
-		lst.send(outGroup)
+		lst.Send(outGroup)
 	}
 }
 
@@ -977,227 +977,6 @@ func (sp *StatusPool) Status() bool {
 	return status != 0
 }
 
-type Worker struct {
-	status    *StatusPool
-	name      string
-	senders   []*sender
-	listeners []*listener
-	resolver  resolver
-	tracker   Tracker
-	wg        sync.WaitGroup
-}
-
-type resolverFactory struct {
-	backend *Backend
-}
-
-func (rf *resolverFactory) builder(node *Node) *resolverBuilder {
-	return &resolverBuilder{
-		backend: rf.backend,
-		node:    node,
-	}
-}
-
-type resolverBuilder struct {
-	backend *Backend
-	node    *Node
-	tracker Tracker
-	status  *StatusPool
-}
-
-func (b *resolverBuilder) WithTracker(tracker Tracker) *resolverBuilder {
-	b.tracker = tracker
-	return b
-}
-
-func (b *resolverBuilder) WithStatus(status *StatusPool) *resolverBuilder {
-	b.status = status
-	return b
-}
-
-func (b *resolverBuilder) build() resolver {
-	var r resolver
-
-	id := b.status.Register()
-	b.status.Set(id, true)
-
-	switch b.node.GetNodeType() {
-	case NodeTypeSpecificTypeAndRelation:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(b.node),
-			hndDirect:        b.backend.handleDirectEdge,
-			hndTTU:           b.backend.handleTTUEdge,
-			hndComputed:      handleIdentity,
-			hndRewrite:       handleIdentity,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			id:          id,
-			interpreter: omni,
-			status:      b.status,
-		}
-	case NodeTypeSpecificType:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(b.node),
-			hndDirect:        handleUnsupported,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			id:          id,
-			interpreter: omni,
-			status:      b.status,
-		}
-	case NodeTypeSpecificTypeWildcard:
-		omni := &omniInterpreter{
-			hndNil:           handleLeafNode(b.node),
-			hndDirect:        handleUnsupported,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			id:          id,
-			interpreter: omni,
-			status:      b.status,
-		}
-	case NodeTypeOperator:
-		switch b.node.GetLabel() {
-		case weightedGraph.IntersectionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        b.backend.handleDirectEdge,
-				hndTTU:           b.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
-			r = &intersectionResolver{
-				interpreter: omni,
-				tracker:     b.tracker,
-			}
-		case weightedGraph.UnionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        b.backend.handleDirectEdge,
-				hndTTU:           b.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
-			r = &baseResolver{
-				id:          id,
-				interpreter: omni,
-				status:      b.status,
-			}
-		case weightedGraph.ExclusionOperator:
-			omni := &omniInterpreter{
-				hndNil:           handleUnsupported,
-				hndDirect:        b.backend.handleDirectEdge,
-				hndTTU:           b.backend.handleTTUEdge,
-				hndComputed:      handleIdentity,
-				hndRewrite:       handleIdentity,
-				hndDirectLogical: handleIdentity,
-				hndTTULogical:    handleIdentity,
-			}
-
-			r = &exclusionResolver{
-				interpreter: omni,
-				tracker:     b.tracker,
-			}
-		default:
-			panic("unsupported operator node for reverse expand worker")
-		}
-	case NodeTypeLogicalDirectGrouping:
-		omni := &omniInterpreter{
-			hndNil:           handleUnsupported,
-			hndDirect:        b.backend.handleDirectEdge,
-			hndTTU:           handleUnsupported,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			id:          id,
-			interpreter: omni,
-			status:      b.status,
-		}
-	case NodeTypeLogicalTTUGrouping:
-		omni := &omniInterpreter{
-			hndNil:           handleUnsupported,
-			hndDirect:        handleUnsupported,
-			hndTTU:           b.backend.handleTTUEdge,
-			hndComputed:      handleUnsupported,
-			hndRewrite:       handleUnsupported,
-			hndDirectLogical: handleUnsupported,
-			hndTTULogical:    handleUnsupported,
-		}
-
-		r = &baseResolver{
-			id:          id,
-			interpreter: omni,
-			status:      b.status,
-		}
-	default:
-		panic("unsupported node type for reverse expand worker")
-	}
-
-	return r
-}
-
-func NewWorker(r resolver, tracker Tracker, status *StatusPool) *Worker {
-	return &Worker{
-		status:   status,
-		tracker:  tracker,
-		resolver: r,
-	}
-}
-
-func (w *Worker) Active() bool {
-	return w.resolver.Ready() || w.tracker.Load() != 0
-}
-
-func (w *Worker) Start() {
-	w.wg.Add(1)
-
-	go func() {
-		defer w.wg.Done()
-
-		defer func() {
-			for _, lst := range w.listeners {
-				lst.close()
-			}
-		}()
-
-		w.resolver.Resolve(w.senders, w.listeners)
-	}()
-}
-
-func (w *Worker) Close() {
-	for _, lst := range w.listeners {
-		lst.close()
-	}
-}
-
-func (w *Worker) Wait() {
-	w.wg.Wait()
-}
-
 type Tracker interface {
 	Add(int64) int64
 	Load() int64
@@ -1224,6 +1003,45 @@ func EchoTracker(parent Tracker) Tracker {
 	return &echoTracker{
 		parent: parent,
 	}
+}
+
+type Worker struct {
+	status    *StatusPool
+	senders   []*Sender
+	listeners []*Listener
+	resolver  Resolver
+	tracker   Tracker
+	wg        sync.WaitGroup
+}
+
+func (w *Worker) Active() bool {
+	return w.resolver.Ready() || w.tracker.Load() != 0
+}
+
+func (w *Worker) Start() {
+	w.wg.Add(1)
+
+	go func() {
+		defer w.wg.Done()
+
+		defer func() {
+			for _, lst := range w.listeners {
+				lst.Close()
+			}
+		}()
+
+		w.resolver.Resolve(w.senders, w.listeners)
+	}()
+}
+
+func (w *Worker) Close() {
+	for _, lst := range w.listeners {
+		lst.Close()
+	}
+}
+
+func (w *Worker) Wait() {
+	w.wg.Wait()
 }
 
 type Message[T any] struct {
@@ -1302,26 +1120,26 @@ func (p *Pipe) Close() {
 	p.done = true
 }
 
-// listener is a struct that contains fields relevant to the listening
+// Listener is a struct that contains fields relevant to the listening
 // end of a pipeline connection.
-type listener struct {
+type Listener struct {
 	cons Consumer[Group]
 
 	// node is the weighted graph node that is listening.
 	node *Node
 }
 
-func (lst *listener) send(g Group) {
+func (lst *Listener) Send(g Group) {
 	lst.cons.Send(g)
 }
 
-func (lst *listener) close() {
+func (lst *Listener) Close() {
 	lst.cons.Close()
 }
 
-// sender is a struct that contains fields relevant to the producing
+// Sender is a struct that contains fields relevant to the producing
 // end of a pipeline connection.
-type sender struct {
+type Sender struct {
 	// edge is the weighted graph edge that is producing.
 	edge *Edge
 
@@ -1335,16 +1153,16 @@ type sender struct {
 	numProcs int
 }
 
-func (snd *sender) recv() (Message[Group], bool) {
+func (snd *Sender) Recv() (Message[Group], bool) {
 	return snd.prod.Recv()
 }
 
-func (snd *sender) more() bool {
+func (snd *Sender) More() bool {
 	return !snd.prod.Done()
 }
 
 func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int, numProcs int) {
-	w.senders = append(w.senders, &sender{
+	w.senders = append(w.senders, &Sender{
 		edge:      edge,
 		prod:      p,
 		chunkSize: chunkSize,
@@ -1360,7 +1178,7 @@ func (w *Worker) Subscribe(node *Node) *Pipe {
 		tracker: EchoTracker(w.tracker),
 	}
 
-	w.listeners = append(w.listeners, &listener{
+	w.listeners = append(w.listeners, &Listener{
 		cons: p,
 		node: node,
 	})
@@ -1468,11 +1286,161 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
+func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *StatusPool) *Worker {
+	var w Worker
+
+	w.status = status
+	w.tracker = tracker
+
+	var r Resolver
+
+	id := status.Register()
+	status.Set(id, true)
+
+	switch node.GetNodeType() {
+	case NodeTypeSpecificTypeAndRelation:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        pipe.backend.handleDirectEdge,
+			hndTTU:           pipe.backend.handleTTUEdge,
+			hndComputed:      handleIdentity,
+			hndRewrite:       handleIdentity,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			interpreter: omni,
+			status:      status,
+		}
+	case NodeTypeSpecificType:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        handleUnsupported,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			interpreter: omni,
+			status:      status,
+		}
+	case NodeTypeSpecificTypeWildcard:
+		omni := &omniInterpreter{
+			hndNil:           handleLeafNode(node),
+			hndDirect:        handleUnsupported,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			interpreter: omni,
+			status:      status,
+		}
+	case NodeTypeOperator:
+		switch node.GetLabel() {
+		case weightedGraph.IntersectionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        pipe.backend.handleDirectEdge,
+				hndTTU:           pipe.backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &intersectionResolver{
+				interpreter: omni,
+				tracker:     tracker,
+			}
+		case weightedGraph.UnionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        pipe.backend.handleDirectEdge,
+				hndTTU:           pipe.backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &baseResolver{
+				id:          id,
+				interpreter: omni,
+				status:      status,
+			}
+		case weightedGraph.ExclusionOperator:
+			omni := &omniInterpreter{
+				hndNil:           handleUnsupported,
+				hndDirect:        pipe.backend.handleDirectEdge,
+				hndTTU:           pipe.backend.handleTTUEdge,
+				hndComputed:      handleIdentity,
+				hndRewrite:       handleIdentity,
+				hndDirectLogical: handleIdentity,
+				hndTTULogical:    handleIdentity,
+			}
+
+			r = &exclusionResolver{
+				interpreter: omni,
+				tracker:     tracker,
+			}
+		default:
+			panic("unsupported operator node for reverse expand worker")
+		}
+	case NodeTypeLogicalDirectGrouping:
+		omni := &omniInterpreter{
+			hndNil:           handleUnsupported,
+			hndDirect:        pipe.backend.handleDirectEdge,
+			hndTTU:           handleUnsupported,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			interpreter: omni,
+			status:      status,
+		}
+	case NodeTypeLogicalTTUGrouping:
+		omni := &omniInterpreter{
+			hndNil:           handleUnsupported,
+			hndDirect:        handleUnsupported,
+			hndTTU:           pipe.backend.handleTTUEdge,
+			hndComputed:      handleUnsupported,
+			hndRewrite:       handleUnsupported,
+			hndDirectLogical: handleUnsupported,
+			hndTTULogical:    handleUnsupported,
+		}
+
+		r = &baseResolver{
+			id:          id,
+			interpreter: omni,
+			status:      status,
+		}
+	default:
+		panic("unsupported node type for reverse expand worker")
+	}
+
+	w.resolver = r
+	return &w
+}
+
 type path struct {
-	pipe     *Pipeline
-	rfactory *resolverFactory
-	workers  map[*Node]*Worker
-	tracker  atomic.Int64
+	pipe    *Pipeline
+	workers map[*Node]*Worker
+	tracker atomic.Int64
 }
 
 func (p *path) resolve(source *Node, target Target, tracker Tracker, status *StatusPool) bool {
@@ -1488,14 +1456,9 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 		status = new(StatusPool)
 	}
 
-	r := p.rfactory.builder(source).
-		WithTracker(tracker).
-		WithStatus(status).
-		build()
+	w := p.pipe.worker(source, tracker, status)
 
-	worker := NewWorker(r, tracker, status)
-
-	p.workers[source] = worker
+	p.workers[source] = w
 
 	switch source.GetNodeType() {
 	case NodeTypeSpecificType, NodeTypeSpecificTypeAndRelation:
@@ -1503,7 +1466,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: target.id}}
-			worker.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1513,7 +1476,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			worker.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1529,13 +1492,13 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
 		if isRecursive {
-			track = worker.tracker
-			stat = worker.status
+			track = w.tracker
+			stat = w.status
 		}
 
 		p.resolve(edge.GetTo(), target, track, stat)
 
-		worker.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+		w.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
 	}
 
 	return false
@@ -1547,9 +1510,6 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 	p := path{
 		pipe:    pipe,
 		workers: make(map[*Node]*Worker),
-		rfactory: &resolverFactory{
-			backend: pipe.backend,
-		},
 	}
 	p.resolve((*Node)(source), target, nil, nil)
 
@@ -1562,8 +1522,8 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 
 	results := sourceWorker.Subscribe(nil)
 
-	for _, worker := range p.workers {
-		worker.Start()
+	for _, w := range p.workers {
+		w.Start()
 	}
 
 	wg.Add(1)
@@ -1573,9 +1533,9 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 		for {
 			var inactiveCount int
 
-			for _, worker := range p.workers {
-				if !worker.Active() {
-					worker.Close()
+			for _, w := range p.workers {
+				if !w.Active() {
+					w.Close()
 					inactiveCount++
 				}
 			}
@@ -1588,13 +1548,13 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
-				for _, worker := range p.workers {
-					worker.Close()
+				for _, w := range p.workers {
+					w.Close()
 				}
 
 				// wait for all workers to finish
-				for _, worker := range p.workers {
-					worker.Wait()
+				for _, w := range p.workers {
+					w.Wait()
 				}
 				break
 			}
