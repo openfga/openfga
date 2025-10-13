@@ -705,9 +705,7 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	var wg sync.WaitGroup
 
 	objects := make(map[string]struct{})
-
 	buffers := make([]map[string]struct{}, len(senders))
-
 	output := make([]map[string]struct{}, len(senders))
 
 	for i := range senders {
@@ -765,19 +763,14 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	}
 	wg.Wait()
 
+OutputLoop:
 	for obj := range output[0] {
-		objects[obj] = struct{}{}
-	}
-
-	for i := 1; i < len(output); i++ {
-		found := make(map[string]struct{})
-
-		for obj := range output[i] {
-			if _, ok := objects[obj]; ok {
-				found[obj] = struct{}{}
+		for i := 1; i < len(output); i++ {
+			if _, ok := output[i][obj]; !ok {
+				continue OutputLoop
 			}
 		}
-		objects = found
+		objects[obj] = struct{}{}
 	}
 
 	var allErrs []Item
@@ -801,7 +794,6 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 	for _, lst := range listeners {
 		lst.send(outGroup)
 	}
-
 }
 
 type exclusionResolver struct {
