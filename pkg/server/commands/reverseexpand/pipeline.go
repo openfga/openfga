@@ -190,6 +190,8 @@ type Interpreter interface {
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this Resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
+	// id is an identifier provided when registering with the baseResolver's StatusPool. The registration happens
+	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
 	id int
 
 	// interpreter is an `Interpreter` that transforms a Sender's input into output which it broadcasts to all
@@ -213,6 +215,13 @@ type baseResolver struct {
 	// Resolver should only output an object once.
 	outBuffer map[string]struct{}
 
+	// status is a *StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
+	// may or may not be shared with other Resolver instances and Workers. When the current resolver is part of a
+	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
+	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" Senders have completed.
+	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
+	// case, the parent Worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
+	// in-flight.
 	status *StatusPool
 }
 
