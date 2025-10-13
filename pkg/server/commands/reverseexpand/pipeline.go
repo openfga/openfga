@@ -14,6 +14,7 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/seq"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -64,61 +65,6 @@ type Group struct {
 	Items []Item
 }
 
-// sequence is a function that turns its input into an `iter.Seq[T]` that
-// yields values in the order that they were provided to the function.
-func Sequence[T any](items ...T) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, item := range items {
-			if !yield(item) {
-				return
-			}
-		}
-	}
-}
-
-// flatten is a function that merges a set of provided `iter.Seq[T]`
-// values into a single `iter.Seq[T]` value. The values of each input are
-// yielded in the order yielded by each `iter.Seq[T]`, in the order provided
-// to the function.
-func Flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for _, seq := range seqs {
-			for item := range seq {
-				if !yield(item) {
-					return
-				}
-			}
-		}
-	}
-}
-
-// transform is a function that maps the values yielded by the input `seq`
-// to values produced by the input function `fn`, and returns an `iter.Seq`
-// that yields those new values.
-func Transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
-	return func(yield func(U) bool) {
-		for item := range seq {
-			if !yield(fn(item)) {
-				return
-			}
-		}
-	}
-}
-
-// filter is a function the yields only values for which the predicate
-// returns `true`.
-func Filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for item := range seq {
-			if fn(item) {
-				if !yield(item) {
-					return
-				}
-			}
-		}
-	}
-}
-
 // strtoItem is a function that accepts a string input and returns an Item
 // that contains the input as its `Value` value.
 func StrToItem(s string) Item {
@@ -158,7 +104,7 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 
 	if err != nil {
 		cancel()
-		return Sequence(Item{Err: err})
+		return seq.Sequence(Item{Err: err})
 	}
 
 	var hasConditions bool
@@ -452,7 +398,7 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = Flatten(Sequence(errs...), results)
+		results = seq.Flatten(seq.Sequence(errs...), results)
 	}
 	return results
 }
@@ -518,13 +464,13 @@ func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if len(errs) > 0 {
-		results = Flatten(Sequence(errs...), results)
+		results = seq.Flatten(seq.Sequence(errs...), results)
 	}
 	return results
 }
 
 func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
-	return Sequence(items...)
+	return seq.Sequence(items...)
 }
 
 func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
@@ -535,7 +481,7 @@ func handleLeafNode(node *Node) edgeHandler {
 	return func(_ *Edge, items []Item) iter.Seq[Item] {
 		objectType := strings.Split(node.GetLabel(), "#")[0]
 
-		results := Transform(Sequence(items...), func(item Item) Item {
+		results := seq.Transform(seq.Sequence(items...), func(item Item) Item {
 			var value string
 
 			switch node.GetNodeType() {
@@ -685,7 +631,7 @@ OutputLoop:
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := Flatten(Sequence(allErrs...), Transform(maps.Keys(objects), StrToItem))
+	seq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(maps.Keys(objects), StrToItem))
 
 	var items []Item
 
@@ -793,12 +739,12 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	allErrs = append(allErrs, includedErrs...)
 	allErrs = append(allErrs, excludedErrs...)
 
-	filteredSeq := Filter(maps.Keys(included), func(v string) bool {
+	filteredSeq := seq.Filter(maps.Keys(included), func(v string) bool {
 		_, ok := excluded[v]
 		return !ok
 	})
 
-	flattenedSeq := Flatten(Sequence(allErrs...), Transform(filteredSeq, StrToItem))
+	flattenedSeq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(filteredSeq, StrToItem))
 
 	var items []Item
 
