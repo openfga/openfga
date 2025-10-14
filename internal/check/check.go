@@ -1,0 +1,437 @@
+package check
+
+import (
+	"context"
+	"errors"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
+	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/planner"
+	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
+	modelUtils "github.com/openfga/openfga/pkg/typesystem"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
+)
+
+var tracer = otel.Tracer("internal/check")
+
+type Resolver struct {
+	model                     *AuthorizationModelGraph // TODO: Change this to the proper wrapper
+	datastore                 storage.RelationshipTupleReader
+	lastCacheInvalidationTime time.Time
+	planner                   *planner.Planner
+	maxResolutionDepth        int32
+	concurrencyLimit          int
+	upstreamTimeout           time.Duration
+	logger                    logger.Logger
+
+	depthCount atomic.Int32
+}
+
+// TODO: Move to its own public package
+type AuthorizationModelGraph struct {
+	*authzGraph.WeightedAuthorizationModelGraph
+	modelId       string
+	schemaVersion string
+	conditions    map[string]*condition.EvaluableCondition
+}
+
+type Request = graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata, LastCacheInvalidationTime)
+type Response = graph.ResolveCheckResponse
+
+var ErrResolutionDepthExceeded = graph.ErrResolutionDepthExceeded
+var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
+
+type checkResponse struct {
+	res *Response
+	err error
+}
+
+func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck", trace.WithAttributes(
+		attribute.String("store_id", req.GetStoreID()),
+		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+	))
+	defer span.End()
+
+	if r.depthCount.Load() >= r.maxResolutionDepth {
+		return nil, ErrResolutionDepthExceeded
+	}
+
+	// TODO: Handle where User is a userset (model would dynamically compute weight in order to prune branches, needs work in language)
+
+	// TODO: While we are doing the rollout, ok should never be false due it being caught by the validation in the command layer via `validateCheckRequest`.
+	// Once the rollout is done, we should swap the existing implementation with this which is much more efficient.
+	node, _ := r.model.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()))
+
+	_, ok := node.GetWeight(tuple.GetType(req.GetTupleKey().GetObject()))
+	if !ok {
+		// If the user type is not reachable from the object type and relation, we can immediately return false.
+		return &Response{Allowed: false}, nil
+	}
+
+	return r.ResolveUnion(ctx, req, node)
+}
+
+// reduce as a logical union operation (exit the moment we have a single true)
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	edges, ok := r.model.GetEdgesFromNode(node)
+	if !ok {
+		return nil, ErrPanicRequest
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	if len(edges) == 1 && (edges[0].GetEdgeType() == authzGraph.ComputedEdge) {
+		edges, _ = r.model.GetEdgesFromNode(edges[0].GetTo())
+	}
+
+	if node.GetNodeType() == authzGraph.SpecificTypeAndRelation && node.GetRecursiveRelation() == node.GetUniqueLabel() {
+		// if we are at a recursive relation, need to apply strategy to apply (via planner if available)
+	}
+
+	out := make(chan checkResponse, len(edges))
+	var pool errgroup.Group
+	pool.SetLimit(r.concurrencyLimit)
+	defer func() {
+		cancel()
+		_ = pool.Wait()
+		close(out)
+	}()
+
+	scheduledHandlers := 0
+
+	for _, edge := range edges {
+		_, ok := edge.GetWeight(req.GetTupleKey().GetUser())
+		if !ok {
+			continue // no relation to terminal type / pruning edge traversal
+		}
+		scheduledHandlers++
+		pool.Go(func() error {
+			res, err := r.ResolveEdge(ctx, req, edge)
+			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, out)
+			return nil
+		})
+	}
+
+	var err error
+	for i := 0; i < scheduledHandlers; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case msg := <-out:
+			if msg.err != nil {
+				err = msg.err
+				continue
+			}
+
+			if msg.res.Allowed {
+				return msg.res, nil
+			}
+		}
+	}
+	return &Response{Allowed: false}, err
+}
+
+// reduce as a logical intersection operation (exit the moment we have a single false)
+// should panic if a single handler returns nil
+func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	edges, ok := r.model.GetEdgesFromNode(node)
+	if !ok {
+		return nil, ErrPanicRequest
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	out := make(chan checkResponse, len(edges))
+
+	var pool errgroup.Group
+	pool.SetLimit(r.concurrencyLimit)
+	defer func() {
+		cancel()
+		_ = pool.Wait()
+		close(out)
+	}()
+
+	scheduledHandlers := 0
+
+	for _, edge := range edges {
+		_, ok := edge.GetWeight(req.GetTupleKey().GetUser())
+		if !ok {
+			return nil, ErrPanicRequest
+		}
+		scheduledHandlers++
+		pool.Go(func() error {
+			res, err := r.ResolveEdge(ctx, req, edge)
+			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, out)
+			return nil
+		})
+	}
+
+	var err error
+	for i := 0; i < scheduledHandlers; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case msg := <-out:
+			if msg.err != nil || !msg.res.Allowed {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// In intersection _every_ branch must return true.
+				return msg.res, msg.err
+
+			}
+		}
+	}
+	return &Response{Allowed: true}, err
+}
+
+// reduce as a logical exclusion operation
+// if base is false, short circuit
+func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	edges, ok := r.model.GetEdgesFromNode(node)
+	if !ok {
+		return nil, ErrPanicRequest
+	}
+	// base edge validation
+	if _, ok := edges[0].GetWeight(req.GetTupleKey().GetUser()); !ok {
+		return nil, ErrPanicRequest
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	base := make(chan checkResponse, 1)
+	wg := &sync.WaitGroup{}
+
+	scheduledHandlers := 1
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		res, err := r.ResolveEdge(ctx, req, edges[0])
+		concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, base)
+		close(base)
+	}()
+
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	var subtract chan checkResponse
+	// excluded edge
+	if _, ok := edges[1].GetWeight(req.GetTupleKey().GetUser()); ok {
+		scheduledHandlers++
+		subtract = make(chan checkResponse, 1)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := r.ResolveEdge(ctx, req, edges[1])
+			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, subtract)
+			close(subtract)
+		}()
+	}
+
+	// Loop until we have received the necessary results to determine the outcome.
+	resultsReceived := 0
+	for resultsReceived < scheduledHandlers {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case msg, ok := <-base:
+			if !ok {
+				base = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			if msg.err != nil {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// If base returns an error, we return it immediately since the result of the exclusion cannot be determined.
+				return nil, msg.err
+			}
+
+			// Short-circuit: If base is false, the whole expression is false.
+			if !msg.res.GetAllowed() {
+				return &Response{Allowed: false}, nil
+			}
+
+			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
+			if msg.res.Allowed && subtract == nil {
+				return msg.res, nil
+			}
+
+		case msg, ok := <-subtract: // subtract can be nil
+			if !ok {
+				subtract = nil // Stop selecting this case.
+				continue
+			}
+			resultsReceived++
+
+			if msg.err != nil {
+				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
+				// If subtract returns an error, we return it immediately since the result of the exclusion cannot be determined. There will never be a case in which it returns false if it returns an error given there is only one branch.
+				return nil, msg.err
+			}
+
+			// Short-circuit: If subtract is true, the whole expression is false.
+			if msg.res.GetAllowed() {
+				return &Response{Allowed: false}, nil
+			}
+		}
+	}
+
+	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
+	return &Response{Allowed: true}, nil
+
+}
+
+func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	// computed edges are solved by the relation node caller
+	switch edge.GetEdgeType() {
+	case authzGraph.DirectEdge, authzGraph.DirectLogicalEdge:
+		return r.ResolveDirect(ctx, req, edge)
+	case authzGraph.TTUEdge, authzGraph.TTULogicalEdge:
+		return r.ResolveTTU(ctx, req, edge)
+	case authzGraph.RewriteEdge:
+		return r.ResolveRewrite(ctx, req, edge.GetTo())
+	default:
+		return nil, ErrPanicRequest
+	}
+}
+
+func (r *Resolver) ResolveDirect(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	// internal methods should check for context cancellation as this is the final step
+	switch edge.GetEdgeType() {
+	case authzGraph.DirectEdge:
+		switch edge.GetTo().GetNodeType() {
+		case authzGraph.SpecificType:
+			return r.specificType(ctx, req, edge)
+		case authzGraph.SpecificTypeWildcard:
+			// dont forget to check conditions for filtering/applying within edge.GetConditions
+			break
+		case authzGraph.SpecificTypeAndRelation:
+			// check for recursiveRelation
+			break
+		}
+		break
+	case authzGraph.DirectLogicalEdge:
+		// iterate over all the possible direct edges and see if any of them return true
+		break
+	default:
+		return nil, ErrPanicRequest
+	}
+
+	return &Response{Allowed: true}, nil
+}
+
+func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	opts := storage.ReadUserTupleOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	_, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), opts)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &Response{Allowed: false}, nil
+		}
+		return nil, err
+	}
+
+	// TODO: need version of language where NoCond is == ""
+	// TODO: tuple evaluation, bring in the previous conditional into it
+	/*
+
+		if !slices.Contains(edge.GetConditions(), t.GetKey().GetCondition().GetName()) {
+			return &Response{Allowed: false}, nil
+		}
+		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
+		conditionMet, err := tupleKeyConditionFilter(tupleKey)
+		if err != nil {
+			telemetry.TraceError(span, err)
+			return nil, err
+		}
+		if conditionMet {
+			span.SetAttributes(attribute.Bool("allowed", true))
+			response.Allowed = true
+		}
+	*/
+	return &Response{Allowed: true}, nil
+}
+
+func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
+	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		Object:                      req.GetTupleKey().GetObject(),
+		Relation:                    req.GetTupleKey().GetRelation(),
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewFilteredTupleKeyIterator(
+			storage.NewTupleKeyIteratorFromTupleIterator(iter),
+			validation.FilterInvalidTuples(typesys),
+		),
+		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+	)
+	defer filteredIter.Stop()
+
+	_, err = filteredIter.Next(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrIteratorDone) {
+			return response, nil
+		}
+		return nil, err
+	}
+	// when we get to here, it means there is public wild card assigned
+	span.SetAttributes(attribute.Bool("allowed", true))
+	response.Allowed = true
+	return response, nil
+}
+
+func (r *Resolver) ResolveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	return &Response{Allowed: true}, nil
+}
+
+func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+	// relation and union have save behavior
+	switch node.GetNodeType() {
+	// TODO: explain this case handler properly
+	case authzGraph.SpecificTypeAndRelation:
+		return r.ResolveUnion(ctx, req, node)
+	case authzGraph.OperatorNode:
+		switch node.GetLabel() {
+		case authzGraph.UnionOperator:
+			return r.ResolveUnion(ctx, req, node)
+		case authzGraph.IntersectionOperator:
+			return r.ResolveIntersection(ctx, req, node)
+		case authzGraph.ExclusionOperator:
+			return r.ResolveExclusion(ctx, req, node)
+		default:
+			return nil, ErrPanicRequest
+		}
+	default:
+		return nil, ErrPanicRequest
+	}
+
+}
