@@ -307,7 +307,7 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 
 	ProcessEnd:
 		// Important: Indicating that the message is done will clear its count from the
-		// origin Worker's Tracker.
+		// origin Worker's tracker.
 		msg.Done()
 
 		// Important: This is a tight loop and needs to defer to the Go runtime so as not
@@ -577,7 +577,7 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 type intersectionResolver struct {
 	interpreter Interpreter
 	done        bool
-	tracker     Tracker
+	trk         tracker
 }
 
 func (r *intersectionResolver) Ready() bool {
@@ -586,11 +586,11 @@ func (r *intersectionResolver) Ready() bool {
 
 func (r *intersectionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	defer func() {
-		r.tracker.Add(-1)
+		r.trk.Add(-1)
 		r.done = true
 	}()
 
-	r.tracker.Add(1)
+	r.trk.Add(1)
 
 	var wg sync.WaitGroup
 
@@ -689,7 +689,7 @@ OutputLoop:
 type exclusionResolver struct {
 	interpreter Interpreter
 	done        bool
-	tracker     Tracker
+	trk         tracker
 }
 
 func (r *exclusionResolver) Ready() bool {
@@ -698,11 +698,11 @@ func (r *exclusionResolver) Ready() bool {
 
 func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	defer func() {
-		r.tracker.Add(-1)
+		r.trk.Add(-1)
 		r.done = true
 	}()
 
-	r.tracker.Add(1)
+	r.trk.Add(1)
 
 	if len(senders) != 2 {
 		panic("exclusion Resolver requires two Senders")
@@ -799,14 +799,14 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	}
 }
 
-type Tracker interface {
+type tracker interface {
 	Add(int64) int64
 	Load() int64
 }
 
 type echoTracker struct {
 	local  atomic.Int64
-	parent Tracker
+	parent tracker
 }
 
 func (t *echoTracker) Add(i int64) int64 {
@@ -821,7 +821,7 @@ func (t *echoTracker) Load() int64 {
 	return t.local.Load()
 }
 
-func EchoTracker(parent Tracker) Tracker {
+func newEchoTracker(parent tracker) tracker {
 	return &echoTracker{
 		parent: parent,
 	}
@@ -832,12 +832,12 @@ type Worker struct {
 	senders   []*Sender
 	listeners []*Listener
 	resolver  Resolver
-	tracker   Tracker
+	trk       tracker
 	wg        sync.WaitGroup
 }
 
 func (w *Worker) Active() bool {
-	return w.resolver.Ready() || w.tracker.Load() != 0
+	return w.resolver.Ready() || w.trk.Load() != 0
 }
 
 func (w *Worker) Start() {
@@ -888,10 +888,10 @@ type Consumer[T any] interface {
 }
 
 type Pipe struct {
-	ch      chan Group
-	mu      sync.Mutex
-	tracker Tracker
-	done    bool
+	ch   chan Group
+	mu   sync.Mutex
+	trk  tracker
+	done bool
 }
 
 func (p *Pipe) Send(g Group) {
@@ -902,7 +902,7 @@ func (p *Pipe) Send(g Group) {
 		// fmt.Printf("CLOSED PIPE %#v", g)
 		panic("called Send on a closed Pipe")
 	}
-	p.tracker.Add(1)
+	p.trk.Add(1)
 	p.ch <- g
 }
 
@@ -916,7 +916,7 @@ func (p *Pipe) Recv() (Message[Group], bool) {
 		fn := func() {
 			p.mu.Lock()
 			defer p.mu.Unlock()
-			p.tracker.Add(-1)
+			p.trk.Add(-1)
 		}
 		return Message[Group]{Value: group, done: sync.OnceFunc(fn)}, ok
 	default:
@@ -928,7 +928,7 @@ func (p *Pipe) Done() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	return p.done && p.tracker.Load() == 0
+	return p.done && p.trk.Load() == 0
 }
 
 func (p *Pipe) Close() {
@@ -996,8 +996,8 @@ func (w *Worker) Subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
 	p := &Pipe{
-		ch:      ch,
-		tracker: EchoTracker(w.tracker),
+		ch:  ch,
+		trk: newEchoTracker(w.trk),
 	}
 
 	w.listeners = append(w.listeners, &Listener{
@@ -1009,9 +1009,9 @@ func (w *Worker) Subscribe(node *Node) *Pipe {
 }
 
 type staticProducer struct {
-	groups  []Group
-	pos     int
-	tracker Tracker
+	groups []Group
+	pos    int
+	trk    tracker
 }
 
 func (s *staticProducer) Recv() (Message[Group], bool) {
@@ -1020,7 +1020,7 @@ func (s *staticProducer) Recv() (Message[Group], bool) {
 		s.pos++
 
 		fn := func() {
-			s.tracker.Add(-1)
+			s.trk.Add(-1)
 		}
 		return Message[Group]{Value: value, done: sync.OnceFunc(fn)}, true
 	}
@@ -1031,14 +1031,14 @@ func (s *staticProducer) Done() bool {
 	return s.pos >= len(s.groups)
 }
 
-func StaticProducer(tracker Tracker, groups ...Group) Producer[Group] {
-	if tracker != nil {
-		tracker.Add(int64(len(groups)))
+func newStaticProducer(trk tracker, groups ...Group) Producer[Group] {
+	if trk != nil {
+		trk.Add(int64(len(groups)))
 	}
 
 	return &staticProducer{
-		groups:  groups,
-		tracker: tracker,
+		groups: groups,
+		trk:    trk,
 	}
 }
 
@@ -1108,11 +1108,11 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *concurrency.StatusPool) *Worker {
+func (pipe *Pipeline) worker(node *Node, trk tracker, status *concurrency.StatusPool) *Worker {
 	var w Worker
 
 	w.status = status
-	w.tracker = tracker
+	w.trk = trk
 
 	var r Resolver
 
@@ -1183,7 +1183,7 @@ func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *concurrency.St
 
 			r = &intersectionResolver{
 				interpreter: omni,
-				tracker:     tracker,
+				trk:         trk,
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
@@ -1214,7 +1214,7 @@ func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *concurrency.St
 
 			r = &exclusionResolver{
 				interpreter: omni,
-				tracker:     tracker,
+				trk:         trk,
 			}
 		default:
 			panic("unsupported operator node for reverse expand worker")
@@ -1262,23 +1262,23 @@ func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *concurrency.St
 type path struct {
 	pipe    *Pipeline
 	workers map[*Node]*Worker
-	tracker atomic.Int64
+	trk     atomic.Int64
 }
 
-func (p *path) resolve(source *Node, target Target, tracker Tracker, status *concurrency.StatusPool) bool {
+func (p *path) resolve(source *Node, target Target, trk tracker, status *concurrency.StatusPool) bool {
 	if _, ok := p.workers[source]; ok {
 		return true
 	}
 
-	if tracker == nil {
-		tracker = EchoTracker(&p.tracker)
+	if trk == nil {
+		trk = newEchoTracker(&p.trk)
 	}
 
 	if status == nil {
 		status = new(concurrency.StatusPool)
 	}
 
-	w := p.pipe.worker(source, tracker, status)
+	w := p.pipe.worker(source, trk, status)
 
 	p.workers[source] = w
 
@@ -1288,7 +1288,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *con
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: target.id}}
-			w.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.Listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1298,7 +1298,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *con
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			w.Listen(nil, StaticProducer(&p.tracker, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.Listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1308,13 +1308,13 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *con
 	}
 
 	for _, edge := range edges {
-		var track Tracker
+		var track tracker
 		var stat *concurrency.StatusPool
 
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
 		if isRecursive {
-			track = w.tracker
+			track = w.trk
 			stat = w.status
 		}
 
@@ -1366,7 +1366,7 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 				break
 			}
 
-			messageCount := p.tracker.Load()
+			messageCount := p.trk.Load()
 
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
