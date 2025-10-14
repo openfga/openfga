@@ -232,13 +232,13 @@ func (r *baseResolver) Ready() bool {
 
 func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
 	// Loop while the sender has a potential to yield a message.
-	for senders[ndx].More() {
+	for senders[ndx].more() {
 		var results iter.Seq[Item]
 		var outGroup Group
 		var items, unseen []Item
 
 		// attempt to pull a message from the sender (non-blocking)
-		msg, ok := senders[ndx].Recv()
+		msg, ok := senders[ndx].recv()
 		if !ok {
 			// no message was currently ready. proceed to end of function.
 			goto ProcessEnd
@@ -291,7 +291,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 			items = nil
 
 			for _, lst := range listeners {
-				lst.Send(outGroup)
+				lst.send(outGroup)
 			}
 		}
 
@@ -302,7 +302,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 		outGroup.Items = items
 
 		for _, lst := range listeners {
-			lst.Send(outGroup)
+			lst.send(outGroup)
 		}
 
 	ProcessEnd:
@@ -611,8 +611,8 @@ func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener)
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for snd.More() {
-				msg, ok := snd.Recv()
+			for snd.more() {
+				msg, ok := snd.recv()
 				if !ok {
 					runtime.Gosched()
 					continue
@@ -682,7 +682,7 @@ OutputLoop:
 	}
 
 	for _, lst := range listeners {
-		lst.Send(outGroup)
+		lst.send(outGroup)
 	}
 }
 
@@ -721,8 +721,8 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	procIncluded = func(snd *sender) {
 		defer wg.Done()
 
-		for snd.More() {
-			msg, ok := snd.Recv()
+		for snd.more() {
+			msg, ok := snd.recv()
 			if !ok {
 				runtime.Gosched()
 				continue
@@ -744,8 +744,8 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	procExcluded = func(snd *sender) {
 		defer wg.Done()
 
-		for snd.More() {
-			msg, ok := snd.Recv()
+		for snd.more() {
+			msg, ok := snd.recv()
 			if !ok {
 				runtime.Gosched()
 				continue
@@ -795,7 +795,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 
 	for _, lst := range listeners {
-		lst.Send(outGroup)
+		lst.send(outGroup)
 	}
 }
 
@@ -848,7 +848,7 @@ func (w *worker) Start() {
 
 		defer func() {
 			for _, lst := range w.listeners {
-				lst.Close()
+				lst.close()
 			}
 		}()
 
@@ -858,7 +858,7 @@ func (w *worker) Start() {
 
 func (w *worker) Close() {
 	for _, lst := range w.listeners {
-		lst.Close()
+		lst.close()
 	}
 }
 
@@ -951,11 +951,11 @@ type listener struct {
 	node *Node
 }
 
-func (lst *listener) Send(g Group) {
+func (lst *listener) send(g Group) {
 	lst.cons.Send(g)
 }
 
-func (lst *listener) Close() {
+func (lst *listener) close() {
 	lst.cons.Close()
 }
 
@@ -975,11 +975,11 @@ type sender struct {
 	numProcs int
 }
 
-func (snd *sender) Recv() (Message[Group], bool) {
+func (snd *sender) recv() (Message[Group], bool) {
 	return snd.prod.Recv()
 }
 
-func (snd *sender) More() bool {
+func (snd *sender) more() bool {
 	return !snd.prod.Done()
 }
 
