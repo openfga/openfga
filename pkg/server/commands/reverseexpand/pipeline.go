@@ -888,8 +888,6 @@ func (w *worker) listen(edge *Edge, p producer[Group], chunkSize int, numProcs i
 }
 
 func (w *worker) subscribe(node *Node) *Pipe {
-	ch := make(chan Group, 100)
-
 	p := &Pipe{
 		trk: w.trk,
 	}
