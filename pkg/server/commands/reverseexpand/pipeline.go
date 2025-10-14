@@ -169,13 +169,13 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 
 // Resolver is an interface that is consumed by a worker struct.
 // a Resolver is responsible for consuming messages from a worker's
-// Senders and broadcasting the result of processing the consumed
+// senders and broadcasting the result of processing the consumed
 // messages to the worker's Listeners.
 type Resolver interface {
 	// Resolve is a function that consumes messages from the
-	// provided Senders, and broadcasts the results of processing
+	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided Listeners.
-	Resolve(senders []*Sender, listeners []*Listener)
+	Resolve(senders []*sender, listeners []*Listener)
 
 	Ready() bool
 }
@@ -187,7 +187,7 @@ type Interpreter interface {
 
 // baseResolver is a struct that implements the `Resolver` interface and acts as the standard Resolver for most
 // workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
-// status will remain `true` until all of its Senders that produce input from external sources have finished, and
+// status will remain `true` until all of its senders that produce input from external sources have finished, and
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
 // this Resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
@@ -195,15 +195,15 @@ type baseResolver struct {
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
 	id int
 
-	// interpreter is an `Interpreter` that transforms a Sender's input into output which it broadcasts to all
+	// interpreter is an `Interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's Listeners.
 	interpreter Interpreter
 
 	// mutexes each protect map access for a buffer within inBuffers at the same index.
 	mutexes []sync.Mutex
 
-	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual Sender's
-	// input feed. Each buffer's index corresponds to its associated Sender's index. Each Sender needs
+	// inBuffers contains a slice of maps, used as hash sets, for deduplicating each individual sender's
+	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
 	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
 	// edges producing to the same node. This is specifically true in the case of recursive edges, where
 	// a single Resolver may have multiple recursive edges that must receive the same objects.
@@ -219,7 +219,7 @@ type baseResolver struct {
 	// status is a *concurrency.StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
 	// may or may not be shared with other Resolver instances and workers. When the current resolver is part of a
 	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
-	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" Senders have completed.
+	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" senders have completed.
 	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
 	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
@@ -230,7 +230,7 @@ func (r *baseResolver) Ready() bool {
 	return r.status.Status()
 }
 
-func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener) {
+func (r *baseResolver) process(ndx int, senders []*sender, listeners []*Listener) {
 	// Loop while the sender has a potential to yield a message.
 	for senders[ndx].More() {
 		var results iter.Seq[Item]
@@ -244,7 +244,7 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 			goto ProcessEnd
 		}
 
-		// Deduplicate items within this group based on the buffer for this Sender
+		// Deduplicate items within this group based on the buffer for this sender
 		for _, item := range msg.Value.Items {
 			if item.Err != nil {
 				unseen = append(unseen, item)
@@ -316,7 +316,7 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 	}
 }
 
-func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
+func (r *baseResolver) Resolve(senders []*sender, listeners []*Listener) {
 	r.mutexes = make([]sync.Mutex, len(senders))
 	r.inBuffers = make([]map[string]struct{}, len(senders))
 	r.outBuffer = make(map[string]struct{})
@@ -584,7 +584,7 @@ func (r *intersectionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *intersectionResolver) Resolve(senders []*Sender, listeners []*Listener) {
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*Listener) {
 	defer func() {
 		r.trk.Add(-1)
 		r.done = true
@@ -608,7 +608,7 @@ func (r *intersectionResolver) Resolve(senders []*Sender, listeners []*Listener)
 	for i, snd := range senders {
 		wg.Add(1)
 
-		go func(i int, snd *Sender) {
+		go func(i int, snd *sender) {
 			defer wg.Done()
 
 			for snd.More() {
@@ -620,7 +620,7 @@ func (r *intersectionResolver) Resolve(senders []*Sender, listeners []*Listener)
 
 				var unseen []Item
 
-				// Deduplicate items within this group based on the buffer for this Sender
+				// Deduplicate items within this group based on the buffer for this sender
 				for _, item := range msg.Value.Items {
 					if item.Err != nil {
 						continue
@@ -696,7 +696,7 @@ func (r *exclusionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
+func (r *exclusionResolver) Resolve(senders []*sender, listeners []*Listener) {
 	defer func() {
 		r.trk.Add(-1)
 		r.done = true
@@ -705,7 +705,7 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	r.trk.Add(1)
 
 	if len(senders) != 2 {
-		panic("exclusion Resolver requires two Senders")
+		panic("exclusion Resolver requires two senders")
 	}
 	var wg sync.WaitGroup
 
@@ -715,10 +715,10 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	var includedErrs []Item
 	var excludedErrs []Item
 
-	var procIncluded func(*Sender)
-	var procExcluded func(*Sender)
+	var procIncluded func(*sender)
+	var procExcluded func(*sender)
 
-	procIncluded = func(snd *Sender) {
+	procIncluded = func(snd *sender) {
 		defer wg.Done()
 
 		for snd.More() {
@@ -741,7 +741,7 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 		}
 	}
 
-	procExcluded = func(snd *Sender) {
+	procExcluded = func(snd *sender) {
 		defer wg.Done()
 
 		for snd.More() {
@@ -829,7 +829,7 @@ func newEchoTracker(parent tracker) tracker {
 
 type worker struct {
 	status    *concurrency.StatusPool
-	senders   []*Sender
+	senders   []*sender
 	listeners []*Listener
 	resolver  Resolver
 	trk       tracker
@@ -959,9 +959,9 @@ func (lst *Listener) Close() {
 	lst.cons.Close()
 }
 
-// Sender is a struct that contains fields relevant to the producing
+// sender is a struct that contains fields relevant to the producing
 // end of a pipeline connection.
-type Sender struct {
+type sender struct {
 	// edge is the weighted graph edge that is producing.
 	edge *Edge
 
@@ -975,16 +975,16 @@ type Sender struct {
 	numProcs int
 }
 
-func (snd *Sender) Recv() (Message[Group], bool) {
+func (snd *sender) Recv() (Message[Group], bool) {
 	return snd.prod.Recv()
 }
 
-func (snd *Sender) More() bool {
+func (snd *sender) More() bool {
 	return !snd.prod.Done()
 }
 
 func (w *worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
-	w.senders = append(w.senders, &Sender{
+	w.senders = append(w.senders, &sender{
 		edge:      edge,
 		prod:      p,
 		chunkSize: chunkSize,
