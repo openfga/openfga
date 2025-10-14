@@ -877,7 +877,7 @@ func (m *Message[T]) Done() {
 	}
 }
 
-type Producer[T any] interface {
+type producer[T any] interface {
 	Recv() (Message[T], bool)
 	Done() bool
 }
@@ -965,7 +965,7 @@ type Sender struct {
 	// edge is the weighted graph edge that is producing.
 	edge *Edge
 
-	prod Producer[Group]
+	prod producer[Group]
 
 	// chunkSize is the target number of items to include in each
 	// outbound message. A value less than 1 indicates an unlimited
@@ -983,7 +983,7 @@ func (snd *Sender) More() bool {
 	return !snd.prod.Done()
 }
 
-func (w *Worker) Listen(edge *Edge, p Producer[Group], chunkSize int, numProcs int) {
+func (w *Worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &Sender{
 		edge:      edge,
 		prod:      p,
@@ -1031,7 +1031,7 @@ func (s *staticProducer) Done() bool {
 	return s.pos >= len(s.groups)
 }
 
-func newStaticProducer(trk tracker, groups ...Group) Producer[Group] {
+func newStaticProducer(trk tracker, groups ...Group) producer[Group] {
 	if trk != nil {
 		trk.Add(int64(len(groups)))
 	}
