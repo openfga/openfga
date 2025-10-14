@@ -167,10 +167,10 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-// Resolver is an interface that is consumed by a Worker struct.
-// a Resolver is responsible for consuming messages from a Worker's
+// Resolver is an interface that is consumed by a worker struct.
+// a Resolver is responsible for consuming messages from a worker's
 // Senders and broadcasting the result of processing the consumed
-// messages to the Worker's Listeners.
+// messages to the worker's Listeners.
 type Resolver interface {
 	// Resolve is a function that consumes messages from the
 	// provided Senders, and broadcasts the results of processing
@@ -217,11 +217,11 @@ type baseResolver struct {
 	outBuffer map[string]struct{}
 
 	// status is a *concurrency.StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
-	// may or may not be shared with other Resolver instances and Workers. When the current resolver is part of a
+	// may or may not be shared with other Resolver instances and workers. When the current resolver is part of a
 	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
 	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" Senders have completed.
 	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
-	// case, the parent Worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
+	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
 	status *concurrency.StatusPool
 }
@@ -307,7 +307,7 @@ func (r *baseResolver) process(ndx int, senders []*Sender, listeners []*Listener
 
 	ProcessEnd:
 		// Important: Indicating that the message is done will clear its count from the
-		// origin Worker's tracker.
+		// origin worker's tracker.
 		msg.Done()
 
 		// Important: This is a tight loop and needs to defer to the Go runtime so as not
@@ -336,7 +336,7 @@ func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
 
 		// Any sender with an edge that has a value for its recursive relation will be treated
 		// as recursive, so long as it is not part of a tuple cycle. When the edge is part of
-		// a tuple cycle, treating it as recursive would cause the parent Worker to be closed
+		// a tuple cycle, treating it as recursive would cause the parent worker to be closed
 		// too early.
 		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
 
@@ -381,7 +381,7 @@ func (r *baseResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	// indicating that the parent is ready for cleanup once all messages have finished processing.
 	r.status.Set(r.id, false)
 
-	// Recursive senders will process infinitely until the parent Worker's watchdog goroutine kills
+	// Recursive senders will process infinitely until the parent worker's watchdog goroutine kills
 	// them.
 	wgRecursive.Wait()
 }
@@ -827,7 +827,7 @@ func newEchoTracker(parent tracker) tracker {
 	}
 }
 
-type Worker struct {
+type worker struct {
 	status    *concurrency.StatusPool
 	senders   []*Sender
 	listeners []*Listener
@@ -836,11 +836,11 @@ type Worker struct {
 	wg        sync.WaitGroup
 }
 
-func (w *Worker) Active() bool {
+func (w *worker) Active() bool {
 	return w.resolver.Ready() || w.trk.Load() != 0
 }
 
-func (w *Worker) Start() {
+func (w *worker) Start() {
 	w.wg.Add(1)
 
 	go func() {
@@ -856,13 +856,13 @@ func (w *Worker) Start() {
 	}()
 }
 
-func (w *Worker) Close() {
+func (w *worker) Close() {
 	for _, lst := range w.listeners {
 		lst.Close()
 	}
 }
 
-func (w *Worker) Wait() {
+func (w *worker) Wait() {
 	w.wg.Wait()
 }
 
@@ -983,7 +983,7 @@ func (snd *Sender) More() bool {
 	return !snd.prod.Done()
 }
 
-func (w *Worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
+func (w *worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &Sender{
 		edge:      edge,
 		prod:      p,
@@ -992,7 +992,7 @@ func (w *Worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs i
 	})
 }
 
-func (w *Worker) Subscribe(node *Node) *Pipe {
+func (w *worker) Subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
 	p := &Pipe{
@@ -1108,8 +1108,8 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-func (pipe *Pipeline) worker(node *Node, trk tracker, status *concurrency.StatusPool) *Worker {
-	var w Worker
+func (pipe *Pipeline) worker(node *Node, trk tracker, status *concurrency.StatusPool) *worker {
+	var w worker
 
 	w.status = status
 	w.trk = trk
@@ -1261,7 +1261,7 @@ func (pipe *Pipeline) worker(node *Node, trk tracker, status *concurrency.Status
 
 type path struct {
 	pipe    *Pipeline
-	workers map[*Node]*Worker
+	workers map[*Node]*worker
 	trk     atomic.Int64
 }
 
@@ -1331,7 +1331,7 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 
 	p := path{
 		pipe:    pipe,
-		workers: make(map[*Node]*Worker),
+		workers: make(map[*Node]*worker),
 	}
 	p.resolve((*Node)(source), target, nil, nil)
 
