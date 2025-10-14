@@ -1,6 +1,37 @@
-package concurrency
+package reverseexpand
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
+
+type tracker interface {
+	Add(int64) int64
+	Load() int64
+}
+
+type echoTracker struct {
+	local  atomic.Int64
+	parent tracker
+}
+
+func (t *echoTracker) Add(i int64) int64 {
+	value := t.local.Add(i)
+	if t.parent != nil {
+		t.parent.Add(i)
+	}
+	return value
+}
+
+func (t *echoTracker) Load() int64 {
+	return t.local.Load()
+}
+
+func newEchoTracker(parent tracker) tracker {
+	return &echoTracker{
+		parent: parent,
+	}
+}
 
 // StatusPool is a struct that aggregates status values, as booleans, from multiple sources
 // into a single boolean status value. Each source must register itself using the `Register`

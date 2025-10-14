@@ -13,7 +13,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/checkutil"
-	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/seq"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -68,7 +67,7 @@ type Group struct {
 
 // strtoItem is a function that accepts a string input and returns an Item
 // that contains the input as its `Value` value.
-func StrToItem(s string) Item {
+func strToItem(s string) Item {
 	return Item{Value: s}
 }
 
@@ -167,11 +166,11 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 	}
 }
 
-// Resolver is an interface that is consumed by a worker struct.
-// a Resolver is responsible for consuming messages from a worker's
+// resolver is an interface that is consumed by a worker struct.
+// a resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
 // messages to the worker's listeners.
-type Resolver interface {
+type resolver interface {
 	// Resolve is a function that consumes messages from the
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
@@ -180,24 +179,24 @@ type Resolver interface {
 	Ready() bool
 }
 
-// Interpreter is an interface that exposes a method for interpreting input for an edge into output.
-type Interpreter interface {
+// interpreter is an interface that exposes a method for interpreting input for an edge into output.
+type interpreter interface {
 	Interpret(edge *Edge, items []Item) iter.Seq[Item]
 }
 
-// baseResolver is a struct that implements the `Resolver` interface and acts as the standard Resolver for most
+// baseResolver is a struct that implements the `resolver` interface and acts as the standard resolver for most
 // workers. A baseResolver handles both recursive and non-recursive edges concurrently. The baseResolver's "ready"
 // status will remain `true` until all of its senders that produce input from external sources have finished, and
 // there exist no more in-flight messages for the parent worker. When recursive edges exist, the parent worker for
-// this Resolver type requires its internal watchdog process to initiate a shutdown.
+// this resolver type requires its internal watchdog process to initiate a shutdown.
 type baseResolver struct {
 	// id is an identifier provided when registering with the baseResolver's StatusPool. The registration happens
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
 	id int
 
-	// interpreter is an `Interpreter` that transforms a sender's input into output which it broadcasts to all
+	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
-	interpreter Interpreter
+	interpreter interpreter
 
 	// mutexes each protect map access for a buffer within inBuffers at the same index.
 	mutexes []sync.Mutex
@@ -206,24 +205,24 @@ type baseResolver struct {
 	// input feed. Each buffer's index corresponds to its associated sender's index. Each sender needs
 	// a separate deduplication buffer because it is valid for the same object to be receieved on multiple
 	// edges producing to the same node. This is specifically true in the case of recursive edges, where
-	// a single Resolver may have multiple recursive edges that must receive the same objects.
+	// a single resolver may have multiple recursive edges that must receive the same objects.
 	inBuffers []map[string]struct{}
 
 	// outMu protects map access to outBuffer.
 	outMu sync.Mutex
 
-	// outBuffer contains a map, used as a hash set, for deduplicating each Resolver's output. A single
-	// Resolver should only output an object once.
+	// outBuffer contains a map, used as a hash set, for deduplicating each resolver's output. A single
+	// resolver should only output an object once.
 	outBuffer map[string]struct{}
 
-	// status is a *concurrency.StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
-	// may or may not be shared with other Resolver instances and workers. When the current resolver is part of a
+	// status is a *StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
+	// may or may not be shared with other resolver instances and workers. When the current resolver is part of a
 	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
 	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" senders have completed.
 	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
 	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
-	status *concurrency.StatusPool
+	status *StatusPool
 }
 
 func (r *baseResolver) Ready() bool {
@@ -575,7 +574,7 @@ func (o *omniInterpreter) Interpret(edge *Edge, items []Item) iter.Seq[Item] {
 }
 
 type intersectionResolver struct {
-	interpreter Interpreter
+	interpreter interpreter
 	done        bool
 	trk         tracker
 }
@@ -669,7 +668,7 @@ OutputLoop:
 		allErrs = append(allErrs, errList...)
 	}
 
-	seq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(maps.Keys(objects), StrToItem))
+	seq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(maps.Keys(objects), strToItem))
 
 	var items []Item
 
@@ -687,7 +686,7 @@ OutputLoop:
 }
 
 type exclusionResolver struct {
-	interpreter Interpreter
+	interpreter interpreter
 	done        bool
 	trk         tracker
 }
@@ -705,7 +704,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	r.trk.Add(1)
 
 	if len(senders) != 2 {
-		panic("exclusion Resolver requires two senders")
+		panic("exclusion resolver requires two senders")
 	}
 	var wg sync.WaitGroup
 
@@ -782,7 +781,7 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 		return !ok
 	})
 
-	flattenedSeq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(filteredSeq, StrToItem))
+	flattenedSeq := seq.Flatten(seq.Sequence(allErrs...), seq.Transform(filteredSeq, strToItem))
 
 	var items []Item
 
@@ -799,48 +798,20 @@ func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	}
 }
 
-type tracker interface {
-	Add(int64) int64
-	Load() int64
-}
-
-type echoTracker struct {
-	local  atomic.Int64
-	parent tracker
-}
-
-func (t *echoTracker) Add(i int64) int64 {
-	value := t.local.Add(i)
-	if t.parent != nil {
-		t.parent.Add(i)
-	}
-	return value
-}
-
-func (t *echoTracker) Load() int64 {
-	return t.local.Load()
-}
-
-func newEchoTracker(parent tracker) tracker {
-	return &echoTracker{
-		parent: parent,
-	}
-}
-
 type worker struct {
-	status    *concurrency.StatusPool
+	status    *StatusPool
 	senders   []*sender
 	listeners []*listener
-	resolver  Resolver
+	resolver  resolver
 	trk       tracker
 	wg        sync.WaitGroup
 }
 
-func (w *worker) Active() bool {
+func (w *worker) active() bool {
 	return w.resolver.Ready() || w.trk.Load() != 0
 }
 
-func (w *worker) Start() {
+func (w *worker) start() {
 	w.wg.Add(1)
 
 	go func() {
@@ -856,90 +827,14 @@ func (w *worker) Start() {
 	}()
 }
 
-func (w *worker) Close() {
+func (w *worker) close() {
 	for _, lst := range w.listeners {
 		lst.close()
 	}
 }
 
-func (w *worker) Wait() {
+func (w *worker) wait() {
 	w.wg.Wait()
-}
-
-type Message[T any] struct {
-	Value T
-	done  func()
-}
-
-func (m *Message[T]) Done() {
-	if m.done != nil {
-		m.done()
-	}
-}
-
-type producer[T any] interface {
-	Recv() (Message[T], bool)
-	Done() bool
-}
-
-type consumer[T any] interface {
-	Send(T)
-	Close()
-}
-
-type Pipe struct {
-	ch   chan Group
-	mu   sync.Mutex
-	trk  tracker
-	done bool
-}
-
-func (p *Pipe) Send(g Group) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.done {
-		// fmt.Printf("CLOSED PIPE %#v", g)
-		panic("called Send on a closed Pipe")
-	}
-	p.trk.Add(1)
-	p.ch <- g
-}
-
-func (p *Pipe) Recv() (Message[Group], bool) {
-	select {
-	case group, ok := <-p.ch:
-		if !ok {
-			return Message[Group]{}, ok
-		}
-
-		fn := func() {
-			p.mu.Lock()
-			defer p.mu.Unlock()
-			p.trk.Add(-1)
-		}
-		return Message[Group]{Value: group, done: sync.OnceFunc(fn)}, ok
-	default:
-	}
-	return Message[Group]{}, false
-}
-
-func (p *Pipe) Done() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	return p.done && p.trk.Load() == 0
-}
-
-func (p *Pipe) Close() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.done {
-		return
-	}
-	close(p.ch)
-	p.done = true
 }
 
 // listener is a struct that contains fields relevant to the listening
@@ -983,7 +878,7 @@ func (snd *sender) more() bool {
 	return !snd.prod.Done()
 }
 
-func (w *worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
+func (w *worker) listen(edge *Edge, p producer[Group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &sender{
 		edge:      edge,
 		prod:      p,
@@ -992,7 +887,7 @@ func (w *worker) Listen(edge *Edge, p producer[Group], chunkSize int, numProcs i
 	})
 }
 
-func (w *worker) Subscribe(node *Node) *Pipe {
+func (w *worker) subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
 	p := &Pipe{
@@ -1006,40 +901,6 @@ func (w *worker) Subscribe(node *Node) *Pipe {
 	})
 
 	return p
-}
-
-type staticProducer struct {
-	groups []Group
-	pos    int
-	trk    tracker
-}
-
-func (s *staticProducer) Recv() (Message[Group], bool) {
-	if s.pos < len(s.groups) {
-		value := s.groups[s.pos]
-		s.pos++
-
-		fn := func() {
-			s.trk.Add(-1)
-		}
-		return Message[Group]{Value: value, done: sync.OnceFunc(fn)}, true
-	}
-	return Message[Group]{}, false
-}
-
-func (s *staticProducer) Done() bool {
-	return s.pos >= len(s.groups)
-}
-
-func newStaticProducer(trk tracker, groups ...Group) producer[Group] {
-	if trk != nil {
-		trk.Add(int64(len(groups)))
-	}
-
-	return &staticProducer{
-		groups: groups,
-		trk:    trk,
-	}
 }
 
 type Pipeline struct {
@@ -1108,13 +969,13 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-func (pipe *Pipeline) worker(node *Node, trk tracker, status *concurrency.StatusPool) *worker {
+func (pipe *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
 	w.status = status
 	w.trk = trk
 
-	var r Resolver
+	var r resolver
 
 	id := status.Register()
 	status.Set(id, true)
@@ -1265,7 +1126,7 @@ type path struct {
 	trk     atomic.Int64
 }
 
-func (p *path) resolve(source *Node, target Target, trk tracker, status *concurrency.StatusPool) bool {
+func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) bool {
 	if _, ok := p.workers[source]; ok {
 		return true
 	}
@@ -1275,7 +1136,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *concurr
 	}
 
 	if status == nil {
-		status = new(concurrency.StatusPool)
+		status = new(StatusPool)
 	}
 
 	w := p.pipe.worker(source, trk, status)
@@ -1288,7 +1149,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *concurr
 			// source node is the target node.
 			var group Group
 			group.Items = []Item{Item{Value: target.id}}
-			w.Listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case NodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
@@ -1298,7 +1159,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *concurr
 			// source node is the target node or has the same type as the target.
 			var group Group
 			group.Items = []Item{Item{Value: "*"}}
-			w.Listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+			w.listen(nil, newStaticProducer(&p.trk, group), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
@@ -1309,7 +1170,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *concurr
 
 	for _, edge := range edges {
 		var track tracker
-		var stat *concurrency.StatusPool
+		var stat *StatusPool
 
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
@@ -1320,7 +1181,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *concurr
 
 		p.resolve(edge.GetTo(), target, track, stat)
 
-		w.Listen(edge, p.workers[edge.GetTo()].Subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
 	}
 
 	return false
@@ -1342,10 +1203,10 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 
 	var wg sync.WaitGroup
 
-	results := sourceWorker.Subscribe(nil)
+	results := sourceWorker.subscribe(nil)
 
 	for _, w := range p.workers {
-		w.Start()
+		w.start()
 	}
 
 	wg.Add(1)
@@ -1356,8 +1217,8 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 			var inactiveCount int
 
 			for _, w := range p.workers {
-				if !w.Active() {
-					w.Close()
+				if !w.active() {
+					w.close()
 					inactiveCount++
 				}
 			}
@@ -1371,12 +1232,12 @@ func (pipe *Pipeline) Build(ctx context.Context, source Source, target Target) i
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
 				for _, w := range p.workers {
-					w.Close()
+					w.close()
 				}
 
 				// wait for all workers to finish
 				for _, w := range p.workers {
-					w.Wait()
+					w.wait()
 				}
 				break
 			}
