@@ -882,7 +882,7 @@ type producer[T any] interface {
 	Done() bool
 }
 
-type Consumer[T any] interface {
+type consumer[T any] interface {
 	Send(T)
 	Close()
 }
@@ -945,7 +945,7 @@ func (p *Pipe) Close() {
 // Listener is a struct that contains fields relevant to the listening
 // end of a pipeline connection.
 type Listener struct {
-	cons Consumer[Group]
+	cons consumer[Group]
 
 	// node is the weighted graph node that is listening.
 	node *Node
