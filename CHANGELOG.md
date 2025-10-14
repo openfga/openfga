@@ -9,6 +9,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [Unreleased]
 
 ## [1.10.3] - 2025-10-14
+### Changed
+- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+
 ### Fixed
 - Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
 
@@ -16,7 +19,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 - Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
-- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
 
 ### Fixed
 - Fixed a bug where experimental ReverseExpand constructed the underlying check relation incorrectly for intersection and exclusion in ListObjects. [#2721](https://github.com/openfga/openfga/pull/2721)
