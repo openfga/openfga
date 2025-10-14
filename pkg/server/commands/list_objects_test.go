@@ -609,10 +609,9 @@ func runOneBenchmark(
 ) {
 	if optimizationsEnabled {
 		name += "_with_optimization"
-		query.ff = featureflags.NewHardcodedBooleanClient(true)
-	} else {
-		query.ff = featureflags.NewHardcodedBooleanClient(false)
 	}
+	query.ff = featureflags.NewHardcodedBooleanClient(optimizationsEnabled)
+
 	var latencies []time.Duration
 	b.Run(name, func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

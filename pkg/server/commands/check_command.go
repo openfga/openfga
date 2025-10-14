@@ -77,7 +77,7 @@ func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQue
 	}
 }
 
-func WithCheckOptimizationsEnabled(enabled bool) CheckQueryOption {
+func WithOptimizations(enabled bool) CheckQueryOption {
 	return func(c *CheckQuery) {
 		c.optimizationsEnabled = enabled
 	}

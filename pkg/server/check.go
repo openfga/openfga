@@ -20,6 +20,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
@@ -77,6 +78,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		commands.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, nil)),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{

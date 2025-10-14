@@ -49,13 +49,12 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	delegate             CheckResolver
-	concurrencyLimit     int
-	upstreamTimeout      time.Duration
-	planner              *planner.Planner
-	logger               logger.Logger
-	optimizationsEnabled bool
-	maxResolutionDepth   uint32
+	delegate           CheckResolver
+	concurrencyLimit   int
+	upstreamTimeout    time.Duration
+	planner            *planner.Planner
+	logger             logger.Logger
+	maxResolutionDepth uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -904,7 +903,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 		}
 
-		if len(possibleResolvers) == 1 || !req.optimizationsEnabled {
+		if len(possibleStrategies) == 1 || !req.optimizationsEnabled {
 			// short circuit, no additional resolvers are available or planner is not enabled yet
 			return resolver(ctx, req, rewrite, filteredIter)(ctx)
 		}

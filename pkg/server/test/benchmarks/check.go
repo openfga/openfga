@@ -389,7 +389,7 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 			graph.NewLocalChecker(),
 			typeSystem,
 			commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
-			commands.WithCheckOptimizationsEnabled(true),
+			commands.WithOptimizations(true),
 		)
 
 		b.Run(name, func(b *testing.B) {
@@ -482,7 +482,7 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 		graph.NewLocalChecker(),
 		typeSystemTwo,
 		commands.WithCheckCommandMaxConcurrentReads(maxConcurrentReads),
-		commands.WithCheckOptimizationsEnabled(true),
+		commands.WithOptimizations(true),
 	)
 
 	b.Run("benchmark_with_bypass_userset_read", func(b *testing.B) {
