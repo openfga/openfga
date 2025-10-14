@@ -13,8 +13,9 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/seq"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/seq"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -215,14 +216,14 @@ type baseResolver struct {
 	// Resolver should only output an object once.
 	outBuffer map[string]struct{}
 
-	// status is a *StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
+	// status is a *concurrency.StatusPool instance that tracks the status of the baseResolver instance. This *StatusPool value
 	// may or may not be shared with other Resolver instances and Workers. When the current resolver is part of a
 	// recursive chain, then this *StatusPool value is shared with each of the participating resolvers. The status
 	// of a baseResolver is assumed to be `true` from the point of initialization, until all "standard" Senders have completed.
 	// A baseResolver's status can be `false` while "recursive" senders are still actively processing messages. In that
 	// case, the parent Worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
-	status *StatusPool
+	status *concurrency.StatusPool
 }
 
 func (r *baseResolver) Ready() bool {
@@ -798,67 +799,6 @@ func (r *exclusionResolver) Resolve(senders []*Sender, listeners []*Listener) {
 	}
 }
 
-// StatusPool is a struct that aggregates status values, as booleans, from multiple sources
-// into a single boolean status value. Each source must register itself using the `Register`
-// method and supply the returned value in each call to `Set` when updating the source's status
-// value. The default state of a StatusPool is `false` for all sources. All StatusPool methods
-// are thread safe.
-type StatusPool struct {
-	mu   sync.Mutex
-	pool []uint64
-	top  int
-}
-
-// Register is a function that creates a new entry in the StatusPool for a source and returns
-// an identifier that is unique within the context of the StatusPool instance. The returned
-// integer identifier values are predictable incrementing values beginning at 0. The `Register`
-// method is thread safe.
-func (sp *StatusPool) Register() int {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-
-	capacity := len(sp.pool)
-
-	if sp.top/64 >= capacity {
-		sp.pool = append(sp.pool, 0)
-	}
-	id := sp.top
-	sp.top++
-	return id
-}
-
-// Set is a function that accepts a registered identifier and a boolean status. The caller must
-// provide an integer identifier returned from an initial call to the `Register` function associated
-// with the desired source. The `Set` function is thread safe.
-func (sp *StatusPool) Set(id int, status bool) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-
-	ndx := id / 64
-	pos := uint64(1 << (id % 64))
-
-	if status {
-		sp.pool[ndx] |= pos
-		return
-	}
-	sp.pool[ndx] &^= pos
-}
-
-// Status is a function that returns the cummulative status of all sources registered within the pool.
-// If any registered source's status is set to `true`, the return value of the `Status` function will
-// be `true`. The default value is `false`. The `Status` function is thread safe.
-func (sp *StatusPool) Status() bool {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
-
-	var status uint64
-
-	for _, s := range sp.pool {
-		status |= s
-	}
-	return status != 0
-}
-
 type Tracker interface {
 	Add(int64) int64
 	Load() int64
@@ -888,7 +828,7 @@ func EchoTracker(parent Tracker) Tracker {
 }
 
 type Worker struct {
-	status    *StatusPool
+	status    *concurrency.StatusPool
 	senders   []*Sender
 	listeners []*Listener
 	resolver  Resolver
@@ -1168,7 +1108,7 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *StatusPool) *Worker {
+func (pipe *Pipeline) worker(node *Node, tracker Tracker, status *concurrency.StatusPool) *Worker {
 	var w Worker
 
 	w.status = status
@@ -1325,7 +1265,7 @@ type path struct {
 	tracker atomic.Int64
 }
 
-func (p *path) resolve(source *Node, target Target, tracker Tracker, status *StatusPool) bool {
+func (p *path) resolve(source *Node, target Target, tracker Tracker, status *concurrency.StatusPool) bool {
 	if _, ok := p.workers[source]; ok {
 		return true
 	}
@@ -1335,7 +1275,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 	}
 
 	if status == nil {
-		status = new(StatusPool)
+		status = new(concurrency.StatusPool)
 	}
 
 	w := p.pipe.worker(source, tracker, status)
@@ -1369,7 +1309,7 @@ func (p *path) resolve(source *Node, target Target, tracker Tracker, status *Sta
 
 	for _, edge := range edges {
 		var track Tracker
-		var stat *StatusPool
+		var stat *concurrency.StatusPool
 
 		isRecursive := len(edge.GetRecursiveRelation()) > 0
 
