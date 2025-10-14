@@ -170,12 +170,12 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 // Resolver is an interface that is consumed by a worker struct.
 // a Resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
-// messages to the worker's Listeners.
+// messages to the worker's listeners.
 type Resolver interface {
 	// Resolve is a function that consumes messages from the
 	// provided senders, and broadcasts the results of processing
-	// the consumed messages to the provided Listeners.
-	Resolve(senders []*sender, listeners []*Listener)
+	// the consumed messages to the provided listeners.
+	Resolve(senders []*sender, listeners []*listener)
 
 	Ready() bool
 }
@@ -196,7 +196,7 @@ type baseResolver struct {
 	id int
 
 	// interpreter is an `Interpreter` that transforms a sender's input into output which it broadcasts to all
-	// of the parent worker's Listeners.
+	// of the parent worker's listeners.
 	interpreter Interpreter
 
 	// mutexes each protect map access for a buffer within inBuffers at the same index.
@@ -230,7 +230,7 @@ func (r *baseResolver) Ready() bool {
 	return r.status.Status()
 }
 
-func (r *baseResolver) process(ndx int, senders []*sender, listeners []*Listener) {
+func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
 	// Loop while the sender has a potential to yield a message.
 	for senders[ndx].More() {
 		var results iter.Seq[Item]
@@ -316,7 +316,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*Listener
 	}
 }
 
-func (r *baseResolver) Resolve(senders []*sender, listeners []*Listener) {
+func (r *baseResolver) Resolve(senders []*sender, listeners []*listener) {
 	r.mutexes = make([]sync.Mutex, len(senders))
 	r.inBuffers = make([]map[string]struct{}, len(senders))
 	r.outBuffer = make(map[string]struct{})
@@ -584,7 +584,7 @@ func (r *intersectionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *intersectionResolver) Resolve(senders []*sender, listeners []*Listener) {
+func (r *intersectionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
 		r.done = true
@@ -696,7 +696,7 @@ func (r *exclusionResolver) Ready() bool {
 	return !r.done
 }
 
-func (r *exclusionResolver) Resolve(senders []*sender, listeners []*Listener) {
+func (r *exclusionResolver) Resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
 		r.done = true
@@ -830,7 +830,7 @@ func newEchoTracker(parent tracker) tracker {
 type worker struct {
 	status    *concurrency.StatusPool
 	senders   []*sender
-	listeners []*Listener
+	listeners []*listener
 	resolver  Resolver
 	trk       tracker
 	wg        sync.WaitGroup
@@ -942,20 +942,20 @@ func (p *Pipe) Close() {
 	p.done = true
 }
 
-// Listener is a struct that contains fields relevant to the listening
+// listener is a struct that contains fields relevant to the listening
 // end of a pipeline connection.
-type Listener struct {
+type listener struct {
 	cons consumer[Group]
 
 	// node is the weighted graph node that is listening.
 	node *Node
 }
 
-func (lst *Listener) Send(g Group) {
+func (lst *listener) Send(g Group) {
 	lst.cons.Send(g)
 }
 
-func (lst *Listener) Close() {
+func (lst *listener) Close() {
 	lst.cons.Close()
 }
 
@@ -1000,7 +1000,7 @@ func (w *worker) Subscribe(node *Node) *Pipe {
 		trk: newEchoTracker(w.trk),
 	}
 
-	w.listeners = append(w.listeners, &Listener{
+	w.listeners = append(w.listeners, &listener{
 		cons: p,
 		node: node,
 	})
