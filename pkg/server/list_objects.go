@@ -293,18 +293,6 @@ func (s *Server) buildListObjectsCheckResolver() (graph.CheckResolver, graph.Che
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithName("list-objects"),
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
-		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
 	}...).Build()
