@@ -11,6 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.10.3] - 2025-10-14
 ### Changed
 - Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+- Build checkResolvers for each request instead of once at server start. [#2742](https://github.com/openfga/openfga/pull/2742)
 
 ### Fixed
 - Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
