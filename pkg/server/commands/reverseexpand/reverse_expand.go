@@ -18,7 +18,6 @@ import (
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/stack"
@@ -672,22 +671,14 @@ LoopOnIterator:
 			break LoopOnIterator
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
+		cond, _ := c.typesystem.GetCondition(tk.GetCondition().GetName())
+		condMet, err := eval.EvaluateTupleCondition(ctx, tk, cond, req.Context)
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
 		}
 
-		if !condEvalResult.ConditionMet {
-			if len(condEvalResult.MissingParameters) > 0 {
-				errs = errors.Join(errs, condition.NewEvaluationError(
-					tk.GetCondition().GetName(),
-					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
-						tuple.TupleKeyToString(tk),
-						condEvalResult.MissingParameters),
-				))
-			}
-
+		if !condMet {
 			continue
 		}
 
