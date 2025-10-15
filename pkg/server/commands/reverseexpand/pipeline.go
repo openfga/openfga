@@ -891,8 +891,7 @@ func (w *worker) subscribe(node *Node) *Pipe {
 	ch := make(chan Group, 100)
 
 	p := &Pipe{
-		ch:  ch,
-		trk: newEchoTracker(w.trk),
+		trk: w.trk,
 	}
 
 	w.listeners = append(w.listeners, &listener{
