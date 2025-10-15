@@ -910,7 +910,7 @@ func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
 	p := &Pipeline{
 		backend:   backend,
 		chunkSize: 100,
-		numProcs:  1,
+		numProcs:  3,
 	}
 
 	for _, option := range options {
@@ -1178,7 +1178,16 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		p.resolve(edge.GetTo(), target, track, stat)
 
-		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
+		numProcs := p.pipe.numProcs
+
+		if !isRecursive {
+			switch edge.GetEdgeType() {
+			case EdgeTypeDirect, EdgeTypeRewrite, EdgeTypeComputed, EdgeTypeDirectLogical:
+				numProcs = 1
+			}
+		}
+
+		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, numProcs)
 	}
 
 	return false
