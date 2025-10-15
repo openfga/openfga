@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
@@ -64,9 +65,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	checkResolver, checkResolverCloser, err := s.buildListObjectsCheckResolver()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
+
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
@@ -199,9 +206,15 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
+	checkResolver, checkResolverCloser, err := s.buildListObjectsCheckResolver()
+	if err != nil {
+		return err
+	}
+	defer checkResolverCloser()
+
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
@@ -269,4 +282,34 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 
 	return nil
+}
+
+func (s *Server) buildListObjectsCheckResolver() (graph.CheckResolver, graph.CheckResolverCloser, error) {
+	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+
+	listObjectsCheckResolver, listObjectsCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithName("list-objects"),
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, nil, err
+	}
+	return listObjectsCheckResolver, listObjectsCheckResolverCloser, nil
 }

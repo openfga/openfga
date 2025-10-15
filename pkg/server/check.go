@@ -15,6 +15,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
@@ -25,6 +26,12 @@ import (
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	const methodName = "check"
+
+	checkResolver, checkResolverCloser, err := s.buildCheckResolver()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
 
 	startTime := time.Now()
 
@@ -49,7 +56,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  apimethod.Check.String(),
 	})
 
-	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
+	err = s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +70,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	checkQuery := commands.NewCheckCommand(
 		s.datastore,
-		s.checkResolver,
+		checkResolver,
 		typesys,
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
@@ -153,4 +160,38 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return res, nil
+}
+
+func (s *Server) buildCheckResolver() (graph.CheckResolver, graph.CheckResolverCloser, error) {
+	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+			graph.WithUpstreamTimeout(s.requestTimeout),
+			graph.WithLocalCheckerLogger(s.logger),
+		}...),
+		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(true),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+			graph.WithPlanner(s.planner),
+		}...),
+		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
+			graph.ShadowResolverWithLogger(s.logger),
+			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
+			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...).Build()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return checkResolver, checkResolverCloser, nil
 }

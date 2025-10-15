@@ -51,9 +51,15 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
+	checkResolver, checkResolverCloser, err := s.buildCheckResolver()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
+
 	cmd := commands.NewBatchCheckCommand(
 		s.datastore,
-		s.checkResolver,
+		checkResolver,
 		typesys,
 		commands.WithBatchCheckCacheOptions(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithBatchCheckCommandLogger(s.logger),
