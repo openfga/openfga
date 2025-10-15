@@ -1,7 +1,6 @@
 package reverseexpand
 
 import (
-	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -30,175 +29,61 @@ type consumer[T any] interface {
 const maxPipeSize int = 100
 
 type Pipe struct {
-	mu    sync.Mutex
-	buf   [maxPipeSize]Group
-	state atomic.Uint64
-	trk   tracker
+	ch     chan Group
+	done   chan struct{}
+	closed atomic.Bool
+	finite func()
+	trk    tracker
 }
 
-type state struct {
-	head    uint16
-	tail    uint16
-	size    uint16
-	sending bool
-	done    bool
-}
-
-const (
-	done uint16 = 1 << iota
-	sending
-)
-
-func (p *Pipe) set(current uint64, st state) bool {
-	var packed uint64
-	packed |= uint64(st.head)
-	packed |= uint64(st.tail) << 16
-	packed |= uint64(st.size) << 32
-
-	var flags uint16
-	if st.done {
-		flags |= done
-	} else {
-		flags &^= done
+func NewPipe(trk tracker) *Pipe {
+	p := &Pipe{
+		ch:   make(chan Group, maxPipeSize),
+		done: make(chan struct{}),
+		trk:  trk,
 	}
 
-	if st.sending {
-		flags |= sending
-	} else {
-		flags &^= sending
-	}
+	p.finite = sync.OnceFunc(func() {
+		p.closed.Store(true)
+		close(p.done)
+	})
 
-	packed |= uint64(flags) << 48
-
-	return p.state.CompareAndSwap(current, packed)
-}
-
-func (p *Pipe) get() (uint64, state) {
-	var st state
-
-	packed := p.state.Load()
-	st.head = uint16(packed & 0xFFFF)
-	st.tail = uint16((packed >> 16) & 0xFFFF)
-	st.size = uint16((packed >> 32) & 0xFFFF)
-	flags := uint16((packed >> 48) & 0xFFFF)
-	st.done = (flags & done) != 0
-
-	return packed, st
+	return p
 }
 
 func (p *Pipe) Send(g Group) {
-	for {
-		current, st := p.get()
+	p.trk.Add(1)
 
-		if st.done {
-			panic("called Send on a closed Pipe")
-		}
-
-		if st.sending {
-			runtime.Gosched()
-			continue
-		}
-
-		st.sending = true
-
-		if p.set(current, st) {
-			p.trk.Add(1)
-			break
-		}
-
-		runtime.Gosched()
-	}
-
-	for {
-		current, st := p.get()
-
-		if st.done {
-			p.trk.Add(-1)
-			panic("called Send on a closed Pipe")
-		}
-
-		if maxPipeSize == int(st.size) {
-			runtime.Gosched()
-			continue
-		}
-
-		head := st.head
-		st.head = (st.head + 1) % uint16(maxPipeSize)
-		st.size++
-
-		st.sending = false
-
-		p.mu.Lock()
-		if !p.set(current, st) {
-			p.mu.Unlock()
-			runtime.Gosched()
-			continue
-		}
-		p.buf[head] = g
-		p.mu.Unlock()
-		break
+	select {
+	case p.ch <- g:
+	case <-p.done:
+		p.trk.Add(-1)
+		panic("called Send on a closed Pipe")
 	}
 }
 
 func (p *Pipe) Recv() (Message[Group], bool) {
-	var v Group
-
-	for {
-		current, st := p.get()
-
-		if st.size == 0 {
+	select {
+	case g, ok := <-p.ch:
+		if !ok {
 			return Message[Group]{}, false
 		}
 
-		tail := st.tail
-		st.tail = (st.tail + 1) % uint16(maxPipeSize)
-		st.size--
-
-		p.mu.Lock()
-		if p.set(current, st) {
-			v = p.buf[tail]
-			p.mu.Unlock()
-			break
+		fn := func() {
+			p.trk.Add(-1)
 		}
-		p.mu.Unlock()
-
-		runtime.Gosched()
+		return Message[Group]{Value: g, done: sync.OnceFunc(fn)}, true
+	case <-p.done:
+		return Message[Group]{}, false
 	}
-
-	fn := func() {
-		p.trk.Add(-1)
-	}
-
-	return Message[Group]{Value: v, done: sync.OnceFunc(fn)}, true
 }
 
 func (p *Pipe) Done() bool {
-	_, st := p.get()
-
-	return st.done && st.size == 0 && p.trk.Load() == 0
+	return p.closed.Load() && p.trk.Load() == 0
 }
 
 func (p *Pipe) Close() {
-	for {
-		current, st := p.get()
-
-		if st.done {
-			break
-		}
-
-		if st.sending || st.size > 0 {
-			runtime.Gosched()
-			continue
-		}
-
-		st.done = true
-
-		if p.set(current, st) {
-			break
-		}
-
-		runtime.Gosched()
-	}
+	p.finite()
 }
 
 type staticProducer struct {
