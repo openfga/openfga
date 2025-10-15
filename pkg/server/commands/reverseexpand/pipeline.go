@@ -910,7 +910,7 @@ func NewPipeline(backend *Backend, options ...PipelineOption) *Pipeline {
 	p := &Pipeline{
 		backend:   backend,
 		chunkSize: 100,
-		numProcs:  3,
+		numProcs:  1,
 	}
 
 	for _, option := range options {
