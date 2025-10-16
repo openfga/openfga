@@ -369,3 +369,35 @@ In the above example, check for (userType: user, relation: viewer, objectType: d
 The performance is dependent on the number of tuples assigned to `document#viewer` because it is **weight infinite + 1**. The more tuples assigned to `document#viewer`, the more time it will take to evaluate the check.
 The performance is also dependent on depth of recursion for `group#member` because it has **weight infinite**. The deeper the recursion, the more time it will take to evaluate the check.
 The performance is not strongly dependent on the number of `user` tuples assigned to `group#member` because that path is **weight 1**.
+
+
+Another example of interpreting weight:
+
+```dsl.openfga
+model
+  schema 1.1
+
+type user
+
+type group
+  relations
+    define member: [user, group#member]
+    
+type team
+  relations
+    define parent: [group]
+    define member: [user, team#member] or member from parent
+    
+type documents
+  relations
+    define parent: [team]
+    define viewer: member from parent
+```
+In the above example, check for (userType: user, relation: viewer, objectType: document) has a weight of infinite + 1 because it has a path to `team` type, the `team#member` is a recursive TTU relation. 
+The performance is dependent on the number of tuples assigned to `document#viewer` because it is **weight infinite + 1**. The more tuples assigned to `document#viewer`, the more time it will take to evaluate the check.
+In addition, the performance is also dependent on depth of recursion for `team#member` because it has **weight infinite**. The deeper the recursion, the more time it will take to evaluate the check.
+The performance is also dependent on the number of group assigned to team's parent because it has a path to `group` type, which has a direct path to `user` type. The more groups assigned to team's parent because team's parent is weight 2 or above. 
+In this case, it is infinite weight.
+The performance is dependent on the depth of recursion for `group#member` because it has **weight infinite**. The deeper the recursion, the more time it will take to evaluate the check.
+The performance is not strongly dependent on the number of `user` tuples assigned to `group#member` because that path is **weight 1**.
+
