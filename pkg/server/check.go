@@ -78,7 +78,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
-		commands.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, nil)),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
@@ -171,7 +170,7 @@ func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, nil)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
@@ -179,7 +178,7 @@ func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
+			graph.WithOptimizations(true), // shadow checker always uses optimizations
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),

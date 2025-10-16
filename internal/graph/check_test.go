@@ -1875,16 +1875,15 @@ func TestCheckTTU(t *testing.T) {
 		defer mockController.Finish()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-		checker := NewLocalChecker(WithMaxResolutionDepth(24))
+		checker := NewLocalChecker(WithMaxResolutionDepth(24), WithOptimizations(true))
 		t.Cleanup(checker.Close)
 
 		storeID := ulid.Make().String()
 
 		req := &ResolveCheckRequest{
-			StoreID:              storeID,
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(),
-			optimizationsEnabled: true,
+			StoreID:         storeID,
+			TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
+			RequestMetadata: NewCheckRequestMetadata(),
 		}
 
 		ctx := setRequestContext(context.Background(), typesys, mockDatastore, nil)

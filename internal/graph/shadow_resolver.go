@@ -66,8 +66,7 @@ func (s ShadowResolver) ResolveCheck(ctx context.Context, req *ResolveCheckReque
 		// only successful requests will be evaluated
 		resClone := res.clone()
 		reqClone := req.clone()
-		reqClone.VisitedPaths = nil          // reset completely for evaluation
-		reqClone.optimizationsEnabled = true // force enable optimizations for shadow
+		reqClone.VisitedPaths = nil // reset completely for evaluation
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()

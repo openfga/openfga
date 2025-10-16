@@ -946,62 +946,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, err
 	}
 
-	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.cacheSettings.ShouldCacheCheckQueries() {
-		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
-		)
-	}
-
-	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(s.planner),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(s.planner),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, err
-	}
-
-	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithName("list-objects"),
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, err
-	}
-
 	if s.listObjectsDispatchThrottlingEnabled {
 		s.listObjectsDispatchThrottler = throttler.NewConstantRateThrottler(s.listObjectsDispatchThrottlingFrequency, "list_objects_dispatch_throttle")
 	}
