@@ -194,6 +194,8 @@ type baseResolver struct {
 	// once, when the baseResolver is created, so this value will remain constant for the lifetime of the instance.
 	id int
 
+	ctx context.Context
+
 	// interpreter is an `interpreter` that transforms a sender's input into output which it broadcasts to all
 	// of the parent worker's listeners.
 	interpreter interpreter
@@ -269,6 +271,9 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
+			if r.ctx.Err() != nil {
+				break
+			}
 			r.outMu.Lock()
 			if _, ok := r.outBuffer[item.Value]; ok {
 				r.outMu.Unlock()
@@ -574,6 +579,7 @@ func (o *omniInterpreter) interpret(edge *Edge, items []Item) iter.Seq[Item] {
 }
 
 type intersectionResolver struct {
+	ctx         context.Context
 	interpreter interpreter
 	done        atomic.Bool
 	trk         tracker
@@ -641,6 +647,10 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 				results := r.interpreter.interpret(snd.edge, unseen)
 
 				for item := range results {
+					if r.ctx.Err() != nil {
+						break
+					}
+
 					if item.Err != nil {
 						errs[i] = append(errs[i], item)
 					}
@@ -686,6 +696,7 @@ OutputLoop:
 }
 
 type exclusionResolver struct {
+	ctx         context.Context
 	interpreter interpreter
 	done        atomic.Bool
 	trk         tracker
@@ -730,6 +741,10 @@ func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 			results := r.interpreter.interpret(snd.edge, msg.Value.Items)
 
 			for item := range results {
+				if r.ctx.Err() != nil {
+					break
+				}
+
 				if item.Err != nil {
 					includedErrs = append(includedErrs, item)
 					continue
@@ -964,7 +979,14 @@ func WithNumProcs(num int) PipelineOption {
 	}
 }
 
-func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
+type path struct {
+	ctx     context.Context
+	pipe    *Pipeline
+	workers map[*Node]*worker
+	trk     atomic.Int64
+}
+
+func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
 	w.status = status
@@ -979,8 +1001,8 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	case nodeTypeSpecificTypeAndRelation:
 		omni := &omniInterpreter{
 			hndNil:           handleLeafNode(node),
-			hndDirect:        p.backend.handleDirectEdge,
-			hndTTU:           p.backend.handleTTUEdge,
+			hndDirect:        p.pipe.backend.handleDirectEdge,
+			hndTTU:           p.pipe.backend.handleTTUEdge,
 			hndComputed:      handleIdentity,
 			hndRewrite:       handleIdentity,
 			hndDirectLogical: handleUnsupported,
@@ -989,6 +1011,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
+			ctx:         p.ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1005,6 +1028,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
+			ctx:         p.ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1021,6 +1045,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
+			ctx:         p.ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1029,8 +1054,8 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		case weightedGraph.IntersectionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        p.backend.handleDirectEdge,
-				hndTTU:           p.backend.handleTTUEdge,
+				hndDirect:        p.pipe.backend.handleDirectEdge,
+				hndTTU:           p.pipe.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1038,14 +1063,15 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &intersectionResolver{
+				ctx:         p.ctx,
 				interpreter: omni,
 				trk:         trk,
 			}
 		case weightedGraph.UnionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        p.backend.handleDirectEdge,
-				hndTTU:           p.backend.handleTTUEdge,
+				hndDirect:        p.pipe.backend.handleDirectEdge,
+				hndTTU:           p.pipe.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1054,14 +1080,15 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 			r = &baseResolver{
 				id:          id,
+				ctx:         p.ctx,
 				interpreter: omni,
 				status:      status,
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
 				hndNil:           handleUnsupported,
-				hndDirect:        p.backend.handleDirectEdge,
-				hndTTU:           p.backend.handleTTUEdge,
+				hndDirect:        p.pipe.backend.handleDirectEdge,
+				hndTTU:           p.pipe.backend.handleTTUEdge,
 				hndComputed:      handleIdentity,
 				hndRewrite:       handleIdentity,
 				hndDirectLogical: handleIdentity,
@@ -1069,6 +1096,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &exclusionResolver{
+				ctx:         p.ctx,
 				interpreter: omni,
 				trk:         trk,
 			}
@@ -1078,7 +1106,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	case nodeTypeLogicalDirectGrouping:
 		omni := &omniInterpreter{
 			hndNil:           handleUnsupported,
-			hndDirect:        p.backend.handleDirectEdge,
+			hndDirect:        p.pipe.backend.handleDirectEdge,
 			hndTTU:           handleUnsupported,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
@@ -1088,6 +1116,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
+			ctx:         p.ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1095,7 +1124,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 		omni := &omniInterpreter{
 			hndNil:           handleUnsupported,
 			hndDirect:        handleUnsupported,
-			hndTTU:           p.backend.handleTTUEdge,
+			hndTTU:           p.pipe.backend.handleTTUEdge,
 			hndComputed:      handleUnsupported,
 			hndRewrite:       handleUnsupported,
 			hndDirectLogical: handleUnsupported,
@@ -1104,6 +1133,7 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
+			ctx:         p.ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1112,13 +1142,12 @@ func (p *Pipeline) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	}
 
 	w.resolver = r
-	return &w
-}
 
-type path struct {
-	pipe    *Pipeline
-	workers map[*Node]*worker
-	trk     atomic.Int64
+	pw := &w
+
+	p.workers[node] = pw
+
+	return pw
 }
 
 func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) {
@@ -1134,7 +1163,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 		status = new(StatusPool)
 	}
 
-	w := p.pipe.worker(source, trk, status)
+	w := p.worker(source, trk, status)
 
 	p.workers[source] = w
 
@@ -1189,10 +1218,11 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 	}
 }
 
-func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
+func (p *Pipeline) Build(source Source, target Target) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(context.Background())
 
 	pth := path{
+		ctx:     ctx,
 		pipe:    p,
 		workers: make(map[*Node]*worker),
 	}
