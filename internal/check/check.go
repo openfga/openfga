@@ -3,7 +3,7 @@ package check
 import (
 	"context"
 	"errors"
-	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/planner"
-	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -75,9 +74,9 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 
 	// TODO: While we are doing the rollout, ok should never be false due it being caught by the validation in the command layer via `validateCheckRequest`.
 	// Once the rollout is done, we should swap the existing implementation with this which is much more efficient.
-	node, _ := r.model.GetNodeByID(tuple.ToObjectRelationString(tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()))
+	node, _ := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
 
-	_, ok := node.GetWeight(tuple.GetType(req.GetTupleKey().GetObject()))
+	_, ok := node.GetWeight(req.GetObjectType())
 	if !ok {
 		// If the user type is not reachable from the object type and relation, we can immediately return false.
 		return &Response{Allowed: false}, nil
@@ -113,9 +112,23 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}()
 
 	scheduledHandlers := 0
+	// TODO: Optimization to flatten all nested UNION nodes
+	/*
+		terminalEdges := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges)) // minimum capacity
+		for _, edge := range edges {
+			switch edge.GetEdgeType() {
+			case authzGraph.ComputedEdge:
+				break
+			case authzGraph.RewriteEdge:
+				break
+				default:
+				terminalEdges = append(terminalEdges, edge)
+			}
+		}
+	*/
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(req.GetTupleKey().GetUser())
+		_, ok := edge.GetWeight(req.GetUserType())
 		if !ok {
 			continue // no relation to terminal type / pruning edge traversal
 		}
@@ -168,7 +181,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	scheduledHandlers := 0
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(req.GetTupleKey().GetUser())
+		_, ok := edge.GetWeight(req.GetUserType())
 		if !ok {
 			return nil, ErrPanicRequest
 		}
@@ -205,7 +218,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		return nil, ErrPanicRequest
 	}
 	// base edge validation
-	if _, ok := edges[0].GetWeight(req.GetTupleKey().GetUser()); !ok {
+	if _, ok := edges[0].GetWeight(req.GetUserType()); !ok {
 		return nil, ErrPanicRequest
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -228,7 +241,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 	var subtract chan checkResponse
 	// excluded edge
-	if _, ok := edges[1].GetWeight(req.GetTupleKey().GetUser()); ok {
+	if _, ok := edges[1].GetWeight(req.GetUserType()); ok {
 		scheduledHandlers++
 		subtract = make(chan checkResponse, 1)
 		wg.Add(1)
@@ -318,10 +331,10 @@ func (r *Resolver) ResolveDirect(ctx context.Context, req *Request, edge *authzG
 			return r.specificType(ctx, req, edge)
 		case authzGraph.SpecificTypeWildcard:
 			// dont forget to check conditions for filtering/applying within edge.GetConditions
-			break
+			return r.specificTypeWildcard(ctx, req, edge)
 		case authzGraph.SpecificTypeAndRelation:
 			// check for recursiveRelation
-			break
+			return r.specificTypeAndRelation(ctx, req, edge)
 		}
 		break
 	case authzGraph.DirectLogicalEdge:
@@ -331,85 +344,6 @@ func (r *Resolver) ResolveDirect(ctx context.Context, req *Request, edge *authzG
 		return nil, ErrPanicRequest
 	}
 
-	return &Response{Allowed: true}, nil
-}
-
-func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
-	opts := storage.ReadUserTupleOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
-	_, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), opts)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return &Response{Allowed: false}, nil
-		}
-		return nil, err
-	}
-
-	// TODO: need version of language where NoCond is == ""
-	// TODO: tuple evaluation, bring in the previous conditional into it
-	/*
-
-		if !slices.Contains(edge.GetConditions(), t.GetKey().GetCondition().GetName()) {
-			return &Response{Allowed: false}, nil
-		}
-		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
-		conditionMet, err := tupleKeyConditionFilter(tupleKey)
-		if err != nil {
-			telemetry.TraceError(span, err)
-			return nil, err
-		}
-		if conditionMet {
-			span.SetAttributes(attribute.Bool("allowed", true))
-			response.Allowed = true
-		}
-	*/
-	return &Response{Allowed: true}, nil
-}
-
-func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
-	opts := storage.ReadUsersetTuplesOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
-	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
-	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-		Object:                      req.GetTupleKey().GetObject(),
-		Relation:                    req.GetTupleKey().GetRelation(),
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
-	}, opts)
-	if err != nil {
-		return nil, err
-	}
-
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	)
-	defer filteredIter.Stop()
-
-	_, err = filteredIter.Next(ctx)
-	if err != nil {
-		if errors.Is(err, storage.ErrIteratorDone) {
-			return response, nil
-		}
-		return nil, err
-	}
-	// when we get to here, it means there is public wild card assigned
-	span.SetAttributes(attribute.Bool("allowed", true))
-	response.Allowed = true
-	return response, nil
-}
-
-func (r *Resolver) ResolveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	return &Response{Allowed: true}, nil
 }
 
@@ -433,5 +367,152 @@ func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authz
 	default:
 		return nil, ErrPanicRequest
 	}
+}
 
+func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "specificType",
+		trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
+
+	opts := storage.ReadUserTupleOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), opts)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &Response{Allowed: false}, nil
+		}
+		return nil, err
+	}
+
+	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	if allowed {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
+	return &Response{Allowed: allowed}, nil
+}
+
+func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "specificTypeWildcard",
+		trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
+
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
+	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		Object:                      req.GetTupleKey().GetObject(),
+		Relation:                    req.GetTupleKey().GetRelation(),
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	defer iter.Stop()
+
+	// NOTE: Iterator should only really have one entry which should be a specific wildcard tuple.
+	t, err := iter.Head(ctx)
+	if err != nil {
+		if errors.Is(err, storage.ErrIteratorDone) {
+			return &Response{Allowed: false}, nil
+		}
+		return nil, err
+	}
+
+	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	if err != nil {
+		return nil, err
+	}
+	if allowed {
+		span.SetAttributes(attribute.Bool("allowed", true))
+	}
+	return &Response{Allowed: allowed}, nil
+}
+
+// TODO: At the current time we will only handle non recursive/tuple cycle which have to be validated at an earlier stage
+func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	ctx, span := tracer.Start(ctx, "specificTypeAndRelation",
+		trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
+
+	opts := storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		Object:   req.GetTupleKey().GetObject(),
+		Relation: req.GetTupleKey().GetRelation(),
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
+			Type:               objectType,
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+		}},
+	}, opts)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: Wrap iterator with condition filter
+	defer iter.Stop()
+
+	// TODO: Need optimization to solve userset as principal
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+		// TODO: default strategy
+		return defaultPoop
+	}
+
+	var b strings.Builder
+	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("userset|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(req.GetObjectType())
+	b.WriteString("|")
+	b.WriteString(req.GetTupleKey().GetRelation())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|userset|")
+	b.WriteString(edge.GetTo().GetUniqueLabel())
+
+	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		defaultResolver: defaultPlan,
+	}
+
+	// NOTE: assume it will always be ok given we have already validated the edge before getting here
+	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+		possibleStrategies[weight2] = weight2Plan
+	}
+
+	keyPlan := r.planner.GetKeyPlan(b.String())
+	strategy := keyPlan.SelectStrategy(possibleStrategies)
+
+	return strategy()
+}
+
+func (r *Resolver) ResolveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	return &Response{Allowed: true}, nil
 }

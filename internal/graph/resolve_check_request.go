@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/openfga/openfga/pkg/tuple"
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -30,6 +31,9 @@ type ResolveCheckRequest struct {
 	// AuthorizationModelID, StoreID, Context, and ContextualTuples.
 	// the invariantCacheKey is computed once per request, and passed to sub-problems via copy in .clone()
 	invariantCacheKey string
+
+	objectType string
+	userType   string
 }
 
 type ResolveCheckRequestMetadata struct {
@@ -87,6 +91,9 @@ func NewResolveCheckRequest(
 		Consistency:          params.Consistency,
 		// avoid having to read from cache consistently by propagating it
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
+
+		objectType: tuple.GetType(params.TupleKey.GetObject()),
+		userType:   tuple.GetType(params.TupleKey.GetUser()),
 	}
 
 	keyBuilder := &strings.Builder{}
@@ -132,6 +139,8 @@ func (r *ResolveCheckRequest) clone() *ResolveCheckRequest {
 		Consistency:               r.GetConsistency(),
 		LastCacheInvalidationTime: r.GetLastCacheInvalidationTime(),
 		invariantCacheKey:         r.GetInvariantCacheKey(),
+		objectType:                r.objectType,
+		userType:                  r.userType,
 	}
 }
 
@@ -203,4 +212,17 @@ func (r *ResolveCheckRequest) GetInvariantCacheKey() string {
 		return ""
 	}
 	return r.invariantCacheKey
+}
+
+func (r *ResolveCheckRequest) GetObjectType() string {
+	if r == nil {
+		return ""
+	}
+	return r.objectType
+}
+func (r *ResolveCheckRequest) GetUserType() string {
+	if r == nil {
+		return ""
+	}
+	return r.userType
 }
