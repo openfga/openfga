@@ -18,6 +18,7 @@ const (
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 	DefaultMaxAuthorizationModelCacheSize   = 100000
+	DefaultMaxTypesystemCacheSize           = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 10
@@ -168,7 +169,6 @@ type TLSConfig struct {
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
-
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string

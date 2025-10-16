@@ -516,7 +516,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	}
 
 	authenticator, err := s.authenticatorConfig(config)
-
 	if err != nil {
 		return err
 	}
@@ -662,6 +661,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithDatastore(datastore),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
+		server.WithTypesystemCacheSize(config.Datastore.MaxCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
@@ -812,8 +812,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
-				AllowedMethods: []string{http.MethodGet, http.MethodPost,
-					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+				AllowedMethods: []string{
+					http.MethodGet, http.MethodPost,
+					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut,
+				},
 			}).Handler(handler), s.Logger),
 		}
 
