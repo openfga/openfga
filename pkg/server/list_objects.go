@@ -65,7 +65,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	checkResolver, checkResolverCloser, err := s.buildListObjectsCheckResolver()
+	builder := s.getListObjectsCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +207,8 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	checkResolver, checkResolverCloser, err := s.buildListObjectsCheckResolver()
+	builder := s.getListObjectsCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return err
 	}
@@ -284,10 +286,10 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	return nil
 }
 
-func (s *Server) buildListObjectsCheckResolver() (graph.CheckResolver, graph.CheckResolverCloser, error) {
+func (s *Server) getListObjectsCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 
-	listObjectsCheckResolver, listObjectsCheckResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
@@ -295,9 +297,5 @@ func (s *Server) buildListObjectsCheckResolver() (graph.CheckResolver, graph.Che
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, nil, err
-	}
-	return listObjectsCheckResolver, listObjectsCheckResolverCloser, nil
+	}...)
 }

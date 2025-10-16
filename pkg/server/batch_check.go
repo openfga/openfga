@@ -51,7 +51,8 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	checkResolver, checkResolverCloser, err := s.buildCheckResolver()
+	builder := s.getCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
 	}

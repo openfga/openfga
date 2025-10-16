@@ -27,7 +27,8 @@ import (
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	const methodName = "check"
 
-	checkResolver, checkResolverCloser, err := s.buildCheckResolver()
+	builder := s.getCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
 	}
@@ -162,10 +163,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
-func (s *Server) buildCheckResolver() (graph.CheckResolver, graph.CheckResolverCloser, error) {
+func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 
-	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
@@ -188,10 +189,5 @@ func (s *Server) buildCheckResolver() (graph.CheckResolver, graph.CheckResolverC
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
 		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return checkResolver, checkResolverCloser, nil
+	}...)
 }
