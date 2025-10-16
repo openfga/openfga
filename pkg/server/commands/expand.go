@@ -59,7 +59,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	typesys, ok := typesystem.TypesystemFromContext(ctx) // put on query
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}

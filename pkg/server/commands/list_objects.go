@@ -286,6 +286,7 @@ func (q *ListObjectsQuery) evaluate(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	// put it on the query itself
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)

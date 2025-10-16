@@ -425,6 +425,7 @@ func (c *LocalChecker) ResolveCheck(
 		}, nil
 	}
 
+	// TODO: here
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
@@ -476,6 +477,7 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 }
 
 func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+	// just put these on the checker itself
 	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	storeID := req.GetStoreID()

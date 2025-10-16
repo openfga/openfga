@@ -204,7 +204,7 @@ func (l *listUsersQuery) ListUsers(
 	}
 	defer cancelCtx()
 
-	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx)
+	typesys, ok := typesystem.TypesystemFromContext(cancellableCtx) // put on query
 	if !ok {
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
@@ -382,7 +382,7 @@ func (l *listUsersQuery) expand(
 		}
 	}
 
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // put on query
 
 	targetObjectType := req.GetObject().GetType()
 	targetRelation := req.GetRelation()
@@ -448,7 +448,7 @@ func (l *listUsersQuery) expandDirect(
 ) expandResponse {
 	ctx, span := tracer.Start(ctx, "expandDirect")
 	defer span.End()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // put on query
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
@@ -876,7 +876,7 @@ func (l *listUsersQuery) expandTTU(
 	tuplesetRelation := rewrite.TupleToUserset.GetTupleset().GetRelation()
 	computedRelation := rewrite.TupleToUserset.GetComputedUserset().GetRelation()
 
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // put on query
 
 	opts := storage.ReadOptions{
 		Consistency: storage.ConsistencyOptions{
