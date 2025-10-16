@@ -364,6 +364,7 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			reverseexpand.WithLogger(q.logger),
 			reverseexpand.WithCheckResolver(q.checkResolver),
+			reverseexpand.WithListObjectOptimizationsEnabled(q.optimizationsEnabled),
 		)
 
 		reverseExpandDoneWithError := make(chan struct{}, 1)
@@ -374,14 +375,13 @@ func (q *ListObjectsQuery) evaluate(
 		pool.Go(func(ctx context.Context) error {
 			reverseExpandResolutionMetadata := reverseexpand.NewResolutionMetadata()
 			err := reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
-				StoreID:              req.GetStoreId(),
-				ObjectType:           targetObjectType,
-				Relation:             targetRelation,
-				User:                 sourceUserRef,
-				ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-				Context:              req.GetContext(),
-				Consistency:          req.GetConsistency(),
-				OptimizationsEnabled: q.optimizationsEnabled,
+				StoreID:          req.GetStoreId(),
+				ObjectType:       targetObjectType,
+				Relation:         targetRelation,
+				User:             sourceUserRef,
+				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				Context:          req.GetContext(),
+				Consistency:      req.GetConsistency(),
 			}, reverseExpandResultsChan, reverseExpandResolutionMetadata)
 			if err != nil {
 				reverseExpandDoneWithError <- struct{}{}

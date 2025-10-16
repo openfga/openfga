@@ -54,8 +54,8 @@ type LocalChecker struct {
 	upstreamTimeout      time.Duration
 	planner              *planner.Planner
 	logger               logger.Logger
-	maxResolutionDepth   uint32
 	optimizationsEnabled bool
+	maxResolutionDepth   uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)

@@ -175,6 +175,12 @@ func WithCheckResolver(resolver graph.CheckResolver) ReverseExpandQueryOption {
 	}
 }
 
+func WithListObjectOptimizationsEnabled(enabled bool) ReverseExpandQueryOption {
+	return func(d *ReverseExpandQuery) {
+		d.optimizationsEnabled = enabled
+	}
+}
+
 // TODO accept ReverseExpandRequest so we can build the datastore object right away.
 func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ReverseExpandQueryOption) *ReverseExpandQuery {
 	query := &ReverseExpandQuery{
