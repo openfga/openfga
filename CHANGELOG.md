@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+- Increase the buffer size for LO requests to be 10% of the max results returned or 10. [#2735](https://github.com/openfga/openfga/pull/2735)
 
 ## [1.10.2] - 2025-09-29
 ### Changed
