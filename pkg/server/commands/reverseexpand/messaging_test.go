@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func feed(p *pipe, count uint64) {
-	for range count {
+func feed(p *pipe) {
+	for range MessageCount {
 		p.send(group{})
 	}
 }
@@ -37,7 +37,7 @@ func BenchmarkMessaging(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				feed(p, MessageCount)
+				feed(p)
 				p.close()
 			}()
 
@@ -65,7 +65,7 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(p, MessageCount)
+					feed(p)
 				}()
 			}
 
@@ -94,7 +94,7 @@ func BenchmarkMessaging(b *testing.B) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p, MessageCount)
+				feed(p)
 			}()
 
 			for range 4 {
@@ -125,7 +125,7 @@ func BenchmarkMessaging(b *testing.B) {
 				swg.Add(1)
 				go func() {
 					defer swg.Done()
-					feed(p, MessageCount)
+					feed(p)
 				}()
 			}
 
@@ -156,7 +156,7 @@ func TestMessaging(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			feed(p, MessageCount)
+			feed(p)
 			p.close()
 		}()
 
@@ -182,7 +182,7 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p, MessageCount)
+				feed(p)
 			}()
 		}
 
@@ -209,7 +209,7 @@ func TestMessaging(t *testing.T) {
 		swg.Add(1)
 		go func() {
 			defer swg.Done()
-			feed(p, MessageCount)
+			feed(p)
 		}()
 
 		for range 4 {
@@ -238,7 +238,7 @@ func TestMessaging(t *testing.T) {
 			swg.Add(1)
 			go func() {
 				defer swg.Done()
-				feed(p, MessageCount)
+				feed(p)
 			}()
 		}
 

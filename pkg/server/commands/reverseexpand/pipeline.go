@@ -10,14 +10,16 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"google.golang.org/protobuf/types/known/structpb"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	weightedGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/checkutil"
 	"github.com/openfga/openfga/internal/seq"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // emptySequence represents an `iter.Seq[Item]` that does nothing.
@@ -27,8 +29,6 @@ type (
 	Graph = weightedGraph.WeightedAuthorizationModelGraph
 	Node  = weightedGraph.WeightedAuthorizationModelNode
 	Edge  = weightedGraph.WeightedAuthorizationModelEdge
-
-	edgeType = weightedGraph.EdgeType
 )
 
 var (
@@ -167,7 +167,7 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 }
 
 // resolver is an interface that is consumed by a worker struct.
-// a resolver is responsible for consuming messages from a worker's
+// A resolver is responsible for consuming messages from a worker's
 // senders and broadcasting the result of processing the consumed
 // messages to the worker's listeners.
 type resolver interface {
@@ -1121,9 +1121,9 @@ type path struct {
 	trk     atomic.Int64
 }
 
-func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) bool {
+func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) {
 	if _, ok := p.workers[source]; ok {
-		return true
+		return
 	}
 
 	if trk == nil {
@@ -1143,7 +1143,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 		if source == target.node {
 			// source node is the target node.
 			var grp group
-			grp.Items = []Item{Item{Value: target.id}}
+			grp.Items = []Item{{Value: target.id}}
 			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	case nodeTypeSpecificTypeWildcard:
@@ -1153,14 +1153,14 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 		if source == target.node || typePart == target.node.GetLabel() {
 			// source node is the target node or has the same type as the target.
 			var grp group
-			grp.Items = []Item{Item{Value: "*"}}
+			grp.Items = []Item{{Value: "*"}}
 			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
 		}
 	}
 
 	edges, ok := p.pipe.backend.Graph.GetEdgesFromNode(source)
 	if !ok {
-		return true
+		return
 	}
 
 	for _, edge := range edges {
@@ -1187,8 +1187,6 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, numProcs)
 	}
-
-	return false
 }
 
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
@@ -1271,5 +1269,4 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 			msg.done()
 		}
 	}
-
 }

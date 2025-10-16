@@ -5,11 +5,13 @@ import (
 	"iter"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
 	"github.com/openfga/openfga/pkg/storage/memory"
 	storagetest "github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
 )
 
 type testcase struct {
