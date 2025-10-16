@@ -575,18 +575,18 @@ func (o *omniInterpreter) interpret(edge *Edge, items []Item) iter.Seq[Item] {
 
 type intersectionResolver struct {
 	interpreter interpreter
-	done        bool
+	done        atomic.Bool
 	trk         tracker
 }
 
 func (r *intersectionResolver) ready() bool {
-	return !r.done
+	return !r.done.Load()
 }
 
 func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.done = true
+		r.done.Store(true)
 	}()
 
 	r.trk.Add(1)
@@ -687,18 +687,18 @@ OutputLoop:
 
 type exclusionResolver struct {
 	interpreter interpreter
-	done        bool
+	done        atomic.Bool
 	trk         tracker
 }
 
 func (r *exclusionResolver) ready() bool {
-	return !r.done
+	return !r.done.Load()
 }
 
 func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.done = true
+		r.done.Store(true)
 	}()
 
 	r.trk.Add(1)
