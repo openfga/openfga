@@ -61,8 +61,8 @@ func IteratorReadUsersetTuples(ctx context.Context,
 		},
 	}
 
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx)      // pass in
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx) // pass in
 
 	iter, err := ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),

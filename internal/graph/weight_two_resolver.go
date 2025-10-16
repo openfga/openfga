@@ -70,7 +70,7 @@ func (c *LocalChecker) weight2Userset(_ context.Context, req *ResolveCheckReques
 
 func (c *LocalChecker) weight2TTU(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset, iter storage.TupleKeyIterator) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		typesys, _ := typesystem.TypesystemFromContext(ctx)
+		typesys, _ := typesystem.TypesystemFromContext(ctx) // again on local checker
 		objectType := tuple.GetType(req.GetTupleKey().GetObject())
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
@@ -206,7 +206,7 @@ func produceLeftChannels(
 	relationReferences []*openfgav1.RelationReference,
 	relationFunc checkutil.V2RelationFunc,
 ) ([]<-chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
 	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
 	for _, parentType := range relationReferences {
 		relation := relationFunc(parentType)
@@ -244,8 +244,8 @@ func fastPathNoop(_ context.Context, _ *ResolveCheckRequest) (chan *iterator.Msg
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx)      // need to pass in
+	ds, _ := storage.RelationshipTupleReaderFromContext(ctx) // need to pass in
 	tk := req.GetTupleKey()
 	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
 	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)
@@ -262,7 +262,7 @@ func fastPathDirect(ctx context.Context, req *ResolveCheckRequest) (chan *iterat
 }
 
 func fastPathComputed(ctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // pass in
 	computedRelation := rewrite.GetComputedUserset().GetRelation()
 
 	childRequest := req.clone()

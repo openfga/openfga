@@ -81,7 +81,7 @@ func (c *LocalChecker) defaultUserset(_ context.Context, req *ResolveCheckReques
 func (c *LocalChecker) produceUsersetDispatches(ctx context.Context, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -143,7 +143,7 @@ func (c *LocalChecker) defaultTTU(_ context.Context, req *ResolveCheckRequest, r
 func (c *LocalChecker) produceTTUDispatches(ctx context.Context, computedRelation string, req *ResolveCheckRequest, dispatches chan dispatchMsg, iter storage.TupleKeyIterator) {
 	defer close(dispatches)
 	reqTupleKey := req.GetTupleKey()
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+	typesys, _ := typesystem.TypesystemFromContext(ctx) // local checker
 
 	for {
 		t, err := iter.Next(ctx)
