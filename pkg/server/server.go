@@ -186,12 +186,6 @@ type Server struct {
 	// sharedDatastoreResources are created by the server
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	checkResolver       graph.CheckResolver
-	checkResolverCloser func()
-
-	listObjectsCheckResolver       graph.CheckResolver
-	listObjectsCheckResolverCloser func()
-
 	shadowCheckResolverEnabled          bool
 	shadowCheckResolverSamplePercentage int
 	shadowCheckResolverTimeout          time.Duration
@@ -838,9 +832,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
-		cacheSettings:            serverconfig.NewDefaultCacheSettings(),
-		checkResolver:            nil,
-		listObjectsCheckResolver: nil,
+		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 
 		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
 		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
@@ -926,19 +918,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	// below this point, don't throw errors or we may leak resources in tests
 
-	checkDispatchThrottlingOptions := []graph.DispatchThrottlingCheckResolverOpt{}
-	if s.checkDispatchThrottlingEnabled {
-		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
-			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
-				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
-				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
-			}),
-			// only create the throttler if the feature is enabled, so that we can clean it afterward
-			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
-				"check_dispatch_throttle"),
-		}
-	}
-
 	if !s.contextPropagationToDatastore {
 		// Creates a new [storagewrappers.ContextTracerWrapper] that will execute datastore queries using
 		// a new background context with the current trace context.
@@ -955,68 +934,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	}
 
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
-	if err != nil {
-		return nil, err
-	}
-
-	var checkCacheOptions []graph.CachedCheckResolverOpt
-	if s.cacheSettings.ShouldCacheCheckQueries() {
-		checkCacheOptions = append(checkCacheOptions,
-			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
-			graph.WithLogger(s.logger),
-			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
-		)
-	}
-
-	s.checkResolver, s.checkResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(s.planner),
-			graph.WithUpstreamTimeout(s.requestTimeout),
-			graph.WithLocalCheckerLogger(s.logger),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-			graph.WithPlanner(s.planner),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
-	if err != nil {
-		return nil, err
-	}
-
-	s.listObjectsCheckResolver, s.listObjectsCheckResolverCloser, err = graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
-		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(true),
-			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
-		}...),
-		graph.WithShadowResolverEnabled(s.shadowListObjectsCheckResolverEnabled),
-		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
-			graph.ShadowResolverWithName("list-objects"),
-			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowListObjectsCheckResolverSamplePercentage),
-			graph.ShadowResolverWithTimeout(s.shadowListObjectsCheckResolverTimeout),
-		}...),
-		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
-		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
-	}...).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -1043,11 +960,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 // Close releases the server resources.
 func (s *Server) Close() {
-	s.checkResolverCloser()
 	if s.planner != nil {
 		s.planner.StopCleanup()
 	}
-	s.listObjectsCheckResolverCloser()
 	s.typesystemResolverStop()
 
 	if s.listObjectsDispatchThrottler != nil {
@@ -1197,6 +1112,31 @@ func (s *Server) getAccessibleStores(ctx context.Context) ([]string, error) {
 	}
 
 	return stores, nil
+}
+
+func (s *Server) getCheckResolverOptions() ([]graph.CachedCheckResolverOpt, []graph.DispatchThrottlingCheckResolverOpt) {
+	var checkCacheOptions []graph.CachedCheckResolverOpt
+	if s.cacheSettings.ShouldCacheCheckQueries() {
+		checkCacheOptions = append(checkCacheOptions,
+			graph.WithExistingCache(s.sharedDatastoreResources.CheckCache),
+			graph.WithLogger(s.logger),
+			graph.WithCacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+		)
+	}
+
+	var checkDispatchThrottlingOptions []graph.DispatchThrottlingCheckResolverOpt
+	if s.checkDispatchThrottlingEnabled {
+		checkDispatchThrottlingOptions = []graph.DispatchThrottlingCheckResolverOpt{
+			graph.WithDispatchThrottlingCheckResolverConfig(graph.DispatchThrottlingCheckResolverConfig{
+				DefaultThreshold: s.checkDispatchThrottlingDefaultThreshold,
+				MaxThreshold:     s.checkDispatchThrottlingMaxThreshold,
+			}),
+			// only create the throttler if the feature is enabled, so that we can clean it afterward
+			graph.WithConstantRateThrottler(s.checkDispatchThrottlingFrequency,
+				"check_dispatch_throttle"),
+		}
+	}
+	return checkCacheOptions, checkDispatchThrottlingOptions
 }
 
 // checkWriteAuthz checks the authorization for modules if they exist, otherwise the store on write requests.

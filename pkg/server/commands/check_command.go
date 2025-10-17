@@ -114,7 +114,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 			StoreID:                   params.StoreID,
 			TupleKey:                  tuple.ConvertCheckRequestTupleKeyToTupleKey(params.TupleKey),
 			Context:                   params.Context,
-			ContextualTuples:          params.ContextualTuples,
+			ContextualTuples:          params.ContextualTuples.GetTupleKeys(),
 			Consistency:               params.Consistency,
 			LastCacheInvalidationTime: cacheInvalidationTime,
 			AuthorizationModelID:      c.typesys.GetAuthorizationModelID(),

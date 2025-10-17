@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/utils/apimethod"
@@ -64,9 +65,16 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	builder := s.getListObjectsCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
+
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
@@ -199,9 +207,16 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
+	builder := s.getListObjectsCheckResolverBuilder()
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return err
+	}
+	defer checkResolverCloser()
+
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
 		s.datastore,
-		s.listObjectsCheckResolver,
+		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
 			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
@@ -269,4 +284,18 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 
 	return nil
+}
+
+func (s *Server) getListObjectsCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
+	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
+
+	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
+		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
+			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
+		}...),
+		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
+		graph.WithDispatchThrottlingCheckResolverOpts(s.checkDispatchThrottlingEnabled, checkDispatchThrottlingOptions...),
+	}...)
 }
