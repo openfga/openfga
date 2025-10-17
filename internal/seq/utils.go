@@ -2,7 +2,7 @@ package seq
 
 import "iter"
 
-// sequence is a function that turns its input into an `iter.Seq[T]` that
+// Sequence is a function that turns its input into an `iter.Seq[T]` that
 // yields values in the order that they were provided to the function.
 func Sequence[T any](items ...T) iter.Seq[T] {
 	return func(yield func(T) bool) {
@@ -14,7 +14,7 @@ func Sequence[T any](items ...T) iter.Seq[T] {
 	}
 }
 
-// flatten is a function that merges a set of provided `iter.Seq[T]`
+// Flatten is a function that merges a set of provided `iter.Seq[T]`
 // values into a single `iter.Seq[T]` value. The values of each input are
 // yielded in the order yielded by each `iter.Seq[T]`, in the order provided
 // to the function.
@@ -30,7 +30,7 @@ func Flatten[T any](seqs ...iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
-// transform is a function that maps the values yielded by the input `seq`
+// Transform is a function that maps the values yielded by the input `seq`
 // to values produced by the input function `fn`, and returns an `iter.Seq`
 // that yields those new values.
 func Transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
@@ -43,7 +43,7 @@ func Transform[T any, U any](seq iter.Seq[T], fn func(T) U) iter.Seq[U] {
 	}
 }
 
-// filter is a function the yields only values for which the predicate
+// Filter is a function the yields only values for which the predicate
 // returns `true`.
 func Filter[T any](seq iter.Seq[T], fn func(T) bool) iter.Seq[T] {
 	return func(yield func(T) bool) {
