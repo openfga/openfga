@@ -789,14 +789,13 @@ func TestReverseExpandSkipWeighted(t *testing.T) {
 				Id:   "a",
 			},
 		},
-		ContextualTuples:     []*openfgav1.TupleKey{},
-		OptimizationsEnabled: true,
+		ContextualTuples: []*openfgav1.TupleKey{},
 	}
 
 	logger := mocks.NewMockLogger(ctrl)
 	logger.EXPECT().InfoWithContext(gomock.Any(), "unable to find node in weighted graph", gomock.Any())
 
-	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithLogger(logger))
+	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem, WithLogger(logger), WithListObjectOptimizationsEnabled(true))
 	resultChan := make(chan *ReverseExpandResult)
 
 	err = reverseExpandQuery.Execute(ctx, request, resultChan, NewResolutionMetadata())

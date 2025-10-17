@@ -143,7 +143,8 @@ type ReverseExpandQuery struct {
 	queryDedupeMap *sync.Map
 
 	// localCheckResolver allows reverse expand to call check locally
-	localCheckResolver graph.CheckRewriteResolver
+	localCheckResolver   graph.CheckRewriteResolver
+	optimizationsEnabled bool
 }
 
 type ReverseExpandQueryOption func(d *ReverseExpandQuery)
@@ -384,7 +385,7 @@ func (c *ReverseExpandQuery) execute(
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
-	if req.OptimizationsEnabled && !req.skipWeightedGraph {
+	if c.optimizationsEnabled && !req.skipWeightedGraph {
 		var typeRel string
 		if req.weightedEdge != nil {
 			typeRel = req.weightedEdge.GetTo().GetUniqueLabel()
