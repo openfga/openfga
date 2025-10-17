@@ -274,6 +274,11 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 			if r.ctx.Err() != nil {
 				break
 			}
+
+			if item.Err != nil {
+				goto AfterDedup
+			}
+
 			r.outMu.Lock()
 			if _, ok := r.outBuffer[item.Value]; ok {
 				r.outMu.Unlock()
@@ -282,6 +287,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 			r.outBuffer[item.Value] = struct{}{}
 			r.outMu.Unlock()
 
+		AfterDedup:
 			items = append(items, item)
 
 			if len(items) < senders[ndx].chunkSize || senders[ndx].chunkSize == 0 {
@@ -628,6 +634,7 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 				// Deduplicate items within this group based on the buffer for this sender
 				for _, item := range msg.Value.Items {
 					if item.Err != nil {
+						unseen = append(unseen, item)
 						continue
 					}
 
