@@ -1,4 +1,4 @@
-FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.40@sha256:38d74888e537b1a4d581ffa9281dec6c24e55429f3a20d943c9a118e7f3fab7f AS grpc_health_probe
+FROM ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.41@sha256:3b7280dd5f61907bb7e06f436fdea471a58685cfdd7ef18c75e85626a1eb0ade AS grpc_health_probe
 FROM cgr.dev/chainguard/go:1.24.6@sha256:b8387d93c43b6ed3ffa7cdf3e360f035ca0b4679491b21fd673844301a4947fe AS builder
 
 WORKDIR /app
