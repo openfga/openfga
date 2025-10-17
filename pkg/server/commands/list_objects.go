@@ -187,7 +187,7 @@ func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	}
 }
 
-func WithPipelineEnabled(value bool) ListObjectsQueryOption {
+func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.pipelineEnabled = value
 	}
@@ -580,7 +580,7 @@ func (q *ListObjectsQuery) Execute(
 			panic("user not in graph")
 		}
 
-		seq := pipeline.Build(timeoutCtx, source, target)
+		seq := pipeline.Build(source, target)
 
 		var res ListObjectsResponse
 
@@ -748,7 +748,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			panic("user not in graph")
 		}
 
-		seq := pipeline.Build(timeoutCtx, source, target)
+		seq := pipeline.Build(source, target)
 
 		for obj := range seq {
 			if obj.Err != nil {

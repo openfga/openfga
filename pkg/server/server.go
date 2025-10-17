@@ -41,16 +41,11 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-type ExperimentalFeatureFlag string
-
 const (
 	AuthorizationModelIDHeader = "Openfga-Authorization-Model-Id"
 	authorizationModelIDKey    = "authorization_model_id"
 
-	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
-	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
-	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
-	allowedLabel                                                 = "allowed"
+	allowedLabel = "allowed"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -172,7 +167,7 @@ type Server struct {
 	maxConcurrentReadsForListUsers   uint32
 	maxAuthorizationModelCacheSize   int
 	maxAuthorizationModelSizeInBytes int
-	experimentals                    []ExperimentalFeatureFlag
+	experimentals                    []serverconfig.ExperimentalFeatureFlag
 	AccessControl                    serverconfig.AccessControlConfig
 	AuthnMethod                      string
 	serviceName                      string
@@ -392,7 +387,7 @@ func WithMaxConcurrentReadsForListUsers(maxConcurrentReadsForListUsers uint32) O
 	}
 }
 
-func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+func WithExperimentals(experimentals ...serverconfig.ExperimentalFeatureFlag) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
 	}
@@ -587,13 +582,13 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	return s
 }
 
-func (s *Server) IsExperimentallyEnabled(flag ExperimentalFeatureFlag) bool {
+func (s *Server) IsExperimentallyEnabled(flag serverconfig.ExperimentalFeatureFlag) bool {
 	return slices.Contains(s.experimentals, flag)
 }
 
 // IsAccessControlEnabled returns true if the access control feature is enabled.
 func (s *Server) IsAccessControlEnabled() bool {
-	return s.IsExperimentallyEnabled(ExperimentalAccessControlParams) && s.AccessControl.Enabled
+	return s.IsExperimentallyEnabled(serverconfig.ExperimentalAccessControlParams) && s.AccessControl.Enabled
 }
 
 // WithListObjectsDispatchThrottlingEnabled sets whether dispatch throttling is enabled for List Objects requests.
@@ -829,7 +824,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListUsers:   serverconfig.DefaultMaxConcurrentReadsForListUsers,
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		maxAuthorizationModelCacheSize:   serverconfig.DefaultMaxAuthorizationModelCacheSize,
-		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+		experimentals:                    make([]serverconfig.ExperimentalFeatureFlag, 0, 10),
 		AccessControl:                    serverconfig.AccessControlConfig{Enabled: false, StoreID: "", ModelID: ""},
 
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
