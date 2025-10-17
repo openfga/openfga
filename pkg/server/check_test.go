@@ -8,12 +8,14 @@ import (
 	"google.golang.org/grpc/status"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+
+	"github.com/openfga/openfga/pkg/featureflags"
 )
 
 func TestCheck_Validation(t *testing.T) {
 	t.Parallel()
 
-	testServer := &Server{}
+	testServer := &Server{featureFlagClient: featureflags.NewNoopFeatureFlagClient()}
 	ctx := t.Context()
 
 	tests := []struct {

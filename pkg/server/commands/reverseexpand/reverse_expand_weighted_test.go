@@ -2113,6 +2113,7 @@ func TestReverseExpandWithWeightedGraph(t *testing.T) {
 		// intersection with ttu recursive
 		// intersection with userset recursive
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			defer goleak.VerifyNone(t)
@@ -2564,6 +2565,7 @@ func TestIntersectionHandler(t *testing.T) {
 			// turn on weighted graph functionality
 			WithListObjectOptimizationsEnabled(true),
 		)
+
 		q.localCheckResolver = mockCheckResolver
 
 		node, ok := typesys.GetNode("document#admin")
