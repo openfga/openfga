@@ -9,7 +9,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/check"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 
@@ -67,10 +66,10 @@ func NewDefaultStrategy(resolver *check.Resolver) *DefaultStrategy {
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
 func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	return defaultStrategy(ctx, req, edge, iter, s.userset)
+	return s.strategy(ctx, req, edge, iter, s.userset)
 }
 
-func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
@@ -113,11 +112,11 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, iter 
 }
 
 func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	return defaultStrategy(ctx, req, edge, iter, s.ttu)
+	return s.strategy(ctx, req, edge, iter, s.ttu)
 }
 
-func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, iter storage.TupleKeyIterator, out chan requestMsg) {
-	defer close(out)
+func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -135,130 +134,83 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, iter stor
 				continue // skip computed relations on tupleset relationships if they are undefined
 			}
 		}
-
-		tupleKey := &openfgav1.TupleKey{
-			Object:   userObj,
-			Relation: computedRelation,
-			User:     req.GetTupleKey().GetUser(),
-		}
-
-		concurrency.TrySendThroughChannel(ctx, requestMsg{dispatchParams: &dispatchParams{parentReq: req, tk: tupleKey}}, out)
+		tupleKey := tuple.NewTupleKey(userObj, computedRelation, req.GetTupleKey().GetUser())
+		childReq, err := check.NewRequest(check.RequestParams{
+			StoreID:                   req.GetStoreID(),
+			TupleKey:                  tupleKey,
+			ContextualTuples:          req.GetContextualTuples(),
+			Context:                   req.GetContext(),
+			Consistency:               req.GetConsistency(),
+			LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
+			AuthorizationModelID:      req.GetAuthorizationModelID(),
+		})
+		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq}, out)
 	}
 }
 
-func defaultStrategy(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler strategyHandler) (*check.Response, error) {
+func (s *DefaultStrategy) strategy(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler strategyHandler) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "defaultStrategy")
 	defer span.End()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	dispatchChan := make(chan requestMsg)
+	requestsChan := make(chan requestMsg)
+	responsesChan := make(chan check.ResponseMsg, 100) // needs to be buffered to prevent out of order closed events
 
 	go func() {
-		handler(ctx, req, iter, dispatchChan)
+		handler(ctx, req, edge, iter, requestsChan)
+		close(requestsChan)
 	}()
 
-	return
-}
+	go func() {
+		s.processRequests(ctx, requestsChan, responsesChan)
+		close(responsesChan)
+	}()
 
-func (c *LocalChecker) consumeDispatches(ctx context.Context, limit int, dispatchChan chan requestMsg) (*ResolveCheckResponse, error) {
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	outcomeChannel := c.processDispatches(cancellableCtx, limit, dispatchChan)
-
-	var finalErr error
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-ConsumerLoop:
+	var err error
 	for {
 		select {
 		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-outcomeChannel:
+			return nil, ctx.Err()
+		case outcome, ok := <-responsesChan:
 			if !ok {
-				break ConsumerLoop
+				return &check.Response{Allowed: false}, err
 			}
-			if outcome.err != nil {
-				finalErr = outcome.err
-				break // continue
-			}
-
-			if outcome.resp.GetResolutionMetadata().CycleDetected {
-				finalResult.ResolutionMetadata.CycleDetected = true
+			if outcome.Err != nil {
+				err = outcome.Err
+				continue // continue
 			}
 
-			if outcome.resp.Allowed {
-				finalErr = nil
-				finalResult = outcome.resp
-				break ConsumerLoop
+			if outcome.Res.Allowed {
+				return outcome.Res, nil
 			}
 		}
 	}
-	cancel() // prevent further processing of other checks
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
-	if finalErr != nil {
-		return nil, finalErr
-	}
-
-	return finalResult, nil
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (c *LocalChecker) processDispatches(ctx context.Context, limit int, dispatchChan chan requestMsg) <-chan checkOutcome {
-	outcomes := make(chan checkOutcome, limit)
-	dispatchPool := concurrency.NewPool(ctx, limit)
-
-	go func() {
-		defer func() {
-			// We need to wait always to avoid a goroutine leak.
-			_ = dispatchPool.Wait()
-			close(outcomes)
-		}()
-
-		for {
-			select {
-			case <-ctx.Done():
+func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
+	// TODO: do we want the Resolver to control the concurrency internally instead? if so, we can just create a buffered channel with a fixed size here
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-requests:
+			if !ok {
 				return
-			case msg, ok := <-dispatchChan:
-				if !ok {
-					return
-				}
-				if msg.err != nil {
-					concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{err: msg.err}, outcomes)
-					break // continue
-				}
-				if msg.shortCircuit {
-					resp := &ResolveCheckResponse{
-						Allowed: true,
-					}
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp}, outcomes)
-					return
-				}
-
-				if msg.dispatchParams != nil {
-					dispatchPool.Go(func(ctx context.Context) error {
-						recoveredError := panics.Try(func() {
-							resp, err := c.dispatch(ctx, msg.dispatchParams.parentReq, msg.dispatchParams.tk)(ctx)
-							concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: resp, err: err}, outcomes)
-						})
-						if recoveredError != nil {
-							concurrency.TrySendThroughChannel(
-								ctx,
-								checkOutcome{err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())},
-								outcomes,
-							)
-						}
-						return nil
-					})
-				}
 			}
-		}
-	}()
+			if msg.err != nil {
+				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: msg.err}, out)
+				continue // TODO: continue or return?
+			}
+			if msg.shortCircuit {
+				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Res: &check.Response{Allowed: true}}, out)
+				return
+			}
 
-	return outcomes
+			res, err := s.resolver.ResolveCheck(ctx, msg.req)
+			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err, Res: res}, out)
+		}
+	}
 }

@@ -60,8 +60,8 @@ var ErrResolutionDepthExceeded = graph.ErrResolutionDepthExceeded
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
 
 type ResponseMsg struct {
-	res *Response
-	err error
+	Res *Response
+	Err error
 }
 
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
@@ -140,7 +140,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		scheduledHandlers++
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
 	}
@@ -151,13 +151,13 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg := <-out:
-			if msg.err != nil {
-				err = msg.err
+			if msg.Err != nil {
+				err = msg.Err
 				continue
 			}
 
-			if msg.res.Allowed {
-				return msg.res, nil
+			if msg.Res.Allowed {
+				return msg.Res, nil
 			}
 		}
 	}
@@ -193,7 +193,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		scheduledHandlers++
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
 	}
@@ -204,10 +204,10 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg := <-out:
-			if msg.err != nil || !msg.res.Allowed {
+			if msg.Err != nil || !msg.Res.Allowed {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
-				return msg.res, msg.err
+				return msg.Res, msg.Err
 
 			}
 		}
@@ -235,7 +235,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	go func() {
 		defer wg.Done()
 		res, err := r.ResolveEdge(ctx, req, edges[0])
-		concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, base)
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, base)
 		close(base)
 	}()
 
@@ -253,7 +253,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		go func() {
 			defer wg.Done()
 			res, err := r.ResolveEdge(ctx, req, edges[1])
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, subtract)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtract)
 			close(subtract)
 		}()
 	}
@@ -272,20 +272,20 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 			}
 			resultsReceived++
 
-			if msg.err != nil {
+			if msg.Err != nil {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// If base returns an error, we return it immediately since the result of the exclusion cannot be determined.
-				return nil, msg.err
+				return nil, msg.Err
 			}
 
 			// Short-circuit: If base is false, the whole expression is false.
-			if !msg.res.GetAllowed() {
+			if !msg.Res.GetAllowed() {
 				return &Response{Allowed: false}, nil
 			}
 
 			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
-			if msg.res.Allowed && subtract == nil {
-				return msg.res, nil
+			if msg.Res.Allowed && subtract == nil {
+				return msg.Res, nil
 			}
 
 		case msg, ok := <-subtract: // subtract can be nil
@@ -295,14 +295,14 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 			}
 			resultsReceived++
 
-			if msg.err != nil {
+			if msg.Err != nil {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// If subtract returns an error, we return it immediately since the result of the exclusion cannot be determined. There will never be a case in which it returns false if it returns an error given there is only one branch.
-				return nil, msg.err
+				return nil, msg.Err
 			}
 
 			// Short-circuit: If subtract is true, the whole expression is false.
-			if msg.res.GetAllowed() {
+			if msg.Res.GetAllowed() {
 				return &Response{Allowed: false}, nil
 			}
 		}
