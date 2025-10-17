@@ -294,14 +294,14 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 				continue
 			}
 
-			outGroup := group{
+			g := group{
 				Items: items,
 			}
 
 			items = nil
 
 			for _, lst := range listeners {
-				lst.send(outGroup)
+				lst.send(g)
 			}
 		}
 
