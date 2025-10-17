@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ExperimentalFeatureFlag string
+
 const (
 	DefaultMaxRPCMessageSizeInBytes         = 512 * 1_204 // 512 KB
 	DefaultMaxTuplesPerWrite                = 100
@@ -101,6 +103,20 @@ const (
 
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
+
+	ExperimentalCheckOptimizations       ExperimentalFeatureFlag = "enable-check-optimizations"
+	ExperimentalListObjectsOptimizations ExperimentalFeatureFlag = "enable-list-objects-optimizations"
+	ExperimentalListObjectsPipeline      ExperimentalFeatureFlag = "enable-list-objects-pipeline"
+	ExperimentalAccessControlParams      ExperimentalFeatureFlag = "enable-access-control"
+)
+
+var (
+	Experimentals = map[ExperimentalFeatureFlag]bool{
+		ExperimentalCheckOptimizations:       true,
+		ExperimentalListObjectsOptimizations: true,
+		ExperimentalListObjectsPipeline:      true,
+		ExperimentalAccessControlParams:      true,
+	}
 )
 
 type DatastoreMetricsConfig struct {
@@ -466,6 +482,10 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
+	if err := cfg.verifyExperimentals(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -672,6 +692,27 @@ func (cfg *Config) verifyCacheConfig() error {
 	if cfg.CacheController.Enabled && cfg.CacheController.TTL <= 0 {
 		return errors.New("'cacheController.ttl' must be greater than zero")
 	}
+	return nil
+}
+
+func (cfg *Config) verifyExperimentals() error {
+	enabledExperimentals := make(map[ExperimentalFeatureFlag]bool)
+	for _, exp := range cfg.Experimentals {
+		enabledExperimentals[ExperimentalFeatureFlag(exp)] = true
+	}
+
+	for exp := range enabledExperimentals {
+		if !Experimentals[exp] {
+			return fmt.Errorf("invalid experimental feature flag: %s", exp)
+		}
+	}
+
+	if enabledExperimentals[ExperimentalListObjectsOptimizations] && enabledExperimentals[ExperimentalListObjectsPipeline] {
+		return fmt.Errorf("experimental flags '%s' and '%s' cannot be enabled together",
+			ExperimentalListObjectsOptimizations,
+			ExperimentalListObjectsPipeline)
+	}
+
 	return nil
 }
 
