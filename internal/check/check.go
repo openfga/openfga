@@ -27,8 +27,17 @@ import (
 
 var tracer = otel.Tracer("internal/check")
 
+type Config struct {
+	Model              *AuthorizationModelGraph
+	Datastore          storage.RelationshipTupleReader
+	Planner            *planner.Planner
+	MaxResolutionDepth int32
+	ConcurrencyLimit   int
+	UpstreamTimeout    time.Duration
+	Logger             logger.Logger
+}
 type Resolver struct {
-	model              *AuthorizationModelGraph // TODO: Change this to the proper wrapper
+	model              *AuthorizationModelGraph
 	datastore          storage.RelationshipTupleReader
 	planner            *planner.Planner
 	maxResolutionDepth int32
@@ -37,6 +46,7 @@ type Resolver struct {
 	logger             logger.Logger
 
 	depthCount atomic.Int32
+	strategies map[string]Strategy
 }
 
 // TODO: Move to its own public package
@@ -62,6 +72,23 @@ var ErrPanicRequest = errors.New("invalid check request") // == panic in Resolve
 type ResponseMsg struct {
 	Res *Response
 	Err error
+}
+
+func New(cfg Config) *Resolver {
+	r := &Resolver{
+		model:              cfg.Model,
+		datastore:          cfg.Datastore,
+		planner:            cfg.Planner,
+		maxResolutionDepth: cfg.MaxResolutionDepth,
+		concurrencyLimit:   cfg.ConcurrencyLimit,
+		upstreamTimeout:    cfg.UpstreamTimeout,
+		logger:             cfg.Logger,
+	}
+
+	r.strategies = map[string]Strategy{
+		strategies.DefaultStrategyName: strategies.NewDefault(r),
+	}
+	return r
 }
 
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
@@ -481,7 +508,6 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Wrap iterator with condition filter
 	defer iter.Stop()
 
 	i := storage.NewConditionsFilteredTupleKeyIterator(
@@ -491,8 +517,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 
 	// TODO: Need optimization to solve userset as principal
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		// TODO: default strategy
-		return defaultPoop
+		return r.strategies[strategies.DefaultStrategyName].Userset(ctx, req, edge, i)
 	}
 
 	var b strings.Builder
@@ -509,18 +534,21 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	b.WriteString(edge.GetTo().GetUniqueLabel())
 
 	possibleStrategies := map[string]*planner.KeyPlanStrategy{
-		strategies.defaultResolver: strategies.defaultPlan,
+		strategies.DefaultStrategyName: strategies.DefaultPlan,
 	}
 
 	// NOTE: assume it will always be ok given we have already validated the edge before getting here
-	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-		possibleStrategies[weight2] = weight2Plan
-	}
+	/*
+		if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+			possibleStrategies[weight2] = weight2Plan
+		}*
+
+	*/
 
 	keyPlan := r.planner.GetKeyPlan(b.String())
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
-	return strategy()
+	return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
 }
 
 func (r *Resolver) ResolveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {

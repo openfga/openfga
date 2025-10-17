@@ -3,17 +3,12 @@ package strategies
 import (
 	"context"
 	"errors"
-	"fmt"
-	"time"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/check"
-	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -21,55 +16,29 @@ import (
 
 var tracer = otel.Tracer("internal/check/strategies")
 
-const defaultResolver = "default"
-
-var defaultPlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
-	InitialGuess: 50 * time.Millisecond,
-	// Low Lambda: Represents zero confidence. It's a pure guess.
-	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
-}
-
-var defaultRecursivePlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
-	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
-	// Low Lambda: Represents zero confidence. It's a pure guess.
-	Lambda: 1,
-	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
-	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
-	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
-}
-
 type requestMsg struct {
 	err          error
 	shortCircuit bool
 	req          *check.Request
 }
 
-type DefaultStrategy struct {
+type defaultStrategy struct {
 	resolver *check.Resolver
 }
 
-func NewDefaultStrategy(resolver *check.Resolver) *DefaultStrategy {
-	return &DefaultStrategy{
+func NewDefault(resolver *check.Resolver) check.Strategy {
+	return &defaultStrategy{
 		resolver: resolver,
 	}
 }
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	return s.strategy(ctx, req, edge, iter, s.userset)
+func (s *defaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	return s.execute(ctx, req, edge, iter, s.userset)
 }
 
-func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *defaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
@@ -111,11 +80,11 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 	}
 }
 
-func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	return s.strategy(ctx, req, edge, iter, s.ttu)
+func (s *defaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	return s.execute(ctx, req, edge, iter, s.ttu)
 }
 
-func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *defaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 
 	for {
 		t, err := iter.Next(ctx)
@@ -148,7 +117,7 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 	}
 }
 
-func (s *DefaultStrategy) strategy(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler strategyHandler) (*check.Response, error) {
+func (s *defaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "defaultStrategy")
 	defer span.End()
 
@@ -190,7 +159,7 @@ func (s *DefaultStrategy) strategy(ctx context.Context, req *check.Request, edge
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
+func (s *defaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
 	// TODO: do we want the Resolver to control the concurrency internally instead? if so, we can just create a buffered channel with a fixed size here
 	for {
 		select {
