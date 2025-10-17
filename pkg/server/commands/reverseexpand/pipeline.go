@@ -453,20 +453,27 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 // a query to the backend datastore.
 func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
+	if len(parts) < 2 {
+		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
+	}
 	tuplesetType := parts[0]
 	tuplesetRelation := parts[1]
 
 	tuplesetNode, ok := b.Graph.GetNodeByID(edge.GetTuplesetRelation())
 	if !ok {
-		panic("tupleset node not in graph")
+		return seq.Sequence(Item{Err: errors.New("tupleset node not in graph")})
 	}
 
 	edges, ok := b.Graph.GetEdgesFromNode(tuplesetNode)
 	if !ok {
-		panic("no edges found for tupleset node")
+		return seq.Sequence(Item{Err: errors.New("no edges found for tupleset node")})
 	}
 
-	targetType := strings.Split(edge.GetTo().GetLabel(), "#")[0]
+	targetParts := strings.Split(edge.GetTo().GetLabel(), "#")
+	if len(targetParts) < 1 {
+		return seq.Sequence(Item{Err: errors.New("empty edge label")})
+	}
+	targetType := targetParts[0]
 
 	var targetEdge *Edge
 
@@ -478,7 +485,7 @@ func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 	}
 
 	if targetEdge == nil {
-		panic("ttu target type is not an edge of tupleset")
+		return seq.Sequence(Item{Err: errors.New("ttu target type is not an edge of tupleset")})
 	}
 
 	var userFilter []*openfgav1.ObjectRelation
@@ -522,12 +529,17 @@ func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
 }
 
 func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
-	panic("unsupported state")
+	return seq.Sequence(Item{Err: errors.New("unsupported state")})
 }
 
 func handleLeafNode(node *Node) edgeHandler {
 	return func(_ *Edge, items []Item) iter.Seq[Item] {
-		objectType := strings.Split(node.GetLabel(), "#")[0]
+		objectParts := strings.Split(node.GetLabel(), "#")
+		if len(objectParts) < 1 {
+			return seq.Sequence(Item{Err: errors.New("empty label in node")})
+		}
+
+		objectType := objectParts[0]
 
 		results := seq.Transform(seq.Sequence(items...), func(item Item) Item {
 			var value string
@@ -538,7 +550,7 @@ func handleLeafNode(node *Node) edgeHandler {
 			case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 				value = ":" + item.Value
 			default:
-				panic("unsupported leaf node type")
+				return Item{Err: errors.New("unsupported leaf node type")}
 			}
 			item.Value = objectType + value
 			return item
