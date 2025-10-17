@@ -1875,7 +1875,7 @@ func TestCheckTTU(t *testing.T) {
 		defer mockController.Finish()
 		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
-		checker := NewLocalChecker(WithMaxResolutionDepth(24), WithOptimizations(true))
+		checker := NewLocalChecker(WithOptimizations(true), WithMaxResolutionDepth(24))
 		t.Cleanup(checker.Close)
 
 		storeID := ulid.Make().String()
