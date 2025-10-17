@@ -51,7 +51,7 @@ type ResolveCheckRequestMetadata struct {
 type ResolveCheckRequestParams struct {
 	StoreID                   string
 	TupleKey                  *openfgav1.TupleKey
-	ContextualTuples          *openfgav1.ContextualTupleKeys
+	ContextualTuples          []*openfgav1.TupleKey
 	Context                   *structpb.Struct
 	Consistency               openfgav1.ConsistencyPreference
 	LastCacheInvalidationTime time.Time
@@ -80,7 +80,7 @@ func NewResolveCheckRequest(
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
 		TupleKey:             params.TupleKey,
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     params.ContextualTuples,
 		Context:              params.Context,
 		VisitedPaths:         make(map[string]struct{}),
 		RequestMetadata:      NewCheckRequestMetadata(),
@@ -93,7 +93,7 @@ func NewResolveCheckRequest(
 	err := storage.WriteInvariantCheckCacheKey(keyBuilder, &storage.CheckCacheKeyParams{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
-		ContextualTuples:     params.ContextualTuples.GetTupleKeys(),
+		ContextualTuples:     params.ContextualTuples,
 		Context:              params.Context,
 	})
 	if err != nil {
