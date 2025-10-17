@@ -71,7 +71,7 @@ type ListObjectsQuery struct {
 	cacheSettings            serverconfig.CacheSettings
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	optimizationsEnabled bool
+	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 }
 
@@ -174,12 +174,6 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.useShadowCache = useShadowCache
-	}
-}
-
 func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		if client != nil {
@@ -188,6 +182,12 @@ func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 		}
 
 		d.ff = featureflags.NewNoopFeatureFlagClient()
+	}
+}
+
+func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.useShadowCache = useShadowCache
 	}
 }
 

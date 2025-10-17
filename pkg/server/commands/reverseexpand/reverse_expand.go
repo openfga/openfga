@@ -35,14 +35,13 @@ import (
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
 
 type ReverseExpandRequest struct {
-	StoreID              string
-	ObjectType           string
-	Relation             string
-	User                 IsUserRef
-	ContextualTuples     []*openfgav1.TupleKey // TODO remove
-	Context              *structpb.Struct
-	Consistency          openfgav1.ConsistencyPreference
-	OptimizationsEnabled bool
+	StoreID          string
+	ObjectType       string
+	Relation         string
+	User             IsUserRef
+	ContextualTuples []*openfgav1.TupleKey // TODO remove
+	Context          *structpb.Struct
+	Consistency      openfgav1.ConsistencyPreference
 
 	edge              *graph.RelationshipEdge
 	skipWeightedGraph bool

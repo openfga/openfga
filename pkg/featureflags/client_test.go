@@ -23,13 +23,11 @@ func TestNewDefaultClient(t *testing.T) {
 func TestBoolean(t *testing.T) {
 	client := NewDefaultClient([]string{"enabled-flag", "another-enabled-flag"})
 
-	// Test case where the flag is enabled and defaultValue is true.
 	t.Run("enabled flag", func(t *testing.T) {
 		result := client.Boolean("enabled-flag", nil)
 		require.True(t, result)
 	})
 
-	// Test case where the flag is not enabled and defaultValue is false.
 	t.Run("disabled flag", func(t *testing.T) {
 		result := client.Boolean("disabled-flag", nil)
 		require.False(t, result)
