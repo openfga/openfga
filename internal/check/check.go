@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/check/strategies"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
@@ -28,14 +28,13 @@ import (
 var tracer = otel.Tracer("internal/check")
 
 type Resolver struct {
-	model                     *AuthorizationModelGraph // TODO: Change this to the proper wrapper
-	datastore                 storage.RelationshipTupleReader
-	lastCacheInvalidationTime time.Time
-	planner                   *planner.Planner
-	maxResolutionDepth        int32
-	concurrencyLimit          int
-	upstreamTimeout           time.Duration
-	logger                    logger.Logger
+	model              *AuthorizationModelGraph // TODO: Change this to the proper wrapper
+	datastore          storage.RelationshipTupleReader
+	planner            *planner.Planner
+	maxResolutionDepth int32
+	concurrencyLimit   int
+	upstreamTimeout    time.Duration
+	logger             logger.Logger
 
 	depthCount atomic.Int32
 }
@@ -48,13 +47,19 @@ type AuthorizationModelGraph struct {
 	conditions    map[string]*condition.EvaluableCondition
 }
 
-type Request = graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata, LastCacheInvalidationTime)
+type Request = graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata)
 type Response = graph.ResolveCheckResponse
+
+type RequestParams = graph.ResolveCheckRequestParams
+
+func NewRequest(p RequestParams) (*Request, error) {
+	return graph.NewResolveCheckRequest(p)
+}
 
 var ErrResolutionDepthExceeded = graph.ErrResolutionDepthExceeded
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
 
-type checkResponse struct {
+type ResponseMsg struct {
 	res *Response
 	err error
 }
@@ -102,7 +107,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		// if we are at a recursive relation, need to apply strategy to apply (via planner if available)
 	}
 
-	out := make(chan checkResponse, len(edges))
+	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
@@ -135,7 +140,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		scheduledHandlers++
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge)
-			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, out)
 			return nil
 		})
 	}
@@ -168,7 +173,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	out := make(chan checkResponse, len(edges))
+	out := make(chan ResponseMsg, len(edges))
 
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
@@ -188,7 +193,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		scheduledHandlers++
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge)
-			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, out)
 			return nil
 		})
 	}
@@ -222,7 +227,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		return nil, ErrPanicRequest
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	base := make(chan checkResponse, 1)
+	base := make(chan ResponseMsg, 1)
 	wg := &sync.WaitGroup{}
 
 	scheduledHandlers := 1
@@ -230,7 +235,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	go func() {
 		defer wg.Done()
 		res, err := r.ResolveEdge(ctx, req, edges[0])
-		concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, base)
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, base)
 		close(base)
 	}()
 
@@ -239,16 +244,16 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		wg.Wait()
 	}()
 
-	var subtract chan checkResponse
+	var subtract chan ResponseMsg
 	// excluded edge
 	if _, ok := edges[1].GetWeight(req.GetUserType()); ok {
 		scheduledHandlers++
-		subtract = make(chan checkResponse, 1)
+		subtract = make(chan ResponseMsg, 1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			res, err := r.ResolveEdge(ctx, req, edges[1])
-			concurrency.TrySendThroughChannel(ctx, checkResponse{res: res, err: err}, subtract)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{res: res, err: err}, subtract)
 			close(subtract)
 		}()
 	}
@@ -392,7 +397,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
-	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	allowed, err := evaluateCondition(ctx, r.model, edge, t.GetKey(), req.GetContext())
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +443,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	allowed, err := evaluateCondition(ctx, r.model, edge, t.GetKey(), req.GetContext())
 	if err != nil {
 		return nil, err
 	}
@@ -479,6 +484,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	// TODO: Wrap iterator with condition filter
 	defer iter.Stop()
 
+	i := storage.NewConditionsFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		buildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
+	)
+
 	// TODO: Need optimization to solve userset as principal
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		// TODO: default strategy
@@ -499,7 +509,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	b.WriteString(edge.GetTo().GetUniqueLabel())
 
 	possibleStrategies := map[string]*planner.KeyPlanStrategy{
-		defaultResolver: defaultPlan,
+		strategies.defaultResolver: strategies.defaultPlan,
 	}
 
 	// NOTE: assume it will always be ok given we have already validated the edge before getting here
