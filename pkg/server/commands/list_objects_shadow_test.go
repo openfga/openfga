@@ -35,14 +35,18 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 			WithShadowListObjectsQuerySamplePercentage(13),
 			WithShadowListObjectsQueryMaxDeltaItems(99),
 			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-		), WithListObjectsOptimizationsEnabled(true))
+		), WithResolveNodeLimit(15))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
 		assert.False(t, query.main.(*ListObjectsQuery).optimizationsEnabled)
 		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
-		assert.True(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
-		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
+		assert.False(t, query.main.(*ListObjectsQuery).pipelineEnabled)
+		assert.False(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
+		assert.False(t, query.shadow.(*ListObjectsQuery).useShadowCache)
+		assert.True(t, query.shadow.(*ListObjectsQuery).pipelineEnabled)
+		assert.Equal(t, uint32(15), query.shadow.(*ListObjectsQuery).resolveNodeLimit)
+		assert.Equal(t, uint32(15), query.main.(*ListObjectsQuery).resolveNodeLimit)
 		assert.Equal(t, noopLogger, query.logger)
 		assert.Equal(t, 13, query.shadowPct)
 		assert.Equal(t, 99, query.maxDeltaItems)
