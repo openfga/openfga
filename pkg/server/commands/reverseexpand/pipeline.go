@@ -175,8 +175,6 @@ type resolver interface {
 	// provided senders, and broadcasts the results of processing
 	// the consumed messages to the provided listeners.
 	resolve(senders []*sender, listeners []*listener)
-
-	ready() bool
 }
 
 // interpreter is an interface that exposes a method for interpreting input for an edge into output.
@@ -227,23 +225,12 @@ type baseResolver struct {
 	status *StatusPool
 }
 
-func (r *baseResolver) ready() bool {
-	return r.status.Status()
-}
-
-func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener) {
-	// Loop while the sender has a potential to yield a message.
-	for senders[ndx].more() {
+func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loopFunc {
+	return func(msg message[group]) bool {
+		// Loop while the sender has a potential to yield a message.
 		var results iter.Seq[Item]
 		var outGroup group
 		var items, unseen []Item
-
-		// attempt to pull a message from the sender (non-blocking)
-		msg, ok := senders[ndx].recv()
-		if !ok {
-			// no message was currently ready. proceed to end of function.
-			goto ProcessEnd
-		}
 
 		// Deduplicate items within this group based on the buffer for this sender
 		for _, item := range msg.Value.Items {
@@ -267,7 +254,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 			goto ProcessEnd
 		}
 
-		results = r.interpreter.interpret(senders[ndx].edge, unseen)
+		results = r.interpreter.interpret(snd.edge(), unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
@@ -290,7 +277,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 		AfterDedup:
 			items = append(items, item)
 
-			if len(items) < senders[ndx].chunkSize || senders[ndx].chunkSize == 0 {
+			if len(items) < snd.chunks() || snd.chunks() == 0 {
 				continue
 			}
 
@@ -320,9 +307,7 @@ func (r *baseResolver) process(ndx int, senders []*sender, listeners []*listener
 		// origin worker's tracker.
 		msg.done()
 
-		// Important: This is a tight loop and needs to defer to the Go runtime so as not
-		// to starve other goroutines for CPU time.
-		runtime.Gosched()
+		return true
 	}
 }
 
@@ -348,13 +333,13 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 		// as recursive, so long as it is not part of a tuple cycle. When the edge is part of
 		// a tuple cycle, treating it as recursive would cause the parent worker to be closed
 		// too early.
-		isRecursive := snd.edge != nil && len(snd.edge.GetRecursiveRelation()) > 0 && !snd.edge.IsPartOfTupleCycle()
+		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
 
-		proc := func() {
-			r.process(ndx, senders, listeners)
-		}
+		for range snd.procs() {
+			proc := func() {
+				snd.loop(r.process(ndx, snd, listeners))
+			}
 
-		for range snd.numProcs {
 			if isRecursive {
 				recursive = append(recursive, proc)
 				continue
@@ -591,26 +576,23 @@ func (o *omniInterpreter) interpret(edge *Edge, items []Item) iter.Seq[Item] {
 	case edgeTypeTTULogical:
 		results = o.hndTTULogical(edge, items)
 	default:
-		panic("unexpected edge type")
+		return seq.Sequence(Item{Err: errors.New("unexpected edge type")})
 	}
 	return results
 }
 
 type intersectionResolver struct {
+	id          int
 	ctx         context.Context
 	interpreter interpreter
-	done        atomic.Bool
+	status      *StatusPool
 	trk         tracker
-}
-
-func (r *intersectionResolver) ready() bool {
-	return !r.done.Load()
 }
 
 func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.done.Store(true)
+		r.status.Set(r.id, false)
 	}()
 
 	r.trk.Add(1)
@@ -630,17 +612,10 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 
 	for i, snd := range senders {
 		wg.Add(1)
-
 		go func(i int, snd *sender) {
 			defer wg.Done()
 
-			for snd.more() {
-				msg, ok := snd.recv()
-				if !ok {
-					runtime.Gosched()
-					continue
-				}
-
+			snd.loop(func(msg message[group]) bool {
 				var unseen []Item
 
 				// Deduplicate items within this group based on the buffer for this sender
@@ -660,10 +635,10 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 				// If there are no unseen items, skip processing
 				if len(unseen) == 0 {
 					msg.done()
-					continue
+					return true
 				}
 
-				results := r.interpreter.interpret(snd.edge, unseen)
+				results := r.interpreter.interpret(snd.edge(), unseen)
 
 				for item := range results {
 					if r.ctx.Err() != nil {
@@ -676,7 +651,8 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 					output[i][item.Value] = struct{}{}
 				}
 				msg.done()
-			}
+				return true
+			})
 		}(i, snd)
 	}
 	wg.Wait()
@@ -715,20 +691,17 @@ OutputLoop:
 }
 
 type exclusionResolver struct {
+	id          int
 	ctx         context.Context
 	interpreter interpreter
-	done        atomic.Bool
+	status      *StatusPool
 	trk         tracker
-}
-
-func (r *exclusionResolver) ready() bool {
-	return !r.done.Load()
 }
 
 func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	defer func() {
 		r.trk.Add(-1)
-		r.done.Store(true)
+		r.status.Set(r.id, false)
 	}()
 
 	r.trk.Add(1)
@@ -744,64 +717,52 @@ func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	var includedErrs []Item
 	var excludedErrs []Item
 
-	var procIncluded func(*sender)
-	var procExcluded func(*sender)
+	var procIncluded loopFunc
+	var procExcluded loopFunc
 
-	procIncluded = func(snd *sender) {
-		defer wg.Done()
+	procIncluded = func(msg message[group]) bool {
+		results := r.interpreter.interpret(senders[0].edge(), msg.Value.Items)
 
-		for snd.more() {
-			msg, ok := snd.recv()
-			if !ok {
-				runtime.Gosched()
+		for item := range results {
+			if r.ctx.Err() != nil {
+				break
+			}
+
+			if item.Err != nil {
+				includedErrs = append(includedErrs, item)
 				continue
 			}
-
-			results := r.interpreter.interpret(snd.edge, msg.Value.Items)
-
-			for item := range results {
-				if r.ctx.Err() != nil {
-					break
-				}
-
-				if item.Err != nil {
-					includedErrs = append(includedErrs, item)
-					continue
-				}
-				included[item.Value] = struct{}{}
-			}
-			msg.done()
+			included[item.Value] = struct{}{}
 		}
+		msg.done()
+		return true
 	}
 
-	procExcluded = func(snd *sender) {
-		defer wg.Done()
+	procExcluded = func(msg message[group]) bool {
+		results := r.interpreter.interpret(senders[1].edge(), msg.Value.Items)
 
-		for snd.more() {
-			msg, ok := snd.recv()
-			if !ok {
-				runtime.Gosched()
+		for item := range results {
+			if item.Err != nil {
+				excludedErrs = append(excludedErrs, item)
 				continue
 			}
-
-			results := r.interpreter.interpret(snd.edge, msg.Value.Items)
-
-			for item := range results {
-				if item.Err != nil {
-					excludedErrs = append(excludedErrs, item)
-					continue
-				}
-				excluded[item.Value] = struct{}{}
-			}
-			msg.done()
+			excluded[item.Value] = struct{}{}
 		}
+		msg.done()
+		return true
 	}
 
 	wg.Add(1)
-	go procIncluded(senders[0])
+	go func() {
+		defer wg.Done()
+		senders[0].loop(procIncluded)
+	}()
 
 	wg.Add(1)
-	go procExcluded(senders[1])
+	go func() {
+		defer wg.Done()
+		senders[1].loop(procExcluded)
+	}()
 
 	wg.Wait()
 
@@ -833,16 +794,18 @@ func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 }
 
 type worker struct {
-	status    *StatusPool
+	node      *Node
 	senders   []*sender
 	listeners []*listener
 	resolver  resolver
 	trk       tracker
+	status    *StatusPool
+	finite    func()
 	wg        sync.WaitGroup
 }
 
 func (w *worker) active() bool {
-	return w.resolver.ready() || w.trk.Load() != 0
+	return w.status.Status() || w.trk.Load() != 0
 }
 
 func (w *worker) start() {
@@ -850,21 +813,14 @@ func (w *worker) start() {
 
 	go func() {
 		defer w.wg.Done()
-
-		defer func() {
-			for _, lst := range w.listeners {
-				lst.close()
-			}
-		}()
+		defer w.close()
 
 		w.resolver.resolve(w.senders, w.listeners)
 	}()
 }
 
 func (w *worker) close() {
-	for _, lst := range w.listeners {
-		lst.close()
-	}
+	w.finite()
 }
 
 func (w *worker) wait() {
@@ -880,8 +836,8 @@ type listener struct {
 	node *Node
 }
 
-func (lst *listener) send(g group) {
-	lst.cons.send(g)
+func (lst *listener) send(g group) bool {
+	return lst.cons.send(g)
 }
 
 func (lst *listener) close() {
@@ -892,7 +848,7 @@ func (lst *listener) close() {
 // end of a pipeline connection.
 type sender struct {
 	// edge is the weighted graph edge that is producing.
-	edge *Edge
+	e *Edge
 
 	prod producer[group]
 
@@ -904,24 +860,38 @@ type sender struct {
 	numProcs int
 }
 
-func (snd *sender) recv() (message[group], bool) {
-	return snd.prod.recv()
+func (s *sender) edge() *Edge {
+	return s.e
 }
 
-func (snd *sender) more() bool {
-	return !snd.prod.done()
+func (s *sender) chunks() int {
+	return s.chunkSize
+}
+
+func (s *sender) procs() int {
+	return s.numProcs
+}
+
+type loopFunc func(message[group]) bool
+
+func (s *sender) loop(fn loopFunc) {
+	for msg := range s.prod.seq() {
+		if !fn(msg) {
+			break
+		}
+	}
 }
 
 func (w *worker) listen(edge *Edge, p producer[group], chunkSize int, numProcs int) {
 	w.senders = append(w.senders, &sender{
-		edge:      edge,
+		e:         edge,
 		prod:      p,
 		chunkSize: chunkSize,
 		numProcs:  numProcs,
 	})
 }
 
-func (w *worker) subscribe(node *Node) *pipe {
+func (w *worker) subscribe(node *Node) producer[group] {
 	p := newPipe(w.trk)
 
 	w.listeners = append(w.listeners, &listener{
@@ -1008,6 +978,13 @@ type path struct {
 func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
+	w.finite = sync.OnceFunc(func() {
+		for _, lst := range w.listeners {
+			lst.close()
+		}
+	})
+
+	w.node = node
 	w.status = status
 	w.trk = trk
 
@@ -1082,8 +1059,10 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &intersectionResolver{
+				id:          id,
 				ctx:         p.ctx,
 				interpreter: omni,
+				status:      status,
 				trk:         trk,
 			}
 		case weightedGraph.UnionOperator:
@@ -1115,8 +1094,10 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 			}
 
 			r = &exclusionResolver{
+				id:          id,
 				ctx:         p.ctx,
 				interpreter: omni,
+				status:      status,
 				trk:         trk,
 			}
 		default:
@@ -1219,7 +1200,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		if isRecursive {
 			track = w.trk
-			stat = w.status
+			stat = status
 		}
 
 		p.resolve(edge.GetTo(), target, track, stat)
@@ -1299,16 +1280,9 @@ func (p *Pipeline) Build(source Source, target Target) iter.Seq[Item] {
 
 	return func(yield func(Item) bool) {
 		defer wg.Wait()
-		defer results.close()
 		defer cancel()
 
-		for !results.done() {
-			msg, ok := results.recv()
-			if !ok {
-				runtime.Gosched()
-				continue
-			}
-
+		for msg := range results.seq() {
 			for _, item := range msg.Value.Items {
 				if !yield(item) {
 					msg.done()

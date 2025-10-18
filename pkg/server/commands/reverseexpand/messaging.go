@@ -1,8 +1,9 @@
 package reverseexpand
 
 import (
+	"iter"
+	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 type message[T any] struct {
@@ -18,11 +19,11 @@ func (m *message[T]) done() {
 
 type producer[T any] interface {
 	recv() (message[T], bool)
-	done() bool
+	seq() iter.Seq[message[T]]
 }
 
 type consumer[T any] interface {
-	send(T)
+	send(T) bool
 	close()
 }
 
@@ -31,7 +32,6 @@ const maxPipeSize int = 100
 type pipe struct {
 	ch     chan group
 	end    chan struct{}
-	closed atomic.Bool
 	finite func()
 	trk    tracker
 }
@@ -44,31 +44,44 @@ func newPipe(trk tracker) *pipe {
 	}
 
 	p.finite = sync.OnceFunc(func() {
-		p.closed.Store(true)
 		close(p.end)
 	})
 
 	return p
 }
 
-func (p *pipe) send(g group) {
+func (p *pipe) seq() iter.Seq[message[group]] {
+	return func(yield func(message[group]) bool) {
+		defer p.close()
+
+		for {
+			msg, ok := p.recv()
+			if !ok {
+				break
+			}
+
+			if !yield(msg) {
+				break
+			}
+		}
+	}
+}
+
+func (p *pipe) send(g group) bool {
 	p.trk.Add(1)
 
 	select {
 	case p.ch <- g:
+		return true
 	case <-p.end:
 		p.trk.Add(-1)
-		panic("called send on a closed pipe")
+		return false
 	}
 }
 
 func (p *pipe) recv() (message[group], bool) {
 	select {
-	case g, ok := <-p.ch:
-		if !ok {
-			return message[group]{}, false
-		}
-
+	case g, _ := <-p.ch:
 		fn := func() {
 			p.trk.Add(-1)
 		}
@@ -78,35 +91,60 @@ func (p *pipe) recv() (message[group], bool) {
 	}
 }
 
-func (p *pipe) done() bool {
-	return p.closed.Load() && p.trk.Load() == 0
-}
-
 func (p *pipe) close() {
+	for p.trk.Load() != 0 {
+		runtime.Gosched()
+	}
 	p.finite()
 }
 
 type staticProducer struct {
+	mu     sync.Mutex
 	groups []group
 	pos    int
 	trk    tracker
 }
 
-func (s *staticProducer) recv() (message[group], bool) {
-	if s.pos < len(s.groups) {
-		value := s.groups[s.pos]
-		s.pos++
+func (p *staticProducer) recv() (message[group], bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-		fn := func() {
-			s.trk.Add(-1)
-		}
-		return message[group]{Value: value, finite: sync.OnceFunc(fn)}, true
+	if p.pos == len(p.groups) {
+		return message[group]{}, false
 	}
-	return message[group]{}, false
+
+	value := p.groups[p.pos]
+	p.pos++
+
+	fn := func() {
+		p.trk.Add(-1)
+	}
+
+	return message[group]{Value: value, finite: sync.OnceFunc(fn)}, true
 }
 
-func (s *staticProducer) done() bool {
-	return s.pos >= len(s.groups)
+func (p *staticProducer) close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.pos = len(p.groups)
+}
+
+func (p *staticProducer) seq() iter.Seq[message[group]] {
+	return func(yield func(message[group]) bool) {
+		defer p.close()
+
+		for {
+			msg, ok := p.recv()
+			if !ok {
+				break
+			}
+
+			if !yield(msg) {
+				break
+			}
+		}
+	}
 }
 
 func newStaticProducer(trk tracker, groups ...group) producer[group] {

@@ -15,7 +15,7 @@ func feed(p *pipe) {
 }
 
 func consume(p *pipe, count *atomic.Uint64) {
-	for !p.done() {
+	for {
 		msg, ok := p.recv()
 		if ok {
 			msg.done()
