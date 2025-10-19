@@ -17,10 +17,11 @@ func feed(p *pipe) {
 func consume(p *pipe, count *atomic.Uint64) {
 	for {
 		msg, ok := p.recv()
-		if ok {
-			msg.done()
-			count.Add(1)
+		if !ok {
+			break
 		}
+		msg.done()
+		count.Add(1)
 	}
 }
 
