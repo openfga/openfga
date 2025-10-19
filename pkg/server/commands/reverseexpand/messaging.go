@@ -23,7 +23,7 @@ type producer[T any] interface {
 }
 
 type consumer[T any] interface {
-	send(T) bool
+	send(T)
 	close()
 }
 
@@ -67,21 +67,19 @@ func (p *pipe) seq() iter.Seq[message[group]] {
 	}
 }
 
-func (p *pipe) send(g group) bool {
+func (p *pipe) send(g group) {
 	p.trk.Add(1)
 
 	select {
 	case p.ch <- g:
-		return true
 	case <-p.end:
 		p.trk.Add(-1)
-		return false
 	}
 }
 
 func (p *pipe) recv() (message[group], bool) {
 	select {
-	case g, _ := <-p.ch:
+	case g := <-p.ch:
 		fn := func() {
 			p.trk.Add(-1)
 		}

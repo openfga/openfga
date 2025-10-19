@@ -836,8 +836,8 @@ type listener struct {
 	node *Node
 }
 
-func (lst *listener) send(g group) bool {
-	return lst.cons.send(g)
+func (lst *listener) send(g group) {
+	lst.cons.send(g)
 }
 
 func (lst *listener) close() {
