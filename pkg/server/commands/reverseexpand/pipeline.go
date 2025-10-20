@@ -36,7 +36,7 @@ var (
 	edgeTypeTTU           = weightedGraph.TTUEdge
 	edgeTypeTTULogical    = weightedGraph.TTULogicalEdge
 
-	// emptySequence represents an `iter.Seq[Item]` that does nothing.
+	// EmptySequence represents an `iter.Seq[Item]` that does nothing.
 	emptySequence = func(yield func(Item) bool) {}
 
 	nodeTypeLogicalDirectGrouping   = weightedGraph.LogicalDirectGrouping
