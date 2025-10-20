@@ -32,6 +32,7 @@ import (
 	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/internal/graph"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/featureflags"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -383,7 +384,6 @@ func TestServerPanicIfDefaultListUsersThresholdGreaterThanMaxDispatchThreshold(t
 		)
 	})
 }
-
 func TestServerWithPostgresDatastore(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -1914,6 +1914,35 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		_, ok = localChecker.GetDelegate().(*graph.CachedCheckResolver)
 		require.True(t, ok)
+	})
+}
+
+func TestWithFeatureFlagClient(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	ds := memory.New() // Datastore required for server instantiation
+	t.Cleanup(ds.Close)
+
+	t.Run("it_initializes_a_noop_client_if_no_client_passed", func(t *testing.T) {
+		s := MustNewServerWithOpts(
+			WithDatastore(ds),
+			WithFeatureFlagClient(nil),
+		)
+		t.Cleanup(s.Close)
+		// NoopClient() always false
+		require.False(t, s.featureFlagClient.Boolean("should-be-false", nil))
+	})
+
+	t.Run("if_a_client_is_provided", func(t *testing.T) {
+		t.Run("it_uses_it", func(t *testing.T) {
+			s := MustNewServerWithOpts(
+				WithDatastore(ds),
+				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
+			)
+			t.Cleanup(s.Close)
+			require.True(t, s.featureFlagClient.Boolean("should-be-true", nil))
+		})
 	})
 }
 
