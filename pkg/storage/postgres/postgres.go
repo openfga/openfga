@@ -316,7 +316,7 @@ func (s *Datastore) Write(
 // return a map of all the existing keys.
 func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
 	lockKeys []sqlcommon.TupleLockKey,
-	txn pgx.Tx,
+	txn pgxQuery,
 	store string) (map[string]*openfgav1.Tuple, error) {
 	total := len(lockKeys)
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -337,7 +337,7 @@ func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
 }
 
 // For the prepared deleteConditions, execute delete tuples.
-func (s *Datastore) executeDeleteTuples(ctx context.Context, txn pgx.Tx, store string, deleteConditions sq.Or) error {
+func executeDeleteTuples(ctx context.Context, txn pgxExec, store string, deleteConditions sq.Or) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
@@ -351,6 +351,7 @@ func (s *Datastore) executeDeleteTuples(ctx context.Context, txn pgx.Tx, store s
 		stmt, args, err := stbl.Delete("tuple").Where(sq.Eq{"store": store}).
 			Where(deleteConditionsBatch).ToSql()
 		if err != nil {
+			// Should never happen because we craft the delete statement
 			return HandleSQLError(err)
 		}
 
@@ -369,7 +370,7 @@ func (s *Datastore) executeDeleteTuples(ctx context.Context, txn pgx.Tx, store s
 }
 
 // For the prepared writeItems, execute insert writeItems.
-func (s *Datastore) executeWriteTuples(ctx context.Context, txn pgx.Tx, writeItems [][]interface{}) error {
+func executeWriteTuples(ctx context.Context, txn pgxExec, writeItems [][]interface{}) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
@@ -401,6 +402,7 @@ func (s *Datastore) executeWriteTuples(ctx context.Context, txn pgx.Tx, writeIte
 
 		stmt, args, err := insertBuilder.ToSql()
 		if err != nil {
+			// Should never happen because we craft the insert statement
 			return HandleSQLError(err)
 		}
 
@@ -417,7 +419,7 @@ func (s *Datastore) executeWriteTuples(ctx context.Context, txn pgx.Tx, writeIte
 	return nil
 }
 
-func (s *Datastore) executeInsertChanges(ctx context.Context, txn pgx.Tx, changeLogItems [][]interface{}) error {
+func executeInsertChanges(ctx context.Context, txn pgxExec, changeLogItems [][]interface{}) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
@@ -448,6 +450,7 @@ func (s *Datastore) executeInsertChanges(ctx context.Context, txn pgx.Tx, change
 
 		stmt, args, err := changelogBuilder.ToSql()
 		if err != nil {
+			// Should never happen because we craft the insert statement
 			return HandleSQLError(err)
 		}
 
@@ -497,18 +500,18 @@ func (s *Datastore) write(
 		return err
 	}
 
-	err = s.executeDeleteTuples(ctx, txn, store, deleteConditions)
+	err = executeDeleteTuples(ctx, txn, store, deleteConditions)
 	if err != nil {
 		return err
 	}
 
-	err = s.executeWriteTuples(ctx, txn, writeItems)
+	err = executeWriteTuples(ctx, txn, writeItems)
 	if err != nil {
 		return err
 	}
 
 	// 5. Execute INSERT changelog statements
-	err = s.executeInsertChanges(ctx, txn, changeLogItems)
+	err = executeInsertChanges(ctx, txn, changeLogItems)
 	if err != nil {
 		return err
 	}
@@ -1264,7 +1267,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 
 // selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
 // The existing rows are added to the existing map.
-func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn pgx.Tx, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
+func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn pgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
 	inExpr, args := sqlcommon.BuildRowConstructorIN(keys)
 
 	sb := stbl.

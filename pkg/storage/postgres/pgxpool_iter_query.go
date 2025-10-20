@@ -5,6 +5,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -40,16 +41,24 @@ func (p *pgxpoolIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) 
 	return &pgxRowsWrapper{rows: rows}, nil
 }
 
+type pgxQuery interface {
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+}
+
+type pgxExec interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (commandTag pgconn.CommandTag, err error)
+}
+
 // pgxtxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
 type pgxtxnIterQuery struct {
-	txn   pgx.Tx
+	txn   pgxQuery
 	query string
 	args  []interface{}
 }
 
 var _ sqlcommon.SQLIteratorRowGetter = (*pgxtxnIterQuery)(nil)
 
-func newPgxTxnGetRows(txn pgx.Tx, sb sq.SelectBuilder) (*pgxtxnIterQuery, error) {
+func newPgxTxnGetRows(txn pgxQuery, sb sq.SelectBuilder) (*pgxtxnIterQuery, error) {
 	stmt, args, err := sb.ToSql()
 	if err != nil {
 		return nil, err

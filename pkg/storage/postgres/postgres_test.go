@@ -4,18 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -832,5 +836,191 @@ func TestHandleSQLError(t *testing.T) {
 	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
 		err := HandleSQLError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
+}
+
+// The following are tests for internal functions for related to write
+
+// Testing deletion of tuples.
+func TestExecuteDeleteTuples(t *testing.T) {
+	t.Run("empty_statement", func(t *testing.T) {
+		deleteConditions := sq.Or{}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		require.NoError(t, err)
+	})
+
+	t.Run("txn_error", func(t *testing.T) {
+		deleteConditions := sq.Or{
+			sq.Eq{
+				"object_type": "folder",
+			},
+		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		require.Error(t, err)
+	})
+
+	t.Run("empty_result_conflict", func(t *testing.T) {
+		deleteConditions := sq.Or{
+			sq.Eq{
+				"object_type": "folder",
+			},
+		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), nil)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		require.ErrorIs(t, err, storage.ErrWriteConflictOnDelete)
+	})
+	t.Run("correct_row", func(t *testing.T) {
+		deleteConditions := sq.Or{
+			sq.Eq{
+				"object_type": "folder",
+			},
+		}
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("DELETE 1"), nil)
+		err := executeDeleteTuples(context.Background(), mockPgxExec, "123", deleteConditions)
+		require.NoError(t, err)
+	})
+}
+
+func TestExecuteWriteTuples(t *testing.T) {
+	t.Run("empty_statement", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		err := executeWriteTuples(context.Background(), mockPgxExec, nil)
+		require.NoError(t, err)
+	})
+	t.Run("txn_exec_good", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
+
+		writeItems := [][]interface{}{}
+		writeItems = append(writeItems, []interface{}{
+			"storeID",
+			"objectType1",
+			"objectID1",
+			"rel1",
+			"user1",
+			"userType",
+			"",
+			"",
+			"1234",
+			sq.Expr("NOW()"), // missing time
+		})
+		err := executeWriteTuples(context.Background(), mockPgxExec, writeItems)
+		require.NoError(t, err)
+	})
+	t.Run("txn_exec_collision_error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("duplicate key value"))
+
+		writeItems := [][]interface{}{}
+		writeItems = append(writeItems, []interface{}{
+			"storeID",
+			"objectType1",
+			"objectID1",
+			"rel1",
+			"user1",
+			"userType",
+			"",
+			"",
+			"1234",
+			sq.Expr("NOW()"),
+		})
+		err := executeWriteTuples(context.Background(), mockPgxExec, writeItems)
+		require.ErrorIs(t, err, storage.ErrWriteConflictOnInsert)
+	})
+	t.Run("txn_exec_no_collision_error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
+
+		writeItems := [][]interface{}{}
+		writeItems = append(writeItems, []interface{}{
+			"storeID",
+			"objectType1",
+			"objectID1",
+			"rel1",
+			"user1",
+			"userType",
+			"",
+			"",
+			"1234",
+			sq.Expr("NOW()"),
+		})
+		err := executeWriteTuples(context.Background(), mockPgxExec, writeItems)
+		require.ErrorContains(t, err, "sql error: error")
+	})
+}
+
+func TestExecuteInsertChanges(t *testing.T) {
+	t.Run("empty_statement", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		err := executeInsertChanges(context.Background(), mockPgxExec, nil)
+		require.NoError(t, err)
+	})
+	t.Run("txn_exec_good", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag("INSERT 1"), nil)
+
+		writeItems := [][]interface{}{}
+		writeItems = append(writeItems, []interface{}{
+			"storeID",
+			"objectType1",
+			"objectID1",
+			"rel1",
+			"user1",
+			"userType",
+			"",
+			"",
+			"1234",
+			sq.Expr("NOW()"), // missing time
+		})
+		err := executeInsertChanges(context.Background(), mockPgxExec, writeItems)
+		require.NoError(t, err)
+	})
+
+	t.Run("txn_exec_error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockPgxExec := mocks.NewMockpgxExec(ctrl)
+		mockPgxExec.EXPECT().Exec(gomock.Any(), gomock.Any(), gomock.Any()).Return(pgconn.NewCommandTag(""), fmt.Errorf("error"))
+
+		writeItems := [][]interface{}{}
+		writeItems = append(writeItems, []interface{}{
+			"storeID",
+			"objectType1",
+			"objectID1",
+			"rel1",
+			"user1",
+			"userType",
+			"",
+			"",
+			"1234",
+			sq.Expr("NOW()"),
+		})
+		err := executeInsertChanges(context.Background(), mockPgxExec, writeItems)
+		require.ErrorContains(t, err, "sql error: error")
 	})
 }
