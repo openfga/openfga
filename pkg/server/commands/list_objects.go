@@ -278,33 +278,6 @@ func (q *ListObjectsQuery) evaluate(
 		return fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	_, err := typesys.GetRelation(targetObjectType, targetRelation)
-	if err != nil {
-		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return serverErrors.TypeNotFound(targetObjectType)
-		}
-
-		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
-		}
-
-		return serverErrors.HandleError("", err)
-	}
-
-	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
-	}
-
 	handler := func() {
 		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 		userObjType, userObjID := tuple.SplitObject(userObj)
@@ -503,35 +476,36 @@ func (q *ListObjectsQuery) Execute(
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
-		if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-			return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-		}
-
-		for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-			if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-				return nil, serverErrors.HandleTupleValidateError(err)
-			}
-		}
-
-		_, err := typesys.GetRelation(targetObjectType, targetRelation)
-		if err != nil {
-			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-				return nil, serverErrors.TypeNotFound(targetObjectType)
-			}
-
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
-			}
-
-			return nil, serverErrors.HandleError("", err)
-		}
-
-		if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-			return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
-		}
 
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
@@ -615,7 +589,7 @@ func (q *ListObjectsQuery) Execute(
 		}
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
+	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -671,35 +645,36 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
 	}
 
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
-		if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-			return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-		}
-
-		for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-			if err := validation.ValidateTupleForWrite(typesys, ctxTuple); err != nil {
-				return nil, serverErrors.HandleTupleValidateError(err)
-			}
-		}
-
-		_, err := typesys.GetRelation(targetObjectType, targetRelation)
-		if err != nil {
-			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-				return nil, serverErrors.TypeNotFound(targetObjectType)
-			}
-
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				return nil, serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
-			}
-
-			return nil, serverErrors.HandleError("", err)
-		}
-
-		if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-			return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
-		}
 
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
@@ -773,7 +748,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
+	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
