@@ -37,7 +37,7 @@ func (p *pgxpoolIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) 
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return &pgxRowsWrapper{row: rows}, nil
+	return &pgxRowsWrapper{rows: rows}, nil
 }
 
 // pgxtxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
@@ -67,28 +67,28 @@ func (p *pgxtxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
-	return &pgxRowsWrapper{row: rows}, nil
+	return &pgxRowsWrapper{rows: rows}, nil
 }
 
 // pgxRowsWrapper wraps pgx.Rows to implement sqlcommon.Rows interface.
 type pgxRowsWrapper struct {
-	row pgx.Rows
+	rows pgx.Rows
 }
 
 func (r *pgxRowsWrapper) Err() error {
-	return r.row.Err()
+	return r.rows.Err()
 }
 
 func (r *pgxRowsWrapper) Next() bool {
-	return r.row.Next()
+	return r.rows.Next()
 }
 
 func (r *pgxRowsWrapper) Scan(dest ...any) error {
-	return r.row.Scan(dest...)
+	return r.rows.Scan(dest...)
 }
 
 func (r *pgxRowsWrapper) Close() error {
-	r.row.Close()
+	r.rows.Close()
 	return nil
 }
 

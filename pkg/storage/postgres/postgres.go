@@ -55,13 +55,13 @@ var _ storage.OpenFGADatastore = (*Datastore)(nil)
 func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Config, error) {
 	c, err := pgxpool.ParseConfig(uri)
 	if err != nil {
-		return nil, fmt.Errorf("parse postgres connection uri: %w", err)
+		return nil, fmt.Errorf("pgxpool parse postgres connection uri: %w", err)
 	}
 
 	if override {
 		parsed, err := url.Parse(uri)
 		if err != nil {
-			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
+			return nil, fmt.Errorf("url parse postgres connection uri: %w", err)
 		}
 
 		if cfg.Username != "" {
@@ -312,34 +312,15 @@ func (s *Datastore) Write(
 	return s.write(ctx, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
-func (s *Datastore) write(
-	ctx context.Context,
-	store string,
-	deletes storage.Deletes,
-	writes storage.Writes,
-	opts storage.TupleWriteOptions,
-	now time.Time,
-) error {
-	txn, err := s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
-	if err != nil {
-		return HandleSQLError(err)
-	}
-	// Important - use the same txn (instead of via db) to ensure all works are done as a transaction
-
-	defer func() { _ = txn.Rollback(ctx) }()
-
-	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
-	// Build a deduped, sorted list of keys to lock.
-	lockKeys := sqlcommon.MakeTupleLockKeys(deletes, writes)
+// execute SELECT … FOR UPDATE statement for all the rows indicated by the lockKeys
+// return a map of all the existing keys.
+func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
+	lockKeys []sqlcommon.TupleLockKey,
+	txn pgx.Tx,
+	store string) (map[string]*openfgav1.Tuple, error) {
 	total := len(lockKeys)
-	if total == 0 {
-		// Nothing to do.
-		return nil
-	}
-
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	existing := make(map[string]*openfgav1.Tuple, total)
-	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
 
 	for start := 0; start < total; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
@@ -349,15 +330,15 @@ func (s *Datastore) write(
 		keys := lockKeys[start:end]
 
 		if err := selectExistingRowsForWrite(ctx, stbl, txn, store, keys, existing); err != nil {
-			return err
+			return nil, err
 		}
 	}
+	return existing, nil
+}
 
-	// 4. Construct the deleteConditions, write and changelog items to be written
-	deleteConditions, writeItems, changeLogItems, err := sqlcommon.GetDeleteWriteChangelogItems(store, existing, deletes, writes, opts, now)
-	if err != nil {
-		return err
-	}
+// For the prepared deleteConditions, execute delete tuples.
+func (s *Datastore) executeDeleteTuples(ctx context.Context, txn pgx.Tx, store string, deleteConditions sq.Or) error {
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
@@ -384,6 +365,12 @@ func (s *Datastore) write(
 			return storage.ErrWriteConflictOnDelete
 		}
 	}
+	return nil
+}
+
+// For the prepared writeItems, execute insert writeItems.
+func (s *Datastore) executeWriteTuples(ctx context.Context, txn pgx.Tx, writeItems [][]interface{}) error {
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
@@ -427,8 +414,11 @@ func (s *Datastore) write(
 			return dberr
 		}
 	}
+	return nil
+}
 
-	// 5. Execute INSERT changelog statements
+func (s *Datastore) executeInsertChanges(ctx context.Context, txn pgx.Tx, changeLogItems [][]interface{}) error {
+	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
 		if end > totalItems {
@@ -466,6 +456,61 @@ func (s *Datastore) write(
 		if err != nil {
 			return HandleSQLError(err)
 		}
+	}
+	return nil
+}
+
+func (s *Datastore) write(
+	ctx context.Context,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+	opts storage.TupleWriteOptions,
+	now time.Time,
+) error {
+	txn, err := s.primaryDB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	// Important - use the same txn (instead of via db) to ensure all works are done as a transaction
+
+	defer func() { _ = txn.Rollback(ctx) }()
+
+	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
+	// Build a deduped, sorted list of keys to lock.
+	lockKeys := sqlcommon.MakeTupleLockKeys(deletes, writes)
+
+	if len(lockKeys) == 0 {
+		// Nothing to do.
+		return nil
+	}
+
+	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
+	existing, err := s.selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store)
+	if err != nil {
+		return err
+	}
+
+	// 4. Construct the deleteConditions, write and changelog items to be written
+	deleteConditions, writeItems, changeLogItems, err := sqlcommon.GetDeleteWriteChangelogItems(store, existing, deletes, writes, opts, now)
+	if err != nil {
+		return err
+	}
+
+	err = s.executeDeleteTuples(ctx, txn, store, deleteConditions)
+	if err != nil {
+		return err
+	}
+
+	err = s.executeWriteTuples(ctx, txn, writeItems)
+	if err != nil {
+		return err
+	}
+
+	// 5. Execute INSERT changelog statements
+	err = s.executeInsertChanges(ctx, txn, changeLogItems)
+	if err != nil {
+		return err
 	}
 
 	// 6. Commit Transaction
