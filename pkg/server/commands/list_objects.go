@@ -506,7 +506,6 @@ func (q *ListObjectsQuery) Execute(
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
-
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -675,7 +674,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
-
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),

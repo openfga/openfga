@@ -606,7 +606,7 @@ func runOneBenchmark(
 	pipelineEnabled bool,
 	query ListObjectsQuery,
 	request *openfgav1.ListObjectsRequest,
-	numTuples int,
+	numTuples int, //nolint:unparam
 ) {
 	if optimizationsEnabled {
 		name += "_with_optimization"
