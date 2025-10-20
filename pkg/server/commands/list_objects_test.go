@@ -581,6 +581,211 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	}
 }
 
+func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
+	ds := memory.New()
+	t.Cleanup(ds.Close)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	tests := []struct {
+		name                        string
+		model                       string
+		tuples                      []string
+		objectType                  string
+		relation                    string
+		user                        string
+		expectedDatastoreQueryCount uint32
+	}{
+		{
+			name: "test_direct_relation",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define viewer: [user]
+			`,
+			tuples: []string{
+				"folder:C#viewer@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
+			},
+			objectType:                  "folder",
+			relation:                    "viewer",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 1,
+		},
+		{
+			name: "test_union_relation",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define editor: [user]
+						define viewer: [user] or editor
+			`,
+			tuples: []string{
+				"folder:C#editor@user:jon",
+				"folder:B#viewer@user:jon",
+				"folder:A#viewer@user:jon",
+			},
+			objectType:                  "folder",
+			relation:                    "viewer",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 2,
+		},
+		{
+			name: "test_intersection_relation",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor
+			`,
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:C#editor@user:jon",
+			},
+			objectType:                  "folder",
+			relation:                    "can_delete",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 2,
+		},
+		{
+			name: "test_intersection_relation_check_dispatch",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type group
+					relations
+						define member: [user, group#member]
+
+				type folder
+					relations
+						define editor: [group#member]
+						define can_delete: [user] and editor
+			`,
+			tuples: []string{
+				"folder:C#can_delete@user:jon",
+				"folder:C#editor@group:fga#member",
+				"group:fga#member@user:jon",
+			},
+			objectType:                  "folder",
+			relation:                    "can_delete",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 4,
+		},
+		{
+			name: "no_tuples",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type folder
+					relations
+						define editor: [user]
+						define can_delete: [user] and editor
+			`,
+			tuples:                      []string{},
+			objectType:                  "folder",
+			relation:                    "can_delete",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 2,
+		},
+		{
+			name: "direct_userset_dispatch",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type group
+					relations
+						define member: [user, group#member]
+			`,
+			tuples: []string{
+				"group:eng#member@group:fga#member",
+				"group:fga#member@user:jon",
+			},
+			objectType:                  "group",
+			relation:                    "member",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 3,
+		},
+		{
+			name: "computed_userset_dispatch",
+			model: `
+				model
+					schema 1.1
+
+				type user
+
+				type document
+					relations
+						define editor: [user]
+						define viewer: editor
+			`,
+			tuples: []string{
+				"document:1#editor@user:jon",
+			},
+			objectType:                  "document",
+			relation:                    "viewer",
+			user:                        "user:jon",
+			expectedDatastoreQueryCount: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			storeID, model := storagetest.BootstrapFGAStore(t, ds, test.model, test.tuples)
+			ts, err := typesystem.NewAndValidate(
+				context.Background(),
+				model,
+			)
+			require.NoError(t, err)
+			ctx := typesystem.ContextWithTypesystem(ctx, ts)
+
+			checker, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+			require.NoError(t, err)
+			t.Cleanup(checkResolverCloser)
+
+			q, _ := NewListObjectsQuery(
+				ds,
+				checker,
+				WithListObjectsPipelineEnabled(true),
+			)
+
+			resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:  storeID,
+				Type:     test.objectType,
+				Relation: test.relation,
+				User:     test.user,
+			})
+
+			require.NoError(t, err)
+
+			require.Equal(t, test.expectedDatastoreQueryCount, resp.ResolutionMetadata.DatastoreQueryCount.Load())
+		})
+	}
+}
+
 func reportLatencies(b *testing.B, latencies []time.Duration) {
 	// Sort latencies ascending
 	sort.Slice(latencies, func(i, j int) bool {
