@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -292,6 +294,70 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// We expect that objectID2 will return first because it has a smaller ulid.
 	require.Equal(t, secondTuple, tuples[0].GetKey())
 	require.Equal(t, firstTuple, tuples[1].GetKey())
+}
+
+func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+
+	store := ulid.Make().String()
+
+	// Create multiple tuples with same user type for pagination testing
+	var tuples []*openfgav1.TupleKey
+	for i := 0; i < 10; i++ {
+		tuples = append(tuples, &openfgav1.TupleKey{
+			Object:   "doc:group1",
+			Relation: "viewer",
+			User:     fmt.Sprintf("user:user%d", i),
+		})
+		tuples = append(tuples, &openfgav1.TupleKey{
+			Object:   "doc:group1",
+			Relation: "viewer",
+			User:     fmt.Sprintf("group:admin%d", i),
+		})
+	}
+
+	err = ds.Write(ctx, store, nil, tuples)
+	require.NoError(t, err)
+
+	// Test pagination with user type filtering
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "doc:group1",
+		Relation: "viewer",
+		User:     "user:",
+	}
+
+	readPageOptions := storage.ReadPageOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: 5,
+		},
+	}
+
+	// First page
+	tuples1, token, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	require.NoError(t, err)
+	require.Len(t, tuples1, 5)
+	require.NotEmpty(t, token)
+
+	// All returned tuples should have user type "user"
+	for _, tuple := range tuples1 {
+		userType, _, _ := tupleUtils.ToUserParts(tuple.GetKey().GetUser())
+		require.Equal(t, "user", userType)
+	}
+
+	// Second page
+	readPageOptions.Pagination.From = token
+	tuples2, token2, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	require.NoError(t, err)
+	require.Len(t, tuples2, 5)
+	require.Empty(t, token2)
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
