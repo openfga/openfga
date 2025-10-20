@@ -14,14 +14,19 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
   - Metrics for PostreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
 
+## [1.10.3] - 2025-10-14
+### Changed
+- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+- Build checkResolvers for each request instead of once at server start. [#2742](https://github.com/openfga/openfga/pull/2742)
+
 ### Fixed
 - Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+- Increase the buffer size for LO requests to be 10% of the max results returned or 10. [#2735](https://github.com/openfga/openfga/pull/2735)
 
 ## [1.10.2] - 2025-09-29
 ### Changed
 - Bumped the version of `openfga/language/pkg` to a version of the weighted graph that includes recursive relation detection. [#2716](https://github.com/openfga/openfga/pull/2716)
 - Log the reason on server failure start [#2703](https://github.com/openfga/openfga/pull/2703)
-- Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
 
 ### Fixed
 - Fixed a bug where experimental ReverseExpand constructed the underlying check relation incorrectly for intersection and exclusion in ListObjects. [#2721](https://github.com/openfga/openfga/pull/2721)
@@ -1443,7 +1448,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.3...HEAD
+[1.10.3]: https://github.com/openfga/openfga/compare/v1.10.2...v1.10.3
 [1.10.2]: https://github.com/openfga/openfga/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/openfga/openfga/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openfga/openfga/compare/v1.9.5...v1.10.0
