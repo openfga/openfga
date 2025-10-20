@@ -1919,9 +1919,10 @@ func BenchmarkPipeline(b *testing.B) {
 			b.Cleanup(ds.Close)
 
 			storeID, model := storagetest.BootstrapFGAStore(b, ds, tc.model, tc.tuples)
+			ctx := context.Background()
 
 			typesys, err := typesystem.NewAndValidate(
-				context.Background(),
+				ctx,
 				model,
 			)
 
@@ -1954,7 +1955,7 @@ func BenchmarkPipeline(b *testing.B) {
 					panic("no such source")
 				}
 
-				seq := pipeline.Build(source, target)
+				seq := pipeline.Build(ctx, source, target)
 
 				for range seq {
 				}
@@ -1970,9 +1971,10 @@ func TestPipeline(t *testing.T) {
 			t.Cleanup(ds.Close)
 
 			storeID, model := storagetest.BootstrapFGAStore(t, ds, tc.model, tc.tuples)
+			ctx := context.Background()
 
 			typesys, err := typesystem.NewAndValidate(
-				context.Background(),
+				ctx,
 				model,
 			)
 
@@ -2002,7 +2004,7 @@ func TestPipeline(t *testing.T) {
 				panic("no such source")
 			}
 
-			seq := pipeline.Build(source, target)
+			seq := pipeline.Build(ctx, source, target)
 
 			evaluate(t, tc, seq)
 		})

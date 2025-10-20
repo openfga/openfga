@@ -2,6 +2,10 @@ package test
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +53,24 @@ type listObjectsTestCase struct {
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds)
+}
+
+func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+}
+
+func containsPipelineOption(opts []commands.ListObjectsQueryOption) bool {
+	for _, opt := range opts {
+		funcName := runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name()
+		if strings.Contains(funcName, "WithListObjectsPipelineEnabled") {
+			return true
+		}
+	}
+	return false
+}
+
+func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
 	testCases := []listObjectsTestCase{
 		{
 			name: "max_results_equal_0_with_simple_model",
@@ -499,6 +521,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				commands.WithListObjectsDeadline(10 * time.Second),
 				commands.WithMaxConcurrentReads(30),
 			}
+			opts = append(opts, passedInOpts...)
 
 			if test.listObjectsDeadline != 0 {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
@@ -559,7 +582,9 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 				require.NoError(t, err)
 				// there is no upper bound of the number of results for the streamed version
-				require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				if !containsPipelineOption(opts) {
+					require.GreaterOrEqual(t, len(streamedObjectIDs), int(test.minimumResultsExpected))
+				}
 				require.ElementsMatch(t, test.allResults, streamedObjectIDs)
 			})
 
@@ -575,11 +600,17 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 				require.NotNil(t, res)
 				require.NoError(t, err)
-				if test.maxResults != 0 { // don't get all results
-					require.LessOrEqual(t, len(res.Objects), int(test.maxResults))
+				if !containsPipelineOption(opts) {
+					if test.maxResults != 0 { // don't get all results
+						require.LessOrEqual(t, len(res.Objects), int(test.maxResults))
+					}
+					require.GreaterOrEqual(t, len(res.Objects), int(test.minimumResultsExpected))
+					require.Subset(t, test.allResults, res.Objects)
+				} else {
+					fmt.Printf("Expected: %v\n", test.allResults)
+					fmt.Printf("Actual: %v\n", res.Objects)
+					require.ElementsMatch(t, test.allResults, res.Objects)
 				}
-				require.GreaterOrEqual(t, len(res.Objects), int(test.minimumResultsExpected))
-				require.Subset(t, test.allResults, res.Objects)
 			})
 		})
 	}
