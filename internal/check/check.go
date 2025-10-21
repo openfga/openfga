@@ -134,25 +134,13 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		close(out)
 	}()
 
-	scheduledHandlers := 0
-	// TODO: Optimization to flatten all nested UNION nodes
-	terminalEdges := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges)) // minimum capacity
-	for _, edge := range edges {
-		switch edge.GetEdgeType() {
-		case authzGraph.ComputedEdge:
-			break
-		case authzGraph.RewriteEdge:
-			break
-		default:
-			terminalEdges = append(terminalEdges, edge)
-		}
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
+	if err != nil {
+		return nil, ErrPanicRequest
 	}
 
-	for _, edge := range edges {
-		_, ok := edge.GetWeight(req.GetUserType())
-		if !ok {
-			continue // no relation to terminal type / pruning edge traversal
-		}
+	scheduledHandlers := 0
+	for _, edge := range terminalEdges {
 		scheduledHandlers++
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge)
@@ -161,7 +149,6 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		})
 	}
 
-	var err error
 	for i := 0; i < scheduledHandlers; i++ {
 		select {
 		case <-ctx.Done():
