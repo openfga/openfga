@@ -19,7 +19,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -122,9 +121,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			ctx := context.Background()
 
 			store := "store"
-			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
@@ -154,7 +153,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tuple.
+			iter, err := ds.Read(ctx, store, tupleUtils.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 			defer iter.Stop()
 			require.NoError(t, err)
@@ -227,9 +226,9 @@ func TestCtxCancel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 
 			store := "store"
-			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
 				sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
@@ -259,7 +258,7 @@ func TestCtxCancel(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tuple.
+			iter, err := ds.Read(ctx, store, tupleUtils.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 			defer iter.Stop()
 			require.NoError(t, err)
@@ -291,8 +290,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	ctx := context.Background()
 
 	store := "store"
-	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+	firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+	secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.primaryDB, ds.primaryStbl, HandleSQLError, "postgres"),
@@ -318,7 +317,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	}
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tuple.NewTupleKey("doc:", "relation", ""),
+		tupleUtils.NewTupleKey("doc:", "relation", ""),
 		opts)
 	require.NoError(t, err)
 
@@ -329,7 +328,6 @@ func TestReadPageEnsureOrder(t *testing.T) {
 }
 
 func TestPostgresDatastore_ReadPageWithUserFiltering(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
@@ -344,7 +342,7 @@ func TestPostgresDatastore_ReadPageWithUserFiltering(t *testing.T) {
 
 	// Create multiple tuples with same user type for pagination testing
 	var tuples []*openfgav1.TupleKey
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tuples = append(tuples, &openfgav1.TupleKey{
 			Object:   "doc:group1",
 			Relation: "viewer",
@@ -551,7 +549,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
+	tk := tupleUtils.NewTupleKey("folder:2021-budget", "owner", "user:anne")
 	iter, err := ds.Read(ctx, "store", tk, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
@@ -572,7 +570,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.GetKey())
 
-	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
+	tk2 := tupleUtils.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
 	_, err = ds.primaryDB.ExecContext(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,

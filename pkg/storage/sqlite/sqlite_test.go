@@ -15,10 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/tuple"
-	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-)
 )
 
 func TestSQLiteDatastore(t *testing.T) {
@@ -82,9 +79,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			ctx := context.Background()
 
 			store := "store"
-			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = ds.write(ctx,
 				store,
@@ -114,7 +111,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			iter, err := ds.Read(
 				ctx,
 				store,
-				tuple.NewTupleKey("doc:", "relation", ""),
+				tupleUtils.NewTupleKey("doc:", "relation", ""),
 				storage.ReadOptions{},
 			)
 			defer iter.Stop()
@@ -174,8 +171,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	ctx := context.Background()
 
 	store := "store"
-	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+	firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+	secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = ds.write(ctx,
 		store,
@@ -199,7 +196,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	}
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tuple.NewTupleKey("doc:", "relation", ""),
+		tupleUtils.NewTupleKey("doc:", "relation", ""),
 		opts)
 	require.NoError(t, err)
 
