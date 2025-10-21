@@ -16,7 +16,9 @@ import (
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+)
 )
 
 func TestSQLiteDatastore(t *testing.T) {
