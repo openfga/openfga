@@ -6,6 +6,7 @@ import (
 
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
+	"golang.org/x/sync/errgroup"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
@@ -141,7 +142,8 @@ func (s *defaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
 func (s *defaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
-	pool := concurrency.NewPool(ctx, s.concurrencyLimit)
+	var pool errgroup.Group
+	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
 		_ = pool.Wait()
 	}()
@@ -159,7 +161,7 @@ func (s *defaultStrategy) processRequests(ctx context.Context, requests chan req
 				continue
 			}
 
-			pool.Go(func(ctx context.Context) error {
+			pool.Go(func() error {
 				var res *check.Response
 				var err error
 				recoveredErr := panics.Try(func() {

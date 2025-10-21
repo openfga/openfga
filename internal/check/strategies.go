@@ -29,7 +29,7 @@ var DefaultPlan = &planner.KeyPlanStrategy{
 	Beta:  0.5,
 }
 
-var defaultRecursivePlan = &planner.KeyPlanStrategy{
+var DefaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         DefaultStrategyName,
 	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
@@ -60,4 +60,25 @@ var weight2Plan = &planner.KeyPlanStrategy{
 	// A slow sample will look like an outlier and move the posterior noticeably but overall this prior exploits.
 	Alpha: 20,
 	Beta:  2,
+}
+
+const RecursiveStrategyName = "recursive"
+
+// In general these values tell the query planner that the recursive strategy usually performs around 150 ms but occasionally spikes.
+// However, even when it spikes we want to keep it using it or exploring it despite variance, rather than over-penalizing single slow runs.
+var RecursivePlan = &planner.KeyPlanStrategy{
+	Type:         RecursiveStrategyName,
+	InitialGuess: 150 * time.Millisecond,
+	// Medium Lambda: Represents medium confidence in the initial guess. It's like
+	// starting with the belief of having already seen 5 good runs.
+	Lambda: 5.0,
+	// UNCERTAINTY ABOUT CONSISTENCY: The gap between p50 and p99 is large.
+	// Low Alpha/Beta values create a wider belief curve, telling the planner
+	// to expect and not be overly surprised by performance variations.
+	// Low expected precision: 𝐸[𝜏]= 𝛼/𝛽 = 2.0/2.5 = 0.8.
+	// High expected variance: E[σ2]= β/(α−1) =2.5/1 = 2.5, this will allow for relative bursty / jiterry results.
+	// Wide tolerance for spread: 𝛼 = 2, this will allow for considerable uncertainty in how spike the latency can be.
+	// When β > α, we expect lower precision and higher variance
+	Alpha: 2.0,
+	Beta:  2.5,
 }
