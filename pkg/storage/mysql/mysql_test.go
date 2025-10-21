@@ -296,7 +296,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.Equal(t, firstTuple, tuples[1].GetKey())
 }
 
-func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
+func TestMySQLDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
