@@ -41,3 +41,45 @@ func (m *AuthorizationModelGraph) GetConditionsEdgeForUserType(objectRelation st
 
 	return edge, nil
 }
+
+func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
+	edges, ok := m.GetEdgesFromNode(node)
+	if !ok {
+		return nil, ErrGraphError
+	}
+	result := make([]*authzGraph.WeightedAuthorizationModelEdge, len(edges))
+	for _, edge := range edges {
+		_, ok := edge.GetWeight(userType)
+		if !ok {
+			continue // no relation to terminal type / pruning edge traversal
+		}
+
+		canFlatten := false
+
+		switch edge.GetEdgeType() {
+		case authzGraph.ComputedEdge:
+			canFlatten = true
+		case authzGraph.RewriteEdge:
+			switch edge.GetTo().GetNodeType() {
+			case authzGraph.SpecificTypeAndRelation:
+				canFlatten = true
+			case authzGraph.OperatorNode:
+				if edge.GetTo().GetLabel() == authzGraph.UnionOperator {
+					canFlatten = true
+				}
+			}
+		}
+
+		if canFlatten {
+			res, err := m.FlattenNode(edge.GetTo(), userType)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, res...)
+		} else {
+			result = append(result, edge)
+		}
+	}
+
+	return result, nil
+}
