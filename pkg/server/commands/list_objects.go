@@ -536,7 +536,7 @@ func (q *ListObjectsQuery) Execute(
 		var target reverseexpand.Target
 
 		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
-			panic("target not in graph")
+			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
 		userParts := strings.Split(req.GetUser(), "#")
@@ -550,7 +550,7 @@ func (q *ListObjectsQuery) Execute(
 		}
 
 		if target, ok = pipeline.Target(objectType, objectID); !ok {
-			panic("user not in graph")
+			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
 		seq := pipeline.Build(source, target)
@@ -708,7 +708,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		var target reverseexpand.Target
 
 		if source, ok = pipeline.Source(targetObjectType, targetRelation); !ok {
-			panic("target not in graph")
+			return nil, serverErrors.ValidationError(fmt.Errorf("object: %s relation: %s not in graph", targetObjectType, targetRelation))
 		}
 
 		userParts := strings.Split(req.GetUser(), "#")
@@ -722,7 +722,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 		}
 
 		if target, ok = pipeline.Target(objectType, objectID); !ok {
-			panic("user not in graph")
+			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
 		seq := pipeline.Build(source, target)
