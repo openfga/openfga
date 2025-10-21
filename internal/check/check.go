@@ -123,7 +123,11 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 
 	if node.GetNodeType() == authzGraph.SpecificTypeAndRelation && node.GetRecursiveRelation() == node.GetUniqueLabel() {
 		// if we are at a recursive relation, need to apply strategy to apply (via planner if available)
+		// function that will tell us if it can apply optimization
+		// traverse the subgraph from teh node, when an edge does not have the recursiveRelation set to be equal to node.GetUniqueLabel then get the weight to the usertype if the weight is > 1 then short circuit and return false. if the weight is 1 do not continue traversing that edge.  When the edge has the recursiveRelation continue until you find the ttu edge or the userset edge.
 	}
+
+	// only verify if tuples were already added when in the presence of tuple cycles or recursion
 
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
@@ -345,7 +349,7 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	// relation and union have save behavior
 	switch node.GetNodeType() {
-	case authzGraph.SpecificTypeAndRelation, authzGraph.LogicalDirectGrouping, authzGraph.LogicalTTUGrouping:
+	case authzGraph.SpecificTypeAndRelation:
 		return r.ResolveUnion(ctx, req, node)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
