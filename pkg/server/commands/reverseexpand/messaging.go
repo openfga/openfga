@@ -23,8 +23,9 @@ type producer[T any] interface {
 }
 
 type consumer[T any] interface {
-	send(T)
+	send(T) bool
 	close()
+	cancel()
 }
 
 const maxPipeSize int = 100
@@ -52,7 +53,7 @@ func newPipe(trk tracker) *pipe {
 
 func (p *pipe) seq() iter.Seq[message[group]] {
 	return func(yield func(message[group]) bool) {
-		defer p.close()
+		defer p.finite()
 
 		for {
 			msg, ok := p.recv()
@@ -67,13 +68,15 @@ func (p *pipe) seq() iter.Seq[message[group]] {
 	}
 }
 
-func (p *pipe) send(g group) {
+func (p *pipe) send(g group) bool {
 	p.trk.Add(1)
 
 	select {
 	case p.ch <- g:
+		return true
 	case <-p.end:
 		p.trk.Add(-1)
+		return false
 	}
 }
 
@@ -94,6 +97,18 @@ func (p *pipe) close() {
 		runtime.Gosched()
 	}
 	p.finite()
+}
+
+func (p *pipe) cancel() {
+	p.finite()
+	for {
+		select {
+		case _ = <-p.ch:
+			p.trk.Add(-1)
+		default:
+			return
+		}
+	}
 }
 
 type staticProducer struct {

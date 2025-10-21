@@ -355,6 +355,8 @@ type baseResolver struct {
 	// a single resolver may have multiple recursive edges that must receive the same objects.
 	inBuffers []map[string]struct{}
 
+	errBuffers []map[error]struct{}
+
 	// outMu protects map access to outBuffer.
 	outMu sync.Mutex
 
@@ -378,10 +380,18 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		var results iter.Seq[Item]
 		var outGroup group
 		var items, unseen []Item
+		var sent bool
 
 		// Deduplicate items within this group based on the buffer for this sender
 		for _, item := range msg.Value.Items {
 			if item.Err != nil {
+				r.mutexes[ndx].Lock()
+				if _, ok := r.errBuffers[ndx][item.Err]; ok {
+					r.mutexes[ndx].Unlock()
+					continue
+				}
+				r.errBuffers[ndx][item.Err] = struct{}{}
+				r.mutexes[ndx].Unlock()
 				unseen = append(unseen, item)
 				continue
 			}
@@ -398,7 +408,8 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 
 		// If there are no unseen items, skip processing
 		if len(unseen) == 0 {
-			goto ProcessEnd
+			msg.done()
+			return true
 		}
 
 		results = r.interpreter.interpret(snd.edge(), unseen)
@@ -435,36 +446,39 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 			items = nil
 
 			for _, lst := range listeners {
-				lst.send(g)
+				if lst.send(g) {
+					sent = true
+				}
 			}
 		}
 
 		if len(items) == 0 {
-			goto ProcessEnd
+			msg.done()
+			return true
 		}
 
 		outGroup.Items = items
 
 		for _, lst := range listeners {
-			lst.send(outGroup)
+			if lst.send(outGroup) {
+				sent = true
+			}
 		}
 
-	ProcessEnd:
-		// Important: Indicating that the message is done will clear its count from the
-		// origin worker's tracker.
 		msg.done()
-
-		return true
+		return sent
 	}
 }
 
 func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 	r.mutexes = make([]sync.Mutex, len(senders))
 	r.inBuffers = make([]map[string]struct{}, len(senders))
+	r.errBuffers = make([]map[error]struct{}, len(senders))
 	r.outBuffer = make(map[string]struct{})
 
 	for ndx := range len(senders) {
 		r.inBuffers[ndx] = make(map[string]struct{})
+		r.errBuffers[ndx] = make(map[error]struct{})
 	}
 
 	// Any senders with a non-recursive edge will be processed in the "standard" queue.
@@ -769,8 +783,12 @@ type listener struct {
 	node *Node
 }
 
-func (lst *listener) send(g group) {
-	lst.cons.send(g)
+func (lst *listener) send(g group) bool {
+	return lst.cons.send(g)
+}
+
+func (lst *listener) cancel() {
+	lst.cons.cancel()
 }
 
 func (lst *listener) close() {
@@ -868,7 +886,7 @@ func (p *Pipeline) Build(source Source, target Target) iter.Seq[Item] {
 			if messageCount < 1 || ctx.Err() != nil {
 				// cancel all running workers
 				for _, w := range pth.workers {
-					w.close()
+					w.cancel()
 				}
 
 				// wait for all workers to finish
@@ -1248,6 +1266,12 @@ type worker struct {
 
 func (w *worker) active() bool {
 	return w.status.Status() || w.trk.Load() != 0
+}
+
+func (w *worker) cancel() {
+	for _, lst := range w.listeners {
+		lst.cancel()
+	}
 }
 
 func (w *worker) close() {
