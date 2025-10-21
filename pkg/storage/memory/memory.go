@@ -50,8 +50,13 @@ func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 	if target.GetRelation() != "" && t.Relation != target.GetRelation() {
 		return false
 	}
-	if target.GetUser() != "" && t.User != target.GetUser() {
-		return false
+	if target.GetUser() != "" {
+		userType, userID, _ := tupleUtils.ToUserParts(target.GetUser())
+		if userID != "" && t.User != target.GetUser() {
+			return false
+		} else if userID == "" && !strings.HasPrefix(t.User, userType+":") {
+			return false
+		}
 	}
 	return true
 }
