@@ -136,19 +136,17 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 
 	scheduledHandlers := 0
 	// TODO: Optimization to flatten all nested UNION nodes
-	/*
-		terminalEdges := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges)) // minimum capacity
-		for _, edge := range edges {
-			switch edge.GetEdgeType() {
-			case authzGraph.ComputedEdge:
-				break
-			case authzGraph.RewriteEdge:
-				break
-				default:
-				terminalEdges = append(terminalEdges, edge)
-			}
+	terminalEdges := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges)) // minimum capacity
+	for _, edge := range edges {
+		switch edge.GetEdgeType() {
+		case authzGraph.ComputedEdge:
+			break
+		case authzGraph.RewriteEdge:
+			break
+		default:
+			terminalEdges = append(terminalEdges, edge)
 		}
-	*/
+	}
 
 	for _, edge := range edges {
 		_, ok := edge.GetWeight(req.GetUserType())
@@ -360,7 +358,6 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	// relation and union have save behavior
 	switch node.GetNodeType() {
-	// TODO: are we missing logicaldirectgrouping here?
 	case authzGraph.SpecificTypeAndRelation, authzGraph.LogicalDirectGrouping, authzGraph.LogicalTTUGrouping:
 		return r.ResolveUnion(ctx, req, node)
 	case authzGraph.OperatorNode:
