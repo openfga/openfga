@@ -21,18 +21,19 @@ const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
-type weight2 struct {
+type Weight2 struct {
 	model     *check.AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 }
 
-func NewWeight2(ds storage.RelationshipTupleReader) check.Strategy {
-	return &weight2{
+func NewWeight2(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
+	return &Weight2{
+		model:     model,
 		datastore: ds,
 	}
 }
 
-func (s *weight2) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -53,7 +54,7 @@ func (s *weight2) Userset(ctx context.Context, req *check.Request, edge *authzGr
 	return s.execute(ctx, leftChan, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
-func (s *weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -85,12 +86,12 @@ func processMessage(id string,
 	return secondarySet.Contains(id)
 }
 
-// weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
+// Weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
 // In the case of a TTU:
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (s *weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
+func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "weight2")
 	defer span.End()
 	ctx, cancel := context.WithCancel(ctx)
@@ -181,7 +182,7 @@ ConsumerLoop:
 // setOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func (s *weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver fastPathSetHandler, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+func (s *Weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver fastPathSetHandler, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	edges, ok := s.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, check.ErrPanicRequest
@@ -211,7 +212,7 @@ func (s *weight2) setOperationSetup(ctx context.Context, req *check.Request, res
 	return outChan, nil
 }
 
-func (s *weight2) resolveEdge(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *Weight2) resolveEdge(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	switch edge.GetEdgeType() {
 	case authzGraph.DirectEdge:
 		switch edge.GetTo().GetNodeType() {
@@ -231,7 +232,7 @@ func (s *weight2) resolveEdge(ctx context.Context, req *check.Request, edge *aut
 
 // resolveRewrite returns a channel that will contain an unknown but finite number of elements.
 // The channel is closed at the end.
-func (s *weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+func (s *Weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
 		return s.setOperationSetup(ctx, req, s.resolveUnion, node)
@@ -255,7 +256,7 @@ func (s *weight2) resolveRewrite(ctx context.Context, req *check.Request, node *
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 // TODO: DETERMINE IF ITS WORTH WAITING FOR RESULTS OF RIGHT HAND SIDE TO PERFORM BOUNDED QUERIES RATHER THAN THE FULL SET OF OBJECTIDS (BASICALLY INTERSECTION AT THE DATASTORE LEVEL).
-func (s *weight2) specificType(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *Weight2) specificType(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	opts := storage.ReadStartingWithUserOptions{
 		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
@@ -295,7 +296,7 @@ func (s *weight2) specificType(ctx context.Context, req *check.Request, edge *au
 	return iterChan, nil
 }
 
-func (s *weight2) specificTypeWildcard(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	opts := storage.ReadStartingWithUserOptions{
 		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
@@ -353,7 +354,7 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 	return batch, nil
 }
 
-func (s *weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *Weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -425,7 +426,7 @@ func (s *weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, o
 	}
 }
 
-func (s *weight2) resolveIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *Weight2) resolveIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -515,7 +516,7 @@ func (s *weight2) resolveIntersection(ctx context.Context, streams *iterator.Str
 	}
 }
 
-func (s *weight2) resolveDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *Weight2) resolveDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {

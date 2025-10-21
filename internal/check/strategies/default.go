@@ -23,13 +23,13 @@ type requestMsg struct {
 	req *check.Request
 }
 
-type defaultStrategy struct {
+type DefaultStrategy struct {
 	resolver         *check.Resolver
 	concurrencyLimit int
 }
 
-func NewDefault(resolver *check.Resolver, limit int) check.Strategy {
-	return &defaultStrategy{
+func NewDefault(resolver *check.Resolver, limit int) DefaultStrategy {
+	return &DefaultStrategy{
 		concurrencyLimit: limit,
 		resolver:         resolver,
 	}
@@ -37,11 +37,11 @@ func NewDefault(resolver *check.Resolver, limit int) check.Strategy {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *defaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
 	return s.execute(ctx, req, edge, iter, s.userset)
 }
 
-func (s *defaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
@@ -68,11 +68,11 @@ func (s *defaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 	}
 }
 
-func (s *defaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
 	return s.execute(ctx, req, edge, iter, s.ttu)
 }
 
-func (s *defaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	for {
 		t, err := iter.Next(ctx)
@@ -99,7 +99,7 @@ func (s *defaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 	}
 }
 
-func (s *defaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler) (*check.Response, error) {
+func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "defaultStrategy")
 	defer span.End()
 
@@ -141,7 +141,7 @@ func (s *defaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (s *defaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
+func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
 	var pool errgroup.Group
 	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
