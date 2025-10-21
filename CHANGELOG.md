@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+### Added
+- Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 
 ## [1.10.3] - 2025-10-14
 ### Changed
 - Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
+- Build checkResolvers for each request instead of once at server start. [#2742](https://github.com/openfga/openfga/pull/2742)
 
 ### Fixed
 - Align datastore throttle configuration names with struct property names. [#2668](https://github.com/openfga/openfga/pull/2668)
+- Increase the buffer size for LO requests to be 10% of the max results returned or 10. [#2735](https://github.com/openfga/openfga/pull/2735)
 
 ## [1.10.2] - 2025-09-29
 ### Changed
