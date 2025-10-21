@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"testing"
@@ -17,7 +18,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
-	"github.com/openfga/openfga/internal/errors"
+	internalErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/internal/shared"
@@ -471,7 +472,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	mockCheckResolver := graph.NewMockCheckResolver(mockController)
 	mockCheckResolver.EXPECT().
 		ResolveCheck(gomock.Any(), gomock.Any()).
-		Return(nil, errors.ErrUnknown).
+		Return(nil, internalErrors.ErrUnknown).
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
@@ -486,7 +487,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	})
 
 	require.Nil(t, resp)
-	require.ErrorIs(t, err, errors.ErrUnknown)
+	require.ErrorIs(t, err, internalErrors.ErrUnknown)
 }
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 	tests := []struct {
@@ -788,6 +789,82 @@ func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
 			require.Equal(t, test.expectedDatastoreQueryCount, resp.ResolutionMetadata.DatastoreQueryCount.Load())
 		})
 	}
+}
+
+func TestListObjectsSeqError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	errorRet := errors.New("test")
+	mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+	mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any())
+	mockDatastore.EXPECT().MaxTuplesPerWrite().Return(40)
+	mockDatastore.EXPECT().Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errorRet)
+
+	model := `
+		model
+			schema 1.1
+			type user
+
+			type document
+			relations
+				define viewer: [user]
+				define editor: [user]
+				define admin: viewer and editor
+	`
+	tuples := []string{
+		"document:1#viewer@user:a",
+		"document:2#editor@user:a",
+	}
+	storeID, authModel := storagetest.BootstrapFGAStore(t, mockDatastore, model, tuples)
+	typesys, err := typesystem.New(
+		authModel,
+	)
+	require.NoError(t, err)
+	ctx := storage.ContextWithRelationshipTupleReader(context.Background(), mockDatastore)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
+	require.NoError(t, err)
+	t.Cleanup(checkResolverCloser)
+
+	t.Run("execute_seq_error", func(t *testing.T) {
+		query, err := NewListObjectsQuery(
+			mockDatastore,
+			checkResolver,
+			WithListObjectsPipelineEnabled(true),
+		)
+		require.NoError(t, err)
+
+		_, err = query.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: authModel.GetId(),
+			Type:                 "document",
+			Relation:             "admin",
+			User:                 "user:a",
+		})
+		require.ErrorIs(t, err, errorRet)
+	})
+
+	t.Run("execute_streamed_seq_error", func(t *testing.T) {
+		query, err := NewListObjectsQuery(
+			mockDatastore,
+			checkResolver,
+			WithListObjectsPipelineEnabled(true),
+		)
+		require.NoError(t, err)
+
+		var srv openfgav1.OpenFGAService_StreamedListObjectsServer
+		_, err = query.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: authModel.GetId(),
+			Type:                 "document",
+			Relation:             "admin",
+			User:                 "user:a",
+		}, srv)
+		require.ErrorIs(t, err, errorRet)
+	})
 }
 
 func reportLatencies(b *testing.B, latencies []time.Duration) {
