@@ -54,6 +54,10 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
 		require.ErrorContains(t, err, "typesystem missing in context")
+
+		var srv openfgav1.OpenFGAService_StreamedListObjectsServer
+		_, err = q.ExecuteStreamed(context.Background(), &openfgav1.StreamedListObjectsRequest{}, srv)
+		require.ErrorContains(t, err, "typesystem missing in context")
 	})
 }
 

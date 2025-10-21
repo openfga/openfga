@@ -553,11 +553,15 @@ func (q *ListObjectsQuery) Execute(
 			panic("user not in graph")
 		}
 
-		seq := pipeline.Build(timeoutCtx, source, target)
+		seq := pipeline.Build(source, target)
 
 		var res ListObjectsResponse
 
 		for obj := range seq {
+			if timeoutCtx.Err() != nil {
+				break
+			}
+
 			if obj.Err != nil {
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
@@ -721,9 +725,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			panic("user not in graph")
 		}
 
-		seq := pipeline.Build(timeoutCtx, source, target)
+		seq := pipeline.Build(source, target)
 
 		for obj := range seq {
+			if timeoutCtx.Err() != nil {
+				break
+			}
+
 			if obj.Err != nil {
 				if errors.Is(obj.Err, condition.ErrEvaluationFailed) {
 					return nil, serverErrors.ValidationError(obj.Err)

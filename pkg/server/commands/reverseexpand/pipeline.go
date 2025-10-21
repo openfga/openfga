@@ -835,8 +835,8 @@ type Pipeline struct {
 	numProcs  int
 }
 
-func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(ctx)
+func (p *Pipeline) Build(source Source, target Target) iter.Seq[Item] {
+	ctx, cancel := context.WithCancel(context.Background())
 
 	pth := path{
 		ctx:     ctx,
