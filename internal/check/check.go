@@ -122,13 +122,13 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	if node.GetNodeType() == authzGraph.SpecificTypeAndRelation && node.GetRecursiveRelation() == node.GetUniqueLabel() {
-		// if we are at a recursive relation, need to apply strategy to apply (via planner if available)
-		// function that will tell us if it can apply optimization
-		// traverse the subgraph from teh node, when an edge does not have the recursiveRelation set to be equal to node.GetUniqueLabel then get the weight to the usertype if the weight is > 1 then short circuit and return false. if the weight is 1 do not continue traversing that edge.  When the edge has the recursiveRelation continue until you find the ttu edge or the userset edge.
+		edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
+		if ok {
+			return r.ResolveRecursive(ctx, req, edge)
+		}
 	}
 
 	// only verify if tuples were already added when in the presence of tuple cycles or recursion
-
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
@@ -169,6 +169,135 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		}
 	}
 	return &Response{Allowed: false}, err
+}
+
+func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy,
+	fn func() (*Response, error)) (*Response, error) {
+	start := time.Now()
+	res, err := fn()
+	if err != nil {
+		// penalize plans that timeout from the upstream context
+		if errors.Is(err, context.DeadlineExceeded) {
+			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
+		}
+		return nil, err
+	}
+	keyPlan.UpdateStats(strategy, time.Since(start))
+	return res, nil
+}
+
+func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		Object:   req.GetTupleKey().GetObject(),
+		Relation: req.GetTupleKey().GetRelation(),
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
+			Type:               objectType,
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+		}},
+	}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Stop()
+
+	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+		)
+	}
+
+	var b strings.Builder
+	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("userset|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(edge.GetTo().GetUniqueLabel())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString("infinite")
+
+	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		DefaultStrategyName:   DefaultRecursivePlan,
+		RecursiveStrategyName: RecursivePlan,
+	}
+
+	keyPlan := r.planner.GetKeyPlan(b.String())
+	strategy := keyPlan.SelectStrategy(possibleStrategies)
+
+	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+		return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+	})
+}
+
+func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	iter, err := r.datastore.Read(
+		ctx,
+		req.GetStoreID(),
+		tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType+":"), // TODO: Read doesn't support passing subjectType with objectID and relation
+		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer iter.Stop()
+	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuplesetRelation, subjectType)
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+		)
+	}
+
+	var b strings.Builder
+	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("ttu|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(edge.GetTo().GetUniqueLabel())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(edge.GetTuplesetRelation())
+	b.WriteString("|")
+	b.WriteString("infinite")
+
+	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		DefaultStrategyName:   DefaultRecursivePlan,
+		RecursiveStrategyName: RecursivePlan,
+	}
+
+	keyPlan := r.planner.GetKeyPlan(b.String())
+	strategy := keyPlan.SelectStrategy(possibleStrategies)
+
+	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+		return r.strategies[strategy.Type].TTU(ctx, req, edge, i)
+	})
+}
+
+func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	switch edge.GetEdgeType() {
+	case authzGraph.DirectEdge:
+		return r.resolveRecursiveUserset(ctx, req, edge)
+	case authzGraph.TTUEdge:
+		return r.resolveRecursiveTTU(ctx, req, edge)
+	default:
+		return nil, ErrPanicRequest
+	}
 }
 
 // reduce as a logical intersection operation (exit the moment we have a single false)
@@ -376,13 +505,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 	)
 	defer span.End()
 
-	opts := storage.ReadUserTupleOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
-	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), opts)
+	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &Response{Allowed: false}, nil
@@ -409,18 +532,16 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	)
 	defer span.End()
 
-	opts := storage.ReadUsersetTuplesOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
 	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
 		Relation:                    req.GetTupleKey().GetRelation(),
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
-	}, opts)
+	}, storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -456,12 +577,6 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	)
 	defer span.End()
 
-	opts := storage.ReadUsersetTuplesOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
@@ -471,7 +586,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 			Type:               objectType,
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
 		}},
-	}, opts)
+	}, storage.ReadUsersetTuplesOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -518,17 +637,9 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	keyPlan := r.planner.GetKeyPlan(b.String())
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
-	start := time.Now()
-	res, err := r.strategies[strategy.Type].Userset(ctx, req, edge, i)
-	if err != nil {
-		// penalize plans that timeout from the upstream context
-		if errors.Is(err, context.DeadlineExceeded) {
-			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
-		}
-		return nil, err
-	}
-	keyPlan.UpdateStats(strategy, time.Since(start))
-	return res, nil
+	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+		return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+	})
 }
 
 func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
@@ -545,17 +656,11 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	)
 	defer span.End()
 
-	opts := storage.ReadOptions{
-		Consistency: storage.ConsistencyOptions{
-			Preference: req.GetConsistency(),
-		},
-	}
-
 	iter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
 		tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType+":"), // TODO: Read doesn't support passing subjectType with objectID and relation
-		opts,
+		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
 	)
 	if err != nil {
 		return nil, err
@@ -606,15 +711,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	keyPlan := r.planner.GetKeyPlan(planKey)
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
-	start := time.Now()
-	res, err := r.strategies[strategy.Type].TTU(ctx, req, edge, i)
-	if err != nil {
-		// penalize plans that timeout from the upstream context
-		if errors.Is(err, context.DeadlineExceeded) {
-			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
-		}
-		return nil, err
-	}
-	keyPlan.UpdateStats(strategy, time.Since(start))
-	return res, nil
+	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+		return r.strategies[strategy.Type].TTU(ctx, req, edge, i)
+	})
 }
