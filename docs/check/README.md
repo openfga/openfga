@@ -42,9 +42,9 @@ It can be viewed as a traversal on a directed, possibly cyclical, graph. For a l
 
 In this relationship tree we say that anyone is a viewer of `document:1` if they are either (e.g. union) an owner of that document or an editor of it AND (intersection) they are allowed on the document.
 
-As relationships are expanded the Check algorithm follows relationship rewrite rules, and these rewrite rules define one or more paths that must be evaluated. For example, given the following FGA model:
+As relationships are expanded the Check algorithm follows relationship rewrite rules, and these rewrite rules define one or more paths that must be evaluated. For example, given the following FGA m:
 ```
-model
+m
   schema 1.1
 
 type user
@@ -59,14 +59,14 @@ type document
     define editor: [user] or editor from parent
     define viewer: editor
 ```
-The `document#viewer` relation is "rewritten" indirectly as `document#editor`, which means that in order to evaluate a specific relationship of the form `Check(document:1#viewer@user:jon)` we must actually rewrite that lookup as `Check(document:1#editor@user:jon)`. Similarly, the `document#editor` relationship is rewritten using a set union (e.g. `or` keyword) such that if a user is either directly an editor of the document or an editor on the parent folder, then the user can edit the document. This kind of rewritten behavior allows us to model hierarchical semantics. These "rewrites" make up the base-line behavior behind the semantics of the FGA graph traversal, and we explain each of them with examples in further detail below.
+The `document#viewer` relation is "rewritten" indirectly as `document#editor`, which means that in order to evaluate a specific relationship of the form `Check(document:1#viewer@user:jon)` we must actually rewrite that lookup as `Check(document:1#editor@user:jon)`. Similarly, the `document#editor` relationship is rewritten using a set union (e.g. `or` keyword) such that if a user is either directly an editor of the document or an editor on the parent folder, then the user can edit the document. This kind of rewritten behavior allows us to m hierarchical semantics. These "rewrites" make up the base-line behavior behind the semantics of the FGA graph traversal, and we explain each of them with examples in further detail below.
 
 ## Definitions
 Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is expected, but the following are some terms used throughout this document that are more specific to the content herein:
 
 * **Relation Rewrite (Rewrite)** - a rule that expresses an FGA relationship as a composition of other relationships. For example, you can "rewrite" a viewer relationship as editor or express a hierarchy between two objects. These rules can also be composed using set operations including union, intersection, and exclusion.
 
-![fga-model-highlighted](./fga_model_highlighted.svg)
+![fga-m-highlighted](./fga_model_highlighted.svg)
 
 * **Rewrite Operand** - for rewrites involving set operations (e.g. union, intersection, exclusion) a rewrite operand refers to the relation rewrites that are evaluated as part of the set expression. For example, the rewrite operands of the definition `a or b` are `a` and `b`.
 
@@ -77,7 +77,7 @@ Familiarity with basic [OpenFGA Concepts](https://openfga.dev/docs/concepts) is 
 * **Expansion** - refers more generally to the <u>process</u> of an iterative evaluation of one or more subproblems in order to determine some FGA query outcome. An expansion of an FGA relationship requires a minimum of 1 lookup followed by 0 or more subsequent dispatches to resolve residual usersets. Expansion is not to be confused with dispatch, because expansion involves potentially 0 or more dispatches whereas dispatch itself refers specifically to a evaluation of a singular subgraph. The term "expansion" is more generally used when referring to the evaluation of a whole relationship graph/tree whereas "dispatch" is a term more generally used to refer to the evaluation of a single branch of a larger relationship graph/tree. Expansion of an FGA relationships involves potentially many dispatches of related (indirect) subproblems.
 
 ## Direct Rewrites
-Direct rewrites establish the most basic form of FGA relationship rewrite definitions. These direct rewrites allow developers to express the most basic of authorization model semantics, including direct permissions, indirect or computed permissions, and/or hierarchical permissions.
+Direct rewrites establish the most basic form of FGA relationship rewrite definitions. These direct rewrites allow developers to express the most basic of authorization m semantics, including direct permissions, indirect or computed permissions, and/or hierarchical permissions.
 
 > ℹ️ The term "permission" is used above, but from here forward we will formally refer to permissions simply as relationships. A users/subject has a permission if they have the relationship, and a relationship can be realized through one or more relationship rewrites.
 
@@ -85,10 +85,10 @@ Direct rewrites establish the most basic form of FGA relationship rewrite defini
 > e.g. define viewer: [user]
 > e.g. define viewer: [group#member]
 
-If a relation can be directly assigned or given/shared with a specific user/subject, then we refer to it as a "direct relationship". Direct relationships are any of those relationships that, for a particular authorization model, can be written to an [FGA Store](https://openfga.dev/docs/concepts#what-is-a-store) using the [Write API](https://openfga.dev/api/service#/Relationship%20Tuples/Write). Looking at the model below, the `document#owner` relationship is a direct relationship, because `user` objects can be directly written/assigned to document owners. This is evident by the defined `[user]` type restriction on the owner relation. Similarly, the `document#viewer` relationship is a direct relationship, because any set of users/subjects of the form `group#member` can be directly written/assigned to document viewer.
+If a relation can be directly assigned or given/shared with a specific user/subject, then we refer to it as a "direct relationship". Direct relationships are any of those relationships that, for a particular authorization m, can be written to an [FGA Store](https://openfga.dev/docs/concepts#what-is-a-store) using the [Write API](https://openfga.dev/api/service#/Relationship%20Tuples/Write). Looking at the m below, the `document#owner` relationship is a direct relationship, because `user` objects can be directly written/assigned to document owners. This is evident by the defined `[user]` type restriction on the owner relation. Similarly, the `document#viewer` relationship is a direct relationship, because any set of users/subjects of the form `group#member` can be directly written/assigned to document viewer.
 
 ```
-model
+m
   schema 1.1
 
 type user
@@ -150,10 +150,10 @@ In the example immediately above we had to follow an intermediate relationship t
 ### Computed Relationships (e.g. computed_userset)
 > e.g. define viewer: editor
 
-Evaluation of computed relationships involves an indirect evaluation of the computed relation, and the computed relation may involve one or more other rewritten relationships not just direct relationships. For example, consider the following model and tuples:
+Evaluation of computed relationships involves an indirect evaluation of the computed relation, and the computed relation may involve one or more other rewritten relationships not just direct relationships. For example, consider the following m and tuples:
 
 ```
-model
+m
   schema 1.1
 
 type user
@@ -170,7 +170,7 @@ type document
 | document:1 | owner    | user:jon    |
 | document:1 | editor   | user:andres |
 
-In this model the `document#viewer` relation is purely rewritten as `document#editor`, which means that a user/subject *must* be an editor to also be a viewer, and the evaluation of the `document#editor` relation involves a union (see [union](#union) below for more info) of either a direct relationship `document#editor` or an owner relationship `document#owner`. That is, if a user/subject is either a direct editor of a document or the owner of it, then they have the editor relationship and therefore the viewer relationship as well.
+In this m the `document#viewer` relation is purely rewritten as `document#editor`, which means that a user/subject *must* be an editor to also be a viewer, and the evaluation of the `document#editor` relation involves a union (see [union](#union) below for more info) of either a direct relationship `document#editor` or an owner relationship `document#owner`. That is, if a user/subject is either a direct editor of a document or the owner of it, then they have the editor relationship and therefore the viewer relationship as well.
 
 Evaluation of the query `Check(document:1#viewer@user:jon)` would involve the following callstack:
 
@@ -209,9 +209,9 @@ Notice that since `user:andres` is an editor of the document he is also a viewer
 
 Hierarchical relationships can be expressed in the FGA modeling language using the DSL relation rewrite syntax, for example, `viewer from parent`.
 
-Given a TTU rewrite such as `viewer from parent`, we refer to the `parent` as the **tupleset relation** and `viewer` is the **computed relation** that we evaluate for each of the objects we expand from the tupleset relation. For example, consider the following model and tuples:
+Given a TTU rewrite such as `viewer from parent`, we refer to the `parent` as the **tupleset relation** and `viewer` is the **computed relation** that we evaluate for each of the objects we expand from the tupleset relation. For example, consider the following m and tuples:
 ```
-model
+m
   schema 1.1
 
 type user
@@ -255,13 +255,13 @@ If we had evaluated `Check(document:1#viewer@user:andres)`, we would end up find
 #### TTU Rewrite Constraints
 A **tupleset** relation has a unique type restriction constraint that requires it be a [direct relationship](#direct-relationships) AND the assignable types on the tupleset relation must be direct object types (e.g. `define parent: [folder]`), not user/subject sets (e.g. `define parent: [group#member]`). A tupleset relation cannot be defined by a rewritten relationship through [computed usersets](#computed-relationships-eg-computed_userset), [tuple_to_userset](#hierarchical-relationships-eg-tuple_to_userset-or-ttu), or any composition of [set rewrites](#set-rewrites). See the [examples section](#ttu-rewrite-examples) below for more info.
 
-The reason for these unique set of constraints on tupleset relations is to ensure that we can resolve the tupleset relation to a direct object type at model compile/validation time (no expansion is required) and it makes reverse expansion more directed as we only have to do a direct database lookup to resolve the tupleset relations and then foreach of the resolved objects expand the computed relations on them. This invariant is critical for performance and for reverse expansion mechanics.
+The reason for these unique set of constraints on tupleset relations is to ensure that we can resolve the tupleset relation to a direct object type at m compile/validation time (no expansion is required) and it makes reverse expansion more directed as we only have to do a direct database lookup to resolve the tupleset relations and then foreach of the resolved objects expand the computed relations on them. This invariant is critical for performance and for reverse expansion mechanics.
 
 ##### Example 1 (invalid)
 A tupleset relation `document#parent` must be a direct relationship and it has to be assignable to a direct object type, not a user/subject set type. In this example the violation is in the definition `define parent: [folder#viewer]`.
 
 ```
-model
+m
   schema 1.1
 
 type organization
@@ -282,7 +282,7 @@ type document
 A tupleset relation `document#parent` must be a direct relationship. It cannot be a computed relation.
 
 ```
-model
+m
   schema 1.1
 
 type folder
@@ -300,7 +300,7 @@ type document
 The tupleset relation `document#parent` is defined as a direct relationship AND directly related to a concrete object type (e.g. `parent: [folder]`).
 
 ```
-model
+m
   schema 1.1
 
 type user
@@ -316,7 +316,7 @@ type document
 ```
 
 ## Set Rewrites
-Set rewrites allow developers to compose one or more of the direct or basic rewrites mentioned above using set operations including union, intersection, and exclusion. The operands of a set rewrite may also reference other set rewrite definitions. That is, you can compose unions, intersections, and exclusions together. These set rewrites allow developers to model more complex model semantics such as multiple relationships granting access and/or blacklists and the like.
+Set rewrites allow developers to compose one or more of the direct or basic rewrites mentioned above using set operations including union, intersection, and exclusion. The operands of a set rewrite may also reference other set rewrite definitions. That is, you can compose unions, intersections, and exclusions together. These set rewrites allow developers to m more complex m semantics such as multiple relationships granting access and/or blacklists and the like.
 
 ### Union
 > e.g. define viewer: editor or owner
@@ -325,9 +325,9 @@ For union set rewrite definitions, if <u>any</u> of the rewrite operands evaluat
 
 Each operand of the union rewrite is evaluated concurrently, and we return the first path that resolves to an `{allowed: true}` outcome. If no such path exists (e.g. we evaluate all paths and none lead to a truthy outcome), then we return `{allowed: false}`. The implementation of this can be seen in the [graph#union](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L254) resolver.
 
-Lets now consider the following model and tuples:
+Lets now consider the following m and tuples:
 ```
-model
+m
   schema 1.1
 
 type user
@@ -404,9 +404,9 @@ For intersection set rewrite definitions, <u>all</u> of the rewrite operands mus
 
 Each operand of the intersection rewrite is evaluated concurrently, and all operands must evaluate to an `{allowed: true}` outcome. The first `{allowed: false}` outcome from any operand will short-circuit the evaluation, because if any of the resolution paths return a falsy outcome then we can return immediately. The implementation of this can be seen in the [graph#intersection](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L296) resolver.
 
-Consider the following model and tuples:
+Consider the following m and tuples:
 ```
-model
+m
   schema 1.1
 
 type user
@@ -463,9 +463,9 @@ For exclusion/difference set rewrites, the definition is always decomposed into 
 
 Each operand (the base and subtracted) of the exclusion rewrite is evaluated concurrently. The base operand must evaluate to `{allowed: true}` while the subtracted operand must evaluate to `{allowed: false}`. If the base operand evaluates to `{allowed: false}` prior to the subtracted operand, then the overall evaluation can be short-circuited and we can cancel the evaluation of the subtracted operand. Similarly, if the subtracted operand evaluates to `{allowed: true}` prior to the base operand, then the overall evaluation can be short-circuited and we can cancel the evaluation of the base operand. The implementation of this can be seen in the [graph#exclusion](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L343) resolver.
 
-Consider the following model and tuples:
+Consider the following m and tuples:
 ```
-model
+m
   schema 1.1
 
 type user
@@ -537,9 +537,9 @@ In this example the base operand evaluates to `{allowed: false}` and the subtrac
 ### Cycle Detection
 To protect the server from cyclical evaluation paths, which would cause a stack overflow, we track the query subproblems we've already visited prior to dispatching another subproblem. We avoid dispatching a subproblem if we're already seen it at or above the current most level in the evalaution tree/callstack. This code can be seen by searching for usages of the `VisitedPaths` in the [LocalChecker implementation](https://github.com/openfga/openfga/blob/7bdf3398b47a96995cb0877f25b065a7f6f5a8e1/internal/graph/check.go#L41).
 
-For example, consider the following model and tuples:
+For example, consider the following m and tuples:
 ```
-model
+m
   schema 1.1
 
 type user

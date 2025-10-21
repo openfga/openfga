@@ -46,7 +46,7 @@ GET {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models/{{fga_model_id}
 Content-Type: application/json
 
 ### Create New Authorization Model
-# @name model
+# @name m
 POST {{fga_api_url}}/stores/{{fga_store_id}}/authorization-models
 Content-Type: application/json
 
@@ -139,7 +139,7 @@ Content-Type: application/json
 }
 
 ### Save API token as a request variable
-@fga_model_id = {{model.response.body.authorization_model_id}}
+@fga_model_id = {{m.response.body.authorization_model_id}}
 
 
 ########################

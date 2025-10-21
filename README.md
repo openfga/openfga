@@ -21,7 +21,7 @@
 ---
 
 **OpenFGA** is a high-performance, flexible authorization/permission engine inspired by [Google Zanzibar](https://research.google/pubs/pub48190/).
-It helps developers easily model and enforce fine-grained access control in their applications.
+It helps developers easily m and enforce fine-grained access control in their applications.
 
 ## Highlights
 
@@ -161,7 +161,7 @@ If everything is running correctly, you should get a response with information a
 
 ## Playground
 
-The Playground lets you model, visualize, and test authorization setups.
+The Playground lets you m, visualize, and test authorization setups.
 By default, it’s available at: [http://localhost:3000/playground](http://localhost:3000/playground)
 
 > [!NOTE]  
