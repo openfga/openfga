@@ -2,30 +2,27 @@ package strategies
 
 import (
 	"context"
-	"errors"
 	"fmt"
+
 	"github.com/emirpasic/gods/sets/hashset"
-	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/check"
 	"github.com/sourcegraph/conc/panics"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const IteratorMinBatchThreshold = 100
 const BaseIndex = 0
 const DifferenceIndex = 1
 
-var ErrShortCircuit = errors.New("short circuit")
-
 type weight2 struct {
+	model     *check.AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 }
 
@@ -36,50 +33,56 @@ func NewWeight2(ds storage.RelationshipTupleReader) check.Strategy {
 }
 
 func (s *weight2) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// This is likely not needed since
-	leftChans, err := produceLeftChannels(cancellableCtx, req, usersets, checkutil.BuildUsersetV2RelationFunc())
+	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	childReq, err := check.NewRequest(check.RequestParams{
+		StoreID:                   req.GetStoreID(),
+		TupleKey:                  tuple.NewTupleKey(tuple.BuildObject(objectType, "ignore"), relation, req.GetTupleKey().GetUser()),
+		ContextualTuples:          req.GetContextualTuples(),
+		Context:                   req.GetContext(),
+		Consistency:               req.GetConsistency(),
+		LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
+		AuthorizationModelID:      req.GetAuthorizationModelID(),
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	if len(leftChans) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
+	leftChan, err := s.resolveRewrite(ctx, childReq, edge.GetTo())
+	if err != nil {
+		return nil, err
 	}
-
-	return c.weight2(ctx, leftChans, storage.WrapIterator(storage.UsersetKind, iter))
+	return s.execute(ctx, leftChan, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
-func (s *weight2) TTU(ctx context.Context, req *ResolveCheckRequest, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	objectType := tuple.GetType(req.GetTupleKey().GetObject())
-	tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
-	computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
-
-	possibleParents, err := typesys.GetDirectlyRelatedUserTypes(objectType, tuplesetRelation)
+func (s *weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	childReq, err := check.NewRequest(check.RequestParams{
+		StoreID:                   req.GetStoreID(),
+		TupleKey:                  tuple.NewTupleKey(objectType, computedRelation, req.GetTupleKey().GetUser()),
+		ContextualTuples:          req.GetContextualTuples(),
+		Context:                   req.GetContext(),
+		Consistency:               req.GetConsistency(),
+		LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
+		AuthorizationModelID:      req.GetAuthorizationModelID(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	leftChan, err := s.resolveRewrite(ctx, childReq, edge.GetTo())
 	if err != nil {
 		return nil, err
 	}
 
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	return s.execute(ctx, leftChan, storage.WrapIterator(storage.TTUKind, iter))
+}
 
-	leftChans, err := produceLeftChannels(cancellableCtx, req, possibleParents, checkutil.BuildTTUV2RelationFunc(computedRelation))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(leftChans) == 0 {
-		return &ResolveCheckResponse{
-			Allowed: false,
-		}, nil
-	}
-
-	return c.weight2(ctx, leftChans, storage.WrapIterator(storage.TTUKind, iter))
+// processMessage will add the id in the primarySet.
+// In addition, it returns whether the id exists in secondarySet.
+// This is used to find the intersection between id from user and id from object.
+func processMessage(id string,
+	primarySet *hashset.Set,
+	secondarySet *hashset.Set) bool {
+	primarySet.Add(id)
+	return secondarySet.Contains(id)
 }
 
 // weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
@@ -87,25 +90,16 @@ func (s *weight2) TTU(ctx context.Context, req *ResolveCheckRequest, edge *authz
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (s *weight2) execute(ctx context.Context, leftChans []<-chan *iterator.Msg, iter storage.TupleMapper) (*check.Response, error) {
+func (s *weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "weight2")
 	defer span.End()
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	leftChan := iterator.FanInIteratorChannels(cancellableCtx, leftChans)
-	rightChan := streamedLookupUsersetFromIterator(cancellableCtx, iter)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 	rightOpen := true
 	leftOpen := true
 
-	defer func() {
-		cancel()
-		iter.Stop()
-		if !leftOpen {
-			return
-		}
-		iterator.Drain(leftChan)
-	}()
-
-	res := &ResolveCheckResponse{
+	res := &check.Response{
 		Allowed: false,
 	}
 
@@ -119,10 +113,10 @@ func (s *weight2) execute(ctx context.Context, leftChans []<-chan *iterator.Msg,
 		if !ok {
 			return res, ctx.Err()
 		}
-		if r.err != nil {
-			return nil, r.err
+		if r.Err != nil {
+			return nil, r.Err
 		}
-		rightSet.Add(r.userset)
+		rightSet.Add(r.Value)
 	}
 
 	var lastErr error
@@ -158,7 +152,7 @@ ConsumerLoop:
 					lastErr = err
 					continue
 				}
-				if processUsersetMessage(t, leftSet, rightSet) {
+				if processMessage(t, leftSet, rightSet) {
 					msg.Iter.Stop()
 					res.Allowed = true
 					lastErr = nil
@@ -170,11 +164,11 @@ ConsumerLoop:
 				rightOpen = false
 				break
 			}
-			if msg.err != nil {
-				lastErr = msg.err
+			if msg.Err != nil {
+				lastErr = msg.Err
 				continue
 			}
-			if processUsersetMessage(msg.userset, rightSet, leftSet) {
+			if processMessage(msg.Value, rightSet, leftSet) {
 				res.Allowed = true
 				lastErr = nil
 				break ConsumerLoop
@@ -184,81 +178,161 @@ ConsumerLoop:
 	return res, lastErr
 }
 
-func produceLeftChannels(
-	ctx context.Context,
-	req *ResolveCheckRequest,
-	relationReferences []*openfgav1.RelationReference,
-	relationFunc checkutil.V2RelationFunc,
-) ([]<-chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	leftChans := make([]<-chan *iterator.Msg, 0, len(relationReferences))
-	for _, parentType := range relationReferences {
-		relation := relationFunc(parentType)
-		rel, err := typesys.GetRelation(parentType.GetType(), relation)
-		if err != nil {
+// setOperationSetup returns a channel with a number of elements that is >= the number of children.
+// Each element is an iterator.
+// The caller must wait until the channel is closed.
+func (s *weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver fastPathSetHandler, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+	edges, ok := s.model.GetEdgesFromNode(node)
+	if !ok {
+		return nil, check.ErrPanicRequest
+	}
+	iterStreams := make([]*iterator.Stream, 0, len(edges))
+	for idx, edge := range edges {
+		if _, ok := edge.GetWeight(req.GetUserType()); !ok {
 			continue
 		}
-		r := req.clone()
-		r.TupleKey = &openfgav1.TupleKey{
-			Object: tuple.BuildObject(parentType.GetType(), "ignore"),
-			// depending on relationFunc, it will return the parentType's relation (userset) or computedRelation (TTU)
-			Relation: relation,
-			User:     r.GetTupleKey().GetUser(),
-		}
-		leftChan, err := fastPathRewrite(ctx, r, rel.GetRewrite())
+		producerChan, err := s.resolveEdge(ctx, req, edge)
 		if err != nil {
-			// if the resolver already started it needs to be drained
-			if len(leftChans) > 0 {
-				iterator.Drain(iterator.FanInIteratorChannels(ctx, leftChans))
-			}
 			return nil, err
 		}
-		leftChans = append(leftChans, leftChan)
+		iterStreams = append(iterStreams, iterator.NewStream(idx, producerChan))
 	}
-	return leftChans, nil
+
+	outChan := make(chan *iterator.Msg, len(iterStreams))
+	go func() {
+		recoveredError := panics.Try(func() {
+			resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+		})
+
+		if recoveredError != nil {
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredError.AsError())}, outChan)
+		}
+	}()
+	return outChan, nil
 }
 
-func fastPathNoop(_ context.Context, _ *check.Request) (chan *iterator.Msg, error) {
-	iterChan := make(chan *iterator.Msg)
-	close(iterChan)
-	return iterChan, nil
+func (s *weight2) resolveEdge(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	switch edge.GetEdgeType() {
+	case authzGraph.DirectEdge:
+		switch edge.GetTo().GetNodeType() {
+		case authzGraph.SpecificType:
+			return s.specificType(ctx, req, edge)
+		case authzGraph.SpecificTypeWildcard:
+			return s.specificTypeWildcard(ctx, req, edge)
+		default:
+			return nil, check.ErrPanicRequest
+		}
+	case authzGraph.RewriteEdge, authzGraph.ComputedEdge:
+		return s.resolveRewrite(ctx, req, edge.GetTo())
+	default:
+		return nil, check.ErrPanicRequest
+	}
 }
 
-// fastPathDirect assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
+// resolveRewrite returns a channel that will contain an unknown but finite number of elements.
+// The channel is closed at the end.
+func (s *weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+	switch node.GetNodeType() {
+	case authzGraph.SpecificTypeAndRelation:
+		return s.setOperationSetup(ctx, req, s.resolveUnion, node)
+	case authzGraph.OperatorNode:
+		switch node.GetLabel() {
+		case authzGraph.UnionOperator:
+			return s.setOperationSetup(ctx, req, s.resolveUnion, node)
+		case authzGraph.IntersectionOperator:
+			return s.setOperationSetup(ctx, req, s.resolveIntersection, node)
+		case authzGraph.ExclusionOperator:
+			return s.setOperationSetup(ctx, req, s.resolveDifference, node)
+		default:
+			return nil, check.ErrPanicRequest
+		}
+	default:
+		return nil, check.ErrPanicRequest
+	}
+}
+
+// specificType assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
-func fastPathDirect(ctx context.Context, req *check.Request) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	tk := req.GetTupleKey()
-	objRel := tuple.ToObjectRelationString(tuple.GetType(tk.GetObject()), tk.GetRelation())
-	i, err := checkutil.IteratorReadStartingFromUser(ctx, typesys, ds, req, objRel, nil, true)
+// TODO: DETERMINE IF ITS WORTH WAITING FOR RESULTS OF RIGHT HAND SIDE TO PERFORM BOUNDED QUERIES RATHER THAN THE FULL SET OF OBJECTIDS (BASICALLY INTERSECTION AT THE DATASTORE LEVEL).
+func (s *weight2) specificType(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: true,
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
+		storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: []*openfgav1.ObjectRelation{{
+				Object: req.GetTupleKey().GetUser(),
+			}},
+		}, opts)
 	if err != nil {
 		return nil, err
 	}
+
+	conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		return nil, check.ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+		)
+	}
+
 	iterChan := make(chan *iterator.Msg, 1)
-	iter := storage.WrapIterator(storage.ObjectIDKind, i)
-	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: iter}, iterChan) {
+	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
 	}
 	close(iterChan)
 	return iterChan, nil
 }
 
-func fastPathComputed(ctx context.Context, req *check.Request, rewrite *openfgav1.Userset) (chan *iterator.Msg, error) {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	computedRelation := rewrite.GetComputedUserset().GetRelation()
-
-	childRequest := req.clone()
-	childRequest.TupleKey.Relation = computedRelation
-
-	objectType := tuple.GetType(childRequest.GetTupleKey().GetObject())
-	rel, err := typesys.GetRelation(objectType, computedRelation)
+func (s *weight2) specificTypeWildcard(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+	opts := storage.ReadStartingWithUserOptions{
+		WithResultsSortedAscending: true,
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
+		storage.ReadStartingWithUserFilter{
+			ObjectType: objectType,
+			Relation:   relation,
+			UserFilter: []*openfgav1.ObjectRelation{{
+				Object: tuple.TypedPublicWildcard(req.GetUserType()),
+			}},
+		}, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	return fastPathRewrite(ctx, childRequest, rel.GetRewrite())
+	conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		return nil, check.ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+		)
+	}
+
+	iterChan := make(chan *iterator.Msg, 1)
+	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
+		iter.Stop() // will not be received to be cleaned up
+	}
+	close(iterChan)
+	return iterChan, nil
 }
 
 // add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
@@ -279,7 +353,7 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 	return batch, nil
 }
 
-func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -351,7 +425,7 @@ func fastPathUnion(ctx context.Context, streams *iterator.Streams, outChan chan<
 	}
 }
 
-func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *weight2) resolveIntersection(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -441,7 +515,7 @@ func fastPathIntersection(ctx context.Context, streams *iterator.Streams, outCha
 	}
 }
 
-func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
+func (s *weight2) resolveDifference(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -557,56 +631,5 @@ func fastPathDifference(ctx context.Context, streams *iterator.Streams, outChan 
 				return
 			}
 		}
-	}
-}
-
-// fastPathOperationSetup returns a channel with a number of elements that is >= the number of children.
-// Each element is an iterator.
-// The caller must wait until the channel is closed.
-func fastPathOperationSetup(ctx context.Context, req *ResolveCheckRequest, resolver fastPathSetHandler, children ...*openfgav1.Userset) (chan *iterator.Msg, error) {
-	iterStreams := make([]*iterator.Stream, 0, len(children))
-	for idx, child := range children {
-		producerChan, err := fastPathRewrite(ctx, req, child)
-		if err != nil {
-			return nil, err
-		}
-		iterStreams = append(iterStreams, iterator.NewStream(idx, producerChan))
-	}
-
-	outChan := make(chan *iterator.Msg, len(children))
-	go func() {
-		recoveredError := panics.Try(func() {
-			resolver(ctx, iterator.NewStreams(iterStreams), outChan)
-		})
-
-		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanic, recoveredError.AsError())}, outChan)
-		}
-	}()
-	return outChan, nil
-}
-
-// fastPathRewrite returns a channel that will contain an unknown but finite number of elements.
-// The channel is closed at the end.
-func fastPathRewrite(
-	ctx context.Context,
-	req *ResolveCheckRequest,
-	rewrite *openfgav1.Userset,
-) (chan *iterator.Msg, error) {
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgav1.Userset_This:
-		return fastPathDirect(ctx, req)
-	case *openfgav1.Userset_ComputedUserset:
-		return fastPathComputed(ctx, req, rewrite)
-	case *openfgav1.Userset_Union:
-		return fastPathOperationSetup(ctx, req, fastPathUnion, rw.Union.GetChild()...)
-	case *openfgav1.Userset_Intersection:
-		return fastPathOperationSetup(ctx, req, fastPathIntersection, rw.Intersection.GetChild()...)
-	case *openfgav1.Userset_Difference:
-		return fastPathOperationSetup(ctx, req, fastPathDifference, rw.Difference.GetBase(), rw.Difference.GetSubtract())
-	case *openfgav1.Userset_TupleToUserset:
-		return fastPathNoop(ctx, req)
-	default:
-		return nil, ErrUnknownSetOperator
 	}
 }

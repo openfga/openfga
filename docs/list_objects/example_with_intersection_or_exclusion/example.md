@@ -1,15 +1,15 @@
 # ListObjects API with intersection or exclusion implementation
 
-An authorization model can be represented as a directed, possibly cyclical, graph. This graph shows the possible relationships between types (e.g. `user`) and usersets (eg `user:*`).
+An authorization m can be represented as a directed, possibly cyclical, graph. This graph shows the possible relationships between types (e.g. `user`) and usersets (eg `user:*`).
 
 At a high level, answering ListObjects queries involves two phases:
 
-- Phase 1: we draw the model and we do something similar to Breadth First Search. Starting at a given node and trying to reach a target node, we explore (reverse expand) all the paths that can lead to the target object type and relation. During this expansion, we read tuples and we include in the response all the objects that we find that are of the target type. Some of those objects will require further evaluation; we mark them as "candidates".
+- Phase 1: we draw the m and we do something similar to Breadth First Search. Starting at a given node and trying to reach a target node, we explore (reverse expand) all the paths that can lead to the target object type and relation. During this expansion, we read tuples and we include in the response all the objects that we find that are of the target type. Some of those objects will require further evaluation; we mark them as "candidates".
 - Phase 2: all the "candidate" objects that require further evaluation, we call Check upon. If that Check returns `allowed=true`, we include them in the response.
 
 
 ## Example
-Consider the following model:
+Consider the following m:
 
 ```
 type user
@@ -21,7 +21,7 @@ type document
      define c: a and b
 ```
 
-![model](model.svg)
+![m](m.svg)
 
 And these tuples:
 

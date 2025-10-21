@@ -2,33 +2,35 @@ package strategies
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
-	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/check"
+	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 
+	authzGraph "github.com/openfga/language/pkg/go/graph"
+
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 var tracer = otel.Tracer("internal/check/strategies")
 
 type requestMsg struct {
-	err          error
-	shortCircuit bool
-	req          *check.Request
+	err error
+	req *check.Request
 }
 
 type defaultStrategy struct {
-	resolver *check.Resolver
+	resolver         *check.Resolver
+	concurrencyLimit int
 }
 
-func NewDefault(resolver *check.Resolver) check.Strategy {
+func NewDefault(resolver *check.Resolver, limit int) check.Strategy {
 	return &defaultStrategy{
-		resolver: resolver,
+		concurrencyLimit: limit,
+		resolver:         resolver,
 	}
 }
 
@@ -52,31 +54,16 @@ func (s *defaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-		// if the user value is a typed wildcard and the type of the wildcard
-		// matches the target user objectType, then we're done searching
-		if tuple.IsTypedWildcard(usersetObject) {
-			wildcardType := tuple.GetType(usersetObject)
-
-			if req.GetUserType() == wildcardType {
-				concurrency.TrySendThroughChannel(ctx, requestMsg{shortCircuit: true}, out)
-				return
-			}
-		}
-
-		if usersetRelation != "" {
-			tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, req.GetTupleKey().GetUser())
-			childReq, err := check.NewRequest(check.RequestParams{
-				StoreID:                   req.GetStoreID(),
-				TupleKey:                  tupleKey,
-				ContextualTuples:          req.GetContextualTuples(),
-				Context:                   req.GetContext(),
-				Consistency:               req.GetConsistency(),
-				LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
-				AuthorizationModelID:      req.GetAuthorizationModelID(),
-			})
-			concurrency.TrySendThroughChannel(ctx, requestMsg{err: err, req: childReq}, out)
-		}
+		childReq, err := check.NewRequest(check.RequestParams{
+			StoreID:                   req.GetStoreID(),
+			TupleKey:                  tuple.NewTupleKey(usersetObject, usersetRelation, req.GetTupleKey().GetUser()),
+			ContextualTuples:          req.GetContextualTuples(),
+			Context:                   req.GetContext(),
+			Consistency:               req.GetConsistency(),
+			LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
+			AuthorizationModelID:      req.GetAuthorizationModelID(),
+		})
+		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq, err: err}, out)
 	}
 }
 
@@ -85,7 +72,7 @@ func (s *defaultStrategy) TTU(ctx context.Context, req *check.Request, edge *aut
 }
 
 func (s *defaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
-
+	_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -98,22 +85,16 @@ func (s *defaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				continue // skip computed relations on tupleset relationships if they are undefined
-			}
-		}
-		tupleKey := tuple.NewTupleKey(userObj, computedRelation, req.GetTupleKey().GetUser())
 		childReq, err := check.NewRequest(check.RequestParams{
 			StoreID:                   req.GetStoreID(),
-			TupleKey:                  tupleKey,
+			TupleKey:                  tuple.NewTupleKey(userObj, computedRelation, req.GetTupleKey().GetUser()),
 			ContextualTuples:          req.GetContextualTuples(),
 			Context:                   req.GetContext(),
 			Consistency:               req.GetConsistency(),
 			LastCacheInvalidationTime: req.GetLastCacheInvalidationTime(),
 			AuthorizationModelID:      req.GetAuthorizationModelID(),
 		})
-		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq}, out)
+		concurrency.TrySendThroughChannel(ctx, requestMsg{req: childReq, err: err}, out)
 	}
 }
 
@@ -160,7 +141,11 @@ func (s *defaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
 func (s *defaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
-	// TODO: do we want the Resolver to control the concurrency internally instead? if so, we can just create a buffered channel with a fixed size here
+	pool := concurrency.NewPool(ctx, s.concurrencyLimit)
+	defer func() {
+		_ = pool.Wait()
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -171,15 +156,21 @@ func (s *defaultStrategy) processRequests(ctx context.Context, requests chan req
 			}
 			if msg.err != nil {
 				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: msg.err}, out)
-				continue // TODO: continue or return?
-			}
-			if msg.shortCircuit {
-				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Res: &check.Response{Allowed: true}}, out)
-				return
+				continue
 			}
 
-			res, err := s.resolver.ResolveCheck(ctx, msg.req)
-			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err, Res: res}, out)
+			pool.Go(func(ctx context.Context) error {
+				var res *check.Response
+				var err error
+				recoveredErr := panics.Try(func() {
+					res, err = s.resolver.ResolveCheck(ctx, msg.req)
+				})
+				if recoveredErr != nil {
+					err = fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredErr.AsError())
+				}
+				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err, Res: res}, out)
+				return nil
+			})
 		}
 	}
 }

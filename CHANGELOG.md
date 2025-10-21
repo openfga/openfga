@@ -152,7 +152,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Performance improve for SQL based datastore by reducing connection usage during IsReady check. [#2483](https://github.com/openfga/openfga/pull/2483)
 - SQL drivers now respect zero value for MaxOpenConns, ConnMaxIdleTime, ConnMaxLifetime. [#2484](https://github.com/openfga/openfga/pull/2484)
-- When `enable-check-optimizations` experiment flag is enabled, incorrect check for model with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
+- When `enable-check-optimizations` experiment flag is enabled, incorrect check for m with recursion and user is assigned to more than 100 groups due to iteratorToUserset not handling multiple messages incorrectly. [#2491](https://github.com/openfga/openfga/pull/2491)
 - Correlate storage context with caller's context. [#2292](https://github.com/openfga/openfga/pull/2292)
 
 ## [1.8.13] - 2025-05-22
@@ -254,7 +254,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and contextual tuples are involved. [#2150](https://github.com/openfga/openfga/pull/2150)
 - Added metrics to track invalid cache hits: `check_cache_invalid_hit_count` and `tuples_iterator_cache_invalid_hit_count` [#2222](https://github.com/openfga/openfga/pull/2222).
 - Move Check performance optimizations out of experimental mode: shortcutting based on path, recursive userset fast path, and recursive TTU fast path. [#2236](https://github.com/openfga/openfga/pull/2236)
-- Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the model contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
+- Improve Check API performance when experimental flag `enable-check-optimizations` is turned on and the m contains union of a TTU and algebraic operations. [#2200](https://github.com/openfga/openfga/pull/2200)
 - Implement dynamic TLS certificate reloading for HTTP and gRPC servers. [#2182](https://github.com/openfga/openfga/pull/2182)
 - Publicize `check.RunMatrixTests` method to allow testing against any `ClientInterface`. [#2267](https://github.com/openfga/openfga/pull/2267).
 
@@ -268,7 +268,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Fixed incorrect invalidation by cache controller on cache iterator. [#2190](https://github.com/openfga/openfga/pull/2190), [#2216](https://github.com/openfga/openfga/pull/2216)
 - Fixed incorrect types in configuration JSON schema [#2217](https://github.com/openfga/openfga/pull/2217), [#2228](https://github.com/openfga/openfga/pull/2228).
 - Fixed `BatchCheck` API to validate presence of the `tuple_key` property of a `BatchCheckItem` [#2242](https://github.com/openfga/openfga/issues/2242)
-- Fixed incorrect check and list objects evaluation when model has a relation directly assignable to both public access AND userset with the same type and type bound public access tuple is assigned to the object.
+- Fixed incorrect check and list objects evaluation when m has a relation directly assignable to both public access AND userset with the same type and type bound public access tuple is assigned to the object.
 
 ## [1.8.4] - 2025-01-13
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.3...v1.8.4)
@@ -302,7 +302,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Labels of metrics that went past the `max` histogram bucket are now labelled "+Inf" instead of ">max". [#2146](https://github.com/openfga/openfga/pull/2146)
 - Prevent possible data races by waiting for in-flight cached iterator goroutines during server shutdown [#2145](https://github.com/openfga/openfga/pull/2145)
-- Correct incorrect check result returned when using experimental flag `enable-check-optimizations` and model has intersection or exclusion within a TTU or Userset. [#2157](https://github.com/openfga/openfga/pull/2157)
+- Correct incorrect check result returned when using experimental flag `enable-check-optimizations` and m has intersection or exclusion within a TTU or Userset. [#2157](https://github.com/openfga/openfga/pull/2157)
 
 ## [1.8.1] - 2024-12-05
 [Full changelog](https://github.com/openfga/openfga/compare/v1.8.0...v1.8.1)
@@ -372,7 +372,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Improve `Check` performance in the case that the query involves resolving nested tuple to userset relations. Enable via experimental flag `enable-check-optimizations`. [#2025](https://github.com/openfga/openfga/pull/2025)
 - Improve the sub-problem caching in `Check` [#2006](https://github.com/openfga/openfga/pull/2006), [#2035](https://github.com/openfga/openfga/pull/2035)
-- Fixed internal error for `Check` where model has nested userset with publicly assignable wildcard. [#2049](https://github.com/openfga/openfga/pull/2049)
+- Fixed internal error for `Check` where m has nested userset with publicly assignable wildcard. [#2049](https://github.com/openfga/openfga/pull/2049)
 - Fixed goroutine leak when `ListObjects` or `StreamedListObjects` call cannot be completed within `REQUEST_TIMEOUT`. [#2030](https://github.com/openfga/openfga/pull/2030)
 - Fixed incorrect dispatch counts in `ListObjects` used for observability [2013](https://github.com/openfga/openfga/pull/2013)
 - Correct metrics label for `ListUsers` API calls [#2000](https://github.com/openfga/openfga/pull/2000)
@@ -381,7 +381,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.6.1...v1.6.2)
 
 ### Added
-- Improve tracing in Check API by enhancing discoverability of model ID. [#1964](https://github.com/openfga/openfga/pull/1964)
+- Improve tracing in Check API by enhancing discoverability of m ID. [#1964](https://github.com/openfga/openfga/pull/1964)
 - Improve tracing in all APIs by adding the store ID to the span. [#1965](https://github.com/openfga/openfga/pull/1965)
 - Add a cache for datastore iterators on Check API. [#1924](https://github.com/openfga/openfga/pull/1924).
 
@@ -456,7 +456,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Performance improvements for Check API:
   - introduce an optimization when the input request relation is pointing to a computed relation [#1793](https://github.com/openfga/openfga/pull/1793)
   - batch calls that compute membership checks and start processing them earlier [#1804](https://github.com/openfga/openfga/pull/1804)
-- Logging number of cache hits for each subproblem of each authorization model for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
+- Logging number of cache hits for each subproblem of each authorization m for `Check` API calls. Enabled with the `OPENFGA_CHECK_TRACKER_ENABLED` flag. [#1785](https://github.com/openfga/openfga/pull/1785)
 - Aliases for issuers and subject validation in OIDC AuthN mode using `OPENFGA_AUTHN_OIDC_ISSUER_ALIASES` and `OPENFGA_AUTHN_OIDC_SUBJECTS` respectively [#1784](https://github.com/openfga/openfga/pull/1784) Thanks @Code2Life!
 - Dispatch Throttling for our `ListUsers` API. This can be enabled using `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_ENABLED` and the env variables below. [#1658](https://github.com/openfga/openfga/pull/1658)
   - `OPENFGA_LIST_USERS_DISPATCH_THROTTLING_THRESHOLD` - The number of dispatches allowed before throttling is triggered
@@ -509,7 +509,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Performance improvements to userset subproblem resolutions in Check in certain scenarios [#1734](https://github.com/openfga/openfga/pull/1734)
 - Performance improvements to tuple-to-userset subproblem resolutions in Check in certain scenarios [#1735](https://github.com/openfga/openfga/pull/1735)
 - Warning when log level set to `none` [#1705](https://github.com/openfga/openfga/pull/1705) - thank you, @Siddhant-K-code!
-- Minor performance improvement for queries when model ID not specified [#1754](https://github.com/openfga/openfga/pull/1754)
+- Minor performance improvement for queries when m ID not specified [#1754](https://github.com/openfga/openfga/pull/1754)
 
 ### Removed
 - ListUsers experimental flag (will continue to work if passed) [#1730](https://github.com/openfga/openfga/pull/1730)
@@ -601,7 +601,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Throw HTTP 400 when tuple condition is invalid instead of HTTP 500 ([#1420](https://github.com/openfga/openfga/pull/1420))
-- Fix model validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
+- Fix m validation which threw error "no entrypoints defined" ([#1422](https://github.com/openfga/openfga/pull/1422))
 
 ## [1.5.0] - 2024-03-01
 [Full changelog](https://github.com/openfga/openfga/compare/v1.4.3...v1.5.0)
@@ -626,7 +626,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   ```go
   func (...) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
-    //...get model ID
+    //...get m ID
     return modelID, nil
   }
   ```
@@ -636,8 +636,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   ```go
   func (...) FindLatestAuthorizationModel(ctx context.Context, storeID string) (*openfgav1.AuthorizationModel, error) {
-    //...get model
-    return model.(*openfgav1.AuthorizationModel), nil
+    //...get m
+    return m.(*openfgav1.AuthorizationModel), nil
   }
   ```
 
@@ -656,7 +656,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Add ability to close all server resources through `server.Stop()` ([#1318](https://github.com/openfga/openfga/pull/1318))
 
 ### Changed
-- Increase performance by removing redundant `map.Clone()` calls in model validation ([#1281](https://github.com/openfga/openfga/pull/1281))
+- Increase performance by removing redundant `map.Clone()` calls in m validation ([#1281](https://github.com/openfga/openfga/pull/1281))
 
 ### Fixed
 - Fix the sorting of contextual tuples when generating a cache key during check ([#1299](https://github.com/openfga/openfga/pull/1299))
@@ -732,10 +732,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   >
   > Read on for more information.
 
-  If you introduce a model with a condition defined in a relation's type restriction(s) and then rollback to a prior OpenFGA release, then the model will be treated as though the conditioned type restriction did not exist.
+  If you introduce a m with a condition defined in a relation's type restriction(s) and then rollback to a prior OpenFGA release, then the m will be treated as though the conditioned type restriction did not exist.
 
   ```
-  model
+  m
     schema 1.1
 
   type user
@@ -749,10 +749,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   }
   ```
 
-  and then you rollback to `v1.3.7` or earlier, then the model above will be treated equivalently to
+  and then you rollback to `v1.3.7` or earlier, then the m above will be treated equivalently to
 
   ```
-  model
+  m
     schema 1.1
 
   type user
@@ -833,7 +833,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Bumped up to Go 1.21.3 ([#1060](https://github.com/openfga/openfga/pull/1060))
 
 ### Fixed
-- Incorrect string in model validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
+- Incorrect string in m validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
 - Incorrect results can be returned by Check API when passing in contextual tuples and the `check-query-cache` experimental flag is turned on ([#1059](https://github.com/openfga/openfga/pull/1059))
 
 ### Security
@@ -845,7 +845,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Configurable size limit for Authorization Models ([#1032](https://github.com/openfga/openfga/pull/1032))
 
-  We've introduced a new size limit for authorization models, provided a consistent behavior across datastores, which defaults to `256KB`. This can be configured by using the `--max-authorization-model-size-in-bytes` flag.
+  We've introduced a new size limit for authorization models, provided a consistent behavior across datastores, which defaults to `256KB`. This can be configured by using the `--max-authorization-m-size-in-bytes` flag.
 
 ### Changed
 - Move standalone server config defaults ([#1036](https://github.com/openfga/openfga/pull/1036))
@@ -878,7 +878,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Security
 - Patches [CVE-2023-43645](https://github.com/openfga/openfga/security/advisories/GHSA-2hm9-h873-pgqh) - see the CVE for more details
 
-  **[BREAKING]** If your model contained cycles or a relation definition that has the relation itself in its evaluation path, then Checks and queries that require evaluation will no longer be evaluated on v1.3.2+ and will return errors instead. You will need to update your models to remove the cycles.
+  **[BREAKING]** If your m contained cycles or a relation definition that has the relation itself in its evaluation path, then Checks and queries that require evaluation will no longer be evaluated on v1.3.2+ and will return errors instead. You will need to update your models to remove the cycles.
 
 ## [1.3.1] - 2023-08-23
 ### Added
@@ -972,8 +972,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Optimizations for [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects) for models involving intersection (`and`) and exclusion (`but not`) ([#797](https://github.com/openfga/openfga/pull/797))
 
 ### Changed
-- Cache model validation results on first model load ([#831](https://github.com/openfga/openfga/pull/831))
-- Cache inflight requests when looking up any authorization model ([#831](https://github.com/openfga/openfga/pull/831))
+- Cache m validation results on first m load ([#831](https://github.com/openfga/openfga/pull/831))
+- Cache inflight requests when looking up any authorization m ([#831](https://github.com/openfga/openfga/pull/831))
 - Update postgres max connections in docker compose file ([#829](https://github.com/openfga/openfga/pull/829))
 
 ## [1.1.1] - 2023-06-26
@@ -986,14 +986,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Updated the version of the `grpc-health-probe` binary included in OpenFGA builds ([#784](https://github.com/openfga/openfga/pull/784))
-- Cache inflight requests when looking up the latest authorization model ([#820](https://github.com/openfga/openfga/pull/820))
+- Cache inflight requests when looking up the latest authorization m ([#820](https://github.com/openfga/openfga/pull/820))
 
 ### Fixed
 - Validation of models with non-zero entrypoints ([#802](https://github.com/openfga/openfga/pull/802))
-- Remove unintended newlines in model validation error messages ([#816](https://github.com/openfga/openfga/pull/816)) - thanks @Galzzly
+- Remove unintended newlines in m validation error messages ([#816](https://github.com/openfga/openfga/pull/816)) - thanks @Galzzly
 
 ### Security
-- Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional model validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out if you have questions.
+- Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional m validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out if you have questions.
 
 ## [1.1.0] - 2023-05-15
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.1...v1.1.0)
@@ -1008,8 +1008,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 - Avoid DB connection churning in unoptimized ListObjects ([#711](https://github.com/openfga/openfga/pull/711))
 - Ensure ListObjects respects configurable ListObjectsDeadline ([#704](https://github.com/openfga/openfga/pull/704))
-- In Write, throw 400 instead of 500 error if auth model ID not found ([#725](https://github.com/openfga/openfga/pull/725))
-- Performance improvements when loading the authorization model ([#726](https://github.com/openfga/openfga/pull/726))
+- In Write, throw 400 instead of 500 error if auth m ID not found ([#725](https://github.com/openfga/openfga/pull/725))
+- Performance improvements when loading the authorization m ([#726](https://github.com/openfga/openfga/pull/726))
 - Ensure Check evaluates deterministically on the eval boundary case ([#732](https://github.com/openfga/openfga/pull/732))
 
 ## [1.0.1] - 2023-04-18
@@ -1069,9 +1069,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Changed
 - Bumped up to Go version 1.20 ([#664](https://github.com/openfga/openfga/pull/664))
-- Default model schema versions to 1.1 ([#669](https://github.com/openfga/openfga/pull/669))
+- Default m schema versions to 1.1 ([#669](https://github.com/openfga/openfga/pull/669))
 
-  In preparation for sunsetting support for models with schema version 1.0, the [WriteAuthorizationModel API](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) will now interpret any model provided to it as a 1.1 model if the `schema_version` field is omitted in the request. This shouldn't affect default behavior since 1.0 model support is enabled by default.
+  In preparation for sunsetting support for models with schema version 1.0, the [WriteAuthorizationModel API](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) will now interpret any m provided to it as a 1.1 m if the `schema_version` field is omitted in the request. This shouldn't affect default behavior since 1.0 m support is enabled by default.
 
 ### Fixed
 - Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores ([#677](https://github.com/openfga/openfga/pull/677))
@@ -1107,7 +1107,7 @@ The `v0.4.1` release includes everything in `v0.4.0` which includes breaking cha
   - As of this release, OpenFGA no longer allows writing or evaluating schema `v1.0` models by default. If you need support for it for now, you can use the:
     - `OPENFGA_ALLOW_WRITING_1_0_MODELS`: set to `true` to allow `WriteAuthorizationModel` to accept schema `v1.0` models.
     - `OPENFGA_ALLOW_EVALUATING_1_0_MODELS`: set to `true` to allow `Check`, `Expand`, `ListObjects`, `Write` and `WriteAssertions` that target schema `v1.0` models.
-    - `ReadAuthorizationModel`, `ReadAuthorizationModels` and `ReadAssertions` are unaffected and will continue to work regardless of the target model schema version.
+    - `ReadAuthorizationModel`, `ReadAuthorizationModels` and `ReadAssertions` are unaffected and will continue to work regardless of the target m schema version.
   - Note that these flags will be removed and support fully dropped in a future release. Read the [Schema v1.0 Deprecation Timeline](https://openfga.dev/docs/modeling/migrating/migrating-schema-1-1#deprecation-timeline) for more details.
 
 ### Fixed
@@ -1157,7 +1157,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 ### Fixed
 - Undefined computed relations on tuplesets now behave properly ([#532](https://github.com/openfga/openfga/pull/532))
 
-  If you had a model involving two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
+  If you had a m involving two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
 
   ```
   type document
@@ -1256,11 +1256,11 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
     JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
     indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
     - This change also comes with breaking changes to how `*` and `<type>:*` are treated:
-    - `<type>:*` is interpreted differently according to the model version. v1.0 will interpret it as a object of type
+    - `<type>:*` is interpreted differently according to the m version. v1.0 will interpret it as a object of type
       `<type>` and id `*`, whereas v1.1 will interpret is as all objects of type `<type>`.
     - `*` is still supported in v1.0 models, but not supported in v1.1 models. A validation error will be thrown when
       used in checks or writes and it will be ignored when evaluating.
-  - Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
+  - Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the m
     instead of when issuing checks.
 
   :warning: Note that with this release **models with schema version 1.0 are now considered deprecated**, with the plan to
@@ -1293,7 +1293,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Multi-platform container build manifests to releases ([#323](https://github.com/openfga/openfga/pull/323))
 
 ### Fixed
-- Read RPC returns correct error when authorization model id is not found ([#312](https://github.com/openfga/openfga/pull/312))
+- Read RPC returns correct error when authorization m id is not found ([#312](https://github.com/openfga/openfga/pull/312))
 - Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` ([#315](https://github.com/openfga/openfga/pull/315))
 
 ### Security
@@ -1327,7 +1327,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 ### Fixed
 - Reject direct writes if only indirect relationship allowed ([#114](https://github.com/openfga/openfga/pull/114)). Thanks @dblclik!
 - Log internal errors at the grpc layer ([#222](https://github.com/openfga/openfga/pull/222))
-- Authorization model validation ([#224](https://github.com/openfga/openfga/pull/224))
+- Authorization m validation ([#224](https://github.com/openfga/openfga/pull/224))
 - Bug in `migrate` command ([#236](https://github.com/openfga/openfga/pull/236))
 - Skip malformed tuples involving tuple to userset definitions ([#234](https://github.com/openfga/openfga/pull/234))
 

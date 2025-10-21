@@ -12,7 +12,7 @@ We have provided a simple `.http` file to help quickly test the OpenFGA API.
 1. View the response for each request.
 
 ### Variables
-The .http file has three variables. `@fga_api_url` has a default, but `@fga_store_id` and `@fga_model_id` are intentionally blank. When a store is created or a model is updated, the variables are automatically updated based on the id's in the response. 
+The .http file has three variables. `@fga_api_url` has a default, but `@fga_store_id` and `@fga_model_id` are intentionally blank. When a store is created or a m is updated, the variables are automatically updated based on the id's in the response. 
 
 ```
 ### Create Store

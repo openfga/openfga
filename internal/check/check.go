@@ -8,21 +8,21 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/check/strategies"
+
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	modelUtils "github.com/openfga/openfga/pkg/typesystem"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 )
 
 var tracer = otel.Tracer("internal/check")
@@ -35,6 +35,7 @@ type Config struct {
 	ConcurrencyLimit   int
 	UpstreamTimeout    time.Duration
 	Logger             logger.Logger
+	Strategies         map[string]Strategy
 }
 type Resolver struct {
 	model              *AuthorizationModelGraph
@@ -47,14 +48,6 @@ type Resolver struct {
 
 	depthCount atomic.Int32
 	strategies map[string]Strategy
-}
-
-// TODO: Move to its own public package
-type AuthorizationModelGraph struct {
-	*authzGraph.WeightedAuthorizationModelGraph
-	modelId       string
-	schemaVersion string
-	conditions    map[string]*condition.EvaluableCondition
 }
 
 type Request = graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata)
@@ -83,11 +76,9 @@ func New(cfg Config) *Resolver {
 		concurrencyLimit:   cfg.ConcurrencyLimit,
 		upstreamTimeout:    cfg.UpstreamTimeout,
 		logger:             cfg.Logger,
+		strategies:         cfg.Strategies,
 	}
 
-	r.strategies = map[string]Strategy{
-		strategies.DefaultStrategyName: strategies.NewDefault(r),
-	}
 	return r
 }
 
@@ -117,7 +108,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	return r.ResolveUnion(ctx, req, node)
 }
 
-// reduce as a logical union operation (exit the moment we have a single true)
+// reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
@@ -192,7 +183,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 }
 
 // reduce as a logical intersection operation (exit the moment we have a single false)
-// should panic if a single handler returns nil
+// should panic if a single handler returns nil.
 func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
@@ -235,7 +226,6 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
 				return msg.Res, msg.Err
-
 			}
 		}
 	}
@@ -243,7 +233,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 }
 
 // reduce as a logical exclusion operation
-// if base is false, short circuit
+// if base is false, short circuit.
 func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
@@ -337,16 +327,29 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 	// The only way to get here is if base was (Allowed: true) and subtract was (Allowed: false).
 	return &Response{Allowed: true}, nil
-
 }
 
 func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	// computed edges are solved by the relation node caller
 	switch edge.GetEdgeType() {
-	case authzGraph.DirectEdge, authzGraph.DirectLogicalEdge:
-		return r.ResolveDirect(ctx, req, edge)
-	case authzGraph.TTUEdge, authzGraph.TTULogicalEdge:
-		return r.ResolveTTU(ctx, req, edge)
+	case authzGraph.DirectEdge:
+		switch edge.GetTo().GetNodeType() {
+		case authzGraph.SpecificType:
+			return r.specificType(ctx, req, edge)
+		case authzGraph.SpecificTypeWildcard:
+			return r.specificTypeWildcard(ctx, req, edge)
+		case authzGraph.SpecificTypeAndRelation:
+			// check for recursiveRelation
+			return r.specificTypeAndRelation(ctx, req, edge)
+		default:
+			return nil, ErrPanicRequest
+		}
+	case authzGraph.DirectLogicalEdge:
+		return r.ResolveUnion(ctx, req, edge.GetTo())
+	case authzGraph.TTUEdge:
+		return r.ttu(ctx, req, edge)
+	case authzGraph.TTULogicalEdge:
+		return r.ResolveUnion(ctx, req, edge.GetTo())
 	case authzGraph.RewriteEdge:
 		return r.ResolveRewrite(ctx, req, edge.GetTo())
 	default:
@@ -354,36 +357,11 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 	}
 }
 
-func (r *Resolver) ResolveDirect(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
-	// internal methods should check for context cancellation as this is the final step
-	switch edge.GetEdgeType() {
-	case authzGraph.DirectEdge:
-		switch edge.GetTo().GetNodeType() {
-		case authzGraph.SpecificType:
-			return r.specificType(ctx, req, edge)
-		case authzGraph.SpecificTypeWildcard:
-			// dont forget to check conditions for filtering/applying within edge.GetConditions
-			return r.specificTypeWildcard(ctx, req, edge)
-		case authzGraph.SpecificTypeAndRelation:
-			// check for recursiveRelation
-			return r.specificTypeAndRelation(ctx, req, edge)
-		}
-		break
-	case authzGraph.DirectLogicalEdge:
-		// iterate over all the possible direct edges and see if any of them return true
-		break
-	default:
-		return nil, ErrPanicRequest
-	}
-
-	return &Response{Allowed: true}, nil
-}
-
 func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
 	// relation and union have save behavior
 	switch node.GetNodeType() {
-	// TODO: explain this case handler properly
-	case authzGraph.SpecificTypeAndRelation:
+	// TODO: are we missing logicaldirectgrouping here?
+	case authzGraph.SpecificTypeAndRelation, authzGraph.LogicalDirectGrouping, authzGraph.LogicalTTUGrouping:
 		return r.ResolveUnion(ctx, req, node)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
@@ -480,7 +458,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	return &Response{Allowed: allowed}, nil
 }
 
-// TODO: At the current time we will only handle non recursive/tuple cycle which have to be validated at an earlier stage
+// TODO: At the current time we will only handle non recursive/tuple cycle which have to be validated at an earlier stage.
 func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "specificTypeAndRelation",
 		trace.WithAttributes(
@@ -497,6 +475,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
 		Relation: req.GetTupleKey().GetRelation(),
@@ -510,14 +489,21 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
-	i := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewTupleKeyIteratorFromTupleIterator(iter),
-		buildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
-	)
+	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+		)
+	}
 
 	// TODO: Need optimization to solve userset as principal
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[strategies.DefaultStrategyName].Userset(ctx, req, edge, i)
+		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i)
 	}
 
 	var b strings.Builder
@@ -534,23 +520,113 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	b.WriteString(edge.GetTo().GetUniqueLabel())
 
 	possibleStrategies := map[string]*planner.KeyPlanStrategy{
-		strategies.DefaultStrategyName: strategies.DefaultPlan,
+		DefaultStrategyName: DefaultPlan,
 	}
 
-	// NOTE: assume it will always be ok given we have already validated the edge before getting here
-	/*
-		if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
-			possibleStrategies[weight2] = weight2Plan
-		}*
-
-	*/
+	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+	}
 
 	keyPlan := r.planner.GetKeyPlan(b.String())
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
-	return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+	start := time.Now()
+	res, err := r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+	if err != nil {
+		// penalize plans that timeout from the upstream context
+		if errors.Is(err, context.DeadlineExceeded) {
+			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
+		}
+		return nil, err
+	}
+	keyPlan.UpdateStats(strategy, time.Since(start))
+	return res, nil
 }
 
-func (r *Resolver) ResolveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
-	return &Response{Allowed: true}, nil
+func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
+	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+
+	ctx, span := tracer.Start(ctx, "ttu",
+		trace.WithAttributes(
+			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
+			attribute.String("tupleset_relation", tuple.ToObjectRelationString(req.GetObjectType(), tuplesetRelation)),
+			attribute.String("computed_relation", computedRelation),
+			attribute.Bool("allowed", false),
+		),
+	)
+	defer span.End()
+
+	opts := storage.ReadOptions{
+		Consistency: storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		},
+	}
+
+	iter, err := r.datastore.Read(
+		ctx,
+		req.GetStoreID(),
+		tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType+":"), // TODO: Read doesn't support passing subjectType with objectID and relation
+		opts,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer iter.Stop()
+	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuplesetRelation, subjectType)
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
+	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		i = storage.NewConditionsFilteredTupleKeyIterator(i,
+			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+		)
+	}
+
+	// TODO: Need optimization to solve userset as principal
+	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
+		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i)
+	}
+
+	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+		DefaultStrategyName: DefaultPlan,
+	}
+
+	if w, _ := edge.GetWeight(req.GetUserType()); w == 2 {
+		possibleStrategies[WeightTwoStrategyName] = weight2Plan
+	}
+
+	var b strings.Builder
+	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("ttu|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(req.GetObjectType())
+	b.WriteString("|")
+	b.WriteString(req.GetTupleKey().GetRelation())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(tuplesetRelation)
+	b.WriteString("|")
+	b.WriteString(computedRelation)
+	planKey := b.String()
+
+	keyPlan := r.planner.GetKeyPlan(planKey)
+	strategy := keyPlan.SelectStrategy(possibleStrategies)
+
+	start := time.Now()
+	res, err := r.strategies[strategy.Type].TTU(ctx, req, edge, i)
+	if err != nil {
+		// penalize plans that timeout from the upstream context
+		if errors.Is(err, context.DeadlineExceeded) {
+			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
+		}
+		return nil, err
+	}
+	keyPlan.UpdateStats(strategy, time.Since(start))
+	return res, nil
 }
