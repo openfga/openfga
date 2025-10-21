@@ -328,7 +328,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.Equal(t, firstTuple, tuples[1].GetKey())
 }
 
-func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
+func TestPostgresDatastore_ReadPageWithUserFiltering(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
