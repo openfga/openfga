@@ -4,6 +4,7 @@ import (
 	"iter"
 	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
 type message[T any] struct {
@@ -25,6 +26,7 @@ type producer[T any] interface {
 type consumer[T any] interface {
 	send(T)
 	close()
+	cancel()
 }
 
 const maxPipeSize int = 100
@@ -34,6 +36,8 @@ type pipe struct {
 	end    chan struct{}
 	finite func()
 	trk    tracker
+	mu     sync.Mutex
+	done   atomic.Bool
 }
 
 func newPipe(trk tracker) *pipe {
@@ -44,6 +48,9 @@ func newPipe(trk tracker) *pipe {
 	}
 
 	p.finite = sync.OnceFunc(func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		p.done.Store(true)
 		close(p.end)
 	})
 
@@ -52,7 +59,7 @@ func newPipe(trk tracker) *pipe {
 
 func (p *pipe) seq() iter.Seq[message[group]] {
 	return func(yield func(message[group]) bool) {
-		defer p.close()
+		defer p.cancel()
 
 		for {
 			msg, ok := p.recv()
@@ -68,12 +75,20 @@ func (p *pipe) seq() iter.Seq[message[group]] {
 }
 
 func (p *pipe) send(g group) {
-	p.trk.Add(1)
+	if !p.done.Load() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
 
-	select {
-	case p.ch <- g:
-	case <-p.end:
-		p.trk.Add(-1)
+		if p.done.Load() {
+			return
+		}
+		p.trk.Add(1)
+
+		select {
+		case p.ch <- g:
+		case <-p.end:
+			p.trk.Add(-1)
+		}
 	}
 }
 
@@ -94,6 +109,19 @@ func (p *pipe) close() {
 		runtime.Gosched()
 	}
 	p.finite()
+}
+
+func (p *pipe) cancel() {
+	p.finite()
+
+	for {
+		select {
+		case <-p.ch:
+			p.trk.Add(-1)
+		default:
+			return
+		}
+	}
 }
 
 type staticProducer struct {

@@ -26,7 +26,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -345,9 +345,9 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			ctx := context.Background()
 
 			store := "store"
-			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = ds.write(ctx,
 				store,
@@ -374,7 +374,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tuple.
+			iter, err := ds.Read(ctx, store, tupleUtils.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 			defer iter.Stop()
 			require.NoError(t, err)
@@ -447,9 +447,9 @@ func TestCtxCancel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 
 			store := "store"
-			firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-			secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
-			thirdTuple := tuple.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
+			firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+			secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = ds.write(ctx,
 				store,
@@ -476,7 +476,7 @@ func TestCtxCancel(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tuple.
+			iter, err := ds.Read(ctx, store, tupleUtils.
 				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
 			defer iter.Stop()
 			require.NoError(t, err)
@@ -508,8 +508,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	ctx := context.Background()
 
 	store := "store"
-	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
-	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
+	firstTuple := tupleUtils.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+	secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = ds.write(ctx,
 		store,
@@ -533,7 +533,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	}
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tuple.NewTupleKey("doc:", "relation", ""),
+		tupleUtils.NewTupleKey("doc:", "relation", ""),
 		opts)
 	require.NoError(t, err)
 
@@ -541,6 +541,70 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// We expect that objectID2 will return first because it has a smaller ulid.
 	require.Equal(t, secondTuple, tuples[0].GetKey())
 	require.Equal(t, firstTuple, tuples[1].GetKey())
+}
+
+func TestPostgresDatastore_ReadPageWithUserFiltering(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	ctx := context.Background()
+
+	store := ulid.Make().String()
+
+	// Create multiple tuples with same user type for pagination testing
+	var tuples []*openfgav1.TupleKey
+	for i := range 10 {
+		tuples = append(tuples, &openfgav1.TupleKey{
+			Object:   "doc:group1",
+			Relation: "viewer",
+			User:     fmt.Sprintf("user:user%d", i),
+		})
+		tuples = append(tuples, &openfgav1.TupleKey{
+			Object:   "doc:group1",
+			Relation: "viewer",
+			User:     fmt.Sprintf("group:admin%d", i),
+		})
+	}
+
+	err = ds.Write(ctx, store, nil, tuples)
+	require.NoError(t, err)
+
+	// Test pagination with user type filtering
+	tupleKey := &openfgav1.TupleKey{
+		Object:   "doc:group1",
+		Relation: "viewer",
+		User:     "user:",
+	}
+
+	readPageOptions := storage.ReadPageOptions{
+		Pagination: storage.PaginationOptions{
+			PageSize: 5,
+		},
+	}
+
+	// First page
+	tuples1, token, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	require.NoError(t, err)
+	require.Len(t, tuples1, 5)
+	require.NotEmpty(t, token)
+
+	// All returned tuples should have user type "user"
+	for _, tuple := range tuples1 {
+		userType, _, _ := tupleUtils.ToUserParts(tuple.GetKey().GetUser())
+		require.Equal(t, "user", userType)
+	}
+
+	// Second page
+	readPageOptions.Pagination.From = token
+	tuples2, token2, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	require.NoError(t, err)
+	require.Len(t, tuples2, 5)
+	require.Empty(t, token2)
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
@@ -701,7 +765,7 @@ func TestAllowNullCondition(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
+	tk := tupleUtils.NewTupleKey("folder:2021-budget", "owner", "user:anne")
 	iter, err := ds.Read(ctx, "store", tk, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
@@ -722,7 +786,7 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.GetKey())
 
-	tk2 := tuple.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
+	tk2 := tupleUtils.NewTupleKey("folder:2022-budget", "viewer", "user:anne")
 	_, err = ds.primaryDB.Exec(
 		ctx, stmt, "store", "folder", "2022-budget", "viewer", "user:anne", "userset",
 		ulid.Make().String(), nil, nil,

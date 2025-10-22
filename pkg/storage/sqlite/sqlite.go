@@ -202,11 +202,21 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 	}
 	if tupleKey.GetUser() != "" {
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
-		sb = sb.Where(sq.Eq{
-			"user_object_type": userObjectType,
-			"user_object_id":   userObjectID,
-			"user_relation":    userRelation,
-		})
+		if userObjectType != "" {
+			sb = sb.Where(sq.Eq{
+				"user_object_type": userObjectType,
+			})
+		}
+		if userObjectID != "" {
+			sb = sb.Where(sq.Eq{
+				"user_object_id": userObjectID,
+			})
+		}
+		if userRelation != "" {
+			sb = sb.Where(sq.Eq{
+				"user_relation": userRelation,
+			})
+		}
 	}
 	if options != nil && options.Pagination.From != "" {
 		token := options.Pagination.From
