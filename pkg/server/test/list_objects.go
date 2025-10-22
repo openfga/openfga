@@ -49,6 +49,14 @@ type listObjectsTestCase struct {
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds)
+}
+
+func TestListObjectsWithPipeline(t *testing.T, ds storage.OpenFGADatastore) {
+	runListObjectsTests(t, ds, commands.WithListObjectsPipelineEnabled(true))
+}
+
+func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts ...commands.ListObjectsQueryOption) {
 	testCases := []listObjectsTestCase{
 		{
 			name: "max_results_equal_0_with_simple_model",
@@ -499,6 +507,7 @@ func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 				commands.WithListObjectsDeadline(10 * time.Second),
 				commands.WithMaxConcurrentReads(30),
 			}
+			opts = append(opts, passedInOpts...)
 
 			if test.listObjectsDeadline != 0 {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
