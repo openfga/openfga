@@ -220,7 +220,10 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 	}
 
 	if len(filter.Conditions) > 0 {
-		sb = sb.Where(sq.Eq{"condition_name": filter.Conditions})
+		// Use COALESCE to treat NULL and '' as the same value (empty string).
+		// This allows filtering for "no condition" (e.g., filter.Conditions = [""])
+		// to correctly match rows where condition_name is either '' OR NULL.
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
 	if options != nil && options.Pagination.From != "" {

@@ -589,3 +589,74 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 		})
 	}
 }
+
+func TestReadFilterWithConditions(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	// Setup test data with various combinations
+	tuples := []*openfgav1.TupleKey{
+		{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Condition: &openfgav1.RelationshipCondition{Name: "cond1"}},
+		{Object: "folder:2022-budget", Relation: "owner", User: "user:anne"},
+	}
+	err = ds.Write(ctx, store, nil, tuples)
+	require.NoError(t, err)
+
+	// Read: if the tuple has condition and the filter has the same condition the tuple should be returned
+	tk := tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter := storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err := ds.Read(ctx, store, filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has no condition the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, store, filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has a condition but the tuple stored does not have any condition, then the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err = ds.Read(ctx, store, filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter does not have condition and the tuple stored does not have any condition, then the tuple cannot be returned
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2022-budget", "owner", "user:anne", "", nil)
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, store, filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: without condition specification in the filter, backward compatibility should be maintained
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter = storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne"}
+	iter, err = ds.Read(ctx, store, filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+}

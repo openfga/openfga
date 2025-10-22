@@ -523,6 +523,156 @@ func TestFindLatestModel(t *testing.T) {
 	})
 }
 
+func TestReadFilterWithConditions(t *testing.T) {
+	ctx := context.Background()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stmt := `
+		INSERT INTO tuple (
+			store, object_type, object_id, relation, _user, user_type, ulid,
+			condition_name, condition_context, inserted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
+	`
+	_, err = ds.primaryDB.ExecContext(
+		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
+		ulid.Make().String(), "cond1", nil,
+	)
+	require.NoError(t, err)
+
+	_, err = ds.primaryDB.ExecContext(
+		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
+		ulid.Make().String(), nil, nil,
+	)
+	require.NoError(t, err)
+
+	// Read: if the tuple has condition and the filter has the same condition the tuple should be returned
+	tk := tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter := storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err := ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has no condition the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has a condition but the tuple stored does not have any condition, then the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter does not have condition and the tuple stored does not have any condition, then the tuple cannot be returned
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2022-budget", "owner", "user:anne", "", nil)
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: without condition specification in the filter, backward compatibility should be maintained
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter = storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne"}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+}
+
+func TestReadStartingWithUserFilterWithConditions(t *testing.T) {
+	ctx := context.Background()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stmt := `
+		INSERT INTO tuple (
+			store, object_type, object_id, relation, _user, user_type, ulid,
+			condition_name, condition_context, inserted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
+	`
+	_, err = ds.primaryDB.ExecContext(
+		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user",
+		ulid.Make().String(), "cond1", nil,
+	)
+	require.NoError(t, err)
+
+	_, err = ds.primaryDB.ExecContext(
+		ctx, stmt, "store", "folder", "2022-budget", "owner", "user:anne", "user",
+		ulid.Make().String(), nil, nil,
+	)
+	require.NoError(t, err)
+
+	// Read: if the tuple has condition and the filter has the same condition the tuple should be returned
+	tk := tupleUtils.NewTupleKeyWithCondition("folder:2021-budget", "owner", "user:anne", "cond1", nil)
+	filter := storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err := ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has no condition the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter has a condition but the tuple stored does not have any condition, then the tuple cannot be returned
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{"cond1"}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// Read: if filter does not have condition and the tuple stored does not have any condition, then the tuple cannot be returned
+	tk = tupleUtils.NewTupleKeyWithCondition("folder:2022-budget", "owner", "user:anne", "", nil)
+	filter = storage.ReadFilter{Object: "folder:2022-budget", Relation: "owner", User: "user:anne", Conditions: []string{""}}
+	iter, err = ds.Read(ctx, "store", filter, storage.ReadOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Equal(t, tk, curTuple.GetKey())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+}
+
 // TestAllowNullCondition tests that tuple and changelog rows existing before
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
