@@ -340,7 +340,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(increase(openfga_check_cache_hit_count_total{service=\"openfga\"}[1m]))\n  /\nsum(increase(openfga_check_cache_count_total{service=\"openfga\"}[1m])))* 100",
+          "expr": "(sum(increase(openfga_check_cache_hit_count{service=\"openfga\"}[1m]))\n  /\nsum(increase(openfga_check_cache_total_count{service=\"openfga\"}[1m])))* 100",
           "hide": false,
           "instant": false,
           "legendFormat": "Check Cache hit ratio",
