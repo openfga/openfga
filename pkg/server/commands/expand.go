@@ -279,9 +279,9 @@ func (q *ExpandQuery) resolveTupleToUserset(
 		},
 	}
 	filter := storage.ReadFilter{
-		Object:   tsKey.Object,
-		Relation: tsKey.Relation,
-		User:     tsKey.User,
+		Object:   tsKey.GetObject(),
+		Relation: tsKey.GetRelation(),
+		User:     tsKey.GetUser(),
 	}
 
 	tupleIter, err := q.datastore.Read(ctx, store, filter, opts)

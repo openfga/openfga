@@ -258,7 +258,7 @@ func Test_combinedTupleReader_ReadPage(t *testing.T) {
 		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
 
 	tk := testTuples["group:1#member@user:11"].GetKey()
-	filter := storage.ReadFilter{Relation: tk.GetRelation(), Object: tk.Object, User: tk.User}
+	filter := storage.ReadFilter{Relation: tk.GetRelation(), Object: tk.GetObject(), User: tk.GetUser()}
 	got, _, err := c.ReadPage(context.Background(), "1", filter, storage.ReadPageOptions{})
 	require.NoError(t, err)
 
