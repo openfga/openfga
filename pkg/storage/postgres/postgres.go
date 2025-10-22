@@ -319,7 +319,7 @@ func (s *Datastore) Write(
 
 // execute SELECT … FOR UPDATE statement for all the rows indicated by the lockKeys
 // return a map of all the existing keys.
-func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
+func selectAllExistingRowsForUpdate(ctx context.Context,
 	lockKeys []sqlcommon.TupleLockKey,
 	txn PgxQuery,
 	store string) (map[string]*openfgav1.Tuple, error) {
@@ -494,7 +494,7 @@ func (s *Datastore) write(
 	}
 
 	// 3. If list compiled in step 2 is not empty, execute SELECT … FOR UPDATE statement
-	existing, err := s.selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store)
+	existing, err := selectAllExistingRowsForUpdate(ctx, lockKeys, txn, store)
 	if err != nil {
 		return err
 	}
