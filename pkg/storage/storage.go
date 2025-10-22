@@ -299,6 +299,9 @@ type ReadStartingWithUserFilter struct {
 	// Optional. It can be nil. If present, it will be sorted in ascending order.
 	// The datastore should return the intersection between this filter and what is in the database.
 	ObjectIDs SortedSet
+
+	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
+	Conditions []string
 }
 
 // ReadUsersetTuplesFilter specifies the filter options that
@@ -307,6 +310,7 @@ type ReadUsersetTuplesFilter struct {
 	Object                      string                         // Required.
 	Relation                    string                         // Required.
 	AllowedUserTypeRestrictions []*openfgav1.RelationReference // Optional.
+	Conditions                  []string                       // Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value.
 }
 
 // AuthorizationModelReadBackend provides a read interface for managing type definitions.

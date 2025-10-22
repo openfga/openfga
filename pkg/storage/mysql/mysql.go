@@ -319,6 +319,10 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(orConditions)
 	}
 
+	if len(filter.Conditions) > 0 {
+		sb = sb.Where(sq.Eq{"condition_name": filter.Conditions})
+	}
+
 	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
@@ -357,6 +361,10 @@ func (s *Datastore) ReadStartingWithUser(
 
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
+	}
+
+	if len(filter.Conditions) > 0 {
+		builder = builder.Where(sq.Eq{"condition_name": filter.Conditions})
 	}
 
 	return sqlcommon.NewSQLTupleIterator(builder, HandleSQLError), nil

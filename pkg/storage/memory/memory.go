@@ -528,6 +528,11 @@ func (s *MemoryBackend) ReadUsersetTuples(
 					continue
 				}
 			}
+
+			if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+				continue
+			}
+
 		}
 	}
 
@@ -558,6 +563,10 @@ func (s *MemoryBackend) ReadStartingWithUser(
 		}
 
 		if filter.ObjectIDs != nil && !filter.ObjectIDs.Exists(t.ObjectID) {
+			continue
+		}
+
+		if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
 			continue
 		}
 
