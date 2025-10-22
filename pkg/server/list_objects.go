@@ -20,7 +20,6 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -97,8 +96,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
 		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
-		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(serverconfig.ExperimentalListObjectsOptimizations)),
-		commands.WithListObjectsPipelineEnabled(s.IsExperimentallyEnabled(serverconfig.ExperimentalListObjectsPipeline)),
+		commands.WithListObjectsOptimizationsEnabled(s.IsExperimentallyEnabled(ExperimentalListObjectsOptimizations)),
 	)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
@@ -294,7 +292,7 @@ func (s *Server) getListObjectsCheckResolverBuilder() *graph.CheckResolverOrdere
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.IsExperimentallyEnabled(serverconfig.ExperimentalCheckOptimizations)),
+			graph.WithOptimizations(s.IsExperimentallyEnabled(ExperimentalCheckOptimizations)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),
