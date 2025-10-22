@@ -17,6 +17,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
   - Metrics for PostreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
 
+### Fixed
+- Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
+
 ## [1.10.3] - 2025-10-14
 ### Changed
 - Remove zap type conversion on request logger [#2717](https://github.com/openfga/openfga/pull/2717)
