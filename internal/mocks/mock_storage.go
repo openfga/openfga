@@ -176,24 +176,24 @@ func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockR
 }
 
 // Read mocks base method.
-func (m *MockRelationshipTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Read", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "Read", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Read indicates an expected call of Read.
-func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockRelationshipTupleReaderMockRecorder) Read(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Read), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Read), ctx, store, filter, options)
 }
 
 // ReadPage mocks base method.
-func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "ReadPage", ctx, store, filter, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -201,9 +201,9 @@ func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string
 }
 
 // ReadPage indicates an expected call of ReadPage.
-func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadPage), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadPage), ctx, store, filter, options)
 }
 
 // ReadStartingWithUser mocks base method.
@@ -860,18 +860,18 @@ func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesPerAuthorizationModel() *gom
 }
 
 // Read mocks base method.
-func (m *MockOpenFGADatastore) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Read", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "Read", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Read indicates an expected call of Read.
-func (mr *MockOpenFGADatastoreMockRecorder) Read(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) Read(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockOpenFGADatastore)(nil).Read), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockOpenFGADatastore)(nil).Read), ctx, store, filter, options)
 }
 
 // ReadAssertions mocks base method.
@@ -937,9 +937,9 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, filter, opti
 }
 
 // ReadPage mocks base method.
-func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "ReadPage", ctx, store, filter, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -947,9 +947,9 @@ func (m *MockOpenFGADatastore) ReadPage(ctx context.Context, store string, tuple
 }
 
 // ReadPage indicates an expected call of ReadPage.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), ctx, store, filter, options)
 }
 
 // ReadStartingWithUser mocks base method.

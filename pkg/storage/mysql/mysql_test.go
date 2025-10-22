@@ -119,7 +119,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tupleUtils.NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
+			iter, err := ds.Read(ctx, store, storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""}, storage.ReadOptions{})
 			defer iter.Stop()
 
 			require.NoError(t, err)
@@ -225,8 +225,7 @@ func TestCtxCancel(t *testing.T) {
 				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
-			iter, err := ds.Read(ctx, store, tupleUtils.
-				NewTupleKey("doc:", "relation", ""), storage.ReadOptions{})
+			iter, err := ds.Read(ctx, store, storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""}, storage.ReadOptions{})
 			defer iter.Stop()
 			require.NoError(t, err)
 
@@ -285,8 +284,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	}
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tupleUtils.NewTupleKey("doc:", "relation", ""),
-		opts)
+		storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""}, opts)
 	require.NoError(t, err)
 
 	require.Len(t, tuples, 2)
@@ -327,7 +325,7 @@ func TestMySQLDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test pagination with user type filtering
-	tupleKey := &openfgav1.TupleKey{
+	filter := storage.ReadFilter{
 		Object:   "doc:group1",
 		Relation: "viewer",
 		User:     "user:",
@@ -340,7 +338,7 @@ func TestMySQLDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	}
 
 	// First page
-	tuples1, token, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	tuples1, token, err := ds.ReadPage(ctx, store, filter, readPageOptions)
 	require.NoError(t, err)
 	require.Len(t, tuples1, 5)
 	require.NotEmpty(t, token)
@@ -353,7 +351,7 @@ func TestMySQLDatastore_ReadPageWithUserFiltering(t *testing.T) {
 
 	// Second page
 	readPageOptions.Pagination.From = token
-	tuples2, token2, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	tuples2, token2, err := ds.ReadPage(ctx, store, filter, readPageOptions)
 	require.NoError(t, err)
 	require.Len(t, tuples2, 5)
 	require.Empty(t, token2)
@@ -517,7 +515,12 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 
 	tk := tupleUtils.NewTupleKey("folder:2021-budget", "owner", "user:anne")
-	iter, err := ds.Read(ctx, "store", tk, storage.ReadOptions{})
+	filter := storage.ReadFilter{
+		Object:   "folder:2021-budget",
+		Relation: "owner",
+		User:     "user:anne",
+	}
+	iter, err := ds.Read(ctx, "store", filter, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -528,7 +531,7 @@ func TestAllowNullCondition(t *testing.T) {
 	opts := storage.ReadPageOptions{
 		Pagination: storage.NewPaginationOptions(2, ""),
 	}
-	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, opts)
+	tuples, _, err := ds.ReadPage(ctx, "store", storage.ReadFilter{}, opts)
 	require.NoError(t, err)
 	require.Len(t, tuples, 1)
 	require.Equal(t, tk, tuples[0].GetKey())

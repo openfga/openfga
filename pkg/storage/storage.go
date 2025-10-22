@@ -159,13 +159,13 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the [TupleIterator], either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order of the tuples returned on the iterator.
-	Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadOptions) (TupleIterator, error)
+	Read(ctx context.Context, store string, filter ReadFilter, options ReadOptions) (TupleIterator, error)
 
 	// ReadPage functions similarly to Read but includes support for pagination. It takes
 	// mandatory ReadPageOptions options. PageSize will always be greater than zero.
 	// It returns a slice of tuples along with a continuation token. This token can be used for retrieving subsequent pages of data.
 	// There is NO guarantee on the order of the tuples in one page.
-	ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options ReadPageOptions) ([]*openfgav1.Tuple, string, error)
+	ReadPage(ctx context.Context, store string, filter ReadFilter, options ReadPageOptions) ([]*openfgav1.Tuple, string, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
 	// If none is found, it must return [ErrNotFound].
@@ -299,6 +299,20 @@ type ReadStartingWithUserFilter struct {
 	// Optional. It can be nil. If present, it will be sorted in ascending order.
 	// The datastore should return the intersection between this filter and what is in the database.
 	ObjectIDs SortedSet
+
+	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
+	Conditions []string
+}
+
+// ReadStartingWithUserFilter specifies the filter options that will be used
+// to constrain the [RelationshipTupleReader.ReadStartingWithUser] query.
+type ReadFilter struct {
+	// Mandatory.
+	Object string
+	// Mandatory.
+	Relation string
+	// Mandatory.
+	User string
 
 	// Optional. It can be nil. If present, it will be used to filter the results. Conditions can hold the empty value
 	Conditions []string

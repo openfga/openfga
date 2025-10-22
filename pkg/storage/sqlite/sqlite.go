@@ -151,21 +151,21 @@ func (s *Datastore) Close() {
 func (s *Datastore) Read(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	_ storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := startTrace(ctx, "Read")
 	defer span.End()
 
-	return s.read(ctx, store, tupleKey, nil)
+	return s.read(ctx, store, filter, nil)
 }
 
 // ReadPage see [storage.RelationshipTupleReader].ReadPage.
-func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (s *Datastore) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	ctx, span := startTrace(ctx, "ReadPage")
 	defer span.End()
 
-	iter, err := s.read(ctx, store, tupleKey, &options)
+	iter, err := s.read(ctx, store, filter, &options)
 	if err != nil {
 		return nil, "", err
 	}
@@ -174,7 +174,7 @@ func (s *Datastore) ReadPage(ctx context.Context, store string, tupleKey *openfg
 	return iter.ToArray(ctx, options.Pagination)
 }
 
-func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
+func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadFilter, options *storage.ReadPageOptions) (*SQLTupleIterator, error) {
 	_, span := startTrace(ctx, "read")
 	defer span.End()
 
@@ -190,18 +190,18 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.OrderBy("ulid")
 	}
 
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
 		sb = sb.Where(sq.Eq{"object_id": objectID})
 	}
-	if tupleKey.GetRelation() != "" {
-		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
+	if filter.Relation != "" {
+		sb = sb.Where(sq.Eq{"relation": filter.Relation})
 	}
-	if tupleKey.GetUser() != "" {
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
+	if filter.User != "" {
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(filter.User)
 		if userObjectType != "" {
 			sb = sb.Where(sq.Eq{
 				"user_object_type": userObjectType,
@@ -218,6 +218,11 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 			})
 		}
 	}
+
+	if len(filter.Conditions) > 0 {
+		sb = sb.Where(sq.Eq{"condition_name": filter.Conditions})
+	}
+
 	if options != nil && options.Pagination.From != "" {
 		token := options.Pagination.From
 		sb = sb.Where(sq.GtOrEq{"ulid": token})

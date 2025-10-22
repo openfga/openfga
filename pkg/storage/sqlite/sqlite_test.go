@@ -111,7 +111,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			iter, err := ds.Read(
 				ctx,
 				store,
-				tupleUtils.NewTupleKey("doc:", "relation", ""),
+				storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""},
 				storage.ReadOptions{},
 			)
 			defer iter.Stop()
@@ -196,7 +196,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	}
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tupleUtils.NewTupleKey("doc:", "relation", ""),
+		storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""},
 		opts)
 	require.NoError(t, err)
 
@@ -236,47 +236,37 @@ func TestSQLiteDatastore_ReadWithUserParts(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		tupleKey     *openfgav1.TupleKey
+		filter       storage.ReadFilter
 		expectedObjs []string
 	}{
 		{
-			name: "filter_by_direct_user",
-			tupleKey: &openfgav1.TupleKey{
-				User: "user:alice",
-			},
+			name:         "filter_by_direct_user",
+			filter:       storage.ReadFilter{User: "user:alice"},
 			expectedObjs: []string{"document:doc1"},
 		},
 		{
-			name: "filter_by_userset_user",
-			tupleKey: &openfgav1.TupleKey{
-				User: "group:eng#member",
-			},
+			name:         "filter_by_userset_user",
+			filter:       storage.ReadFilter{User: "group:eng#member"},
 			expectedObjs: []string{"document:doc2"},
 		},
 		{
-			name: "filter_by_wildcard_user",
-			tupleKey: &openfgav1.TupleKey{
-				User: "user:*",
-			},
+			name:         "filter_by_wildcard_user",
+			filter:       storage.ReadFilter{User: "user:*"},
 			expectedObjs: []string{"document:doc3"},
 		},
 		{
-			name: "filter_by_user_object_type_only",
-			tupleKey: &openfgav1.TupleKey{
-				User: "user:",
-			},
+			name:         "filter_by_user_object_type_only",
+			filter:       storage.ReadFilter{User: "user:"},
 			expectedObjs: []string{"document:doc1", "document:doc3", "document:doc4"},
 		},
 		{
-			name: "filter_by_user_object_type_team",
-			tupleKey: &openfgav1.TupleKey{
-				User: "team:",
-			},
+			name:         "filter_by_user_object_type_team",
+			filter:       storage.ReadFilter{User: "team:"},
 			expectedObjs: []string{"document:doc5"},
 		},
 		{
 			name: "filter_by_relation_and_user_type",
-			tupleKey: &openfgav1.TupleKey{
+			filter: storage.ReadFilter{
 				Relation: "editor",
 				User:     "user:",
 			},
@@ -284,7 +274,7 @@ func TestSQLiteDatastore_ReadWithUserParts(t *testing.T) {
 		},
 		{
 			name: "no_matches_for_nonexistent_user",
-			tupleKey: &openfgav1.TupleKey{
+			filter: storage.ReadFilter{
 				User: "user:charlie",
 			},
 			expectedObjs: []string{},
@@ -293,7 +283,7 @@ func TestSQLiteDatastore_ReadWithUserParts(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			iter, err := ds.Read(ctx, store, test.tupleKey, storage.ReadOptions{})
+			iter, err := ds.Read(ctx, store, test.filter, storage.ReadOptions{})
 			require.NoError(t, err)
 			defer iter.Stop()
 
@@ -386,11 +376,11 @@ func TestSQLiteDatastore_ReadWithPartialUserFiltering(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tupleKey := &openfgav1.TupleKey{
+			filter := storage.ReadFilter{
 				User: test.userFilter,
 			}
 
-			iter, err := ds.Read(ctx, store, tupleKey, storage.ReadOptions{})
+			iter, err := ds.Read(ctx, store, filter, storage.ReadOptions{})
 			require.NoError(t, err)
 			defer iter.Stop()
 
@@ -432,11 +422,11 @@ func TestSQLiteDatastore_ReadWithEmptyUserParts(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with empty user - should not add any user filters
-	tupleKey := &openfgav1.TupleKey{
+	filter := storage.ReadFilter{
 		User: "",
 	}
 
-	iter, err := ds.Read(ctx, store, tupleKey, storage.ReadOptions{})
+	iter, err := ds.Read(ctx, store, filter, storage.ReadOptions{})
 	require.NoError(t, err)
 	defer iter.Stop()
 
@@ -486,7 +476,7 @@ func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test pagination with user type filtering
-	tupleKey := &openfgav1.TupleKey{
+	filter := storage.ReadFilter{
 		Object:   "doc:group1",
 		Relation: "viewer",
 		User:     "user:",
@@ -499,7 +489,7 @@ func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
 	}
 
 	// First page
-	tuples1, token, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	tuples1, token, err := ds.ReadPage(ctx, store, filter, readPageOptions)
 	require.NoError(t, err)
 	require.Len(t, tuples1, 5)
 	require.NotEmpty(t, token)
@@ -512,7 +502,7 @@ func TestSQLiteDatastore_ReadPageWithUserFiltering(t *testing.T) {
 
 	// Second page
 	readPageOptions.Pagination.From = token
-	tuples2, token2, err := ds.ReadPage(ctx, store, tupleKey, readPageOptions)
+	tuples2, token2, err := ds.ReadPage(ctx, store, filter, readPageOptions)
 	require.NoError(t, err)
 	require.Len(t, tuples2, 5)
 	require.Empty(t, token2)
@@ -543,13 +533,13 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		tupleKey     *openfgav1.TupleKey
+		filter       storage.ReadFilter
 		expectedObjs []string
 		description  string
 	}{
 		{
 			name: "object_and_user_filter",
-			tupleKey: &openfgav1.TupleKey{
+			filter: storage.ReadFilter{
 				Object: "doc:",
 				User:   "user:alice",
 			},
@@ -558,7 +548,7 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 		},
 		{
 			name: "relation_and_user_type_filter",
-			tupleKey: &openfgav1.TupleKey{
+			filter: storage.ReadFilter{
 				Relation: "viewer",
 				User:     "user:",
 			},
@@ -567,7 +557,7 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 		},
 		{
 			name: "full_combination_filter",
-			tupleKey: &openfgav1.TupleKey{
+			filter: storage.ReadFilter{
 				Object:   "doc:",
 				Relation: "viewer",
 				User:     "user:alice",
@@ -579,7 +569,7 @@ func TestSQLiteDatastore_ReadCombinedFilters(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			iter, err := ds.Read(ctx, store, test.tupleKey, storage.ReadOptions{})
+			iter, err := ds.Read(ctx, store, test.filter, storage.ReadOptions{})
 			require.NoError(t, err)
 			defer iter.Stop()
 

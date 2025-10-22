@@ -131,7 +131,7 @@ type doc
 			Times(1).
 			DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
 				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				_, _ = ds.Read(ctx, req.StoreID, storage.ReadFilter{}, storage.ReadOptions{})
 				return &graph.ResolveCheckResponse{}, nil
 			})
 		checkResp, _, err := cmd.Execute(context.Background(), &CheckCommandParams{
@@ -229,7 +229,7 @@ type doc
 				req.GetRequestMetadata().DispatchCounter.Add(1)
 				req.GetRequestMetadata().WasThrottled.Store(true)
 				ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-				_, _ = ds.Read(ctx, req.StoreID, nil, storage.ReadOptions{})
+				_, _ = ds.Read(ctx, req.StoreID, storage.ReadFilter{}, storage.ReadOptions{})
 				return nil, context.DeadlineExceeded
 			})
 

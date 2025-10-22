@@ -152,7 +152,14 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 			Preference: consistency,
 		},
 	}
-	tupleIter, err := q.datastore.Read(ctx, store, tk, opts)
+
+	filter := storage.ReadFilter{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+
+	tupleIter, err := q.datastore.Read(ctx, store, filter, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -271,7 +278,13 @@ func (q *ExpandQuery) resolveTupleToUserset(
 			Preference: consistency,
 		},
 	}
-	tupleIter, err := q.datastore.Read(ctx, store, tsKey, opts)
+	filter := storage.ReadFilter{
+		Object:   tsKey.Object,
+		Relation: tsKey.Relation,
+		User:     tsKey.User,
+	}
+
+	tupleIter, err := q.datastore.Read(ctx, store, filter, opts)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

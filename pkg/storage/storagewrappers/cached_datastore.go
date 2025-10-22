@@ -211,7 +211,7 @@ func (c *CachedDatastore) ReadUsersetTuples(
 func (c *CachedDatastore) Read(
 	ctx context.Context,
 	store string,
-	tupleKey *openfgav1.TupleKey,
+	filter storage.ReadFilter,
 	options storage.ReadOptions,
 ) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(
@@ -222,11 +222,17 @@ func (c *CachedDatastore) Read(
 	defer span.End()
 
 	iter := func(ctx context.Context) (storage.TupleIterator, error) {
-		return c.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+		return c.RelationshipTupleReader.Read(ctx, store, filter, options)
+	}
+
+	tupleKey := &openfgav1.TupleKey{
+		Object:   filter.Object,
+		Relation: filter.Relation,
+		User:     filter.User,
 	}
 
 	// this instance of Read is only called from TTU resolution path which always includes Object/Relation
-	if tupleKey.GetRelation() == "" || !tuple.IsValidObject(tupleKey.GetObject()) {
+	if filter.Relation == "" || !tuple.IsValidObject(filter.Object) {
 		return iter(ctx)
 	}
 
