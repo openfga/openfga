@@ -57,24 +57,24 @@ func (mr *MockTupleBackendMockRecorder) MaxTuplesPerWrite() *gomock.Call {
 }
 
 // Read mocks base method.
-func (m *MockTupleBackend) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Read", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "Read", ctx, store, filter, options)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Read indicates an expected call of Read.
-func (mr *MockTupleBackendMockRecorder) Read(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) Read(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockTupleBackend)(nil).Read), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockTupleBackend)(nil).Read), ctx, store, filter, options)
 }
 
 // ReadPage mocks base method.
-func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
+func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadPageOptions) ([]*openfgav1.Tuple, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tupleKey, options)
+	ret := m.ctrl.Call(m, "ReadPage", ctx, store, filter, options)
 	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
@@ -82,9 +82,9 @@ func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tupleKey 
 }
 
 // ReadPage indicates an expected call of ReadPage.
-func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, tupleKey, options any) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, filter, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), ctx, store, tupleKey, options)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), ctx, store, filter, options)
 }
 
 // ReadStartingWithUser mocks base method.

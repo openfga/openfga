@@ -171,13 +171,24 @@ func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping
 	}
 	switch mapping.kind {
 	case storage.UsersetKind:
+		objectType := ""
+		relation := ""
+		if req.GetTupleKey() != nil {
+			objectType = req.GetTupleKey().GetObject()
+			relation = req.GetTupleKey().GetRelation()
+		}
 		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-			Object:                      req.GetTupleKey().GetObject(),
-			Relation:                    req.GetTupleKey().GetRelation(),
+			Object:                      objectType,
+			Relation:                    relation,
 			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 	case storage.TTUKind:
-		iter, err = ds.Read(ctx, req.GetStoreID(), storage.ReadFilter{Object: req.GetTupleKey().GetObject(), Relation: mapping.tuplesetRelation, User: ""},
+		objectType := ""
+		if req.GetTupleKey() != nil {
+			objectType = req.GetTupleKey().GetObject()
+		}
+		iter, err = ds.Read(ctx, req.GetStoreID(),
+			storage.ReadFilter{Object: objectType, Relation: mapping.tuplesetRelation, User: ""},
 			storage.ReadOptions{Consistency: consistencyOpts})
 	default:
 		return nil, errors.New("unsupported mapper kind")
