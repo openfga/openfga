@@ -73,7 +73,7 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool
+	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
 }
 
 type ListObjectsResolver interface {
