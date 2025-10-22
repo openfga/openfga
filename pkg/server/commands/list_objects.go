@@ -461,6 +461,8 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
+	maxResults := q.listObjectsMaxResults
+
 	timeoutCtx := ctx
 	if q.listObjectsDeadline != 0 {
 		var cancel context.CancelFunc
@@ -565,7 +567,13 @@ func (q *ListObjectsQuery) Execute(
 			if obj.Err != nil {
 				return nil, serverErrors.HandleError("", obj.Err)
 			}
+
 			res.Objects = append(res.Objects, obj.Value)
+
+			// Check if we've reached the max results limit
+			if maxResults > 0 && uint32(len(res.Objects)) >= maxResults {
+				break
+			}
 		}
 
 		dsMeta := ds.GetMetadata()
@@ -575,7 +583,6 @@ func (q *ListObjectsQuery) Execute(
 
 	// --------- OLD STUFF -----------
 	resultsChan := make(chan ListObjectsResult, 1)
-	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
 		resultsChan = make(chan ListObjectsResult, maxResults)
 	}
@@ -727,6 +734,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		seq := pipeline.Build(source, target)
 
+		var listObjectsCount uint32 = 0
+
 		for obj := range seq {
 			if timeoutCtx.Err() != nil {
 				break
@@ -743,6 +752,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 				Object: obj.Value,
 			}); err != nil {
 				return nil, serverErrors.HandleError("", err)
+			}
+
+			listObjectsCount++
+
+			// Check if we've reached the max results limit
+			if maxResults > 0 && listObjectsCount >= maxResults {
+				break
 			}
 		}
 
