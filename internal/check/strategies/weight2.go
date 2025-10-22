@@ -96,6 +96,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	defer span.End()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	defer rightIter.Stop()
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 	rightOpen := true
 	leftOpen := true

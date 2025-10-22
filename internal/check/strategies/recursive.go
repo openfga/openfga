@@ -55,7 +55,8 @@ func (s *Recursive) Userset(ctx context.Context, req *check.Request, edge *authz
 		return nil, err
 	}
 
-	return s.execute(ctx, req, edge, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
+	stream := iterator.ToChannel[string](ctx, iterator.NewStream(0, leftChan), 100)
+	return s.execute(ctx, req, edge, stream, iterator.ToChannel[string](ctx, storage.WrapIterator(storage.UsersetKind, rightIter), 100)
 
 }
 
@@ -84,7 +85,7 @@ func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGrap
 	return s.execute(ctx, req, edge, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
 }
 
-func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
+func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, leftChan chan iterator.Msg[string], rightChan chan iterator.Msg) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "recursiveFastPath")
 	defer span.End()
 	usersetFromUser := hashset.New()
@@ -92,8 +93,8 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer objectToUsersetIter.Stop()
-	objectToUsersetMessageChan := streamedLookupUsersetFromIterator(cancellableCtx, objectToUsersetIter)
+	defer rightIter.Stop()
+	rightChan := iterator.ToChannel[string](ctx, rightIter, 100)
 
 	res := &ResolveCheckResponse{
 		Allowed: false,
@@ -101,11 +102,10 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 
 	// check to see if there are any recursive userset assigned. If not,
 	// we don't even need to check the terminal type side.
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+	case objectToUsersetMessage, ok := <-rightChan:
 		if !ok {
 			return res, ctx.Err()
 		}
@@ -145,7 +145,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 				res.Allowed = true
 				return res, nil
 			}
-		case objectToUsersetMessage, ok := <-objectToUsersetMessageChan:
+		case objectToUsersetMessage, ok := <-rightChan:
 			if !ok {
 				// usersetFromObject must not be empty because we would have caught it earlier.
 				objectToUsersetDone = true

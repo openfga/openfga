@@ -28,7 +28,7 @@ type DefaultStrategy struct {
 	concurrencyLimit int
 }
 
-func NewDefault(resolver *check.Resolver, limit int) DefaultStrategy {
+func NewDefault(resolver *check.Resolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
 		concurrencyLimit: limit,
 		resolver:         resolver,
