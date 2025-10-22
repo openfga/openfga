@@ -6,64 +6,36 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 )
 
-// pgxpoolIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
-type pgxpoolIterQuery struct {
-	db    *pgxpool.Pool
-	query string
-	args  []interface{}
-}
-
-var _ sqlcommon.SQLIteratorRowGetter = (*pgxpoolIterQuery)(nil)
-
-func newPgxPoolGetRows(db *pgxpool.Pool, sb sq.SelectBuilder) (*pgxpoolIterQuery, error) {
-	stmt, args, err := sb.ToSql()
-	if err != nil {
-		return nil, err
-	}
-	return &pgxpoolIterQuery{
-		db:    db,
-		query: stmt,
-		args:  args,
-	}, nil
-}
-
-// GetRows executes the pgxpool query and returns the sqlcommon.Rows.
-func (p *pgxpoolIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
-	rows, err := p.db.Query(ctx, p.query, p.args...)
-	if err != nil {
-		return nil, HandleSQLError(err)
-	}
-	return &pgxRowsWrapper{rows: rows}, nil
-}
-
-type pgxQuery interface {
+// PgxQuery interface allows Query that returns pgx.Rows.
+type PgxQuery interface {
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 }
 
-type pgxExec interface {
+// PgxExec interface allows pgx Exec functionality.
+type PgxExec interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (commandTag pgconn.CommandTag, err error)
 }
 
-// pgxtxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
-type pgxtxnIterQuery struct {
-	txn   pgxQuery
+// PgxTxnIterQuery is a helper to run queries using pgxpool when used in sqlcommon iterator.
+type PgxTxnIterQuery struct {
+	txn   PgxQuery
 	query string
 	args  []interface{}
 }
 
-var _ sqlcommon.SQLIteratorRowGetter = (*pgxtxnIterQuery)(nil)
+var _ sqlcommon.SQLIteratorRowGetter = (*PgxTxnIterQuery)(nil)
 
-func newPgxTxnGetRows(txn pgxQuery, sb sq.SelectBuilder) (*pgxtxnIterQuery, error) {
+// NewPgxTxnGetRows creates a PgxPoolIterQuery which allows the GetRows functionality via the specified PgxQuery txn.
+func NewPgxTxnGetRows(txn PgxQuery, sb sq.SelectBuilder) (*PgxTxnIterQuery, error) {
 	stmt, args, err := sb.ToSql()
 	if err != nil {
 		return nil, err
 	}
-	return &pgxtxnIterQuery{
+	return &PgxTxnIterQuery{
 		txn:   txn,
 		query: stmt,
 		args:  args,
@@ -71,7 +43,7 @@ func newPgxTxnGetRows(txn pgxQuery, sb sq.SelectBuilder) (*pgxtxnIterQuery, erro
 }
 
 // GetRows executes the txn query and returns the sqlcommon.Rows.
-func (p *pgxtxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
+func (p *PgxTxnIterQuery) GetRows(ctx context.Context) (sqlcommon.Rows, error) {
 	rows, err := p.txn.Query(ctx, p.query, p.args...)
 	if err != nil {
 		return nil, HandleSQLError(err)

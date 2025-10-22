@@ -291,7 +291,7 @@ func (s *Datastore) read(ctx context.Context, store string, tupleKey *openfgav1.
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	poolGetRows, err := newPgxPoolGetRows(db, sb)
+	poolGetRows, err := NewPgxTxnGetRows(db, sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -316,7 +316,7 @@ func (s *Datastore) Write(
 // return a map of all the existing keys.
 func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
 	lockKeys []sqlcommon.TupleLockKey,
-	txn pgxQuery,
+	txn PgxQuery,
 	store string) (map[string]*openfgav1.Tuple, error) {
 	total := len(lockKeys)
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
@@ -337,7 +337,7 @@ func (s *Datastore) selectAllExistingRowsForUpdate(ctx context.Context,
 }
 
 // For the prepared deleteConditions, execute delete tuples.
-func executeDeleteTuples(ctx context.Context, txn pgxExec, store string, deleteConditions sq.Or) error {
+func executeDeleteTuples(ctx context.Context, txn PgxExec, store string, deleteConditions sq.Or) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalDeletes := 0, len(deleteConditions); start < totalDeletes; start += storage.DefaultMaxTuplesPerWrite {
@@ -370,7 +370,7 @@ func executeDeleteTuples(ctx context.Context, txn pgxExec, store string, deleteC
 }
 
 // For the prepared writeItems, execute insert writeItems.
-func executeWriteTuples(ctx context.Context, txn pgxExec, writeItems [][]interface{}) error {
+func executeWriteTuples(ctx context.Context, txn PgxExec, writeItems [][]interface{}) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 	for start, totalWrites := 0, len(writeItems); start < totalWrites; start += storage.DefaultMaxTuplesPerWrite {
@@ -419,7 +419,7 @@ func executeWriteTuples(ctx context.Context, txn pgxExec, writeItems [][]interfa
 	return nil
 }
 
-func executeInsertChanges(ctx context.Context, txn pgxExec, changeLogItems [][]interface{}) error {
+func executeInsertChanges(ctx context.Context, txn PgxExec, changeLogItems [][]interface{}) error {
 	stbl := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 	for start, totalItems := 0, len(changeLogItems); start < totalItems; start += storage.DefaultMaxTuplesPerWrite {
 		end := start + storage.DefaultMaxTuplesPerWrite
@@ -635,7 +635,7 @@ func (s *Datastore) ReadUsersetTuples(
 		sb = sb.Where(orConditions)
 	}
 
-	poolGetRows, err := newPgxPoolGetRows(db, sb)
+	poolGetRows, err := NewPgxTxnGetRows(db, sb)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -682,7 +682,7 @@ func (s *Datastore) ReadStartingWithUser(
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
 
-	poolGetRows, err := newPgxPoolGetRows(db, builder)
+	poolGetRows, err := NewPgxTxnGetRows(db, builder)
 	if err != nil {
 		return nil, HandleSQLError(err)
 	}
@@ -1267,7 +1267,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 
 // selectExistingRowsForWrite selects existing rows for the given keys and locks them FOR UPDATE.
 // The existing rows are added to the existing map.
-func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn pgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
+func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderType, txn PgxQuery, store string, keys []sqlcommon.TupleLockKey, existing map[string]*openfgav1.Tuple) error {
 	inExpr, args := sqlcommon.BuildRowConstructorIN(keys)
 
 	sb := stbl.
@@ -1278,7 +1278,7 @@ func selectExistingRowsForWrite(ctx context.Context, stbl sq.StatementBuilderTyp
 		Where(sq.Expr("(object_type, object_id, relation, _user, user_type) IN "+inExpr, args...)).
 		Suffix("FOR UPDATE")
 
-	poolGetRows, err := newPgxTxnGetRows(txn, sb)
+	poolGetRows, err := NewPgxTxnGetRows(txn, sb)
 	if err != nil {
 		return HandleSQLError(err)
 	}
