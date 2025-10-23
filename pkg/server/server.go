@@ -271,7 +271,7 @@ func WithAuthorizationModelCacheSize(maxAuthorizationModelCacheSize int) OpenFGA
 	}
 }
 
-// WithTypesystemCacheSize sets the maximum number of type system models that will be cached in memory
+// WithTypesystemCacheSize sets the maximum number of type system models that will be cached in memory.
 func WithTypesystemCacheSize(maxTypesystemCacheSize int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxTypesystemCacheSize = maxTypesystemCacheSize
