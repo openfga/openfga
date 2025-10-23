@@ -660,3 +660,121 @@ func TestReadFilterWithConditions(t *testing.T) {
 	_, err = iter.Next(ctx)
 	require.Error(t, err)
 }
+
+func TestReadStartingWithUserFilterWithConditions(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "sqlite")
+	uri := testDatastore.GetConnectionURI(true)
+	cfg := sqlcommon.NewConfig()
+	ds, err := New(uri, cfg)
+	require.NoError(t, err)
+	defer ds.Close()
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	// Setup test data with various combinations
+	tuples := []*openfgav1.TupleKey{
+		{Object: "folder:2021-budget", Relation: "owner", User: "user:anne", Condition: &openfgav1.RelationshipCondition{Name: "cond1"}},
+		{Object: "folder:2023-budget", Relation: "owner", User: "user:anne", Condition: &openfgav1.RelationshipCondition{Name: "cond1"}},
+		{Object: "folder:2022-budget", Relation: "owner", User: "user:anne"},
+		{Object: "folder:2024-budget", Relation: "owner", User: "user:anne"},
+		{Object: "folder:2022-budget", Relation: "owner", User: "user:jack"},
+		{Object: "folder:2024-budget", Relation: "owner", User: "user:jack"},
+	}
+	err = ds.Write(ctx, store, nil, tuples)
+	require.NoError(t, err)
+
+	// ReadStartingWithUser: if the tuple has condition and the filter has the same condition the tuple should be returned
+	filter := storage.ReadStartingWithUserFilter{
+		ObjectType: "folder",
+		Relation:   "owner",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "user:anne"},
+		},
+		Conditions: []string{"cond1"},
+	}
+	iter, err := ds.ReadStartingWithUser(ctx, store, filter, storage.ReadStartingWithUserOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err := iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "cond1", curTuple.GetKey().GetCondition().GetName())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "cond1", curTuple.GetKey().GetCondition().GetName())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// ReadStartingWithUser: if filter has a condition but the tuple stored does not have any condition, then the tuple cannot be returned
+	filter = storage.ReadStartingWithUserFilter{
+		ObjectType: "folder",
+		Relation:   "owner",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "user:jack"},
+		},
+		Conditions: []string{"cond1"},
+	}
+	iter, err = ds.ReadStartingWithUser(ctx, store, filter, storage.ReadStartingWithUserOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// ReadStartingWithUser: if filter does not have condition and the tuple stored does not have any condition, then the tuple cannot be returned
+	filter = storage.ReadStartingWithUserFilter{
+		ObjectType: "folder",
+		Relation:   "owner",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "user:anne"},
+		},
+		Conditions: []string{""},
+	}
+	iter, err = ds.ReadStartingWithUser(ctx, store, filter, storage.ReadStartingWithUserOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "", curTuple.GetKey().GetCondition().GetName())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "", curTuple.GetKey().GetCondition().GetName())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+
+	// ReadStartingWithUser: without condition specification in the filter, backward compatibility should be maintained
+	filter = storage.ReadStartingWithUserFilter{
+		ObjectType: "folder",
+		Relation:   "owner",
+		UserFilter: []*openfgav1.ObjectRelation{
+			{Object: "user:anne"},
+		},
+	}
+	iter, err = ds.ReadStartingWithUser(ctx, store, filter, storage.ReadStartingWithUserOptions{})
+	require.NoError(t, err)
+	defer iter.Stop()
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget", "folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget", "folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget", "folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	curTuple, err = iter.Next(ctx)
+	require.NoError(t, err)
+	require.Contains(t, []string{"folder:2022-budget", "folder:2024-budget", "folder:2021-budget", "folder:2023-budget"}, curTuple.GetKey().GetObject())
+	require.Equal(t, "user:anne", curTuple.GetKey().GetUser())
+	_, err = iter.Next(ctx)
+	require.Error(t, err)
+}
