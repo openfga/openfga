@@ -26,7 +26,6 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -55,7 +54,6 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
-	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -177,14 +175,9 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
+func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		if client != nil {
-			d.ff = client
-			return
-		}
-
-		d.ff = featureflags.NewNoopFeatureFlagClient()
+		d.optimizationsEnabled = enabled
 	}
 }
 
@@ -232,17 +225,12 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: false,
+		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
 		useShadowCache:       false,
-		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {
 		opt(query)
-	}
-
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
-		query.optimizationsEnabled = true
 	}
 
 	return query, nil
