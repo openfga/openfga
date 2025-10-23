@@ -4,38 +4,40 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/emirpasic/gods/sets/hashset"
-	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/check"
-	"github.com/openfga/openfga/internal/iterator"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/checkutil"
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+var ErrShortCircuit = errors.New("short circuit")
+
 type Recursive struct {
-	model     *check.AuthorizationModelGraph
-	datastore storage.RelationshipTupleReader
+	concurrencyLimit int
+	model            *check.AuthorizationModelGraph
+	datastore        storage.RelationshipTupleReader
 }
 
-func NewRecursive(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Recursive {
+func NewRecursive(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
 	return &Recursive{
-		model:     model,
-		datastore: ds,
+		model:            model,
+		datastore:        ds,
+		concurrencyLimit: limit,
 	}
 }
 
 func (s *Recursive) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, rightIter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "recursive.Userset")
+	defer span.End()
+
 	w2s := NewWeight2(s.model, s.datastore)
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
@@ -55,14 +57,15 @@ func (s *Recursive) Userset(ctx context.Context, req *check.Request, edge *authz
 		return nil, err
 	}
 
-	stream := iterator.ToChannel[string](ctx, iterator.NewStream(0, leftChan), 100)
-	return s.execute(ctx, req, edge, stream, iterator.ToChannel[string](ctx, storage.WrapIterator(storage.UsersetKind, rightIter), 100)
-
+	return s.execute(ctx, req, edge, leftChan, storage.WrapIterator(storage.UsersetKind, rightIter))
 }
 
 // recursiveTTU solves a union relation of the form "{operand1} OR ... {operandN} OR {recursive TTU}"
 // rightIter gives the iterator for the recursive TTU.
 func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, rightIter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "recursive.TTU")
+	defer span.End()
+
 	w2s := NewWeight2(s.model, s.datastore)
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
@@ -85,177 +88,104 @@ func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGrap
 	return s.execute(ctx, req, edge, leftChan, storage.WrapIterator(storage.TTUKind, rightIter))
 }
 
-func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, leftChan chan iterator.Msg[string], rightChan chan iterator.Msg) (*check.Response, error) {
-	ctx, span := tracer.Start(ctx, "recursiveFastPath")
-	defer span.End()
-	usersetFromUser := hashset.New()
-	usersetFromObject := hashset.New()
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
+func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, leftChanSrc chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	defer rightIter.Stop()
-	rightChan := iterator.ToChannel[string](ctx, rightIter, 100)
 
-	res := &ResolveCheckResponse{
-		Allowed: false,
-	}
+	// right hand side bootstrap
+	idsFromObject := hashset.New()
+	defer rightIter.Stop() // the caller calls stop when creating the iterator, this is just being defensive
+	rightChan := iterator.ToChannel[string](ctx, rightIter, s.concurrencyLimit)
 
 	// check to see if there are any recursive userset assigned. If not,
 	// we don't even need to check the terminal type side.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case objectToUsersetMessage, ok := <-rightChan:
+	case msg, ok := <-rightChan:
 		if !ok {
-			return res, ctx.Err()
+			return &check.Response{Allowed: false}, nil
 		}
-		if objectToUsersetMessage.err != nil {
-			return nil, objectToUsersetMessage.err
+		if msg.Err != nil {
+			return nil, msg.Err
 		}
-		usersetFromObject.Add(objectToUsersetMessage.userset)
+		idsFromObject.Add(msg.Value)
 	}
 
-	userToUsersetMessageChan, err := objectProvider.Begin(cancellableCtx, req)
-	if err != nil {
-		return nil, err
-	}
-	defer objectProvider.End()
+	// right hand side bootstrap
+	idsFromUser := hashset.New()
+	stream := iterator.NewStream(0, leftChanSrc)
+	defer stream.Stop()
+	leftChan := iterator.ToChannel[string](ctx, stream, s.concurrencyLimit)
 
-	userToUsersetDone := false
-	objectToUsersetDone := false
+	leftDone := false
+	rightDone := false
 
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
-	for !userToUsersetDone || !objectToUsersetDone {
+	for !leftDone || !rightDone {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case userToUsersetMessage, ok := <-userToUsersetMessageChan:
+		case msg, ok := <-leftChan:
 			if !ok {
-				userToUsersetDone = true
-				if usersetFromUser.Size() == 0 {
-					return res, ctx.Err()
+				leftDone = true
+				if idsFromUser.Size() == 0 {
+					return &check.Response{Allowed: false}, nil
 				}
 				break
 			}
-			if userToUsersetMessage.err != nil {
-				return nil, userToUsersetMessage.err
+			if msg.Err != nil {
+				return nil, msg.Err
 			}
-			if processUsersetMessage(userToUsersetMessage.userset, usersetFromUser, usersetFromObject) {
-				res.Allowed = true
-				return res, nil
+			if processMessage(msg.Value, idsFromUser, idsFromObject) {
+				return &check.Response{Allowed: true}, nil
 			}
-		case objectToUsersetMessage, ok := <-rightChan:
+		case msg, ok := <-rightChan:
 			if !ok {
-				// usersetFromObject must not be empty because we would have caught it earlier.
-				objectToUsersetDone = true
+				// idsFromObject must not be empty because we would have caught it earlier.
+				rightDone = true
 				break
 			}
-			if objectToUsersetMessage.err != nil {
-				return nil, objectToUsersetMessage.err
+			if msg.Err != nil {
+				return nil, msg.Err
 			}
-			if processUsersetMessage(objectToUsersetMessage.userset, usersetFromObject, usersetFromUser) {
-				res.Allowed = true
-				return res, nil
+			if processMessage(msg.Value, idsFromObject, idsFromUser) {
+				return &check.Response{Allowed: true}, nil
 			}
 		}
 	}
 
-	newReq := req.clone()
-	return c.recursiveMatchUserUserset(ctx, newReq, mapping, usersetFromObject, usersetFromUser)
+	return s.recursiveMatch(ctx, req, edge, idsFromUser, idsFromObject)
 }
 
-func buildRecursiveMapper(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping) (storage.TupleMapper, error) {
-	var iter storage.TupleIterator
+func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, idsFromUser *hashset.Set, idsFromObject *hashset.Set) (*check.Response, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	responsesChan := make(chan check.ResponseMsg, s.concurrencyLimit) // needs to be buffered to prevent out of order closed events
+
+	go s.breadthFirstRecursiveMatch(ctx, req, edge, &sync.Map{}, idsFromUser, idsFromObject, responsesChan)
+
 	var err error
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
-	consistencyOpts := storage.ConsistencyOptions{
-		Preference: req.GetConsistency(),
-	}
-	switch mapping.kind {
-	case storage.UsersetKind:
-		iter, err = ds.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
-			Object:                      req.GetTupleKey().GetObject(),
-			Relation:                    req.GetTupleKey().GetRelation(),
-			AllowedUserTypeRestrictions: mapping.allowedUserTypeRestrictions,
-		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
-	case storage.TTUKind:
-		iter, err = ds.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(req.GetTupleKey().GetObject(), mapping.tuplesetRelation, ""),
-			storage.ReadOptions{Consistency: consistencyOpts})
-	default:
-		return nil, errors.New("unsupported mapper kind")
-	}
-	if err != nil {
-		return nil, err
-	}
-	filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
-		storage.NewFilteredTupleKeyIterator(
-			storage.NewTupleKeyIteratorFromTupleIterator(iter),
-			validation.FilterInvalidTuples(typesys),
-		),
-		checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
-	)
-	return storage.WrapIterator(mapping.kind, filteredIter), nil
-}
 
-func (c *LocalChecker) recursiveMatchUserUserset(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, currentLevelFromObject *hashset.Set, usersetFromUser *hashset.Set) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "recursiveMatchUserUserset", trace.WithAttributes(
-		attribute.Int("first_level_size", currentLevelFromObject.Size()),
-		attribute.Int("terminal_type_size", usersetFromUser.Size()),
-	))
-	defer span.End()
-	checkOutcomeChan := make(chan checkOutcome, c.concurrencyLimit)
-
-	cancellableCtx, cancel := context.WithCancel(ctx)
-	wg := sync.WaitGroup{}
-	defer func() {
-		cancel()
-		// We need to wait always to avoid a goroutine leak.
-		wg.Wait()
-	}()
-	wg.Add(1)
-	go func() {
-		c.breadthFirstRecursiveMatch(cancellableCtx, req, mapping, &sync.Map{}, currentLevelFromObject, usersetFromUser, checkOutcomeChan)
-		wg.Done()
-	}()
-
-	var finalErr error
-	finalResult := &ResolveCheckResponse{
-		Allowed: false,
-	}
-
-ConsumerLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			break ConsumerLoop
-		case outcome, ok := <-checkOutcomeChan:
+			return nil, ctx.Err()
+		case msg, ok := <-responsesChan:
 			if !ok {
-				break ConsumerLoop
+				return &check.Response{Allowed: false}, err
 			}
-			if outcome.err != nil {
-				finalErr = outcome.err
-				break // continue
+			if msg.Err != nil {
+				err = msg.Err
+				continue
 			}
 
-			if outcome.resp.Allowed {
-				finalErr = nil
-				finalResult = outcome.resp
-				break ConsumerLoop
+			if msg.Res.Allowed {
+				return msg.Res, nil
 			}
 		}
 	}
-	// context cancellation from upstream (e.g. client)
-	if ctx.Err() != nil {
-		finalErr = ctx.Err()
-	}
-
-	if finalErr != nil {
-		return nil, finalErr
-	}
-
-	return finalResult, nil
 }
 
 // Note that visited does not necessary means that there are cycles.  For the following model,
@@ -271,57 +201,86 @@ ConsumerLoop:
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *ResolveCheckRequest, mapping *recursiveMapping, visitedUserset *sync.Map, currentUsersetLevel *hashset.Set, usersetFromUser *hashset.Set, checkOutcomeChan chan checkOutcome) {
-	req.GetRequestMetadata().Depth++
-	if req.GetRequestMetadata().Depth == c.maxResolutionDepth {
-		concurrency.TrySendThroughChannel(ctx, checkOutcome{err: ErrResolutionDepthExceeded}, checkOutcomeChan)
-		close(checkOutcomeChan)
-		return
-	}
-	if currentUsersetLevel.Size() == 0 || ctx.Err() != nil {
+func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, visitedIds *sync.Map, idsFromUser *hashset.Set, idsFromObjectToVisit *hashset.Set, out chan check.ResponseMsg) {
+	// TODO: How do we want to exit due to depth
+
+	if idsFromObjectToVisit.Size() == 0 || ctx.Err() != nil {
 		// nothing else to search for or upstream cancellation
-		close(checkOutcomeChan)
+		close(out)
 		return
 	}
-	relation := req.GetTupleKey().GetRelation()
-	user := req.GetTupleKey().GetUser()
 
-	pool := concurrency.NewPool(ctx, c.concurrencyLimit)
+	pool := errgroup.Group{}
+	pool.SetLimit(s.concurrencyLimit)
 	mu := &sync.Mutex{}
-	nextUsersetLevel := hashset.New()
+	nextIdsFromObjectToVisit := hashset.New()
 
-	for _, usersetInterface := range currentUsersetLevel.Values() {
-		userset := usersetInterface.(string)
-		_, visited := visitedUserset.LoadOrStore(userset, struct{}{})
+	for _, idIface := range idsFromObjectToVisit.Values() {
+		id := idIface.(string)
+		_, visited := visitedIds.LoadOrStore(id, struct{}{})
 		if visited {
 			continue
 		}
-		newReq := req.clone()
-		newReq.TupleKey = tuple.NewTupleKey(userset, relation, user)
-		mapper, err := buildRecursiveMapper(ctx, newReq, mapping)
 
+		consistencyOpts := storage.ConsistencyOptions{
+			Preference: req.GetConsistency(),
+		}
+		var iter storage.TupleIterator
+		var err error
+		if edge.GetTuplesetRelation() != "" {
+			iter, err = s.datastore.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(id, edge.GetTuplesetRelation(), ""), storage.ReadOptions{Consistency: consistencyOpts})
+		} else {
+			objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+			iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+				Object:   id,
+				Relation: req.GetTupleKey().GetRelation(),
+				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
+					Type:               objectType,
+					RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+				}},
+			}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
+		}
 		if err != nil {
-			concurrency.TrySendThroughChannel(ctx, checkOutcome{err: err}, checkOutcomeChan)
+			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
 			continue
 		}
-		// if the pool is short-circuited, the iterator should be stopped
-		defer mapper.Stop()
-		pool.Go(func(ctx context.Context) error {
-			objectToUsersetMessageChan := streamedLookupUsersetFromIterator(ctx, mapper)
-			for usersetMsg := range objectToUsersetMessageChan {
-				if usersetMsg.err != nil {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{err: usersetMsg.err}, checkOutcomeChan)
+
+		conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+		if err != nil {
+			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
+			continue
+		}
+
+		i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+		if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+			i = storage.NewConditionsFilteredTupleKeyIterator(i,
+				check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+			)
+		}
+
+		defer i.Stop()
+
+		var mappedIter storage.TupleMapper
+		if edge.GetTuplesetRelation() != "" {
+			mappedIter = storage.WrapIterator(storage.TTUKind, i)
+		} else {
+			mappedIter = storage.WrapIterator(storage.UsersetKind, i)
+		}
+		pool.Go(func() error {
+			for msg := range iterator.ToChannel(ctx, mappedIter, s.concurrencyLimit) {
+				if msg.Err != nil {
+					concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: msg.Err}, out)
 					return nil
 				}
-				userset := usersetMsg.userset
-				if usersetFromUser.Contains(userset) {
-					concurrency.TrySendThroughChannel(ctx, checkOutcome{resp: &ResolveCheckResponse{
+				id := msg.Value
+				if idsFromUser.Contains(id) {
+					concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Res: &check.Response{
 						Allowed: true,
-					}}, checkOutcomeChan)
+					}}, out)
 					return ErrShortCircuit // cancel will be propagated to the remaining goroutines
 				}
 				mu.Lock()
-				nextUsersetLevel.Add(userset)
+				nextIdsFromObjectToVisit.Add(id)
 				mu.Unlock()
 			}
 			return nil
@@ -331,8 +290,8 @@ func (c *LocalChecker) breadthFirstRecursiveMatch(ctx context.Context, req *Reso
 	// wait for all checks to wrap up
 	// if a match was found, clean up
 	if err := pool.Wait(); errors.Is(err, ErrShortCircuit) {
-		close(checkOutcomeChan)
+		close(out)
 		return
 	}
-	c.breadthFirstRecursiveMatch(ctx, req, mapping, visitedUserset, nextUsersetLevel, usersetFromUser, checkOutcomeChan)
+	s.breadthFirstRecursiveMatch(ctx, req, edge, visitedIds, idsFromUser, nextIdsFromObjectToVisit, out)
 }

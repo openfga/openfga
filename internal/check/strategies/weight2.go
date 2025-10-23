@@ -34,6 +34,9 @@ func NewWeight2(model *check.AuthorizationModelGraph, ds storage.RelationshipTup
 }
 
 func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "weight2.Userset")
+	defer span.End()
+
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -55,6 +58,9 @@ func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGr
 }
 
 func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "weight2.Userset")
+	defer span.End()
+
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -92,8 +98,6 @@ func processMessage(id string,
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
 func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
-	ctx, span := tracer.Start(ctx, "weight2")
-	defer span.End()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer rightIter.Stop()

@@ -38,6 +38,9 @@ func NewDefault(resolver *check.Resolver, limit int) *DefaultStrategy {
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
 func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "default.Userset")
+	defer span.End()
+
 	return s.execute(ctx, req, edge, iter, s.userset)
 }
 
@@ -69,6 +72,9 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 }
 
 func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+	ctx, span := tracer.Start(ctx, "default.TTU")
+	defer span.End()
+
 	return s.execute(ctx, req, edge, iter, s.ttu)
 }
 
@@ -100,9 +106,6 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 }
 
 func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler) (*check.Response, error) {
-	ctx, span := tracer.Start(ctx, "defaultStrategy")
-	defer span.End()
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -130,7 +133,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 			}
 			if outcome.Err != nil {
 				err = outcome.Err
-				continue // continue
+				continue
 			}
 
 			if outcome.Res.Allowed {

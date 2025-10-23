@@ -7,13 +7,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-type iteratorMsg[T any] struct {
-	Value T
-	Err   error
-}
-
-func ToChannel[T any](ctx context.Context, iter storage.Iterator[T], batchSize int) chan iteratorMsg[T] {
-	out := make(chan iteratorMsg[T], batchSize)
+func ToChannel[T any](ctx context.Context, iter storage.Iterator[T], batchSize int) chan ValueMsg[T] {
+	out := make(chan ValueMsg[T], batchSize)
 
 	go func() {
 		defer close(out)
@@ -24,7 +19,7 @@ func ToChannel[T any](ctx context.Context, iter storage.Iterator[T], batchSize i
 					return
 				}
 			}
-			concurrency.TrySendThroughChannel(ctx, iteratorMsg[T]{Err: err, Value: t}, out)
+			concurrency.TrySendThroughChannel(ctx, ValueMsg[T]{Err: err, Value: t}, out)
 		}
 	}()
 
