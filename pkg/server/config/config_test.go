@@ -859,6 +859,22 @@ func TestVerifyServerSettings(t *testing.T) {
 
 		require.NotContains(t, buf.String(), "WARNING: Logging is not enabled. It is highly recommended to enable logging in production environments to avoid masking attacker operations.")
 	})
+
+	t.Run("success_when_experimentals_are_correct", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Experimentals = []string{"enable-check-optimizations", "enable-list-objects-optimizations"}
+
+		err := cfg.VerifyServerSettings()
+		require.NoError(t, err)
+	})
+
+	t.Run("verifies_experimentals_are_correct", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Experimentals = []string{"invalid-experimental"}
+
+		err := cfg.VerifyServerSettings()
+		require.Error(t, err)
+	})
 }
 
 func TestVerifyBinarySettings(t *testing.T) {
