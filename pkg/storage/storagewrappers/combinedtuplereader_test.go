@@ -117,7 +117,7 @@ func Test_combinedTupleReader_Read(t *testing.T) {
 			wantErr: nil,
 			setup: func() {
 				mockRelationshipTupleReader.EXPECT().
-					Read(gomock.Any(), "1", &openfgav1.TupleKey{Relation: "member", Object: "group:1"}, gomock.Any()).
+					Read(gomock.Any(), "1", storage.ReadFilter{Relation: "member", Object: "group:1"}, gomock.Any()).
 					Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{
 						testTuples["group:1#member@user:13"],
 						testTuples["group:2#member@user:22"],
@@ -253,12 +253,13 @@ func Test_combinedTupleReader_ReadPage(t *testing.T) {
 		"group:1#member@user:12",
 	))
 
-	mockRelationshipTupleReader.EXPECT().
-		ReadPage(context.Background(), "1", testTuples["group:1#member@user:11"].GetKey(), storage.ReadPageOptions{}).
-		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
-
 	tk := testTuples["group:1#member@user:11"].GetKey()
 	filter := storage.ReadFilter{Relation: tk.GetRelation(), Object: tk.GetObject(), User: tk.GetUser()}
+
+	mockRelationshipTupleReader.EXPECT().
+		ReadPage(context.Background(), "1", filter, storage.ReadPageOptions{}).
+		Return([]*openfgav1.Tuple{testTuples["group:1#member@user:11"]}, "", nil)
+
 	got, _, err := c.ReadPage(context.Background(), "1", filter, storage.ReadPageOptions{})
 	require.NoError(t, err)
 

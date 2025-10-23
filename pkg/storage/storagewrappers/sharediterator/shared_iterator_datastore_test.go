@@ -556,7 +556,7 @@ func TestSharedIteratorDatastore_Read(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).DoAndReturn(
 			func(ctx context.Context,
 				store string,
-				tupleKey *openfgav1.TupleKey,
+				filter storage.ReadFilter,
 				options storage.ReadOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator(tuples), nil
 			}).MaxTimes(numClient)
