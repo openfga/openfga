@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -15,11 +16,13 @@ import (
 	"go.uber.org/zap"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // Mock implementations.
@@ -220,7 +223,22 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			model := &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustTransformDSLToProto(`
+					model
+					schema 1.1
+					type user
+					type document
+						relations
+							define viewer: [user]
+		`).GetTypeDefinitions(),
+			}
 			ctx := context.Background()
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			mockCtl := gomock.NewController(t)
 			q := &shadowedListObjectsQuery{
 				main:      &mockListObjectsQuery{executeFunc: tt.mainFunc},
@@ -239,7 +257,7 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 				}
 			}()
 
-			_, err := q.Execute(ctx, req)
+			_, err = q.Execute(ctx, req)
 
 			// this will never be reached if the main query panics
 			q.wg.Wait()
@@ -668,11 +686,10 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 
 func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 	type args struct {
-		mainResultFunc func() *ListObjectsResponse
-		latency        time.Duration
-		pct            int
-		maxResults     uint32
-		deadline       time.Duration
+		pct        int
+		maxResults uint32
+		deadline   time.Duration
+		model      string
 	}
 	tests := []struct {
 		name           string
@@ -682,68 +699,8 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		wg             *sync.WaitGroup
 	}{
 		{
-			name: "main result reaches max result size",
-			args: args{
-				mainResultFunc: func() *ListObjectsResponse {
-					return &ListObjectsResponse{Objects: []string{"a", "b", "c"}}
-				},
-				latency:    10 * time.Millisecond,
-				pct:        100,
-				maxResults: 3,
-				deadline:   1 * time.Second,
-			},
-			expectedReturn: false,
-			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-				mockLogger := mocks.NewMockLogger(ctrl)
-				mockLogger.EXPECT().DebugWithContext(
-					gomock.Any(),
-					gomock.Eq("shadowed list objects query skipped due to max results reached"),
-					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
-					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
-					gomock.Eq(zap.String("store_id", "")),
-					gomock.Eq(zap.String("model_id", "")),
-				)
-				return mockLogger
-			},
-		},
-		{
-			name: "main query latency too high",
-			args: args{
-				mainResultFunc: func() *ListObjectsResponse {
-					var resp ListObjectsResponse
-					resp.Objects = []string{"a"}
-					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
-					return &resp
-				},
-				latency:    950 * time.Millisecond,
-				pct:        100,
-				maxResults: 10,
-				deadline:   1 * time.Second,
-			},
-			expectedReturn: false,
-			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-				mockLogger := mocks.NewMockLogger(ctrl)
-				mockLogger.EXPECT().DebugWithContext(
-					gomock.Any(),
-					gomock.Eq("shadowed list objects query skipped due to high latency of the main query"),
-					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
-					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
-					gomock.Eq(zap.String("store_id", "")),
-					gomock.Eq(zap.String("model_id", "")),
-					gomock.Eq(zap.Duration("latency", 950*time.Millisecond)),
-				)
-				return mockLogger
-			},
-		},
-		{
 			name: "sample rate not met",
 			args: args{
-				mainResultFunc: func() *ListObjectsResponse {
-					var resp ListObjectsResponse
-					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
-					return &resp
-				},
-				latency:    10 * time.Millisecond,
 				pct:        0,
 				maxResults: 10,
 				deadline:   1 * time.Second,
@@ -754,24 +711,31 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 			},
 		},
 		{
-			name: "metadata_should_not_run_shadow",
+			name: "weighted graph does not exist",
 			args: args{
-				mainResultFunc: func() *ListObjectsResponse {
-					var resp ListObjectsResponse
-					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(false)
-					return &resp
-				},
-				latency:    10 * time.Millisecond,
 				pct:        0,
 				maxResults: 10,
 				deadline:   1 * time.Second,
+				model: `
+					model
+					schema 1.1
+					type user
+					type employee
+					type state
+
+						relations
+							define can_view: [user] or member or owner
+							define member: [user]
+							define owner: [employee] and approved_member
+							define approved_member: [user]
+				`,
 			},
 			expectedReturn: false,
 			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
 				mockLogger := mocks.NewMockLogger(ctrl)
-				mockLogger.EXPECT().DebugWithContext(
+				mockLogger.EXPECT().InfoWithContext(
 					gomock.Any(),
-					gomock.Eq("shadowed list objects query skipped due to infinite weight query"),
+					gomock.Eq("shadowed list objects query skipped due to missing weighted graph"),
 					gomock.Eq(zap.String("func", ListObjectsShadowExecute)),
 					gomock.Eq(zap.Any("request", &openfgav1.ListObjectsRequest{})),
 					gomock.Eq(zap.String("store_id", "")),
@@ -783,12 +747,6 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		{
 			name: "all preconditions met",
 			args: args{
-				mainResultFunc: func() *ListObjectsResponse {
-					var resp ListObjectsResponse
-					resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
-					return &resp
-				},
-				latency:    10 * time.Millisecond,
 				pct:        100,
 				maxResults: 10,
 				deadline:   1 * time.Second,
@@ -802,6 +760,26 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			modelStr := `
+			model
+			schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user]
+			`
+			if tt.args.model != "" {
+				modelStr = tt.args.model
+			}
+			model := &openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustTransformDSLToProto(modelStr).GetTypeDefinitions(),
+			}
+			ctx := context.Background()
+			ts, err := typesystem.New(model)
+			require.NoError(t, err)
+			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			ctrl := gomock.NewController(t)
 			mockLogger := tt.loggerFn(t, ctrl)
 			mainQuery := &ListObjectsQuery{
@@ -814,7 +792,7 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 				logger:    mockLogger,
 			}
 
-			ret := q.checkShadowModePreconditions(context.TODO(), &openfgav1.ListObjectsRequest{}, tt.args.mainResultFunc(), tt.args.latency)
+			ret := q.checkShadowModePreconditions(ctx, &openfgav1.ListObjectsRequest{})
 			assert.Equal(t, tt.expectedReturn, ret)
 		})
 	}
