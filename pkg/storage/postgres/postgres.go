@@ -424,7 +424,7 @@ func (s *Datastore) ReadUsersetTuples(
 	}
 
 	if len(filter.Conditions) > 0 {
-		sb = sb.Where(sq.Eq{"condition_name": filter.Conditions})
+		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
 	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
@@ -469,7 +469,7 @@ func (s *Datastore) ReadStartingWithUser(
 	}
 
 	if len(filter.Conditions) > 0 {
-		builder = builder.Where(sq.Eq{"condition_name": filter.Conditions})
+		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
 	return sqlcommon.NewSQLTupleIterator(builder, HandleSQLError), nil
