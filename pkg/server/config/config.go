@@ -123,6 +123,9 @@ type DatastoreConfig struct {
 	// MaxCacheSize is the maximum number of authorization models that will be cached in memory.
 	MaxCacheSize int
 
+	// MaxTypesystemCacheSize is the maximum number of type system models that will be cached in memory
+	MaxTypesystemCacheSize int
+
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
@@ -704,10 +707,11 @@ func DefaultConfig() *Config {
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		RequestDurationDispatchCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
-			Engine:       "memory",
-			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
-			MaxIdleConns: 10,
-			MaxOpenConns: 30,
+			Engine:                 "memory",
+			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
+			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
+			MaxIdleConns:           10,
+			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",

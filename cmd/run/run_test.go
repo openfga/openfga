@@ -86,7 +86,7 @@ func genCACert(t *testing.T) (*x509.Certificate, []byte, *rsa.PrivateKey) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var rootTemplate = &x509.Certificate{
+	rootTemplate := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -111,7 +111,7 @@ func genServerCert(t *testing.T, caCert *x509.Certificate, caKey *rsa.PrivateKey
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	var template = &x509.Certificate{
+	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		KeyUsage:              x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -1017,6 +1017,10 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
 
+	val = res.Get("properties.datastore.properties.maxTypesystemCacheSize.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxTypesystemCacheSize)
+
 	val = res.Get("properties.datastore.properties.maxIdleConns.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
@@ -1498,7 +1502,7 @@ func TestHTTPHeaders(t *testing.T) {
 	httpClient := retryablehttp.NewClient()
 	t.Cleanup(httpClient.HTTPClient.CloseIdleConnections)
 
-	var testCases = map[string]struct {
+	testCases := map[string]struct {
 		httpVerb      string
 		httpPath      string
 		httpJSONBody  string

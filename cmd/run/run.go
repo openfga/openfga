@@ -161,6 +161,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
+	flags.Int("datastore-max-typesystem-cache-size", defaultConfig.Datastore.MaxTypesystemCacheSize, "the maximum number of type system models that will be cached in memory")
+
 	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
 
 	flags.Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
@@ -661,7 +663,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithDatastore(datastore),
 		server.WithContinuationTokenSerializer(continuationTokenSerializer),
 		server.WithAuthorizationModelCacheSize(config.Datastore.MaxCacheSize),
-		server.WithTypesystemCacheSize(config.Datastore.MaxCacheSize),
+		server.WithTypesystemCacheSize(config.Datastore.MaxTypesystemCacheSize),
 		server.WithLogger(s.Logger),
 		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
