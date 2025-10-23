@@ -8,6 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Add configuration option to limit max type system cache size. [2744](https://github.com/openfga/openfga/pull/2744)
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 
 ### Fixed

@@ -252,6 +252,12 @@
                     "default": 100000,
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
                 },
+                "maxTypesystemCacheSize": {
+                    "description": "The maximum number of type system models that will be cached in memory",
+                    "type": "integer",
+                    "default": 100000,
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_TYPESYSTEM_CACHE_SIZE"
+                },
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
                     "type": "integer",
