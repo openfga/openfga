@@ -900,7 +900,6 @@ func runOneBenchmark(
 	}
 	query.ff = featureflags.NewHardcodedBooleanClient(optimizationsEnabled)
 
-
 	if pipelineEnabled {
 		name += "_with_pipeline"
 		query.pipelineEnabled = true
