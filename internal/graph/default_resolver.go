@@ -33,7 +33,7 @@ var defaultPlan = &planner.KeyPlanStrategy{
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
-	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
+	InitialGuess: 500 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
 	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
