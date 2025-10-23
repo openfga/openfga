@@ -103,7 +103,7 @@ func NewListObjectsQueryWithShadowConfig(
 	return NewListObjectsQuery(ds, checkResolver, opts...)
 }
 
-// newShadowedListObjectsQuery creates a new ListObjectsResolver that runs two queries in parallel: one with optimizations and one without.
+// newShadowedListObjectsQuery creates a new ListObjectsResolver that runs two queries in parallel: one with the pipeline enabled and one without.
 func newShadowedListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
@@ -114,15 +114,15 @@ func newShadowedListObjectsQuery(
 		return nil, errors.New("shadowConfig must be set")
 	}
 	standard, err := NewListObjectsQuery(ds, checkResolver,
-		// force disable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(false))})...,
+		// force disable pipeline
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(false)})...,
 	)
 	if err != nil {
 		return nil, err
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver,
-		// enable optimizations
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsUseShadowCache(true), WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true))})...,
+		// enable pipeline
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(true)})...,
 	)
 	if err != nil {
 		return nil, err
