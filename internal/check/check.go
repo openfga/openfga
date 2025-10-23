@@ -116,6 +116,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	if len(edges) == 1 && (edges[0].GetEdgeType() == authzGraph.ComputedEdge) {
 		edges, _ = r.model.GetEdgesFromNode(edges[0].GetTo())
@@ -133,7 +134,6 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
 	defer func() {
-		cancel()
 		_ = pool.Wait()
 		close(out)
 	}()

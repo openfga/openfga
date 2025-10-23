@@ -9,11 +9,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-type Msg struct {
-	Iter storage.Iterator[string]
-	Err  error
-}
-
 // Stream aggregates multiple iterators that are sent to a source channel into one iterator.
 type Stream struct {
 	idx            int
