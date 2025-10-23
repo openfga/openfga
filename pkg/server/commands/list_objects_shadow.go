@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const ListObjectsShadowExecute = "ShadowedListObjectsQuery.Execute"
@@ -154,7 +155,7 @@ func (q *shadowedListObjectsQuery) Execute(
 	latency := time.Since(startTime)
 
 	// If shadow mode is not shadowEnabled, just execute the main query
-	if q.checkShadowModePreconditions(cloneCtx, req, res, latency) {
+	if q.checkShadowModePreconditions(cloneCtx, req) {
 		q.wg.Add(1) // only used for testing signals
 		go func() {
 			startTime = time.Now()
@@ -264,39 +265,18 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 }
 
 // checkShadowModePreconditions checks if the shadow mode preconditions are met:
-//   - If the main result reaches the max result size, skip the shadow query.
-//   - If the main query takes too long, skip the shadow query.
-//   - If the shadow mode sample rate is not met, skip the shadow query.
-func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Context, req *openfgav1.ListObjectsRequest, res *ListObjectsResponse, latency time.Duration) bool {
-	if loq, ok := q.main.(*ListObjectsQuery); ok {
-		// don't run if the main result reaches max result size q.main.listObjectsMaxResults
-		// that means there are more results than the shadow query can return,
-		// so it is impossible to compare the results
-		if len(res.Objects) == int(loq.listObjectsMaxResults) {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to max results reached",
-				loShadowLogFields(req)...,
-			)
-			return false
-		}
+//   - If the weighted graph does not exist, skip the shadow query.
+func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Context, req *openfgav1.ListObjectsRequest) bool {
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		return false
+	}
 
-		if !res.ResolutionMetadata.ShouldRunShadowQuery.Load() {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to infinite weight query",
-				loShadowLogFields(req)...,
-			)
-			return false
-		}
-
-		// When a list_objects query takes a significant amount of time to complete (approaching its overall timeout),
-		// it often indicates an exhaustive traversal or that it's processing a large dataset.
-		// In such cases, running a parallel shadow query and comparing its results (which do not guarantee order)
-		// against a potentially slow or truncated main query result is often meaningless and can lead to false negatives in correctness comparisons.
-		// Therefore, we skip the shadow query if the main query is already close to its deadline.
-		if latency > (loq.listObjectsDeadline - 100*time.Millisecond) {
-			q.logger.DebugWithContext(ctx, "shadowed list objects query skipped due to high latency of the main query",
-				loShadowLogFields(req, zap.Duration("latency", latency))...,
-			)
-			return false
-		}
+	if typesys.GetWeightedGraph() == nil {
+		q.logger.InfoWithContext(ctx, "shadowed list objects query skipped due to missing weighted graph",
+			loShadowLogFields(req)...,
+		)
+		return false
 	}
 
 	return q.checkShadowModeSampleRate()
