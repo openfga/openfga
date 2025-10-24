@@ -530,6 +530,7 @@ func (q *ListObjectsQuery) Execute(
 			TypeSystem: typesys,
 			Context:    req.GetContext(),
 			Graph:      wgraph,
+			Preference: req.GetConsistency(),
 		}
 
 		pipeline := reverseexpand.NewPipeline(backend)
@@ -707,6 +708,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			TypeSystem: typesys,
 			Context:    req.GetContext(),
 			Graph:      wgraph,
+			Preference: req.GetConsistency(),
 		}
 
 		pipeline := reverseexpand.NewPipeline(backend)
