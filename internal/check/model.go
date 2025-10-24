@@ -18,7 +18,7 @@ type AuthorizationModelGraph struct {
 	conditions    map[string]*condition.EvaluableCondition
 }
 
-func (m *AuthorizationModelGraph) GetConditionsEdgeForUserType(objectRelation string, userType string) (*authzGraph.WeightedAuthorizationModelEdge, error) {
+func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelation string, userType string) (*authzGraph.WeightedAuthorizationModelEdge, error) {
 	node, ok := m.GetNodeByID(objectRelation)
 	if !ok {
 		return nil, ErrGraphError
@@ -62,7 +62,9 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		case authzGraph.RewriteEdge:
 			switch edge.GetTo().GetNodeType() {
 			case authzGraph.SpecificTypeAndRelation:
-				canFlatten = true
+				if len(edge.GetTo().GetRecursiveRelation()) == 0 && !edge.GetTo().IsPartOfTupleCycle() {
+					canFlatten = true
+				}
 			case authzGraph.OperatorNode:
 				if edge.GetTo().GetLabel() == authzGraph.UnionOperator {
 					canFlatten = true

@@ -118,15 +118,16 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if len(edges) == 1 && (edges[0].GetEdgeType() == authzGraph.ComputedEdge) {
-		edges, _ = r.model.GetEdgesFromNode(edges[0].GetTo())
-	}
-
 	if node.GetNodeType() == authzGraph.SpecificTypeAndRelation && node.GetRecursiveRelation() == node.GetUniqueLabel() {
 		edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
 		if ok {
 			return r.ResolveRecursive(ctx, req, edge)
 		}
+	}
+
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
+	if err != nil {
+		return nil, ErrPanicRequest
 	}
 
 	// only verify if tuples were already added when in the presence of tuple cycles or recursion
@@ -137,11 +138,6 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		_ = pool.Wait()
 		close(out)
 	}()
-
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
 
 	scheduledHandlers := 0
 	for _, edge := range terminalEdges {
@@ -201,7 +197,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
-	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -251,7 +247,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 
 	defer iter.Stop()
-	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuplesetRelation, subjectType)
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -596,7 +592,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
-	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -667,7 +663,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	defer iter.Stop()
-	conditionEdge, err := r.model.GetConditionsEdgeForUserType(tuplesetRelation, subjectType)
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
