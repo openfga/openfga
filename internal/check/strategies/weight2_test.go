@@ -11,7 +11,6 @@ import (
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -149,7 +148,7 @@ func TestResolveUnion(t *testing.T) {
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathUnion(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveUnion(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -181,7 +180,7 @@ func TestResolveUnion(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -228,7 +227,7 @@ func TestResolveUnion(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -310,7 +309,7 @@ func TestResolveUnion(t *testing.T) {
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathUnion(ctx, iterator.NewStreams(producers), res)
+					resolveUnion(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
@@ -356,7 +355,7 @@ func TestResolveUnion(t *testing.T) {
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -401,7 +400,7 @@ func TestResolveUnion(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -434,7 +433,7 @@ func TestResolveUnion(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -447,7 +446,6 @@ func TestResolveUnion(t *testing.T) {
 	})
 }
 
-/*
 func TestFastPathIntersection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -469,7 +467,7 @@ func TestFastPathIntersection(t *testing.T) {
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathIntersection(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveIntersection(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -499,7 +497,7 @@ func TestFastPathIntersection(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -549,7 +547,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -632,7 +630,7 @@ func TestFastPathIntersection(t *testing.T) {
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+					resolveIntersection(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
@@ -678,7 +676,7 @@ func TestFastPathIntersection(t *testing.T) {
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -723,7 +721,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -756,7 +754,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -791,7 +789,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -830,7 +828,7 @@ func TestFastPathIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -872,7 +870,7 @@ func TestFastPathDifference(t *testing.T) {
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			fastPathDifference(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveDifference(cancellableCtx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		_, ok := <-res
@@ -902,7 +900,7 @@ func TestFastPathDifference(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -941,7 +939,7 @@ func TestFastPathDifference(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -1042,7 +1040,7 @@ func TestFastPathDifference(t *testing.T) {
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					fastPathDifference(ctx, iterator.NewStreams(producers), res)
+					resolveDifference(ctx, iterator.NewStreams(producers), res)
 					return nil
 				})
 
@@ -1085,7 +1083,7 @@ func TestFastPathDifference(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1118,7 +1116,7 @@ func TestFastPathDifference(t *testing.T) {
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 
@@ -1165,7 +1163,7 @@ func TestFastPathDifference(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1197,7 +1195,7 @@ func TestFastPathDifference(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1230,7 +1228,7 @@ func TestFastPathDifference(t *testing.T) {
 		producers = append(producers, iterator.NewStream(0, producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			fastPathDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, iterator.NewStreams(producers), res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1243,28 +1241,7 @@ func TestFastPathDifference(t *testing.T) {
 	})
 }
 
-func TestFastPathOperationSetup(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	t.Run("should_error_when_resolver_panics", func(t *testing.T) {
-		ctx := context.Background()
-		errMessage := "deliberate panic in fastPathUnion"
-		resolver := func(ctx context.Context, streams *iterator.Streams, outChan chan<- *iterator.Msg) {
-			panic(errMessage)
-		}
-
-		outChan, err := fastPathOperationSetup(ctx, &ResolveCheckRequest{}, resolver)
-
-		require.NoError(t, err)
-
-		outcome := <-outChan
-		require.ErrorContains(t, outcome.Err, errMessage)
-		require.ErrorIs(t, outcome.Err, ErrPanic)
-	})
-}
-
+/*
 func TestCheckUsersetFastPathV2(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)

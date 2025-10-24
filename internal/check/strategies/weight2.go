@@ -204,17 +204,17 @@ func (s *Weight2) setOperationSetup(ctx context.Context, req *check.Request, res
 		iterStreams = append(iterStreams, iterator.NewStream(idx, producerChan))
 	}
 
-	outChan := make(chan *iterator.Msg, len(iterStreams))
+	out := make(chan *iterator.Msg, len(iterStreams))
 	go func() {
 		recoveredError := panics.Try(func() {
-			resolver(ctx, iterator.NewStreams(iterStreams), outChan)
+			resolver(ctx, iterator.NewStreams(iterStreams), out)
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredError.AsError())}, outChan)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredError.AsError())}, out)
 		}
 	}()
-	return outChan, nil
+	return out, nil
 }
 
 func (s *Weight2) resolveEdge(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
@@ -240,15 +240,15 @@ func (s *Weight2) resolveEdge(ctx context.Context, req *check.Request, edge *aut
 func (s *Weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
-		return s.setOperationSetup(ctx, req, s.resolveUnion, node)
+		return s.setOperationSetup(ctx, req, resolveUnion, node)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
 		case authzGraph.UnionOperator:
-			return s.setOperationSetup(ctx, req, s.resolveUnion, node)
+			return s.setOperationSetup(ctx, req, resolveUnion, node)
 		case authzGraph.IntersectionOperator:
-			return s.setOperationSetup(ctx, req, s.resolveIntersection, node)
+			return s.setOperationSetup(ctx, req, resolveIntersection, node)
 		case authzGraph.ExclusionOperator:
-			return s.setOperationSetup(ctx, req, s.resolveDifference, node)
+			return s.setOperationSetup(ctx, req, resolveDifference, node)
 		default:
 			return nil, check.ErrPanicRequest
 		}
@@ -333,23 +333,23 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 
 // add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
 // If nextItemInSliceStreams has error, will also send message to specified outChan.
-func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iterator.Stream, streamsToProcess []int, batch []string, outChan chan<- *iterator.Msg) ([]string, error) {
+func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iterator.Stream, streamsToProcess []int, batch []string, out chan<- *iterator.Msg) ([]string, error) {
 	item, err := iterator.NextItemInSliceStreams(ctx, streamSlices, streamsToProcess)
 	if err != nil {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, outChan)
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 		return nil, err
 	}
 	if item != "" {
 		batch = append(batch, item)
 	}
 	if len(batch) > IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, outChan)
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
 		batch = make([]string, 0)
 	}
 	return batch, nil
 }
 
-func (s *Weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
+func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -421,7 +421,7 @@ func (s *Weight2) resolveUnion(ctx context.Context, streams *iterator.Streams, o
 	}
 }
 
-func (s *Weight2) resolveIntersection(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
+func resolveIntersection(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -511,7 +511,7 @@ func (s *Weight2) resolveIntersection(ctx context.Context, streams *iterator.Str
 	}
 }
 
-func (s *Weight2) resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
+func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
