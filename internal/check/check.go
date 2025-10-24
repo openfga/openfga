@@ -575,6 +575,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
+	// userset that is represented by the same edge, conditions on the iterator will be defined in this edge
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
 		Relation: req.GetTupleKey().GetRelation(),
@@ -592,15 +593,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
-
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	// TODO this is only correct when we filter the data that has conditions in the datastore, otherwise we might end up with incorrect results
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+			BuildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
 		)
 	}
 
