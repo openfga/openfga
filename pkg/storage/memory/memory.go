@@ -533,7 +533,7 @@ func (s *MemoryBackend) ReadUsersetTuples(
 				}
 			}
 
-			if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+			if !slices.Contains(filter.Conditions, t.ConditionName) {
 				continue
 			}
 		}
@@ -569,7 +569,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 			continue
 		}
 
-		if len(filter.Conditions) > 0 && !slices.Contains(filter.Conditions, t.ConditionName) {
+		if !slices.Contains(filter.Conditions, t.ConditionName) {
 			continue
 		}
 
