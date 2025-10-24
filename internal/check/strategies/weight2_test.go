@@ -3,10 +3,15 @@ package strategies
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/check"
+	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -33,7 +38,7 @@ func TestWeight2SpecificType(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
-			Relation:   "admin",
+			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
 		}, storage.ReadStartingWithUserOptions{
 			WithResultsSortedAscending: true,
@@ -48,7 +53,8 @@ func TestWeight2SpecificType(t *testing.T) {
 			type user
 			type document
 				relations
-					define admin: [user]
+					define member: [user]
+					define admin: [document#member]
 			`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
@@ -56,7 +62,7 @@ func TestWeight2SpecificType(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 
 		ctx := context.Background()
-		node, ok := mg.GetNodeByID("document#admin")
+		node, ok := mg.GetNodeByID("document#member")
 		require.True(t, ok)
 		edges, ok := mg.GetEdgesFromNode(node)
 		require.True(t, ok)
@@ -84,9 +90,8 @@ func TestWeight2SpecificType(t *testing.T) {
 		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
-			Relation:   "admin",
+			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
 		}, storage.ReadStartingWithUserOptions{
 			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
@@ -100,7 +105,8 @@ func TestWeight2SpecificType(t *testing.T) {
 			type user
 			type document
 				relations
-					define admin: [user]
+					define member: [user]
+					define admin: [document#member]
 			`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
@@ -108,7 +114,7 @@ func TestWeight2SpecificType(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 
 		ctx := context.Background()
-		node, ok := mg.GetNodeByID("document#admin")
+		node, ok := mg.GetNodeByID("document#member")
 		require.True(t, ok)
 		edges, ok := mg.GetEdgesFromNode(node)
 		require.True(t, ok)
@@ -122,39 +128,7 @@ func TestWeight2SpecificType(t *testing.T) {
 	})
 }
 
-/*
-func TestFastPathComputed(t *testing.T) {
-	t.Cleanup(func() {
-		goleak.VerifyNone(t)
-	})
-
-	t.Run("should_return_error_if_computed_relation_doesnt_exist", func(t *testing.T) {
-		ctx := context.Background()
-
-		model := testutils.MustTransformDSLToProtoWithID(`
-			model
-				schema 1.1
-			type user
-			type document
-				relations
-					define admin: [user]
-			`)
-
-		ts, err := typesystem.New(model)
-		require.NoError(t, err)
-
-		ctx = setRequestContext(ctx, ts, nil, nil)
-
-		_, err = fastPathComputed(ctx, &ResolveCheckRequest{
-			StoreID:  ulid.Make().String(),
-			TupleKey: tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, &openfgav1.Userset{Userset: &openfgav1.Userset_ComputedUserset{ComputedUserset: &openfgav1.ObjectRelation{Relation: "fake"}}})
-
-		require.Error(t, err)
-	})
-}
-
-func TestFastPathUnion(t *testing.T) {
+func TestResolveUnion(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -473,6 +447,7 @@ func TestFastPathUnion(t *testing.T) {
 	})
 }
 
+/*
 func TestFastPathIntersection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
@@ -2058,6 +2033,5 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		require.True(t, checkResult.GetAllowed())
 	})
 }
-
 
 */

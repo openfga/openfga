@@ -245,7 +245,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 			continue
 		}
 
-		conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+		conditionEdge, err := s.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
 			continue
