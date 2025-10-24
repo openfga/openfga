@@ -505,6 +505,16 @@ func (q *ListObjectsQuery) Execute(
 		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		if q.cacheSettings.ShouldCacheListObjectsIterators() {
+			// Kick off background job to check if cache records are stale, invalidating where needed
+			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
+			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
@@ -589,16 +599,6 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	var listObjectsResponse ListObjectsResponse
-
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		if q.cacheSettings.ShouldCacheListObjectsIterators() {
-			// Kick off background job to check if cache records are stale, invalidating where needed
-			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
-			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-	}
 
 	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
