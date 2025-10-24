@@ -44,14 +44,17 @@ func TestReadAuthorizationModel(t *testing.T) {
 	}
 	storeID := ulid.Make().String()
 	gomock.InOrder(
-		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Times(1).Return(nil),
+		mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).Times(1).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+			return model.GetId(), nil
+		}),
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, model.GetId()).Times(1).Return(model, nil),
 		mockDatastore.EXPECT().FindLatestAuthorizationModel(gomock.Any(), storeID).Times(1).Return(model, nil),
 		mockDatastore.EXPECT().Close().Times(1),
 	)
 
-	err = cachingBackend.WriteAuthorizationModel(ctx, storeID, model)
+	modelId, err := cachingBackend.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 	require.NoError(t, err)
+	require.Equal(t, modelId, model.GetId())
 
 	// Check that first hit to cache -> miss.
 	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.GetId())
