@@ -57,7 +57,7 @@ func TestBoundedWrapper(t *testing.T) {
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(context.Background(), store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(context.Background(), store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
@@ -98,7 +98,7 @@ func TestBoundedWrapper(t *testing.T) {
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
@@ -106,32 +106,32 @@ func TestBoundedWrapper(t *testing.T) {
 		require.NoError(t, err)
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(ctx, store, nil, storage.ReadOptions{})
+			_, err := limitedTupleReader.Read(ctx, store, storage.ReadFilter{}, storage.ReadOptions{})
 			return err
 		})
 
@@ -159,7 +159,7 @@ func TestBoundedConcurrencyWrapper_Exits_Early_If_Context_Error(t *testing.T) {
 	}{
 		`read`: {
 			requestFunc: func(ctx context.Context) (any, error) {
-				return dut.Read(ctx, ulid.Make().String(), &openfgav1.TupleKey{}, storage.ReadOptions{})
+				return dut.Read(ctx, ulid.Make().String(), storage.ReadFilter{}, storage.ReadOptions{})
 			},
 		},
 		`read_user_tuple`: {

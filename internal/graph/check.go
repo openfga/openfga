@@ -844,7 +844,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		iter, err := ds.Read(
 			ctx,
 			storeID,
-			tuple.NewTupleKey(object, tuplesetRelation, ""),
+			storage.ReadFilter{Object: object, Relation: tuplesetRelation, User: ""},
 			opts,
 		)
 		if err != nil {

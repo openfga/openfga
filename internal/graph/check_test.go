@@ -1888,7 +1888,7 @@ func TestCheckTTU(t *testing.T) {
 
 		ctx := setRequestContext(context.Background(), typesys, mockDatastore, nil)
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "parent", ""), gomock.Any()).
+			Read(gomock.Any(), storeID, storage.ReadFilter{Object: "group:1", Relation: "parent", User: ""}, gomock.Any()).
 			Times(1).
 			Return(storage.NewStaticTupleIterator(nil), nil)
 

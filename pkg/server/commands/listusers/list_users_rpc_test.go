@@ -3013,17 +3013,17 @@ func TestListUsersReadFails_NoLeaks(t *testing.T) {
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InOrder(
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Relation: "viewer",
 			Object:   "document:1",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:fga#member")},
 				{Key: tuple.NewTupleKey("document:1", "viewer", "group:eng#member")},
 			}), nil
 		}),
 		mockDatastore.EXPECT().Read(gomock.Any(), store, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+			DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 			}),
 	)
@@ -3065,19 +3065,19 @@ func TestListUsersReadFails_NoLeaks_TTU(t *testing.T) {
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	gomock.InOrder(
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Object:   "document:1",
 			Relation: "parent",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return mocks.NewErrorTupleIterator([]*openfgav1.Tuple{
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:1")},
 				{Key: tuple.NewTupleKey("document:1", "parent", "folder:2")},
 			}), nil
 		}),
-		mockDatastore.EXPECT().Read(gomock.Any(), store, &openfgav1.TupleKey{
+		mockDatastore.EXPECT().Read(gomock.Any(), store, storage.ReadFilter{
 			Object:   "folder:1",
 			Relation: "viewer",
-		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *openfgav1.TupleKey, _ storage.ReadOptions) (storage.TupleIterator, error) {
+		}, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ storage.ReadFilter, _ storage.ReadOptions) (storage.TupleIterator, error) {
 			return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
 		}),
 	)

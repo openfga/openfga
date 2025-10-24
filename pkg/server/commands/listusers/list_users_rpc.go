@@ -454,7 +454,7 @@ func (l *listUsersQuery) expandDirect(
 			Preference: req.GetConsistency(),
 		},
 	}
-	iter, err := l.datastore.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), storage.ReadFilter{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: req.GetRelation(),
 	}, opts)
@@ -882,7 +882,7 @@ func (l *listUsersQuery) expandTTU(
 			Preference: req.GetConsistency(),
 		},
 	}
-	iter, err := l.datastore.Read(ctx, req.GetStoreId(), &openfgav1.TupleKey{
+	iter, err := l.datastore.Read(ctx, req.GetStoreId(), storage.ReadFilter{
 		Object:   tuple.ObjectKey(req.GetObject()),
 		Relation: tuplesetRelation,
 	}, opts)
