@@ -86,16 +86,10 @@ func parseConfig(uri string, override bool, cfg *sqlcommon.Config) (*pgxpool.Con
 
 	if cfg.MinIdleConns != 0 {
 		c.MinIdleConns = int32(cfg.MinIdleConns)
-	} else if cfg.MaxOpenConns != 0 {
-		// Use some sane value for defaults
-		c.MinIdleConns = int32(cfg.MaxOpenConns)
 	}
 
 	if cfg.MinOpenConns != 0 {
 		c.MinConns = int32(cfg.MinOpenConns)
-	} else if cfg.MaxOpenConns != 0 {
-		// Use some sane value for defaults
-		c.MinConns = int32(cfg.MaxOpenConns)
 	}
 
 	if cfg.ConnMaxLifetime != 0 {
