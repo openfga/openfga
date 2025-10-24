@@ -18,8 +18,12 @@ func evaluateCondition(ctx context.Context, model *AuthorizationModelGraph, edge
 		return false, nil
 	}
 
-	// if the tuple doesn't have a condition, the function exits early
-	return eval.EvaluateTupleCondition(ctx, t, model.conditions[t.GetCondition().GetName()], reqCtx)
+	if t.GetCondition().GetName() != "" {
+		// if the tuple has a condition condition, then the condition needs to be evaluated
+		return eval.EvaluateTupleCondition(ctx, t, model.conditions[t.GetCondition().GetName()], reqCtx)
+	}
+
+	return true, nil
 }
 
 func BuildTupleKeyConditionFilter(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, reqCtx *structpb.Struct) func(*openfgav1.TupleKey) (bool, error) {
