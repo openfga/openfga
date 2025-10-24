@@ -33,14 +33,14 @@ var defaultPlan = &planner.KeyPlanStrategy{
 
 var defaultRecursivePlan = &planner.KeyPlanStrategy{
 	Type:         defaultResolver,
-	InitialGuess: 1500 * time.Millisecond, // Higher initial guess for recursive checks
+	InitialGuess: 2000 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
-	Lambda: 2,
+	Lambda: 8,
 	// With α = 0.5 ≤ 1, it means maximum uncertainty about variance; with λ = 1, we also have weak confidence in the mean.
 	// These values will encourage strong exploration of other strategies. Having these values for the default strategy helps to enforce the usage of the "faster" strategies,
 	// helping out with the cold start when we don't have enough data.
-	Alpha: 0.5,
-	Beta:  0.5,
+	Alpha: 6.0,
+	Beta:  3.0,
 }
 
 type dispatchParams struct {
