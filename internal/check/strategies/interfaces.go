@@ -12,4 +12,4 @@ import (
 
 type defaultStrategyHandler func(context.Context, *check.Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, chan requestMsg)
 
-type fastPathSetHandler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
+type weight2Handler func(context.Context, *iterator.Streams, chan<- *iterator.Msg)
