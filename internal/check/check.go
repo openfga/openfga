@@ -501,7 +501,9 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 	)
 	defer span.End()
 
-	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), req.GetTupleKey(), storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
+	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	tk := tuple.NewTupleKey(req.GetTupleKey().GetObject(), relation, req.GetTupleKey().GetUser())
+	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), tk, storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &Response{Allowed: false}, nil
@@ -528,10 +530,11 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	)
 	defer span.End()
 
+	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
 	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
-		Relation:                    req.GetTupleKey().GetRelation(),
+		Relation:                    relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
@@ -573,15 +576,16 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	)
 	defer span.End()
 
-	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
 
 	// userset that is represented by the same edge, conditions on the iterator will be defined in this edge
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
-		Relation: req.GetTupleKey().GetRelation(),
+		Relation: relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-			Type:               objectType,
-			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+			Type:               userObjectType,
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
 		}},
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{

@@ -268,7 +268,7 @@ func (s *Weight2) specificType(ctx context.Context, req *check.Request, edge *au
 			Preference: req.GetConsistency(),
 		},
 	}
-	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	objectType, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
@@ -281,15 +281,10 @@ func (s *Weight2) specificType(ctx context.Context, req *check.Request, edge *au
 		return nil, err
 	}
 
-	conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	if err != nil {
-		return nil, check.ErrPanicRequest
-	}
-
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
 		)
 	}
 
@@ -308,7 +303,7 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 			Preference: req.GetConsistency(),
 		},
 	}
-	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	objectType, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
@@ -321,15 +316,10 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 		return nil, err
 	}
 
-	conditionEdge, err := s.model.GetConditionsEdgeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	if err != nil {
-		return nil, check.ErrPanicRequest
-	}
-
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
 		)
 	}
 
