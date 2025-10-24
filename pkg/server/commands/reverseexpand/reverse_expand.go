@@ -232,11 +232,6 @@ type ResolutionMetadata struct {
 
 	// The number of times internal check was called for the optimization path
 	CheckCounter *atomic.Uint32
-
-	// Temporary solution to indicate whether shadow list objects query should be run.
-	// For queries with Infinite weight, the weighted graph implementation falls back
-	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery *atomic.Bool
 }
 
 func NewResolutionMetadata() *ResolutionMetadata {
@@ -244,7 +239,6 @@ func NewResolutionMetadata() *ResolutionMetadata {
 		DispatchCounter:      new(atomic.Uint32),
 		WasThrottled:         new(atomic.Bool),
 		WasWeightedGraphUsed: new(atomic.Bool),
-		ShouldRunShadowQuery: new(atomic.Bool),
 		CheckCounter:         new(atomic.Uint32),
 	}
 }
@@ -430,27 +424,6 @@ func (c *ReverseExpandQuery) execute(
 				resultChan,
 				sourceUserType,
 			)
-		}
-	}
-
-	// NOTE: this is temporary to ensure that the ListObjects shadow query doesn't run unnecessarily.
-	// For cases where the query is weight INF, reverse_expand_weighted falls back to original reverse_expand,
-	// so there is no value in running a shadow query after the main query completes.
-	// This block will hit on the first pass through reverse_expand, and it marks ShouldRunShadowQuery based on
-	// whether the shadow query will actually run the code we want to test.
-	if !req.skipWeightedGraph {
-		req.skipWeightedGraph = true // ensure we don't do this on subsequent recursive calls
-		resolutionMetadata.ShouldRunShadowQuery.Store(true)
-
-		typeRel := tuple.ToObjectRelationString(targetObjRef.GetType(), targetObjRef.GetRelation())
-		node, ok := c.typesystem.GetNode(typeRel)
-		if !ok {
-			resolutionMetadata.ShouldRunShadowQuery.Store(false)
-		} else {
-			weight, _ := node.GetWeight(sourceUserType)
-			if weight == weightedGraph.Infinite {
-				resolutionMetadata.ShouldRunShadowQuery.Store(false)
-			}
 		}
 	}
 
