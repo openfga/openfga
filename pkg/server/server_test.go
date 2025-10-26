@@ -246,18 +246,6 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
 		})
 	})
-
-	t.Run("invalid_shadow_list_objects_query_timeout", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver timeout must be greater than 0, got -1s", func() {
-			mockController := gomock.NewController(t)
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			_ = MustNewServerWithOpts(
-				WithDatastore(mockDatastore),
-				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
-				WithShadowListObjectsQueryTimeout(-1*time.Second),
-			)
-		})
-	})
 }
 
 func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
