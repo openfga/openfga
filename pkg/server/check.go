@@ -164,13 +164,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
-func (s *Server) getCheckResolverBuilder(storeId string) *graph.CheckResolverOrderedBuilder {
+func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeId)),
+			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeID)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
@@ -182,7 +182,7 @@ func (s *Server) getCheckResolverBuilder(storeId string) *graph.CheckResolverOrd
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
-		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowCheck, storeId)),
+		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowCheck, storeID)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
 			graph.ShadowResolverWithLogger(s.logger),
 			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),

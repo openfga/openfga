@@ -1,7 +1,7 @@
 package featureflags
 
 type Client interface {
-	Boolean(flagName string, storeId string) bool
+	Boolean(flagName string, storeID string) bool
 }
 
 type defaultClient struct {
@@ -20,7 +20,7 @@ func NewDefaultClient(flags []string) Client {
 	}
 }
 
-func (c *defaultClient) Boolean(flagName string, storeId string) bool {
+func (c *defaultClient) Boolean(flagName string, storeID string) bool {
 	_, ok := c.flags[flagName]
 	return ok
 }

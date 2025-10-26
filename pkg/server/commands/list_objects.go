@@ -201,7 +201,7 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 }
 
 func NewListObjectsQuery(
-	storeId string,
+	storeID string,
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	opts ...ListObjectsQueryOption,
@@ -242,7 +242,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeId) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
 		query.optimizationsEnabled = true
 	}
 
