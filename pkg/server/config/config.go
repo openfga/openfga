@@ -52,8 +52,7 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckSamplePercentage = 10
-	DefaultShadowCheckResolverTimeout  = 1 * time.Second
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
 	DefaultShadowListObjectsCheckResolverEnabled  = false
 	DefaultShadowListObjectsCheckSamplePercentage = 10

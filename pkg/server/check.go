@@ -185,7 +185,6 @@ func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean("shadow_check_resolver_enabled", nil)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
 			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
 			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),

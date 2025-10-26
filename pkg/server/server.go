@@ -182,8 +182,7 @@ type Server struct {
 	// sharedDatastoreResources are created by the server
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	shadowCheckResolverSamplePercentage int
-	shadowCheckResolverTimeout          time.Duration
+	shadowCheckResolverTimeout time.Duration
 
 	shadowListObjectsCheckResolverEnabled          bool
 	shadowListObjectsCheckResolverSamplePercentage int
@@ -717,13 +716,6 @@ func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Opt
 	}
 }
 
-// WithShadowCheckResolverSamplePercentage is the percentage of requests to sample.
-func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowCheckResolverSamplePercentage = rate
-	}
-}
-
 // WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
 // Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
 func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
@@ -806,8 +798,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 
-		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
-		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
+		shadowCheckResolverTimeout: serverconfig.DefaultShadowCheckResolverTimeout,
 
 		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
 		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
