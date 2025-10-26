@@ -78,7 +78,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
-			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
@@ -220,7 +219,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
 			commands.WithShadowListObjectsQueryEnabled(s.shadowListObjectsQueryEnabled),
-			commands.WithShadowListObjectsQuerySamplePercentage(s.shadowListObjectsQuerySamplePercentage),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),

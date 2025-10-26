@@ -190,10 +190,9 @@ type Server struct {
 	shadowListObjectsCheckResolverSamplePercentage int
 	shadowListObjectsCheckResolverTimeout          time.Duration
 
-	shadowListObjectsQueryEnabled          bool
-	shadowListObjectsQuerySamplePercentage int
-	shadowListObjectsQueryTimeout          time.Duration
-	shadowListObjectsQueryMaxDeltaItems    int
+	shadowListObjectsQueryEnabled       bool
+	shadowListObjectsQueryTimeout       time.Duration
+	shadowListObjectsQueryMaxDeltaItems int
 
 	requestDurationByQueryHistogramBuckets         []uint
 	requestDurationByDispatchCountHistogramBuckets []uint
@@ -778,13 +777,6 @@ func WithShadowListObjectsQueryTimeout(threshold time.Duration) OpenFGAServiceV1
 	}
 }
 
-// WithShadowListObjectsQuerySamplePercentage is the percentage of requests to sample for shadow ListObjects query.
-func WithShadowListObjectsQuerySamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsQuerySamplePercentage = rate
-	}
-}
-
 func WithShadowListObjectsQueryMaxDeltaItems(maxDeltaItems int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsQueryMaxDeltaItems = maxDeltaItems
@@ -846,10 +838,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
 		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
 
-		shadowListObjectsQueryEnabled:          serverconfig.DefaultShadowListObjectsQueryEnabled,
-		shadowListObjectsQuerySamplePercentage: serverconfig.DefaultShadowListObjectsQuerySamplePercentage,
-		shadowListObjectsQueryTimeout:          serverconfig.DefaultShadowListObjectsQueryTimeout,
-		shadowListObjectsQueryMaxDeltaItems:    serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
+		shadowListObjectsQueryEnabled:       serverconfig.DefaultShadowListObjectsQueryEnabled,
+		shadowListObjectsQueryTimeout:       serverconfig.DefaultShadowListObjectsQueryTimeout,
+		shadowListObjectsQueryMaxDeltaItems: serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
 
 		requestDurationByQueryHistogramBuckets:         []uint{50, 200},
 		requestDurationByDispatchCountHistogramBuckets: []uint{50, 200},
@@ -917,10 +908,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	err := s.validateAccessControlEnabled()
 	if err != nil {
-		return nil, err
-	}
-
-	if err = s.validateShadowListObjectsQueryEnabled(); err != nil {
 		return nil, err
 	}
 
@@ -1052,19 +1039,6 @@ func (s *Server) validateAccessControlEnabled() error {
 		_, err = ulid.Parse(s.AccessControl.ModelID)
 		if err != nil {
 			return fmt.Errorf("config '--access-control-model-id' must be a valid ULID")
-		}
-	}
-	return nil
-}
-
-// validateAccessControlEnabled validates the access control parameters.
-func (s *Server) validateShadowListObjectsQueryEnabled() error {
-	if s.shadowListObjectsQueryEnabled {
-		if s.shadowListObjectsQuerySamplePercentage < 0 || s.shadowListObjectsQuerySamplePercentage > 100 {
-			return fmt.Errorf("shadow list objects check resolver sample percentage must be between 0 and 100, got %d", s.shadowListObjectsQuerySamplePercentage)
-		}
-		if s.shadowListObjectsQueryTimeout <= 0 {
-			return fmt.Errorf("shadow list objects check resolver timeout must be greater than 0, got %s", s.shadowListObjectsQueryTimeout)
 		}
 	}
 	return nil

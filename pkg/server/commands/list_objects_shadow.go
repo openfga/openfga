@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"maps"
-	"math/rand"
 	"slices"
 	"sync"
 	"time"
@@ -24,7 +23,6 @@ const ListObjectsShadowExecute = "ShadowedListObjectsQuery.Execute"
 type shadowedListObjectsQuery struct {
 	main          ListObjectsResolver
 	shadow        ListObjectsResolver
-	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	maxDeltaItems int           // The maximum number of items to log in the delta between the main and shadow results. This prevents excessive logging in case of large differences.
 	logger        logger.Logger
@@ -38,13 +36,6 @@ type ShadowListObjectsQueryOption func(d *ShadowListObjectsQueryConfig)
 func WithShadowListObjectsQueryEnabled(enabled bool) ShadowListObjectsQueryOption {
 	return func(c *ShadowListObjectsQueryConfig) {
 		c.shadowEnabled = enabled
-	}
-}
-
-// WithShadowListObjectsQuerySamplePercentage sets the shadowPct of list_objects requests that will trigger the shadow query.
-func WithShadowListObjectsQuerySamplePercentage(samplePercentage int) ShadowListObjectsQueryOption {
-	return func(c *ShadowListObjectsQueryConfig) {
-		c.shadowPct = samplePercentage
 	}
 }
 
@@ -69,7 +60,6 @@ func WithShadowListObjectsQueryMaxDeltaItems(maxDeltaItems int) ShadowListObject
 
 type ShadowListObjectsQueryConfig struct {
 	shadowEnabled bool          // A boolean flag to globally enable or disable the shadow mode for list_objects queries. When false, the shadow query will not be executed.
-	shadowPct     int           // An integer representing the shadowPct of list_objects requests that will also trigger the shadow query. This allows for controlled rollout and data collection without impacting all requests. Value should be between 0 and 100.
 	shadowTimeout time.Duration // A time.Duration specifying the maximum amount of time to wait for the shadow list_objects query to complete. If the shadow query exceeds this shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 	maxDeltaItems int           // The maximum number of items to log in the delta between the main and shadow results. This prevents excessive logging in case of large differences.
 	logger        logger.Logger
@@ -78,7 +68,6 @@ type ShadowListObjectsQueryConfig struct {
 func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *ShadowListObjectsQueryConfig {
 	result := &ShadowListObjectsQueryConfig{
 		shadowEnabled: false,                  // Disabled by default
-		shadowPct:     0,                      // Default to 0% to disable shadow mode
 		shadowTimeout: 1 * time.Second,        // Default shadowTimeout for shadow queries
 		logger:        logger.NewNoopLogger(), // Default to a noop logger
 		maxDeltaItems: 100,                    // Default max delta items to log
@@ -131,7 +120,6 @@ func newShadowedListObjectsQuery(
 	result := &shadowedListObjectsQuery{
 		main:          standard,
 		shadow:        optimized,
-		shadowPct:     shadowConfig.shadowPct,
 		shadowTimeout: shadowConfig.shadowTimeout,
 		logger:        shadowConfig.logger,
 		maxDeltaItems: shadowConfig.maxDeltaItems,
@@ -181,10 +169,6 @@ func (q *shadowedListObjectsQuery) Execute(
 
 func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*ListObjectsResolutionMetadata, error) {
 	return q.main.ExecuteStreamed(ctx, req, srv)
-}
-
-func (q *shadowedListObjectsQuery) checkShadowModeSampleRate() bool {
-	return rand.Intn(100) < q.shadowPct // randomly enable shadow mode
 }
 
 // executeShadowMode executes the main and shadow functions in parallel, returning the result of the main function if shadow mode is not shadowEnabled or if the shadow function fails.
@@ -279,7 +263,7 @@ func (q *shadowedListObjectsQuery) checkShadowModePreconditions(ctx context.Cont
 		return false
 	}
 
-	return q.checkShadowModeSampleRate()
+	return true
 }
 
 func loShadowLogFields(req *openfgav1.ListObjectsRequest, fields ...zap.Field) []zap.Field {
