@@ -65,7 +65,7 @@ func (c CacheSettings) ShouldCreateShadowNewCache() bool {
 }
 
 // ShouldCreateShadowCacheController determines if a new shadow cache controller should be created.
-// A shadow cache controller is created if the ShadowCheckCache is enabled and the cache controller is enabled.
+// A shadow cache controller is created if a new cache should be created and the cache controller is enabled.
 func (c CacheSettings) ShouldCreateShadowCacheController() bool {
 	return c.ShouldCreateCacheController()
 }
