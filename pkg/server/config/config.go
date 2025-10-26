@@ -99,6 +99,8 @@ const (
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
+	ExperimentalShadowCheck              = "enable-shadow-check"
+	ExperimentalShadowListObjects        = "enable-shadow-list-objects"
 )
 
 type DatastoreMetricsConfig struct {
