@@ -1718,7 +1718,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1745,7 +1745,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1776,7 +1776,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1809,7 +1809,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
@@ -1834,7 +1834,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1864,7 +1864,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1897,7 +1897,7 @@ func TestWithFeatureFlagClient(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		// NoopClient() always false
-		require.False(t, s.featureFlagClient.Boolean("should-be-false", nil))
+		require.False(t, s.featureFlagClient.Boolean("should-be-false", "store_id_123"))
 	})
 
 	t.Run("if_a_client_is_provided", func(t *testing.T) {
@@ -1907,7 +1907,7 @@ func TestWithFeatureFlagClient(t *testing.T) {
 				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 			)
 			t.Cleanup(s.Close)
-			require.True(t, s.featureFlagClient.Boolean("should-be-true", nil))
+			require.True(t, s.featureFlagClient.Boolean("should-be-true", "store_id_123"))
 		})
 	})
 }

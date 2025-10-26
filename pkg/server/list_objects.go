@@ -66,7 +66,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	builder := s.getListObjectsCheckResolverBuilder()
+	builder := s.getListObjectsCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
@@ -74,10 +74,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
+		req.GetStoreId(),
 		s.datastore,
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, nil)),
+			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, req.GetStoreId())),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
@@ -207,7 +208,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	builder := s.getListObjectsCheckResolverBuilder()
+	builder := s.getListObjectsCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return err
@@ -215,10 +216,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
+		req.GetStoreId(),
 		s.datastore,
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
-			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, nil)),
+			commands.WithShadowListObjectsQueryEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowListObjects, req.GetStoreId())),
 			commands.WithShadowListObjectsQueryTimeout(s.shadowListObjectsQueryTimeout),
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
@@ -286,13 +288,13 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	return nil
 }
 
-func (s *Server) getListObjectsCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
+func (s *Server) getListObjectsCheckResolverBuilder(storeId string) *graph.CheckResolverOrderedBuilder {
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, nil)),
+			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeId)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),

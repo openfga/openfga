@@ -38,20 +38,20 @@ func TestNewListObjectsQuery(t *testing.T) {
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
-		q, err := NewListObjectsQuery(nil, checkResolver)
+		q, err := NewListObjectsQuery("store_id_123", nil, checkResolver)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery(memory.New(), nil)
+		q, err := NewListObjectsQuery("store_id_123", memory.New(), nil)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		q, err := NewListObjectsQuery("store_id_123", memory.New(), checkResolver)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
@@ -65,7 +65,7 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+	q, err := NewListObjectsQueryWithShadowConfig("store_id_123", memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(true),
 		WithShadowListObjectsQueryTimeout(13*time.Second),
 		WithShadowListObjectsQueryLogger(testLogger),
@@ -79,7 +79,7 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
+	q, err := NewListObjectsQueryWithShadowConfig("store_id_123", memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
 		WithShadowListObjectsQueryEnabled(false),
 	))
 	require.NoError(t, err)
@@ -290,6 +290,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
+				"store_id_123",
 				ds,
 				checker,
 				WithDispatchThrottlerConfig(threshold.Config{
@@ -382,6 +383,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	t.Cleanup(checkResolverCloser)
 
 	q, _ := NewListObjectsQuery(
+		"store_id_123",
 		ds,
 		checkResolver,
 	)
@@ -474,7 +476,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
+	q, _ := NewListObjectsQuery("store_id_123", ds, mockCheckResolver)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -550,6 +552,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 		require.NoError(t, err)
 
 		q, _ := NewListObjectsQuery(
+			"store_id_123",
 			ds,
 			mockCheckResolver,
 			WithListObjectsCache(sharedResources, cacheSettings),
@@ -754,6 +757,7 @@ func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
+				"store_id_123",
 				ds,
 				checker,
 				WithListObjectsPipelineEnabled(true),
@@ -813,6 +817,7 @@ func TestListObjectsSeqError(t *testing.T) {
 
 	t.Run("execute_seq_error", func(t *testing.T) {
 		query, err := NewListObjectsQuery(
+			"store_id_123",
 			mockDatastore,
 			checkResolver,
 			WithListObjectsPipelineEnabled(true),
@@ -831,6 +836,7 @@ func TestListObjectsSeqError(t *testing.T) {
 
 	t.Run("execute_streamed_seq_error", func(t *testing.T) {
 		query, err := NewListObjectsQuery(
+			"store_id_123",
 			mockDatastore,
 			checkResolver,
 			WithListObjectsPipelineEnabled(true),
@@ -948,6 +954,7 @@ func BenchmarkListObjects(b *testing.B) {
 	b.Cleanup(checkResolverCloser)
 
 	query, err := NewListObjectsQuery(
+		"store_id_123",
 		datastore,
 		checkResolver,
 		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),

@@ -24,22 +24,21 @@ func TestBoolean(t *testing.T) {
 	client := NewDefaultClient([]string{"enabled-flag", "another-enabled-flag"})
 
 	t.Run("enabled flag", func(t *testing.T) {
-		result := client.Boolean("enabled-flag", nil)
+		result := client.Boolean("enabled-flag", "")
 		require.True(t, result)
 	})
 
 	t.Run("disabled flag", func(t *testing.T) {
-		result := client.Boolean("disabled-flag", nil)
+		result := client.Boolean("disabled-flag", "")
 		require.False(t, result)
 	})
 
 	// The `featureCtx` is not used by this implementation, so we test that it doesn't affect the result.
-	t.Run("with feature context", func(t *testing.T) {
-		ctx := map[string]any{"user_id": "123", "plan": "premium"}
-		result := client.Boolean("enabled-flag", ctx)
+	t.Run("with store id present", func(t *testing.T) {
+		result := client.Boolean("enabled-flag", "store_id_123")
 		require.True(t, result)
 
-		result = client.Boolean("disabled-flag", ctx)
+		result = client.Boolean("disabled-flag", "store_id_123")
 		require.False(t, result)
 	})
 }

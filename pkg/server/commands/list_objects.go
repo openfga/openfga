@@ -201,6 +201,7 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 }
 
 func NewListObjectsQuery(
+	storeId string,
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	opts ...ListObjectsQueryOption,
@@ -233,7 +234,7 @@ func NewListObjectsQuery(
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 		optimizationsEnabled: false,
-		useShadowCache:       false,
+		useShadowCache:       true,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
@@ -241,7 +242,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeId) {
 		query.optimizationsEnabled = true
 	}
 

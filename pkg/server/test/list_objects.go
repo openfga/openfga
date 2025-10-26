@@ -525,7 +525,7 @@ func runListObjectsTests(t *testing.T, ds storage.OpenFGADatastore, passedInOpts
 			require.NoError(t, err)
 			t.Cleanup(closer)
 
-			listObjectsQuery, err := commands.NewListObjectsQuery(datastore, checkResolver, opts...)
+			listObjectsQuery, err := commands.NewListObjectsQuery("store_id_123", datastore, checkResolver, opts...)
 			require.NoError(t, err)
 
 			// assertions

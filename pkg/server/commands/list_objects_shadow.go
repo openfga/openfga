@@ -80,20 +80,22 @@ func NewShadowListObjectsQueryConfig(opts ...ShadowListObjectsQueryOption) *Shad
 
 // NewListObjectsQueryWithShadowConfig creates a new ListObjectsResolver that can run in shadow mode based on the provided ShadowListObjectsQueryConfig.
 func NewListObjectsQueryWithShadowConfig(
+	storeId string,
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	shadowConfig *ShadowListObjectsQueryConfig,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
 	if shadowConfig != nil && shadowConfig.shadowEnabled {
-		return newShadowedListObjectsQuery(ds, checkResolver, shadowConfig, opts...)
+		return newShadowedListObjectsQuery(storeId, ds, checkResolver, shadowConfig, opts...)
 	}
 
-	return NewListObjectsQuery(ds, checkResolver, opts...)
+	return NewListObjectsQuery(storeId, ds, checkResolver, opts...)
 }
 
 // newShadowedListObjectsQuery creates a new ListObjectsResolver that runs two queries in parallel: one with the pipeline enabled and one without.
 func newShadowedListObjectsQuery(
+	storeId string,
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
 	shadowConfig *ShadowListObjectsQueryConfig,
@@ -102,14 +104,14 @@ func newShadowedListObjectsQuery(
 	if shadowConfig == nil {
 		return nil, errors.New("shadowConfig must be set")
 	}
-	standard, err := NewListObjectsQuery(ds, checkResolver,
+	standard, err := NewListObjectsQuery(storeId, ds, checkResolver,
 		// force disable pipeline
 		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(false)})...,
 	)
 	if err != nil {
 		return nil, err
 	}
-	optimized, err := NewListObjectsQuery(ds, checkResolver,
+	optimized, err := NewListObjectsQuery(storeId, ds, checkResolver,
 		// enable pipeline
 		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(true)})...,
 	)

@@ -34,17 +34,18 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
-			WithShadowListObjectsQueryMaxDeltaItems(99),
-			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-		), WithResolveNodeLimit(15))
+		result, err := newShadowedListObjectsQuery("store_id_123",
+			&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
+				WithShadowListObjectsQueryMaxDeltaItems(99),
+				WithShadowListObjectsQueryTimeout(66*time.Millisecond),
+			), WithResolveNodeLimit(15))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
-		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
+		assert.True(t, query.main.(*ListObjectsQuery).useShadowCache)
 		assert.False(t, query.main.(*ListObjectsQuery).pipelineEnabled)
 		assert.False(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
-		assert.False(t, query.shadow.(*ListObjectsQuery).useShadowCache)
+		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
 		assert.True(t, query.shadow.(*ListObjectsQuery).pipelineEnabled)
 		assert.Equal(t, uint32(15), query.shadow.(*ListObjectsQuery).resolveNodeLimit)
 		assert.Equal(t, uint32(15), query.main.(*ListObjectsQuery).resolveNodeLimit)
@@ -54,13 +55,15 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery("store_id_123",
+			nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
 
 	t.Run("check_resolver_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery("store_id_123",
+			&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
@@ -326,7 +329,7 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_nilConfig(t *testing.T) {
-	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, nil)
+	_, err := newShadowedListObjectsQuery("store_id_123", &mockTupleReader{}, &mockCheckResolver{}, nil)
 	require.Error(t, err)
 }
 
