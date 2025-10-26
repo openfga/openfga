@@ -39,8 +39,6 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultShadowCheckCacheEnabled = false
-
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
@@ -54,7 +52,6 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled  = false
 	DefaultShadowCheckSamplePercentage = 10
 	DefaultShadowCheckResolverTimeout  = 1 * time.Second
 
@@ -62,10 +59,8 @@ const (
 	DefaultShadowListObjectsCheckSamplePercentage = 10
 	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
 
-	DefaultShadowListObjectsQueryEnabled          = false
-	DefaultShadowListObjectsQuerySamplePercentage = 10
-	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
-	DefaultShadowListObjectsQueryMaxDeltaItems    = 100
+	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
+	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100

@@ -679,18 +679,6 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		wg             *sync.WaitGroup
 	}{
 		{
-			name: "sample rate not met",
-			args: args{
-				pct:        0,
-				maxResults: 10,
-				deadline:   1 * time.Second,
-			},
-			expectedReturn: false,
-			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-				return mocks.NewMockLogger(ctrl)
-			},
-		},
-		{
 			name: "weighted graph does not exist",
 			args: args{
 				pct:        0,

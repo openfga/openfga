@@ -71,7 +71,6 @@ func TestSharedDatastoreResources(t *testing.T) {
 		settings := config.CacheSettings{
 			CheckCacheLimit:           1,
 			CheckIteratorCacheEnabled: true,
-			ShadowCheckCacheEnabled:   true,
 		}
 
 		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)
@@ -87,7 +86,6 @@ func TestSharedDatastoreResources(t *testing.T) {
 			CheckCacheLimit:           1,
 			CheckIteratorCacheEnabled: true,
 			CacheControllerEnabled:    true,
-			ShadowCheckCacheEnabled:   true,
 		}
 
 		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)

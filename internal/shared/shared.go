@@ -90,19 +90,15 @@ func NewSharedDatastoreResources(
 	s.ShadowCheckCache = s.CheckCache
 	s.ShadowCacheController = s.CacheController
 
-	if settings.ShouldCreateShadowNewCache() {
-		var err error
-		s.ShadowCheckCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
-			storage.WithMaxCacheSize[any](int64(settings.CheckCacheLimit)),
-		}...)
-		if err != nil {
-			return nil, err
-		}
+	var err error
+	s.ShadowCheckCache, err = storage.NewInMemoryLRUCache([]storage.InMemoryLRUCacheOpt[any]{
+		storage.WithMaxCacheSize[any](int64(settings.CheckCacheLimit)),
+	}...)
+	if err != nil {
+		return nil, err
 	}
 
-	if settings.ShouldCreateShadowCacheController() {
-		s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
-	}
+	s.ShadowCacheController = cachecontroller.NewCacheController(ds, s.ShadowCheckCache, settings.CacheControllerTTL, settings.CheckIteratorCacheTTL, cachecontroller.WithLogger(s.Logger))
 
 	for _, opt := range opts {
 		opt(s)

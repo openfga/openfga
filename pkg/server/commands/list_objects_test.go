@@ -551,7 +551,6 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 				CacheControllerEnabled:             true,
 				CacheControllerTTL:                 1 * time.Nanosecond,
 				CheckCacheLimit:                    1000,
-				ShadowCheckCacheEnabled:            test.shadowEnabled,
 			}
 
 			sharedResources, err := shared.NewSharedDatastoreResources(

@@ -182,7 +182,7 @@ func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean("shadow_check_resolver_enabled", nil)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
 			graph.ShadowResolverWithLogger(s.logger),
 			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),

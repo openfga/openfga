@@ -182,7 +182,6 @@ type Server struct {
 	// sharedDatastoreResources are created by the server
 	sharedDatastoreResources *shared.SharedDatastoreResources
 
-	shadowCheckResolverEnabled          bool
 	shadowCheckResolverSamplePercentage int
 	shadowCheckResolverTimeout          time.Duration
 
@@ -190,7 +189,6 @@ type Server struct {
 	shadowListObjectsCheckResolverSamplePercentage int
 	shadowListObjectsCheckResolverTimeout          time.Duration
 
-	shadowListObjectsQueryEnabled       bool
 	shadowListObjectsQueryTimeout       time.Duration
 	shadowListObjectsQueryMaxDeltaItems int
 
@@ -712,14 +710,6 @@ func WithListUsersDatabaseThrottle(threshold int, duration time.Duration) OpenFG
 	}
 }
 
-// WithShadowCheckResolverEnabled turns of shadow check resolver to allow result comparison.
-// Note that ShadowCheckResolver is a temporary feature and may be removed in future release.
-func WithShadowCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowCheckResolverEnabled = enabled
-	}
-}
-
 // WithShadowCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
 func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -731,13 +721,6 @@ func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Opt
 func WithShadowCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowCheckResolverSamplePercentage = rate
-	}
-}
-
-// WithShadowCheckCacheEnabled enables a separate cache for the shadow checker.
-func WithShadowCheckCacheEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.cacheSettings.ShadowCheckCacheEnabled = enabled
 	}
 }
 
@@ -760,13 +743,6 @@ func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAS
 func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.shadowListObjectsCheckResolverSamplePercentage = rate
-	}
-}
-
-// WithShadowListObjectsQueryEnabled turns on shadow list objects query to allow result comparison.
-func WithShadowListObjectsQueryEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsQueryEnabled = enabled
 	}
 }
 
@@ -830,7 +806,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 
-		shadowCheckResolverEnabled:          serverconfig.DefaultShadowCheckResolverEnabled,
 		shadowCheckResolverSamplePercentage: serverconfig.DefaultShadowCheckSamplePercentage,
 		shadowCheckResolverTimeout:          serverconfig.DefaultShadowCheckResolverTimeout,
 
@@ -838,7 +813,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
 		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
 
-		shadowListObjectsQueryEnabled:       serverconfig.DefaultShadowListObjectsQueryEnabled,
 		shadowListObjectsQueryTimeout:       serverconfig.DefaultShadowListObjectsQueryTimeout,
 		shadowListObjectsQueryMaxDeltaItems: serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
 
@@ -922,10 +896,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.datastore, err = storagewrappers.NewCachedOpenFGADatastore(s.datastore, s.maxAuthorizationModelCacheSize)
 	if err != nil {
 		return nil, err
-	}
-
-	if s.shadowListObjectsQueryEnabled {
-		s.cacheSettings.ShadowCheckCacheEnabled = true
 	}
 
 	s.sharedDatastoreResources, err = shared.NewSharedDatastoreResources(s.ctx, s.singleflightGroup, s.datastore, s.cacheSettings, []shared.SharedDatastoreResourcesOpt{shared.WithLogger(s.logger)}...)
