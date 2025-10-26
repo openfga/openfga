@@ -54,10 +54,6 @@ const (
 
 	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
-
 	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
 	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 

@@ -184,10 +184,6 @@ type Server struct {
 
 	shadowCheckResolverTimeout time.Duration
 
-	shadowListObjectsCheckResolverEnabled          bool
-	shadowListObjectsCheckResolverSamplePercentage int
-	shadowListObjectsCheckResolverTimeout          time.Duration
-
 	shadowListObjectsQueryTimeout       time.Duration
 	shadowListObjectsQueryMaxDeltaItems int
 
@@ -716,28 +712,6 @@ func WithShadowCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Opt
 	}
 }
 
-// WithShadowListObjectsCheckResolverEnabled turns on shadow check resolver to allow result comparison.
-// Note that ShadowListObjectsCheckResolver is a temporary feature and may be removed in future release.
-func WithShadowListObjectsCheckResolverEnabled(enabled bool) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverEnabled = enabled
-	}
-}
-
-// WithShadowListObjectsCheckResolverTimeout is the amount of time to wait for the shadow Check evaluation response.
-func WithShadowListObjectsCheckResolverTimeout(threshold time.Duration) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverTimeout = threshold
-	}
-}
-
-// WithShadowListObjectsCheckResolverSamplePercentage is the percentage of requests to sample.
-func WithShadowListObjectsCheckResolverSamplePercentage(rate int) OpenFGAServiceV1Option {
-	return func(s *Server) {
-		s.shadowListObjectsCheckResolverSamplePercentage = rate
-	}
-}
-
 // WithShadowListObjectsQueryTimeout is the amount of time to wait for the shadow ListObjects evaluation response.
 func WithShadowListObjectsQueryTimeout(threshold time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
@@ -799,10 +773,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		cacheSettings: serverconfig.NewDefaultCacheSettings(),
 
 		shadowCheckResolverTimeout: serverconfig.DefaultShadowCheckResolverTimeout,
-
-		shadowListObjectsCheckResolverEnabled:          serverconfig.DefaultShadowListObjectsCheckResolverEnabled,
-		shadowListObjectsCheckResolverSamplePercentage: serverconfig.DefaultShadowListObjectsCheckSamplePercentage,
-		shadowListObjectsCheckResolverTimeout:          serverconfig.DefaultShadowListObjectsCheckResolverTimeout,
 
 		shadowListObjectsQueryTimeout:       serverconfig.DefaultShadowListObjectsQueryTimeout,
 		shadowListObjectsQueryMaxDeltaItems: serverconfig.DefaultShadowListObjectsQueryMaxDeltaItems,
