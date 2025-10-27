@@ -39,8 +39,6 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultShadowCheckCacheEnabled = false
-
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
@@ -54,18 +52,10 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled  = false
-	DefaultShadowCheckSamplePercentage = 10
-	DefaultShadowCheckResolverTimeout  = 1 * time.Second
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
-
-	DefaultShadowListObjectsQueryEnabled          = false
-	DefaultShadowListObjectsQuerySamplePercentage = 10
-	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
-	DefaultShadowListObjectsQueryMaxDeltaItems    = 100
+	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
+	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -105,6 +95,12 @@ const (
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
+
+	// Moving forward, all experimental flags should follow the naming convention below:
+	// 1. Avoid using enable/disable prefixes.
+	// 2. Flag names should have only numbers, letters and underscores.
+	ExperimentalShadowCheck       = "shadow_check"
+	ExperimentalShadowListObjects = "shadow_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
