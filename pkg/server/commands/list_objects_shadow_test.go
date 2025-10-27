@@ -436,7 +436,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						var resp ListObjectsResponse
 						resp.Objects = []string{"a", "b", "c"}
-						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
 						return &resp, nil
 					},
 				},
@@ -481,7 +480,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						var resp ListObjectsResponse
 						resp.Objects = []string{"c", "d"}
-						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
 						return &resp, nil
 					},
 				},
@@ -523,7 +521,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						var resp ListObjectsResponse
 						resp.Objects = []string{"c", "d", "x", "y", "z"}
-						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
 						return &resp, nil
 					},
 				},
@@ -640,7 +637,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 					executeFunc: func(ctx context.Context, req *openfgav1.ListObjectsRequest) (*ListObjectsResponse, error) {
 						require.NoError(t, ctx.Err()) // context must not be cancelled
 						var resp ListObjectsResponse
-						resp.ResolutionMetadata.ShouldRunShadowQuery.Store(true)
 						return &resp, nil
 					},
 				},
