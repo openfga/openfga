@@ -667,6 +667,11 @@ func TestRead(t *testing.T) {
 	}
 
 	tk := tuple.NewTupleKey("license:1", "owner", "")
+	filter := storage.ReadFilter{
+		Object:   "license:1",
+		Relation: "owner",
+		User:     "",
+	}
 
 	cmpOpts := []cmp.Option{
 		testutils.TupleKeyCmpTransformer,
@@ -680,7 +685,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+				Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 			mockCache.EXPECT().Get(cacheKey).Return(nil),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
@@ -693,7 +698,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		var actual []*openfgav1.Tuple
@@ -728,7 +733,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Get(invalidEntityKey).Return(nil),
 		)
 
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -756,7 +761,7 @@ func TestRead(t *testing.T) {
 		gomock.InOrder(
 			mockCache.EXPECT().Get(cacheKey),
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+				Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil),
 			mockCache.EXPECT().Get(cacheKey),
 			mockCache.EXPECT().Get(storage.GetInvalidIteratorCacheKey(storeID)).Return(nil),
@@ -767,7 +772,7 @@ func TestRead(t *testing.T) {
 			mockCache.EXPECT().Delete(invalidEntityKey),
 		)
 
-		iter, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+		iter, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 		require.NoError(t, err)
 
 		var actual []*openfgav1.Tuple
@@ -802,11 +807,11 @@ func TestRead(t *testing.T) {
 
 		gomock.InOrder(
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), storeID, tk, opts).
+				Read(gomock.Any(), storeID, filter, opts).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
-		iter, err := ds.Read(ctx, storeID, tk, opts)
+		iter, err := ds.Read(ctx, storeID, filter, opts)
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -831,17 +836,19 @@ func TestRead(t *testing.T) {
 	})
 
 	t.Run("tuple_key_is_not_from_ttu", func(t *testing.T) {
-		tupleKey := &openfgav1.TupleKey{
-			Relation: tk.GetRelation(),
+		invalidObjectFilter := storage.ReadFilter{
 			Object:   "invalid",
+			Relation: filter.Relation,
+			User:     filter.User,
 		}
+
 		gomock.InOrder(
 			mockDatastore.EXPECT().
-				Read(gomock.Any(), storeID, tupleKey, storage.ReadOptions{}).
+				Read(gomock.Any(), storeID, invalidObjectFilter, storage.ReadOptions{}).
 				Return(storage.NewStaticTupleIterator(tuples), nil),
 		)
 
-		iter, err := ds.Read(ctx, storeID, tupleKey, storage.ReadOptions{})
+		iter, err := ds.Read(ctx, storeID, invalidObjectFilter, storage.ReadOptions{})
 		require.NoError(t, err)
 		defer iter.Stop()
 
@@ -885,16 +892,20 @@ func TestDatastoreIteratorError(t *testing.T) {
 
 	storeID := ulid.Make().String()
 
-	tk := tuple.NewTupleKey("license:1", "owner", "")
+	filter := storage.ReadFilter{
+		Object:   "license:1",
+		Relation: "owner",
+		User:     "",
+	}
 
 	gomock.InOrder(
 		mockCache.EXPECT().Get(gomock.Any()),
 		mockDatastore.EXPECT().
-			Read(gomock.Any(), storeID, tk, storage.ReadOptions{}).
+			Read(gomock.Any(), storeID, filter, storage.ReadOptions{}).
 			Return(nil, storage.ErrNotFound),
 	)
 
-	_, err := ds.Read(ctx, storeID, tk, storage.ReadOptions{})
+	_, err := ds.Read(ctx, storeID, filter, storage.ReadOptions{})
 	require.ErrorIs(t, err, storage.ErrNotFound)
 }
 

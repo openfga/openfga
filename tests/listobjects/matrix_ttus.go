@@ -340,6 +340,7 @@ var ttus = []matrixTest{
 					Type:     "ttus",
 					Relation: "ttu_recursive_alg_combined_oneline",
 				},
+				Context: validConditionContext,
 				// ttus:oneline_rel1_4 should not appear here
 				Expectation: []string{
 					"ttus:oneline_rel1_1",
@@ -353,6 +354,7 @@ var ttus = []matrixTest{
 					Type:     "ttus",
 					Relation: "ttu_recursive_alg_combined_oneline",
 				},
+				Context:     validConditionContext,
 				Expectation: []string{"ttus:oneline_direct"},
 			},
 		},
