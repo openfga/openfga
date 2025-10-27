@@ -74,7 +74,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
-		req.GetStoreId(),
 		s.datastore,
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
@@ -83,6 +82,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 		),
+		req.GetStoreId(),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
@@ -216,7 +216,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	defer checkResolverCloser()
 
 	q, err := commands.NewListObjectsQueryWithShadowConfig(
-		req.GetStoreId(),
 		s.datastore,
 		checkResolver,
 		commands.NewShadowListObjectsQueryConfig(
@@ -225,6 +224,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 			commands.WithShadowListObjectsQueryMaxDeltaItems(s.shadowListObjectsQueryMaxDeltaItems),
 			commands.WithShadowListObjectsQueryLogger(s.logger),
 		),
+		req.GetStoreId(),
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithDispatchThrottlerConfig(threshold.Config{

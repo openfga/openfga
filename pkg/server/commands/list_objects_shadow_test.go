@@ -340,7 +340,7 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 }
 
 func TestShadowedListObjectsQuery_nilConfig(t *testing.T) {
-	_, err := newShadowedListObjectsQuery("store_id_123", &mockTupleReader{}, &mockCheckResolver{}, nil)
+	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, nil, fakeStoreID)
 	require.Error(t, err)
 }
 
