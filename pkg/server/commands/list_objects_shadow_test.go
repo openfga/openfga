@@ -45,7 +45,7 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
-		assert.True(t, query.main.(*ListObjectsQuery).useShadowCache)
+		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
 		assert.False(t, query.main.(*ListObjectsQuery).pipelineEnabled)
 		assert.False(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
 		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
