@@ -95,8 +95,12 @@ const (
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
-	ExperimentalShadowCheck              = "enable-shadow-check"
-	ExperimentalShadowListObjects        = "enable-shadow-list-objects"
+
+	// Moving forward, all experimental flags should follow the naming convention below:
+	//1. Avoid using enable/disable prefixes.
+	//2. Flag names should have only numbers, letters and underscores.
+	ExperimentalShadowCheck       = "shadow_check"
+	ExperimentalShadowListObjects = "shadow_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
