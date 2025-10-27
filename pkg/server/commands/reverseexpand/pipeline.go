@@ -262,6 +262,7 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			ObjectType: input.objectType,
 			Relation:   input.objectRelation,
 			UserFilter: input.userFilter,
+			Conditions: input.conditions,
 		},
 		storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
@@ -275,14 +276,10 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 		return seq.Sequence(Item{Err: err})
 	}
 
-	var hasConditions bool
-
-	for _, cond := range input.conditions {
-		if cond != weightedGraph.NoCond {
-			hasConditions = true
-			break
-		}
-	}
+	// if more than one element exists, at least one element is guranteed to be a condition.
+	// OR
+	// if only one element exists, and it is not `NoCond`, then it is guaranteed to be a condition.
+	hasConditions := len(input.conditions) > 1 || (len(input.conditions) > 0 && input.conditions[0] != weightedGraph.NoCond)
 
 	var itr storage.TupleKeyIterator
 
