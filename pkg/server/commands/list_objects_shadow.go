@@ -113,7 +113,7 @@ func newShadowedListObjectsQuery(
 	}
 	optimized, err := NewListObjectsQuery(ds, checkResolver, storeID,
 		// enable pipeline
-		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(true)})...,
+		slices.Concat(opts, []ListObjectsQueryOption{WithListObjectsPipelineEnabled(true), WithListObjectsUseShadowCache(true)})...,
 	)
 	if err != nil {
 		return nil, err

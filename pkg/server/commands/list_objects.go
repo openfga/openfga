@@ -234,7 +234,7 @@ func NewListObjectsQuery(
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
 		optimizationsEnabled: false,
-		useShadowCache:       true,
+		useShadowCache:       false,
 		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
