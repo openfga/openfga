@@ -349,7 +349,8 @@ type TypeDefinitionWriteBackend interface {
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
 	// If the model has zero types, the datastore may choose to do nothing and return no error.
-	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
+	// If the store already contains a model with the given hash, it may return this model's id.
+	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel, hash string) (string, error)
 }
 
 // AuthorizationModelBackend provides an read/write interface for managing models and their type definitions.

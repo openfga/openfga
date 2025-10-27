@@ -981,7 +981,7 @@ func (s *Datastore) MaxTypesPerAuthorizationModel() int {
 }
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
-func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel, hash string) (string, error) {
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
@@ -989,12 +989,12 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) < 1 {
-		return nil
+		return model.GetId(), nil
 	}
 
 	pbdata, err := proto.Marshal(model)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = busyRetry(func() error {
@@ -1006,10 +1006,10 @@ func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, m
 		return err
 	})
 	if err != nil {
-		return HandleSQLError(err)
+		return "", HandleSQLError(err)
 	}
 
-	return nil
+	return model.GetId(), nil
 }
 
 // CreateStore adds a new store to storage.

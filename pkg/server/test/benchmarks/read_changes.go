@@ -30,8 +30,9 @@ func BenchmarkReadChanges(b *testing.B, ds storage.OpenFGADatastore) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	model := testutils.MustTransformDSLToProtoWithID(inputModel)
-	err := ds.WriteAuthorizationModel(ctx, storeID, model)
+	modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 	require.NoError(b, err)
+	require.Equal(b, modelId, model.GetId())
 
 	const numTupleSet = 500
 	for i := 0; i < numTupleSet; i++ {

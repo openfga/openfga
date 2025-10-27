@@ -469,11 +469,11 @@ func (s *Datastore) MaxTypesPerAuthorizationModel() int {
 }
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
-func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+func (s *Datastore) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel, hash string) (string, error) {
 	ctx, span := startTrace(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model)
+	return sqlcommon.WriteAuthorizationModel(ctx, s.dbInfo, store, model, hash)
 }
 
 // CreateStore adds a new store to storage.

@@ -63,8 +63,9 @@ func BootstrapFGAStore(
 	storeID := ulid.Make().String()
 
 	fgaModel := testutils.MustTransformDSLToProtoWithID(model)
-	err := ds.WriteAuthorizationModel(context.Background(), storeID, fgaModel)
+	fgaModelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, fgaModel, "fakehash")
 	require.NoError(t, err)
+	require.Equal(t, fgaModelId, fgaModel.GetId())
 
 	tuples := tuple.MustParseTupleStrings(tupleStrs...)
 	tuples = testutils.Shuffle(tuples)

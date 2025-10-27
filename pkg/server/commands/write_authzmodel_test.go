@@ -40,7 +40,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 	}{
 		`allow_schema_1.1`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -54,7 +56,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_schema_1.2`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:       storeID,
@@ -73,7 +77,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_empty_schema`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -86,7 +92,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_direct_relation`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -102,7 +110,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_computed_relation`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -119,7 +129,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_relation_with_union_of_ttu_rewrites`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -143,7 +155,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_ttu`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -162,7 +176,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_union_with_repeated_relations`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -178,7 +194,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_intersection_with_repeated_relations`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -194,7 +212,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_exclusion_with_repeated_relations`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -210,7 +230,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_ttu_as_long_as_one_computed_userset_type_is_valid`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -229,7 +251,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`allow_self_referencing_type_restriction_with_entrypoint`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -246,7 +270,9 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`condition_valid`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.Any()).Return(nil)
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, model *openfgav1.AuthorizationModel, _ string) (string, error) {
+					return model.GetId(), nil
+				})
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -802,8 +828,8 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 		`fail_if_datastore_errors`: {
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
-				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{})).
-					Return(fmt.Errorf("internal"))
+				mockDatastore.EXPECT().WriteAuthorizationModel(gomock.Any(), storeID, gomock.AssignableToTypeOf(&openfgav1.AuthorizationModel{}), gomock.Any()).
+					Return("", fmt.Errorf("internal"))
 			},
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
