@@ -8,6 +8,9 @@ import (
 )
 
 func Drain(ch <-chan *Msg) *sync.WaitGroup {
+	if ch == nil {
+		return nil
+	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {

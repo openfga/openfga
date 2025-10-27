@@ -101,6 +101,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer rightIter.Stop()
+	defer iterator.Drain(leftChan)
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
 	rightSet := hashset.New()

@@ -64,11 +64,7 @@ func (s *Stream) Stop() {
 	if s.buffer != nil {
 		s.buffer.Stop()
 	}
-	for msg := range s.source {
-		if msg.Iter != nil {
-			msg.Iter.Stop()
-		}
-	}
+	Drain(s.source)
 }
 
 // SkipToTargetObject moves the buffer until the buffer's head object is >= target object.
