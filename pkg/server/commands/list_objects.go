@@ -26,6 +26,7 @@ import (
 	"github.com/openfga/openfga/internal/throttler/threshold"
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/featureflags"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverconfig "github.com/openfga/openfga/pkg/server/config"
@@ -54,6 +55,7 @@ var (
 
 type ListObjectsQuery struct {
 	datastore               storage.RelationshipTupleReader
+	ff                      featureflags.Client
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -170,9 +172,14 @@ func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) Li
 	}
 }
 
-func WithListObjectsOptimizationsEnabled(enabled bool) ListObjectsQueryOption {
+func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.optimizationsEnabled = enabled
+		if client != nil {
+			d.ff = client
+			return
+		}
+
+		d.ff = featureflags.NewNoopFeatureFlagClient()
 	}
 }
 
@@ -220,12 +227,17 @@ func NewListObjectsQuery(
 		sharedDatastoreResources: &shared.SharedDatastoreResources{
 			CacheController: cachecontroller.NewNoopCacheController(),
 		},
-		optimizationsEnabled: serverconfig.DefaultListObjectsOptimizationsEnabled,
+		optimizationsEnabled: false,
 		useShadowCache:       false,
+		ff:                   featureflags.NewNoopFeatureFlagClient(),
 	}
 
 	for _, opt := range opts {
 		opt(query)
+	}
+
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
+		query.optimizationsEnabled = true
 	}
 
 	return query, nil
@@ -499,6 +511,16 @@ func (q *ListObjectsQuery) Execute(
 		return nil, serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		if q.cacheSettings.ShouldCacheListObjectsIterators() {
+			// Kick off background job to check if cache records are stale, invalidating where needed
+			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
+			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
+		}
+	}
+
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
@@ -524,6 +546,7 @@ func (q *ListObjectsQuery) Execute(
 			TypeSystem: typesys,
 			Context:    req.GetContext(),
 			Graph:      wgraph,
+			Preference: req.GetConsistency(),
 		}
 
 		pipeline := reverseexpand.NewPipeline(backend)
@@ -582,16 +605,6 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	var listObjectsResponse ListObjectsResponse
-
-	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
-		if q.cacheSettings.ShouldCacheListObjectsIterators() {
-			// Kick off background job to check if cache records are stale, invalidating where needed
-			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
-			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-	}
 
 	err = q.evaluate(timeoutCtx, req, resultsChan, maxResults, &listObjectsResponse.ResolutionMetadata)
 	if err != nil {
@@ -701,6 +714,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			TypeSystem: typesys,
 			Context:    req.GetContext(),
 			Graph:      wgraph,
+			Preference: req.GetConsistency(),
 		}
 
 		pipeline := reverseexpand.NewPipeline(backend)

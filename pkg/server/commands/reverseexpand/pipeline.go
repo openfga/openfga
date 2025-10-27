@@ -123,6 +123,7 @@ type Backend struct {
 	TypeSystem *typesystem.TypeSystem
 	Context    *structpb.Struct
 	Graph      *Graph
+	Preference openfgav1.ConsistencyPreference
 }
 
 // handleDirectEdge is a function that interprets input on a direct edge and provides output from
@@ -262,7 +263,11 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 			Relation:   input.objectRelation,
 			UserFilter: input.userFilter,
 		},
-		storage.ReadStartingWithUserOptions{},
+		storage.ReadStartingWithUserOptions{
+			Consistency: storage.ConsistencyOptions{
+				Preference: b.Preference,
+			},
+		},
 	)
 
 	if err != nil {
