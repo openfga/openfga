@@ -104,14 +104,14 @@ func (b *BoundedTupleReader) ReadUserTuple(
 }
 
 // Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled.
-func (b *BoundedTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, options storage.ReadOptions) (storage.TupleIterator, error) {
+func (b *BoundedTupleReader) Read(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 	err := b.bound(ctx, storagewrappersutil.OperationRead)
 	if err != nil {
 		return nil, err
 	}
 
 	defer b.done()
-	return b.RelationshipTupleReader.Read(ctx, store, tupleKey, options)
+	return b.RelationshipTupleReader.Read(ctx, store, filter, options)
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
