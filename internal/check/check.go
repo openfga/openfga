@@ -184,6 +184,10 @@ func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.K
 
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
 		Relation: req.GetTupleKey().GetRelation(),
@@ -191,19 +195,15 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 			Type:               objectType,
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
 		}},
+		Conditions: conditionEdge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
 		return nil, err
 	}
 	defer iter.Stop()
 
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
-
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)
@@ -236,10 +236,21 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
 	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
 	iter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
-		tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType+":"), // TODO: Read doesn't support passing subjectType with objectID and relation
+		storage.ReadFilter{
+			Object:     req.GetTupleKey().GetObject(),
+			Relation:   tuplesetRelation,
+			User:       subjectType + ":",
+			Conditions: conditionEdge.GetConditions(),
+		},
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
 	)
 	if err != nil {
@@ -247,13 +258,9 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 
 	defer iter.Stop()
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
 
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)
@@ -536,6 +543,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		Object:                      req.GetTupleKey().GetObject(),
 		Relation:                    relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
+		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
@@ -587,6 +595,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 			Type:               userObjectType,
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
 		}},
+		Conditions: edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
@@ -598,8 +607,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	defer iter.Stop()
 
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	// TODO this is only correct when we filter the data that has conditions in the datastore, otherwise we might end up with incorrect results
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
 		)
@@ -653,10 +661,20 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	)
 	defer span.End()
 
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
 	iter, err := r.datastore.Read(
 		ctx,
 		req.GetStoreID(),
-		tuple.NewTupleKey(req.GetTupleKey().GetObject(), tuplesetRelation, subjectType+":"), // TODO: Read doesn't support passing subjectType with objectID and relation
+		storage.ReadFilter{
+			Object:     req.GetTupleKey().GetObject(),
+			Relation:   tuplesetRelation,
+			User:       subjectType + ":",
+			Conditions: conditionEdge.GetConditions(),
+		},
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
 	)
 	if err != nil {
@@ -664,13 +682,9 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	defer iter.Stop()
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
 
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)

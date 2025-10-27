@@ -212,6 +212,14 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 	mu := &sync.Mutex{}
 	nextIdsFromObjectToVisit := hashset.New()
 
+	// TODO: this is wasteful to do on every iteration, optimize
+	conditionEdge, err := s.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
+	if err != nil {
+		concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
+		close(out)
+		return
+	}
+
 	for _, idIface := range idsFromObjectToVisit.Values() {
 		id := idIface.(string)
 		_, visited := visitedIds.LoadOrStore(id, struct{}{})
@@ -225,7 +233,13 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 		var iter storage.TupleIterator
 		var err error
 		if edge.GetTuplesetRelation() != "" {
-			iter, err = s.datastore.Read(ctx, req.GetStoreID(), tuple.NewTupleKey(id, edge.GetTuplesetRelation(), ""), storage.ReadOptions{Consistency: consistencyOpts})
+			subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+			iter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
+				Object:     id,
+				Relation:   edge.GetTuplesetRelation(),
+				User:       subjectType + ":",
+				Conditions: conditionEdge.GetConditions(),
+			}, storage.ReadOptions{Consistency: consistencyOpts})
 		} else {
 			objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 			iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
@@ -235,6 +249,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 					Type:               objectType,
 					RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
 				}},
+				Conditions: conditionEdge.GetConditions(),
 			}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 		}
 		if err != nil {
@@ -242,14 +257,8 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 			continue
 		}
 
-		conditionEdge, err := s.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-		if err != nil {
-			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
-			continue
-		}
-
 		i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-		if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != "" {
+		if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 			i = storage.NewConditionsFilteredTupleKeyIterator(i,
 				check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
 			)

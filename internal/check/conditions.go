@@ -13,17 +13,11 @@ import (
 )
 
 func evaluateCondition(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {
-	// TODO: language has to change NoCond to ""
 	if !slices.Contains(edge.GetConditions(), t.GetCondition().GetName()) {
 		return false, nil
 	}
 
-	if t.GetCondition().GetName() != "" {
-		// if the tuple has a condition condition, then the condition needs to be evaluated
-		return eval.EvaluateTupleCondition(ctx, t, model.conditions[t.GetCondition().GetName()], reqCtx)
-	}
-
-	return true, nil
+	return eval.EvaluateTupleCondition(ctx, t, model.conditions[t.GetCondition().GetName()], reqCtx)
 }
 
 func BuildTupleKeyConditionFilter(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, reqCtx *structpb.Struct) func(*openfgav1.TupleKey) (bool, error) {

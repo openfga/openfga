@@ -39,6 +39,7 @@ func TestWeight2SpecificType(t *testing.T) {
 			ObjectType: "document",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
@@ -91,6 +92,7 @@ func TestWeight2SpecificType(t *testing.T) {
 			ObjectType: "document",
 			Relation:   "member",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			WithResultsSortedAscending: true,
 			Consistency: storage.ConsistencyOptions{
@@ -138,7 +140,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]*iterator.Stream, 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
@@ -853,14 +855,14 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producers := make([]*iterator.Stream, 0)
 
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Stop().Times(1)
+		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
 		producers = append(producers, iterator.NewStream(0, producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
@@ -1256,7 +1258,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1269,10 +1271,8 @@ func TestWeight2Userset(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
-			UserFilter: []*openfgav1.ObjectRelation{
-				{Object: "user:1"},
-			},
-			ObjectIDs: nil,
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1283,10 +1283,8 @@ func TestWeight2Userset(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 			ObjectType: "group",
 			Relation:   "public",
-			UserFilter: []*openfgav1.ObjectRelation{
-				{Object: tuple.TypedPublicWildcard("user")},
-			},
-			ObjectIDs: nil,
+			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1347,7 +1345,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1361,7 +1359,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1373,7 +1371,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1432,7 +1430,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1444,7 +1442,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1456,7 +1454,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1517,7 +1515,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1529,7 +1527,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1541,7 +1539,7 @@ func TestWeight2Userset(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1610,7 +1608,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1624,7 +1622,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1636,7 +1634,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1697,7 +1695,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1709,7 +1707,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1721,7 +1719,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1784,7 +1782,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1798,7 +1796,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1810,7 +1808,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1871,7 +1869,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "members",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1883,7 +1881,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
@@ -1895,7 +1893,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 			ObjectType: "group",
 			Relation:   "public",
 			UserFilter: []*openfgav1.ObjectRelation{{Object: tuple.TypedPublicWildcard("user")}},
-			ObjectIDs:  nil,
+			Conditions: []string{""},
 		}, storage.ReadStartingWithUserOptions{
 			Consistency: storage.ConsistencyOptions{
 				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,

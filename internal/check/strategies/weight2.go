@@ -263,13 +263,14 @@ func (s *Weight2) specificType(ctx context.Context, req *check.Request, edge *au
 			UserFilter: []*openfgav1.ObjectRelation{{
 				Object: req.GetTupleKey().GetUser(),
 			}},
+			Conditions: edge.GetConditions(),
 		}, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
 		)
@@ -298,13 +299,14 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 			UserFilter: []*openfgav1.ObjectRelation{{
 				Object: tuple.TypedPublicWildcard(req.GetUserType()),
 			}},
+			Conditions: edge.GetConditions(),
 		}, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != "" {
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
 		)
