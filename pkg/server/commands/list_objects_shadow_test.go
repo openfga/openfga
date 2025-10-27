@@ -34,11 +34,14 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		result, err := newShadowedListObjectsQuery("store_id_123",
+		result, err := newShadowedListObjectsQuery(
 			&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
 				WithShadowListObjectsQueryMaxDeltaItems(99),
 				WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-			), WithResolveNodeLimit(15))
+			),
+			fakeStoreID,
+			WithResolveNodeLimit(15),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
@@ -55,15 +58,23 @@ func TestNewShadowedListObjectsQuery(t *testing.T) {
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery("store_id_123",
-			nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery(
+			nil,
+			&mockCheckResolver{},
+			NewShadowListObjectsQueryConfig(),
+			fakeStoreID,
+		)
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
 
 	t.Run("check_resolver_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery("store_id_123",
-			&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery(
+			&mockTupleReader{},
+			nil,
+			NewShadowListObjectsQueryConfig(),
+			fakeStoreID,
+		)
 		require.Error(t, err)
 		require.Nil(t, result)
 	})

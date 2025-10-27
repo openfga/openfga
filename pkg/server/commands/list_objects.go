@@ -201,9 +201,9 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 }
 
 func NewListObjectsQuery(
-	storeID string,
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	storeID string,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {

@@ -33,25 +33,27 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const fakeStoreID = "store_id_123"
+
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
-		q, err := NewListObjectsQuery("store_id_123", nil, checkResolver)
+		q, err := NewListObjectsQuery(nil, checkResolver, fakeStoreID)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery("store_id_123", memory.New(), nil)
+		q, err := NewListObjectsQuery(memory.New(), nil, fakeStoreID)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery("store_id_123", memory.New(), checkResolver)
+		q, err := NewListObjectsQuery(memory.New(), checkResolver, fakeStoreID)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
@@ -65,11 +67,14 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig("store_id_123", memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
-		WithShadowListObjectsQueryEnabled(true),
-		WithShadowListObjectsQueryTimeout(13*time.Second),
-		WithShadowListObjectsQueryLogger(testLogger),
-	))
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+		NewShadowListObjectsQueryConfig(
+			WithShadowListObjectsQueryEnabled(true),
+			WithShadowListObjectsQueryTimeout(13*time.Second),
+			WithShadowListObjectsQueryLogger(testLogger),
+		),
+		fakeStoreID,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, q)
 	sq, isShadowed := q.(*shadowedListObjectsQuery)
@@ -79,9 +84,10 @@ func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig("store_id_123", memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
-		WithShadowListObjectsQueryEnabled(false),
-	))
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+		NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(false)),
+		fakeStoreID,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, q)
 	_, isStandard := q.(*ListObjectsQuery)
@@ -290,9 +296,9 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
-				"store_id_123",
 				ds,
 				checker,
+				fakeStoreID,
 				WithDispatchThrottlerConfig(threshold.Config{
 					Throttler:    mockThrottler,
 					Enabled:      true,
@@ -383,9 +389,9 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	t.Cleanup(checkResolverCloser)
 
 	q, _ := NewListObjectsQuery(
-		"store_id_123",
 		ds,
 		checkResolver,
+		fakeStoreID,
 	)
 
 	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
@@ -476,7 +482,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	q, _ := NewListObjectsQuery("store_id_123", ds, mockCheckResolver)
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, fakeStoreID)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -552,9 +558,9 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 		require.NoError(t, err)
 
 		q, _ := NewListObjectsQuery(
-			"store_id_123",
 			ds,
 			mockCheckResolver,
+			fakeStoreID,
 			WithListObjectsCache(sharedResources, cacheSettings),
 		)
 
@@ -757,9 +763,9 @@ func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
 			t.Cleanup(checkResolverCloser)
 
 			q, _ := NewListObjectsQuery(
-				"store_id_123",
 				ds,
 				checker,
+				fakeStoreID,
 				WithListObjectsPipelineEnabled(true),
 			)
 
@@ -817,9 +823,9 @@ func TestListObjectsSeqError(t *testing.T) {
 
 	t.Run("execute_seq_error", func(t *testing.T) {
 		query, err := NewListObjectsQuery(
-			"store_id_123",
 			mockDatastore,
 			checkResolver,
+			fakeStoreID,
 			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
@@ -836,9 +842,9 @@ func TestListObjectsSeqError(t *testing.T) {
 
 	t.Run("execute_streamed_seq_error", func(t *testing.T) {
 		query, err := NewListObjectsQuery(
-			"store_id_123",
 			mockDatastore,
 			checkResolver,
+			fakeStoreID,
 			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
@@ -954,9 +960,9 @@ func BenchmarkListObjects(b *testing.B) {
 	b.Cleanup(checkResolverCloser)
 
 	query, err := NewListObjectsQuery(
-		"store_id_123",
 		datastore,
 		checkResolver,
+		fakeStoreID,
 		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 
 		// unlimited results, these tests are designed to return `n` results per iteration
