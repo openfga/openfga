@@ -998,16 +998,7 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 		p.resolve(edge.GetTo(), target, track, stat)
 
-		numProcs := p.pipe.numProcs
-
-		if !isRecursive {
-			switch edge.GetEdgeType() {
-			case edgeTypeDirect, edgeTypeRewrite, edgeTypeComputed, edgeTypeDirectLogical:
-				numProcs = 1
-			}
-		}
-
-		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, numProcs)
+		w.listen(edge, p.workers[edge.GetTo()].subscribe(source), p.pipe.chunkSize, p.pipe.numProcs)
 	}
 }
 
