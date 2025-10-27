@@ -102,6 +102,10 @@ const (
 
 	DefaultPlannerEvictionThreshold = 0
 	DefaultPlannerCleanupInterval   = 0
+
+	ExperimentalCheckOptimizations       = "enable-check-optimizations"
+	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
+	ExperimentalAccessControlParams      = "enable-access-control"
 )
 
 type DatastoreMetricsConfig struct {
