@@ -102,12 +102,6 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	defer cancel()
 	defer rightIter.Stop()
 	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
-	rightOpen := true
-	leftOpen := true
-
-	res := &check.Response{
-		Allowed: false,
-	}
 
 	rightSet := hashset.New()
 	leftSet := hashset.New()
@@ -117,9 +111,10 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 		return nil, ctx.Err()
 	case r, ok := <-rightChan:
 		if !ok {
-			return res, ctx.Err()
+			return &check.Response{Allowed: false}, nil
 		}
 		if r.Err != nil {
+			// TODO: here we dont swallow but we do below?
 			return nil, r.Err
 		}
 		rightSet.Add(r.Value)
@@ -127,26 +122,21 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 
 	var lastErr error
 
-ConsumerLoop:
-	for leftOpen || rightOpen {
+	for leftChan != nil || rightChan != nil {
 		select {
 		case <-ctx.Done():
-			lastErr = ctx.Err()
-			break ConsumerLoop
+			return nil, ctx.Err()
 		case msg, ok := <-leftChan:
 			if !ok {
-				leftOpen = false
+				leftChan = nil
 				if leftSet.Size() == 0 {
-					if ctx.Err() != nil {
-						lastErr = ctx.Err()
-					}
-					break ConsumerLoop
+					return &check.Response{Allowed: false}, nil
 				}
-				break
+				continue
 			}
 			if msg.Err != nil {
-				lastErr = msg.Err
-				break ConsumerLoop
+				// TODO: should this swallow?
+				return nil, msg.Err
 			}
 			for {
 				t, err := msg.Iter.Next(ctx)
@@ -160,28 +150,24 @@ ConsumerLoop:
 				}
 				if processMessage(t, leftSet, rightSet) {
 					msg.Iter.Stop()
-					res.Allowed = true
-					lastErr = nil
-					break ConsumerLoop
+					return &check.Response{Allowed: true}, nil
 				}
 			}
 		case msg, ok := <-rightChan:
 			if !ok {
-				rightOpen = false
-				break
+				rightChan = nil
+				continue
 			}
 			if msg.Err != nil {
 				lastErr = msg.Err
 				continue
 			}
 			if processMessage(msg.Value, rightSet, leftSet) {
-				res.Allowed = true
-				lastErr = nil
-				break ConsumerLoop
+				return &check.Response{Allowed: true}, nil
 			}
 		}
 	}
-	return res, lastErr
+	return &check.Response{Allowed: false}, lastErr
 }
 
 // setOperationSetup returns a channel with a number of elements that is >= the number of children.

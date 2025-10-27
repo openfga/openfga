@@ -118,18 +118,15 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 	defer stream.Stop()
 	leftChan := iterator.ToChannel[string](ctx, stream, s.concurrencyLimit)
 
-	leftDone := false
-	rightDone := false
-
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
-	for !leftDone || !rightDone {
+	for leftChan != nil || rightChan != nil {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg, ok := <-leftChan:
 			if !ok {
-				leftDone = true
+				leftChan = nil
 				if idsFromUser.Size() == 0 {
 					return &check.Response{Allowed: false}, nil
 				}
@@ -144,7 +141,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 		case msg, ok := <-rightChan:
 			if !ok {
 				// idsFromObject must not be empty because we would have caught it earlier.
-				rightDone = true
+				rightChan = nil
 				break
 			}
 			if msg.Err != nil {
