@@ -522,8 +522,6 @@ func (q *ListObjectsQuery) Execute(
 		if q.cacheSettings.ShouldCacheListObjectsIterators() {
 			// Kick off background job to check if cache records are stale, invalidating where needed
 			q.sharedDatastoreResources.CacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
-		}
-		if q.cacheSettings.ShouldShadowCacheListObjectsIterators() {
 			q.sharedDatastoreResources.ShadowCacheController.InvalidateIfNeeded(ctx, req.GetStoreId())
 		}
 	}
