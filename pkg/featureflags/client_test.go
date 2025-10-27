@@ -33,7 +33,7 @@ func TestBoolean(t *testing.T) {
 		require.False(t, result)
 	})
 
-	// The `featureCtx` is not used by this implementation, so we test that it doesn't affect the result.
+	// The `storeID` is not used by this implementation, so we test that it doesn't affect the result.
 	t.Run("with store id present", func(t *testing.T) {
 		result := client.Boolean("enabled-flag", "store_id_123")
 		require.True(t, result)
