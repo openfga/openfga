@@ -81,6 +81,8 @@ func New(cfg Config) *Resolver {
 		strategies:         cfg.Strategies,
 	}
 
+	r.delegate = r
+
 	return r
 }
 

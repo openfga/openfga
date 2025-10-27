@@ -2,9 +2,11 @@ package strategies
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -57,7 +59,7 @@ func TestDefaultUserset(t *testing.T) {
 		expectedError error
 	}{
 		{
-			name: "shortcut",
+			name: "found",
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:1", "member", "user:1#member"),
 				tuple.NewTupleKey("group:1", "member", "user:2#member"),
@@ -67,31 +69,142 @@ func TestDefaultUserset(t *testing.T) {
 			},
 			expectedError: nil,
 			setupMock: func(mockResolver *graph.MockCheckResolver) {
-				mockResolver.EXPECT().
-					ResolveCheck(gomock.Any(), gomock.Any()).
-					Return(&check.Response{Allowed: true}, nil).
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: true}, nil)
+
+			},
+		},
+		{
+			name: "not_found",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:1#member"),
+				tuple.NewTupleKey("group:1", "member", "user:2#member"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(2)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+			},
+		},
+		{
+			name:   "no_tuples",
+			tuples: []*openfgav1.TupleKey{},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				// No calls expected
+			},
+		},
+		{
+			name: "error_during_resolution_but_eventually_succeeds",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:1#member"),
+				tuple.NewTupleKey("group:1", "member", "user:2#member"),
+				tuple.NewTupleKey("group:1", "member", "user:3#member"),
+			},
+			expected: &check.Response{
+				Allowed: true,
+			},
+			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).AnyTimes()
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, req *check.Request) (*check.Response, error) {
+						tk := req.GetTupleKey()
+						// First tuple returns error
+						if tk.GetObject() == "user:1" {
+							return nil, fmt.Errorf("temporary error")
+						}
+						// Second tuple succeeds
+						if tk.GetObject() == "user:2" {
+							return &check.Response{Allowed: true}, nil
+						}
+						// Third tuple not reached due to shortcircuit
+						return &check.Response{Allowed: false}, nil
+					}).AnyTimes()
+			},
+		},
+		{
+			name: "all_tuples_error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:1#member"),
+				tuple.NewTupleKey("group:1", "member", "user:2#member"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: fmt.Errorf("temporary error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(2)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("temporary error")).
 					Times(2)
 			},
 		},
-		/*
-			{
-				name: "error",
-				tuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKeyWithCondition("group:1", "member", "user:*", "badCondition", nil),
-				},
-				expected:      nil,
-				expectedError: fmt.Errorf("condition not found"),
+		{
+			name: "mixed_errors_and_false_results",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:1#member"),
+				tuple.NewTupleKey("group:1", "member", "user:2#member"),
+				tuple.NewTupleKey("group:1", "member", "user:3#member"),
 			},
-			{
-				name:   "notFound",
-				tuples: []*openfgav1.TupleKey{},
-				expected: &ResolveCheckResponse{
-					Allowed: false,
-				},
-				expectedError: nil,
+			expected: &check.Response{
+				Allowed: false,
 			},
-
-		*/
+			expectedError: fmt.Errorf("resolver error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(3)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:1"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:2"
+				})).Return(nil, fmt.Errorf("resolver error"))
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:3"
+				})).Return(&check.Response{Allowed: false}, nil)
+			},
+		},
+		{
+			name: "single_tuple_error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:1", "member", "user:1#member"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: fmt.Errorf("database error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(1)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "user:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(nil, fmt.Errorf("database error"))
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -125,125 +238,225 @@ func TestDefaultUserset(t *testing.T) {
 	}
 }
 
-/*
 func TestDefaultTTU(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
 
-	filter := func(tupleKey *openfgav1.TupleKey) (bool, error) {
-		if tupleKey.GetCondition().GetName() == "condition1" {
-			return true, nil
-		}
-		return false, fmt.Errorf("condition not found")
-	}
+	storeID := ulid.Make().String()
 
-	// model does not matter for this unit test.  All we care about is schema 1.1+ and computedRelation is defined for type
-	model := parser.MustTransformDSLToProto(`
-				model
-					schema 1.1
+	model := testutils.MustTransformDSLToProtoWithID(`
+		  model
+		   schema 1.1
+		
+		  type user
+		  type group
+		   relations
+			define member: [user]
+		  type document
+		   relations
+			define viewer: member from owner
+			define owner: [group]
+	`)
 
-				type user
-				type group
-					relations
-						define member: [user with condX]
-				type team
-					relations
-						define teammate: [user with condX]
-				type document
-					relations
-						define viewer: member from owner
-						define owner: [group, team]
-
-				condition condX(x: int) {
-					x < 100
-				}`)
-
-	ts, err := typesystem.New(model)
+	mg, err := check.NewAuthorizationModelGraph(model)
 	require.NoError(t, err)
-	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
+
+	edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+	require.True(t, ok)
+
+	// Find the TTU edge
+	var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
+	for _, edge := range edges {
+		if edge.GetEdgeType() == authzGraph.TTUEdge {
+			ttuEdge = edge
+			break
+		}
+	}
+	require.NotNil(t, ttuEdge)
 
 	tests := []struct {
-		name             string
-		rewrite          *openfgav1.Userset
-		tuples           []*openfgav1.TupleKey
-		dispatchResponse *ResolveCheckResponse
-		expected         *ResolveCheckResponse
-		expectedError    error
+		name          string
+		tuples        []*openfgav1.TupleKey
+		setupMock     func(*graph.MockCheckResolver)
+		expected      *check.Response
+		expectedError error
 	}{
 		{
-			name:    "no_tuple",
-			rewrite: typesystem.TupleToUserset("owner", "member"),
-			tuples:  []*openfgav1.TupleKey{},
-			expected: &ResolveCheckResponse{
-				Allowed: false,
-			},
-			expectedError: nil,
-		},
-		{
-			name:    "error",
-			rewrite: typesystem.TupleToUserset("owner", "member"),
+			name: "found",
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "badCondition", nil),
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "group:2"),
 			},
-			expected:      nil,
-			expectedError: fmt.Errorf("condition not found"),
-		},
-		{
-			name:    "dispatcher_found",
-			rewrite: typesystem.TupleToUserset("owner", "member"),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
-			},
-			dispatchResponse: &ResolveCheckResponse{
-				Allowed: true,
-			},
-			expected: &ResolveCheckResponse{
+			expected: &check.Response{
 				Allowed: true,
 			},
 			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: true}, nil)
+			},
 		},
 		{
-			name:    "dispatcher_not_found",
-			rewrite: typesystem.TupleToUserset("owner", "member"),
+			name: "not_found",
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKeyWithCondition("document:doc1", "owner", "group:1", "condition1", nil),
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "group:2"),
 			},
-			dispatchResponse: &ResolveCheckResponse{
-				Allowed: false,
-			},
-			expected: &ResolveCheckResponse{
+			expected: &check.Response{
 				Allowed: false,
 			},
 			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(2)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(&check.Response{Allowed: false}, nil)
+			},
+		},
+		{
+			name:   "no_tuples",
+			tuples: []*openfgav1.TupleKey{},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				// No calls expected
+			},
+		},
+		{
+			name: "error_during_resolution_but_eventually_succeeds",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "team:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "group:2"),
+			},
+			expected: &check.Response{
+				Allowed: true,
+			},
+			expectedError: nil,
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).AnyTimes()
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+					DoAndReturn(func(ctx context.Context, req *check.Request) (*check.Response, error) {
+						tk := req.GetTupleKey()
+						// First tuple returns error
+						if tk.GetObject() == "group:1" {
+							return nil, fmt.Errorf("temporary error")
+						}
+						// Second tuple succeeds
+						if tk.GetObject() == "team:1" {
+							return &check.Response{Allowed: true}, nil
+						}
+						// Third tuple not reached due to shortcircuit
+						return &check.Response{Allowed: false}, nil
+					}).AnyTimes()
+			},
+		},
+		{
+			name: "all_tuples_error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "group:2"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: fmt.Errorf("temporary error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(2)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).
+					Return(nil, fmt.Errorf("temporary error")).
+					Times(2)
+			},
+		},
+		{
+			name: "mixed_errors_and_false_results",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "team:1"),
+				tuple.NewTupleKey("document:doc1", "owner", "group:2"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: fmt.Errorf("resolver error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(3)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:1"
+				})).Return(&check.Response{Allowed: false}, nil)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "team:1"
+				})).Return(nil, fmt.Errorf("resolver error"))
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:2"
+				})).Return(&check.Response{Allowed: false}, nil)
+			},
+		},
+		{
+			name: "single_tuple_error",
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:doc1", "owner", "group:1"),
+			},
+			expected: &check.Response{
+				Allowed: false,
+			},
+			expectedError: fmt.Errorf("database error"),
+			setupMock: func(mockResolver *graph.MockCheckResolver) {
+				mockResolver.EXPECT().GetDelegate().Return(mockResolver).Times(1)
+				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
+					tk := req.GetTupleKey()
+					return tk.GetObject() == "group:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
+				})).Return(nil, fmt.Errorf("database error"))
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			iter := storage.NewConditionsFilteredTupleKeyIterator(storage.NewStaticTupleKeyIterator(tt.tuples), filter)
-			checker := NewLocalChecker()
-			defer checker.Close()
-			mockResolver := NewMockCheckResolver(ctrl)
-			checker.SetDelegate(mockResolver)
 
-			if tt.dispatchResponse != nil {
-				mockResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).Return(tt.dispatchResponse, nil)
-			}
+			mockResolver := graph.NewMockCheckResolver(ctrl)
+			tt.setupMock(mockResolver)
 
-			req := &ResolveCheckRequest{
-				TupleKey:        tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata: NewCheckRequestMetadata(),
+			iter := storage.NewStaticTupleKeyIterator(tt.tuples)
+			strategy := NewDefault(mockResolver, 2)
+
+			req, err := check.NewRequest(check.RequestParams{
+				StoreID:              storeID,
+				AuthorizationModelID: mg.GetModelID(),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "user:maria"),
+			})
+			require.NoError(t, err)
+
+			resp, err := strategy.TTU(context.Background(), req, ttuEdge, iter)
+
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				require.Equal(t, tt.expectedError.Error(), err.Error())
+			} else {
+				require.NoError(t, err)
 			}
-			resp, err := checker.defaultTTU(ctx, req, tt.rewrite, iter)(ctx)
-			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected, resp)
 		})
 	}
 }
-
-
-*/

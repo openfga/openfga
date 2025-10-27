@@ -46,6 +46,7 @@ func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge 
 }
 
 func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -79,6 +80,7 @@ func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *aut
 }
 
 func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+	defer close(out)
 	_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	for {
 		t, err := iter.Next(ctx)
@@ -114,12 +116,10 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 
 	go func() {
 		handler(ctx, req, edge, iter, requestsChan)
-		close(requestsChan)
 	}()
 
 	go func() {
 		s.processRequests(ctx, requestsChan, responsesChan)
-		close(responsesChan)
 	}()
 
 	var err error
@@ -149,6 +149,7 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
 		_ = pool.Wait()
+		close(out)
 	}()
 
 	for {
