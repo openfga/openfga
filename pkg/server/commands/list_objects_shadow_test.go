@@ -34,35 +34,47 @@ type mockCheckResolver struct{ graph.CheckResolver }
 func TestNewShadowedListObjectsQuery(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		noopLogger := logger.NewNoopLogger()
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
-			WithShadowListObjectsQuerySamplePercentage(13),
-			WithShadowListObjectsQueryMaxDeltaItems(99),
-			WithShadowListObjectsQueryTimeout(66*time.Millisecond),
-		), WithResolveNodeLimit(15))
+		result, err := newShadowedListObjectsQuery(
+			&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(
+				WithShadowListObjectsQueryMaxDeltaItems(99),
+				WithShadowListObjectsQueryTimeout(66*time.Millisecond),
+			),
+			fakeStoreID,
+			WithResolveNodeLimit(15),
+		)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		query := result.(*shadowedListObjectsQuery)
 		assert.False(t, query.main.(*ListObjectsQuery).useShadowCache)
 		assert.False(t, query.main.(*ListObjectsQuery).pipelineEnabled)
 		assert.False(t, query.shadow.(*ListObjectsQuery).optimizationsEnabled)
-		assert.False(t, query.shadow.(*ListObjectsQuery).useShadowCache)
+		assert.True(t, query.shadow.(*ListObjectsQuery).useShadowCache)
 		assert.True(t, query.shadow.(*ListObjectsQuery).pipelineEnabled)
 		assert.Equal(t, uint32(15), query.shadow.(*ListObjectsQuery).resolveNodeLimit)
 		assert.Equal(t, uint32(15), query.main.(*ListObjectsQuery).resolveNodeLimit)
 		assert.Equal(t, noopLogger, query.logger)
-		assert.Equal(t, 13, query.shadowPct)
 		assert.Equal(t, 99, query.maxDeltaItems)
 		assert.Equal(t, 66*time.Millisecond, query.shadowTimeout)
 	})
 
 	t.Run("ds_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(nil, &mockCheckResolver{}, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery(
+			nil,
+			&mockCheckResolver{},
+			NewShadowListObjectsQueryConfig(),
+			fakeStoreID,
+		)
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
 
 	t.Run("check_resolver_error", func(t *testing.T) {
-		result, err := newShadowedListObjectsQuery(&mockTupleReader{}, nil, NewShadowListObjectsQueryConfig())
+		result, err := newShadowedListObjectsQuery(
+			&mockTupleReader{},
+			nil,
+			NewShadowListObjectsQueryConfig(),
+			fakeStoreID,
+		)
 		require.Error(t, err)
 		require.Nil(t, result)
 	})
@@ -148,7 +160,6 @@ func TestShadowedListObjectsQuery_Execute(t *testing.T) {
 					},
 				},
 				logger:        logger.NewNoopLogger(),
-				shadowPct:     tt.percentage,
 				shadowTimeout: 1 * time.Second, // set a long timeout for testing
 				wg:            &sync.WaitGroup{},
 			}
@@ -240,11 +251,10 @@ func TestShadowedListObjectsQuery_Panics(t *testing.T) {
 			ctx = typesystem.ContextWithTypesystem(ctx, ts)
 			mockCtl := gomock.NewController(t)
 			q := &shadowedListObjectsQuery{
-				main:      &mockListObjectsQuery{executeFunc: tt.mainFunc},
-				shadow:    &mockListObjectsQuery{executeFunc: tt.shadowFunc},
-				logger:    tt.loggerFn(t, mockCtl),
-				shadowPct: tt.percentage,
-				wg:        &sync.WaitGroup{},
+				main:   &mockListObjectsQuery{executeFunc: tt.mainFunc},
+				shadow: &mockListObjectsQuery{executeFunc: tt.shadowFunc},
+				logger: tt.loggerFn(t, mockCtl),
+				wg:     &sync.WaitGroup{},
 			}
 			defer func() {
 				if r := recover(); r != nil {
@@ -316,9 +326,7 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 						return tt.shadowResult, tt.shadowErr
 					},
 				},
-				logger:    logger.NewNoopLogger(),
-				shadowPct: 100, // Always run in shadow mode for testing
-
+				logger: logger.NewNoopLogger(),
 			}
 			result, err := q.ExecuteStreamed(ctx, req, nil)
 			if tt.expectErr {
@@ -331,20 +339,8 @@ func TestShadowedListObjectsQuery_ExecuteStreamed(t *testing.T) {
 	}
 }
 
-func TestShadowedListObjectsQuery_isShadowModeEnabled(t *testing.T) {
-	q, _ := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(100)))
-	sq, ok := q.(*shadowedListObjectsQuery)
-	require.True(t, ok)
-	assert.True(t, sq.checkShadowModeSampleRate())
-
-	q, _ = newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(true), WithShadowListObjectsQuerySamplePercentage(0)))
-	sq, ok = q.(*shadowedListObjectsQuery)
-	require.True(t, ok)
-	assert.False(t, sq.checkShadowModeSampleRate())
-}
-
 func TestShadowedListObjectsQuery_nilConfig(t *testing.T) {
-	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, nil)
+	_, err := newShadowedListObjectsQuery(&mockTupleReader{}, &mockCheckResolver{}, nil, fakeStoreID)
 	require.Error(t, err)
 }
 
@@ -669,7 +665,6 @@ func Test_shadowedListObjectsQuery_executeShadowModeAndCompareResults(t *testing
 			q := &shadowedListObjectsQuery{
 				main:          tt.fields.main,
 				shadow:        tt.fields.shadow,
-				shadowPct:     tt.fields.shadowPct,
 				shadowTimeout: tt.fields.shadowTimeout,
 				maxDeltaItems: tt.fields.maxDeltaItems,
 				logger:        tt.fields.loggerFn(t, mockCtrl),
@@ -693,18 +688,6 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 		loggerFn       func(t *testing.T, ctrl *gomock.Controller) logger.Logger
 		wg             *sync.WaitGroup
 	}{
-		{
-			name: "sample rate not met",
-			args: args{
-				pct:        0,
-				maxResults: 10,
-				deadline:   1 * time.Second,
-			},
-			expectedReturn: false,
-			loggerFn: func(t *testing.T, ctrl *gomock.Controller) logger.Logger {
-				return mocks.NewMockLogger(ctrl)
-			},
-		},
 		{
 			name: "weighted graph does not exist",
 			args: args{
@@ -782,9 +765,8 @@ func TestShadowedListObjectsQuery_checkShadowModePreconditions(t *testing.T) {
 				listObjectsDeadline:   tt.args.deadline,
 			}
 			q := &shadowedListObjectsQuery{
-				main:      mainQuery,
-				shadowPct: tt.args.pct,
-				logger:    mockLogger,
+				main:   mainQuery,
+				logger: mockLogger,
 			}
 
 			ret := q.checkShadowModePreconditions(ctx, &openfgav1.ListObjectsRequest{})
