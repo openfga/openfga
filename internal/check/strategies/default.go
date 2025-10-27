@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
@@ -24,11 +25,11 @@ type requestMsg struct {
 }
 
 type DefaultStrategy struct {
-	resolver         *check.Resolver
+	resolver         graph.CheckResolver
 	concurrencyLimit int
 }
 
-func NewDefault(resolver *check.Resolver, limit int) *DefaultStrategy {
+func NewDefault(resolver graph.CheckResolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
 		concurrencyLimit: limit,
 		resolver:         resolver,
@@ -45,7 +46,6 @@ func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge 
 }
 
 func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
-	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
 		if err != nil {
@@ -168,7 +168,7 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 				var res *check.Response
 				var err error
 				recoveredErr := panics.Try(func() {
-					res, err = s.resolver.ResolveCheck(ctx, msg.req)
+					res, err = s.resolver.GetDelegate().ResolveCheck(ctx, msg.req)
 				})
 				if recoveredErr != nil {
 					err = fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredErr.AsError())

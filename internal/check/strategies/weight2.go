@@ -107,6 +107,8 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	rightSet := hashset.New()
 	leftSet := hashset.New()
 
+	var lastErr error
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -115,13 +117,11 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 			return &check.Response{Allowed: false}, nil
 		}
 		if r.Err != nil {
-			// TODO: here we dont swallow but we do below?
-			return nil, r.Err
+			lastErr = r.Err
+			break
 		}
 		rightSet.Add(r.Value)
 	}
-
-	var lastErr error
 
 	for leftChan != nil || rightChan != nil {
 		select {
@@ -136,8 +136,8 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 				continue
 			}
 			if msg.Err != nil {
-				// TODO: should this swallow?
-				return nil, msg.Err
+				lastErr = msg.Err
+				continue
 			}
 			for {
 				t, err := msg.Iter.Next(ctx)

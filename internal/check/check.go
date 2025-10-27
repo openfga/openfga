@@ -46,6 +46,8 @@ type Resolver struct {
 	upstreamTimeout    time.Duration
 	logger             logger.Logger
 
+	delegate graph.CheckResolver
+
 	depthCount atomic.Int32
 	strategies map[string]Strategy
 }
@@ -106,6 +108,16 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	}
 
 	return r.ResolveUnion(ctx, req, node)
+}
+
+func (r *Resolver) Close() {}
+
+func (r *Resolver) SetDelegate(delegate graph.CheckResolver) {
+	r.delegate = delegate
+}
+
+func (r *Resolver) GetDelegate() graph.CheckResolver {
+	return r.delegate
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
