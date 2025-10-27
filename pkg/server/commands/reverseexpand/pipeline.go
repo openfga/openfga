@@ -276,9 +276,9 @@ func (b *Backend) query(ctx context.Context, input queryInput) iter.Seq[Item] {
 		return seq.Sequence(Item{Err: err})
 	}
 
-	// if more than one element exists, at least one element is guranteed to be a condition.
+	// If more than one element exists, at least one element is guaranteed to be a condition.
 	// OR
-	// if only one element exists, and it is not `NoCond`, then it is guaranteed to be a condition.
+	// If only one element exists, and it is not `NoCond`, then it is guaranteed to be a condition.
 	hasConditions := len(input.conditions) > 1 || (len(input.conditions) > 0 && input.conditions[0] != weightedGraph.NoCond)
 
 	var itr storage.TupleKeyIterator
