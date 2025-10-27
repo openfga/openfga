@@ -496,7 +496,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	require.ErrorIs(t, err, internalErrors.ErrUnknown)
 }
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
-	t.Run("cache_is_invalidated_if_enabled", func(t *testing.T) {
+	t.Run("shadow_enabled_if_cache_is_enabled", func(t *testing.T) {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)

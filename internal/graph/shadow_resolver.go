@@ -10,6 +10,8 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 )
 
+const Hundred = 100
+
 type ShadowResolverOpt func(*ShadowResolver)
 
 func ShadowResolverWithName(name string) ShadowResolverOpt {
