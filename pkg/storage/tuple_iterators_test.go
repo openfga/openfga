@@ -1109,6 +1109,222 @@ func TestConditionsFilteredTupleKeyIterator(t *testing.T) {
 	})
 }
 
+func TestDeduplicatedTupleKeyIterator(t *testing.T) {
+	t.Run("next_removes_duplicates", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc4", "viewer", "user:alice"),
+		}
+		expected := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:bob"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+			actual = append(actual, tk)
+		}
+
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("next_no_duplicates", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:charlie"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+			actual = append(actual, tk)
+		}
+
+		require.Equal(t, tuples, actual)
+	})
+
+	t.Run("next_all_duplicates", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:alice"),
+		}
+		expected := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		var actual []*openfgav1.TupleKey
+		for {
+			tk, err := iter.Next(context.Background())
+			if err != nil {
+				if errors.Is(err, ErrIteratorDone) {
+					break
+				}
+				require.Fail(t, "no error was expected")
+			}
+			actual = append(actual, tk)
+		}
+
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("head_empty", func(t *testing.T) {
+		var tuples []*openfgav1.TupleKey
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		tk, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+		require.Nil(t, tk)
+	})
+
+	t.Run("head_not_empty", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		tk, err := iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tuples[0], tk)
+
+		// Consecutive Head calls should return same value
+		tk, err = iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tuples[0], tk)
+	})
+
+	t.Run("head_skips_duplicates", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:bob"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		// First head should return alice
+		tk, err := iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "user:alice", tk.GetUser())
+
+		// Move past alice
+		_, err = iter.Next(context.Background())
+		require.NoError(t, err)
+
+		// Next head should skip duplicate alice and return bob
+		tk, err = iter.Head(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, "user:bob", tk.GetUser())
+	})
+
+	t.Run("head_and_next_interleaved", func(t *testing.T) {
+		tuples := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:alice"),
+			tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
+			tuple.NewTupleKey("document:doc3", "viewer", "user:charlie"),
+		}
+
+		keyFunc := func(tk *openfgav1.TupleKey) string {
+			return tk.GetUser()
+		}
+
+		iter := NewDeduplicatedTupleKeyIterator(
+			NewStaticTupleKeyIterator(tuples),
+			keyFunc,
+		)
+		defer iter.Stop()
+
+		for i := 0; i < len(tuples); i++ {
+			headTk, err := iter.Head(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[i], headTk)
+
+			nextTk, err := iter.Next(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tuples[i], nextTk)
+			require.Equal(t, headTk, nextTk)
+		}
+
+		_, err := iter.Head(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+
+		_, err = iter.Next(context.Background())
+		require.ErrorIs(t, err, ErrIteratorDone)
+	})
+}
+
 func TestIterIsDoneOrCancelled(t *testing.T) {
 	tests := []struct {
 		err      error

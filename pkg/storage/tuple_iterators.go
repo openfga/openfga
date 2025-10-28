@@ -540,6 +540,89 @@ func (c *OrderedCombinedIterator) Stop() {
 	})
 }
 
+// DeduplicatedTupleKeyIterator is a thread-safe iterator that filters out duplicate tuples
+// based on a key derived from the tuple using the provided keyFunc.
+type DeduplicatedTupleKeyIterator struct {
+	iter    TupleKeyIterator
+	seen    map[string]struct{} // GUARDED_BY(mu)
+	keyFunc func(*openfgav1.TupleKey) string
+	mu      *sync.Mutex
+	once    *sync.Once
+}
+
+var _ TupleKeyIterator = (*DeduplicatedTupleKeyIterator)(nil)
+
+// Next returns the next unique tuple based on the keyFunc.
+// If a tuple with the same key has been seen before, it will be skipped.
+func (d *DeduplicatedTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for {
+		tk, err := d.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		key := d.keyFunc(tk)
+		if _, exists := d.seen[key]; !exists {
+			d.seen[key] = struct{}{}
+			return tk, nil
+		}
+		// Skip this tuple as it's already been seen
+	}
+}
+
+// Head returns the next unique tuple without advancing the iterator.
+// Head does not mark tuples as seen - only Next() does.
+// The underlying iterator may advance internally until a unique tuple is found.
+// Consecutive calls to Head() will return the same tuple until Next() is called.
+func (d *DeduplicatedTupleKeyIterator) Head(ctx context.Context) (*openfgav1.TupleKey, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for {
+		tk, err := d.iter.Head(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		key := d.keyFunc(tk)
+		if _, exists := d.seen[key]; !exists {
+			return tk, nil
+		}
+		// Skip this tuple by advancing the iterator since it was already seen
+		_, err = d.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+}
+
+// Stop see [Iterator.Stop].
+func (d *DeduplicatedTupleKeyIterator) Stop() {
+	d.once.Do(func() {
+		d.iter.Stop()
+	})
+}
+
+// NewDeduplicatedTupleKeyIterator returns a [TupleKeyIterator] that filters out duplicate
+// tuples based on a key derived from the keyFunc. The keyFunc determines what constitutes
+// a duplicate (e.g., by user, by object, etc.).
+// This iterator is thread-safe for concurrent calls to Next/Head.
+func NewDeduplicatedTupleKeyIterator(
+	iter TupleKeyIterator,
+	keyFunc func(*openfgav1.TupleKey) string,
+) TupleKeyIterator {
+	return &DeduplicatedTupleKeyIterator{
+		iter:    iter,
+		seen:    make(map[string]struct{}),
+		keyFunc: keyFunc,
+		mu:      &sync.Mutex{},
+		once:    &sync.Once{},
+	}
+}
+
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
 func IterIsDoneOrCancelled(err error) bool {
 	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
