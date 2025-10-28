@@ -292,19 +292,13 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listUsers-dispatch-throttling-max-threshold", defaultConfig.ListUsersDispatchThrottling.MaxThreshold, "define the maximum dispatch threshold beyond which a list users requests will be throttled. 0 will use the 'listUsers-dispatch-throttling-threshold' value as maximum")
 
-	flags.Bool("check-datastore-throttle-enabled", defaultConfig.CheckDatastoreThrottle.Enabled, "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
-
 	flags.Int("check-datastore-throttle-threshold", defaultConfig.CheckDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
 	flags.Duration("check-datastore-throttle-duration", defaultConfig.CheckDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
 
-	flags.Bool("listObjects-datastore-throttle-enabled", defaultConfig.ListObjectsDatastoreThrottle.Enabled, "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
-
 	flags.Int("listObjects-datastore-throttle-threshold", defaultConfig.ListObjectsDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
 	flags.Duration("listObjects-datastore-throttle-duration", defaultConfig.ListObjectsDatastoreThrottle.Duration, "defines the time for which the datastore request will be suspended for being throttled.")
-
-	flags.Bool("listUsers-datastore-throttle-enabled", defaultConfig.ListUsersDatastoreThrottle.Enabled, "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.")
 
 	flags.Int("listUsers-datastore-throttle-threshold", defaultConfig.ListUsersDatastoreThrottle.Threshold, "define the number of datastore requests allowed before being throttled.")
 
