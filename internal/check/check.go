@@ -240,7 +240,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+		return r.strategies[strategy.Type].Userset(ctx, req, edge, i, visited)
 	})
 }
 
@@ -300,7 +300,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].TTU(ctx, req, edge, i)
+		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
 	})
 }
 
@@ -467,9 +467,9 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 }
 
 func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
-	var newVisitedObjects map[string]struct{}
+	var visitedObjects map[string]struct{}
 	if edge.IsPartOfTupleCycle() || edge.GetRecursiveRelation() != "" {
-		newVisitedObjects = visited
+		visitedObjects = visited
 	}
 	// computed edges are solved by the relation node caller
 	switch edge.GetEdgeType() {
@@ -483,18 +483,18 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 			return r.specificTypeWildcard(ctx, req, edge)
 		case authzGraph.SpecificTypeAndRelation:
 			// check for recursiveRelation
-			return r.specificTypeAndRelation(ctx, req, edge, newVisitedObjects)
+			return r.specificTypeAndRelation(ctx, req, edge, visitedObjects)
 		default:
 			return nil, ErrPanicRequest
 		}
 	case authzGraph.DirectLogicalEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo(), newVisitedObjects)
+		return r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
 	case authzGraph.TTUEdge:
-		return r.ttu(ctx, req, edge, newVisitedObjects)
+		return r.ttu(ctx, req, edge, visitedObjects)
 	case authzGraph.TTULogicalEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo(), newVisitedObjects)
+		return r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
 	case authzGraph.RewriteEdge:
-		return r.ResolveRewrite(ctx, req, edge.GetTo(), newVisitedObjects)
+		return r.ResolveRewrite(ctx, req, edge.GetTo(), visitedObjects)
 	default:
 		return nil, ErrPanicRequest
 	}
@@ -640,7 +640,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 
 	// TODO: Need optimization to solve userset as principal
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i)
+		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
 	}
 
 	var b strings.Builder
@@ -668,7 +668,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].Userset(ctx, req, edge, i)
+		return r.strategies[strategy.Type].Userset(ctx, req, edge, i, visited)
 	})
 }
 
@@ -717,7 +717,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	// TODO: Need optimization to solve userset as principal
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i)
+		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i, visited)
 	}
 
 	possibleStrategies := map[string]*planner.KeyPlanStrategy{
@@ -748,6 +748,6 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].TTU(ctx, req, edge, i)
+		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
 	})
 }

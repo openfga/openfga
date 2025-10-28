@@ -11,8 +11,8 @@ import (
 )
 
 type Strategy interface {
-	Userset(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator) (*Response, error)
-	TTU(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator) (*Response, error)
+	Userset(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, map[string]struct{}) (*Response, error)
+	TTU(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, map[string]struct{}) (*Response, error)
 }
 
 const DefaultStrategyName = "default"

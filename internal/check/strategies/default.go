@@ -38,11 +38,11 @@ func NewDefault(resolver graph.CheckResolver, limit int) *DefaultStrategy {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited map[string]struct{}) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "default.Userset")
 	defer span.End()
 
-	return s.execute(ctx, req, edge, iter, s.userset)
+	return s.execute(ctx, req, edge, iter, s.userset, visited)
 }
 
 func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
@@ -72,11 +72,11 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 	}
 }
 
-func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited map[string]struct{}) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "default.TTU")
 	defer span.End()
 
-	return s.execute(ctx, req, edge, iter, s.ttu)
+	return s.execute(ctx, req, edge, iter, s.ttu, visited)
 }
 
 func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
@@ -107,7 +107,7 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 	}
 }
 
-func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler) (*check.Response, error) {
+func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited map[string]struct{}) (*check.Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -119,7 +119,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 	}()
 
 	go func() {
-		s.processRequests(ctx, requestsChan, responsesChan)
+		s.processRequests(ctx, visited, requestsChan, responsesChan)
 	}()
 
 	var err error
@@ -144,7 +144,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, out chan check.ResponseMsg) {
+func (s *DefaultStrategy) processRequests(ctx context.Context, visited map[string]struct{}, requests chan requestMsg, out chan check.ResponseMsg) {
 	var pool errgroup.Group
 	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
@@ -169,6 +169,7 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 				var res *check.Response
 				var err error
 				recoveredErr := panics.Try(func() {
+					// TODO do not call resolveCheck call REsolveUnion with the visited map
 					res, err = s.resolver.GetDelegate().ResolveCheck(ctx, msg.req)
 				})
 				if recoveredErr != nil {
