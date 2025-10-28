@@ -248,8 +248,6 @@ func NewListObjectsQuery(
 		query.optimizationsEnabled = true
 	}
 
-	query.pipelineEnabled = true
-
 	return query, nil
 }
 
@@ -532,12 +530,12 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	wgraph := typesys.GetWeightedGraph()
+	if q.pipelineMaxResults > 0 {
+		q.pipelineEnabled = true
+		maxResults = q.pipelineMaxResults
+	}
 
 	if wgraph != nil && q.pipelineEnabled {
-		if q.pipelineMaxResults > 0 {
-			maxResults = q.pipelineMaxResults
-		}
-
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
