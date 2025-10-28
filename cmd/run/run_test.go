@@ -792,18 +792,20 @@ func TestServerMetricsReporting(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
+	const nonPgxPrometheusMetrics = "go_sql_idle_connections"
+	const pgxPrometheusMetrics = "pgxpool_idle_conns"
 	t.Run("mysql", func(t *testing.T) {
-		testServerMetricsReporting(t, "mysql")
+		testServerMetricsReporting(t, "mysql", nonPgxPrometheusMetrics)
 	})
 	t.Run("postgres", func(t *testing.T) {
-		testServerMetricsReporting(t, "postgres")
+		testServerMetricsReporting(t, "postgres", pgxPrometheusMetrics)
 	})
 	t.Run("sqlite", func(t *testing.T) {
-		testServerMetricsReporting(t, "sqlite")
+		testServerMetricsReporting(t, "sqlite", nonPgxPrometheusMetrics)
 	})
 }
 
-func testServerMetricsReporting(t *testing.T, engine string) {
+func testServerMetricsReporting(t *testing.T, engine string, connectionMetricName string) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -945,11 +947,12 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 		"grpc_server_handling_seconds",
 		"openfga_list_objects_further_eval_required_count",
 		"openfga_list_objects_no_further_eval_required_count",
-		"go_sql_idle_connections",
 		"openfga_condition_evaluation_cost",
 		"openfga_condition_compilation_duration_ms",
 		"openfga_condition_evaluation_duration_ms",
 	}
+
+	expectedMetrics = append(expectedMetrics, connectionMetricName)
 
 	for _, metric := range expectedMetrics {
 		count, err := testutil.GatherAndCount(prometheus.DefaultGatherer, metric)
@@ -1021,9 +1024,17 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
 
+	val = res.Get("properties.datastore.properties.minIdleConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MinIdleConns)
+
 	val = res.Get("properties.datastore.properties.maxOpenConns.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxOpenConns)
+
+	val = res.Get("properties.datastore.properties.minOpenConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MinOpenConns)
 
 	val = res.Get("properties.datastore.properties.connMaxIdleTime.default")
 	require.True(t, val.Exists())
