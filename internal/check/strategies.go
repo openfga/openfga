@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
@@ -11,8 +12,8 @@ import (
 )
 
 type Strategy interface {
-	Userset(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, map[string]struct{}) (*Response, error)
-	TTU(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, map[string]struct{}) (*Response, error)
+	Userset(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
+	TTU(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, *sync.Map) (*Response, error)
 }
 
 const DefaultStrategyName = "default"

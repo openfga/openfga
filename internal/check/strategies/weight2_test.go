@@ -62,9 +62,7 @@ func TestWeight2SpecificType(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 
 		ctx := context.Background()
-		node, ok := mg.GetNodeByID("document#member")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		c, err := strategy.specificType(ctx, &check.Request{
 			StoreID:              storeID,
@@ -115,9 +113,7 @@ func TestWeight2SpecificType(t *testing.T) {
 		strategy := NewWeight2(mg, mockDatastore)
 
 		ctx := context.Background()
-		node, ok := mg.GetNodeByID("document#member")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		_, err = strategy.specificType(ctx, &check.Request{
 			StoreID:              storeID,
@@ -1312,9 +1308,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1398,9 +1392,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1484,9 +1476,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1569,9 +1559,7 @@ func TestWeight2Userset(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1663,9 +1651,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1750,9 +1736,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1837,9 +1821,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1924,9 +1906,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		node, ok := mg.GetNodeByID("group#all")
-		require.True(t, ok)
-		edges, ok := mg.GetEdgesFromNode(node)
+		edges, ok := mg.GetEdgesFromNodeId("group#all")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
