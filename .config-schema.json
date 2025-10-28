@@ -708,7 +708,7 @@
             "type": "object",
             "properties": {
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value <= 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
@@ -726,7 +726,7 @@
             "type": "object",
             "properties": {
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value <= 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
@@ -744,7 +744,7 @@
             "type": "object",
             "properties": {
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value <= 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"
