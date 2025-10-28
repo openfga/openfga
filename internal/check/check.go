@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -28,27 +27,24 @@ import (
 var tracer = otel.Tracer("internal/check")
 
 type Config struct {
-	Model              *AuthorizationModelGraph
-	Datastore          storage.RelationshipTupleReader
-	Planner            *planner.Planner
-	MaxResolutionDepth int32
-	ConcurrencyLimit   int
-	UpstreamTimeout    time.Duration
-	Logger             logger.Logger
-	Strategies         map[string]Strategy
+	Model            *AuthorizationModelGraph
+	Datastore        storage.RelationshipTupleReader
+	Planner          *planner.Planner
+	ConcurrencyLimit int
+	UpstreamTimeout  time.Duration
+	Logger           logger.Logger
+	Strategies       map[string]Strategy
 }
 type Resolver struct {
-	model              *AuthorizationModelGraph
-	datastore          storage.RelationshipTupleReader
-	planner            *planner.Planner
-	maxResolutionDepth int32
-	concurrencyLimit   int
-	upstreamTimeout    time.Duration
-	logger             logger.Logger
+	model            *AuthorizationModelGraph
+	datastore        storage.RelationshipTupleReader
+	planner          *planner.Planner
+	concurrencyLimit int
+	upstreamTimeout  time.Duration
+	logger           logger.Logger
 
 	delegate graph.CheckResolver
 
-	depthCount atomic.Int32
 	strategies map[string]Strategy
 }
 
@@ -61,7 +57,6 @@ func NewRequest(p RequestParams) (*Request, error) {
 	return graph.NewResolveCheckRequest(p)
 }
 
-var ErrResolutionDepthExceeded = graph.ErrResolutionDepthExceeded
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
 
 type ResponseMsg struct {
@@ -71,14 +66,13 @@ type ResponseMsg struct {
 
 func New(cfg Config) *Resolver {
 	r := &Resolver{
-		model:              cfg.Model,
-		datastore:          cfg.Datastore,
-		planner:            cfg.Planner,
-		maxResolutionDepth: cfg.MaxResolutionDepth,
-		concurrencyLimit:   cfg.ConcurrencyLimit,
-		upstreamTimeout:    cfg.UpstreamTimeout,
-		logger:             cfg.Logger,
-		strategies:         cfg.Strategies,
+		model:            cfg.Model,
+		datastore:        cfg.Datastore,
+		planner:          cfg.Planner,
+		concurrencyLimit: cfg.ConcurrencyLimit,
+		upstreamTimeout:  cfg.UpstreamTimeout,
+		logger:           cfg.Logger,
+		strategies:       cfg.Strategies,
 	}
 
 	r.delegate = r
@@ -93,17 +87,13 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	))
 	defer span.End()
 
-	if r.depthCount.Load() >= r.maxResolutionDepth {
-		return nil, ErrResolutionDepthExceeded
-	}
-
 	// TODO: Handle where User is a userset (model would dynamically compute weight in order to prune branches, needs work in language)
 
 	// TODO: While we are doing the rollout, ok should never be false due it being caught by the validation in the command layer via `validateCheckRequest`.
 	// Once the rollout is done, we should swap the existing implementation with this which is much more efficient.
 	node, _ := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
 
-	_, ok := node.GetWeight(req.GetObjectType())
+	_, ok := node.GetWeight(req.GetUserType())
 	if !ok {
 		// If the user type is not reachable from the object type and relation, we can immediately return false.
 		return &Response{Allowed: false}, nil
