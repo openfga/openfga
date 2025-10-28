@@ -209,7 +209,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	})
 
 	var b strings.Builder
-	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("v2|")
 	b.WriteString("userset|")
 	b.WriteString(req.GetAuthorizationModelID())
 	b.WriteString("|")
