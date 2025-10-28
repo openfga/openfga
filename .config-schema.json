@@ -707,12 +707,6 @@
         "checkDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
                     "description": "define the number of datastore requests allowed before being throttled.",
                     "type": "integer",
@@ -731,12 +725,6 @@
         "listObjectsDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
                     "description": "define the number of datastore requests allowed before being throttled.",
                     "type": "integer",
@@ -755,12 +743,6 @@
         "listUsersDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
                     "description": "define the number of datastore requests allowed before being throttled.",
                     "type": "integer",
