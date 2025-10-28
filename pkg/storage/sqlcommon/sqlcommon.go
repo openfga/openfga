@@ -562,7 +562,7 @@ type TupleLockKey struct {
 	userType   string
 }
 
-// MakeTupleLockKeys flattens deletes+writes into a deduped, sorted slice to ensure stable lock order.
+// MakeTupleLockKeys flattens Deletes+writes into a deduped, sorted slice to ensure stable lock order.
 func MakeTupleLockKeys(deletes storage.Deletes, writes storage.Writes) []TupleLockKey {
 	keys := make([]TupleLockKey, 0, len(deletes)+len(writes))
 
@@ -669,18 +669,15 @@ func selectExistingRowsForWrite(ctx context.Context, dbInfo *DBInfo, store strin
 func GetDeleteWriteChangelogItems(
 	store string,
 	existing map[string]*openfgav1.Tuple,
-	deletes storage.Deletes,
-	writes storage.Writes,
-	opts storage.TupleWriteOptions,
-	now time.Time) (sq.Or, [][]interface{}, [][]interface{}, error) {
-	changeLogItems := make([][]interface{}, 0, len(deletes)+len(writes))
+	writeData WriteData) (sq.Or, [][]interface{}, [][]interface{}, error) {
+	changeLogItems := make([][]interface{}, 0, len(writeData.Deletes)+len(writeData.Writes))
 
 	// ensures increasingly unique values within a single thread
 	entropy := ulid.DefaultEntropy()
 
 	deleteConditions := sq.Or{}
 
-	// 1. For deletes
+	// 1. For Deletes
 	// a. If on_missing: error ( default behavior ):
 	// - Execute DELETEs as a single statement.
 	//   On conflict ( row count != delete count ) - rollback & return an error
@@ -690,10 +687,10 @@ func GetDeleteWriteChangelogItems(
 	// - For rows that don’t exist in DB - ignore, no-op
 	// - Execute DELETEs as a single statement.
 	//   On conflict ( row count != delete count ) - rollback & return a HTTP 409 Conflict error
-	for _, tk := range deletes {
+	for _, tk := range writeData.Deletes {
 		if _, ok := existing[tupleUtils.TupleKeyToString(tk)]; !ok {
 			// If the tuple does not exist, we can not delete it.
-			switch opts.OnMissingDelete {
+			switch writeData.Opts.OnMissingDelete {
 			case storage.OnMissingDeleteIgnore:
 				continue
 			case storage.OnMissingDeleteError:
@@ -706,7 +703,7 @@ func GetDeleteWriteChangelogItems(
 			}
 		}
 
-		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		id := ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
 		deleteConditions = append(deleteConditions, sq.Eq{
@@ -724,14 +721,14 @@ func GetDeleteWriteChangelogItems(
 			tk.GetRelation(),
 			tk.GetUser(),
 			"",
-			nil, // Redact condition info for deletes since we only need the base triplet (object, relation, user).
+			nil, // Redact condition info for Deletes since we only need the base triplet (object, relation, user).
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id,
 			sq.Expr("NOW()"),
 		})
 	}
 
-	writeItems := make([][]interface{}, 0, len(writes))
+	writeItems := make([][]interface{}, 0, len(writeData.Writes))
 
 	// 2. For writes
 	// a. If on_duplicate: error ( default behavior )
@@ -743,10 +740,10 @@ func GetDeleteWriteChangelogItems(
 	// - For rows that DO NOT exist in DB - create both INSERT tuple & INSERT changelog statements
 	// c. Execute INSERTs as a single statement
 	//   On error, return 409 Conflict
-	for _, tk := range writes {
+	for _, tk := range writeData.Writes {
 		if existingTuple, ok := existing[tupleUtils.TupleKeyToString(tk)]; ok {
 			// If the tuple exists, we can not write it.
-			switch opts.OnDuplicateInsert {
+			switch writeData.Opts.OnDuplicateInsert {
 			case storage.OnDuplicateInsertIgnore:
 				// If the tuple exists and the condition is the same, we can ignore it.
 				// We need to use its serialized text instead of reflect.DeepEqual to avoid comparing internal values.
@@ -765,7 +762,7 @@ func GetDeleteWriteChangelogItems(
 			}
 		}
 
-		id := ulid.MustNew(ulid.Timestamp(now), entropy).String()
+		id := ulid.MustNew(ulid.Timestamp(writeData.Now), entropy).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
 		conditionName, conditionContext, err := MarshalRelationshipCondition(tk.GetCondition())
@@ -802,16 +799,20 @@ func GetDeleteWriteChangelogItems(
 	return deleteConditions, writeItems, changeLogItems, nil
 }
 
+type WriteData struct {
+	Deletes storage.Deletes
+	Writes  storage.Writes
+	Opts    storage.TupleWriteOptions
+	Now     time.Time
+}
+
 // Write provides the common method for writing to database across sql storage.
 func Write(
 	ctx context.Context,
 	dbInfo *DBInfo,
 	db *sql.DB,
 	store string,
-	deletes storage.Deletes,
-	writes storage.Writes,
-	opts storage.TupleWriteOptions,
-	now time.Time,
+	writeData WriteData,
 ) error {
 	// 1. Begin Transaction ( Isolation Level = READ COMMITTED )
 	txn, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
@@ -820,9 +821,9 @@ func Write(
 	}
 	defer func() { _ = txn.Rollback() }()
 
-	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for deletes
+	// 2. Compile a SELECT … FOR UPDATE statement to read the tuples for writes and lock tuples for Deletes
 	// Build a deduped, sorted list of keys to lock.
-	lockKeys := MakeTupleLockKeys(deletes, writes)
+	lockKeys := MakeTupleLockKeys(writeData.Deletes, writeData.Writes)
 	total := len(lockKeys)
 	if total == 0 {
 		// Nothing to do.
@@ -846,7 +847,7 @@ func Write(
 	}
 
 	// 4. Construct the deleteConditions, write and changelog items to be written
-	deleteConditions, writeItems, changeLogItems, err := GetDeleteWriteChangelogItems(store, existing, deletes, writes, opts, now)
+	deleteConditions, writeItems, changeLogItems, err := GetDeleteWriteChangelogItems(store, existing, writeData)
 	if err != nil {
 		return err
 	}

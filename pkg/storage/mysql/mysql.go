@@ -222,7 +222,13 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, s.db, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
+	return sqlcommon.Write(ctx, s.dbInfo, s.db, store,
+		sqlcommon.WriteData{
+			Deletes: deletes,
+			Writes:  writes,
+			Opts:    storage.NewTupleWriteOptions(opts...),
+			Now:     time.Now().UTC(),
+		})
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
