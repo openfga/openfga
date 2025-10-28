@@ -3,8 +3,8 @@ package strategies
 import (
 	"context"
 	"fmt"
+	"sync"
 
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/sourcegraph/conc/panics"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
@@ -25,11 +25,11 @@ type requestMsg struct {
 }
 
 type DefaultStrategy struct {
-	resolver         graph.CheckResolver
+	resolver         *check.Resolver
 	concurrencyLimit int
 }
 
-func NewDefault(resolver graph.CheckResolver, limit int) *DefaultStrategy {
+func NewDefault(resolver *check.Resolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
 		concurrencyLimit: limit,
 		resolver:         resolver,
@@ -38,7 +38,7 @@ func NewDefault(resolver graph.CheckResolver, limit int) *DefaultStrategy {
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited map[string]struct{}) (*check.Response, error) {
+func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "default.Userset")
 	defer span.End()
 
@@ -72,7 +72,7 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 	}
 }
 
-func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited map[string]struct{}) (*check.Response, error) {
+func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*check.Response, error) {
 	ctx, span := tracer.Start(ctx, "default.TTU")
 	defer span.End()
 
@@ -107,7 +107,7 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 	}
 }
 
-func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited map[string]struct{}) (*check.Response, error) {
+func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited *sync.Map) (*check.Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -119,7 +119,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 	}()
 
 	go func() {
-		s.processRequests(ctx, visited, requestsChan, responsesChan)
+		s.processRequests(ctx, requestsChan, visited, responsesChan)
 	}()
 
 	var err error
@@ -144,13 +144,15 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (s *DefaultStrategy) processRequests(ctx context.Context, visited map[string]struct{}, requests chan requestMsg, out chan check.ResponseMsg) {
+func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, visited *sync.Map, out chan check.ResponseMsg) {
 	var pool errgroup.Group
 	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
 		_ = pool.Wait()
 		close(out)
 	}()
+
+	mg := s.resolver.GetModel()
 
 	for {
 		select {
@@ -165,12 +167,17 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, visited map[strin
 				continue
 			}
 
+			node, ok := mg.GetNodeByID(tuple.ToObjectRelationString(msg.req.GetObjectType(), msg.req.GetTupleKey().GetRelation()))
+			if !ok {
+				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: check.ErrGraphError}, out)
+				continue
+			}
+
 			pool.Go(func() error {
 				var res *check.Response
 				var err error
 				recoveredErr := panics.Try(func() {
-					// TODO do not call resolveCheck call REsolveUnion with the visited map
-					res, err = s.resolver.GetDelegate().ResolveCheck(ctx, msg.req)
+					res, err = s.resolver.ResolveUnion(ctx, msg.req, node, visited)
 				})
 				if recoveredErr != nil {
 					err = fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredErr.AsError())

@@ -43,8 +43,6 @@ type Resolver struct {
 	upstreamTimeout  time.Duration
 	logger           logger.Logger
 
-	delegate graph.CheckResolver
-
 	strategies map[string]Strategy
 }
 
@@ -75,8 +73,6 @@ func New(cfg Config) *Resolver {
 		strategies:       cfg.Strategies,
 	}
 
-	r.delegate = r
-
 	return r
 }
 
@@ -102,45 +98,14 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	return r.ResolveUnion(ctx, req, node, nil)
 }
 
-func (r *Resolver) Close() {}
-
-func (r *Resolver) SetDelegate(delegate graph.CheckResolver) {
-	r.delegate = delegate
+func (r *Resolver) GetModel() *AuthorizationModelGraph {
+	return r.model
 }
 
-func (r *Resolver) GetDelegate() graph.CheckResolver {
-	return r.delegate
-}
-
-// reduce as a logical union operation (exit the moment we have a single true).
-func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
-	edges, ok := r.model.GetEdgesFromNode(node)
-	if !ok {
-		return nil, ErrPanicRequest
-	}
-
+func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if visited == nil && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
-		// initialize visited map for first time,
-		visited = &sync.Map{}
-		visited.Store(req.GetTupleKey().GetObject(), struct{}{})
-		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
-		if node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
-			edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
-			if ok {
-				return r.ResolveRecursive(ctx, req, edge, visited)
-			}
-		}
-	}
-
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
-
-	// only verify if tuples were already added when in the presence of tuple cycles or recursion
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
 	pool.SetLimit(r.concurrencyLimit)
@@ -149,9 +114,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		close(out)
 	}()
 
-	scheduledHandlers := 0
-	for _, edge := range terminalEdges {
-		scheduledHandlers++
+	for _, edge := range edges {
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
@@ -159,7 +122,8 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		})
 	}
 
-	for i := 0; i < scheduledHandlers; i++ {
+	var err error
+	for i := 0; i < len(edges); i++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -175,6 +139,28 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		}
 	}
 	return &Response{Allowed: false}, err
+}
+
+// reduce as a logical union operation (exit the moment we have a single true).
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
+	if visited == nil && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
+		// initialize visited map for first time,
+		visited = &sync.Map{}
+		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
+		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
+		if node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
+			if edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType()); ok {
+				return r.ResolveRecursive(ctx, req, edge, visited)
+			}
+		}
+	}
+
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
+	if err != nil {
+		return nil, ErrPanicRequest
+	}
+
+	return r.ResolveUnionEdges(ctx, req, terminalEdges, visited)
 }
 
 func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy,
@@ -193,7 +179,6 @@ func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.K
 }
 
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
-	// TODO deduplicate results and propagate
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 	if err != nil {
@@ -219,6 +204,9 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)
 	}
+	i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
+		return key.GetUser() // this is a userset (object#relation)
+	})
 
 	var b strings.Builder
 	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
@@ -245,9 +233,8 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 }
 
 func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
-	// TODO deduplicate results and propagate the visited map
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
 	if err != nil {
@@ -277,9 +264,12 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)
 	}
+	i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
+		return tuple.ToObjectRelationString(key.GetUser(), computedRelation)
+	})
 
 	var b strings.Builder
-	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("v2|")
 	b.WriteString("ttu|")
 	b.WriteString(req.GetAuthorizationModelID())
 	b.WriteString("|")
@@ -305,15 +295,49 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 }
 
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
-	// TODO resolve top request for fast path and default in a concurrent way
-	switch edge.GetEdgeType() {
-	case authzGraph.DirectEdge:
-		return r.resolveRecursiveUserset(ctx, req, edge, visited)
-	case authzGraph.TTUEdge:
-		return r.resolveRecursiveTTU(ctx, req, edge, visited)
-	default:
+	nonRecursiveEdges, err := r.model.FlattenRecursiveNode(edge.GetTo(), req.GetUserType())
+	if err != nil {
 		return nil, ErrPanicRequest
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	out := make(chan ResponseMsg, 2)
+	go func() {
+		res, err := r.ResolveUnionEdges(ctx, req, nonRecursiveEdges, visited)
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
+	}()
+
+	go func() {
+		var err error
+		var res *Response
+		switch edge.GetEdgeType() {
+		case authzGraph.DirectEdge:
+			res, err = r.resolveRecursiveUserset(ctx, req, edge, visited)
+		case authzGraph.TTUEdge:
+			res, err = r.resolveRecursiveTTU(ctx, req, edge, visited)
+		default:
+			res, err = nil, ErrPanicRequest
+		}
+
+		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case msg := <-out:
+			if msg.Err != nil {
+				err = msg.Err
+				continue
+			}
+
+			if msg.Res.Allowed {
+				return msg.Res, nil
+			}
+		}
+	}
+	return &Response{Allowed: false}, err
 }
 
 // reduce as a logical intersection operation (exit the moment we have a single false)
@@ -630,12 +654,16 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
-	// TODO deduplicate results and propagate the visited map
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
 		)
+	}
+	if visited != nil {
+		i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
+			return key.GetUser()
+		})
 	}
 
 	// TODO: Need optimization to solve userset as principal
@@ -644,7 +672,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 
 	var b strings.Builder
-	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("v2|")
 	b.WriteString("userset|")
 	b.WriteString(req.GetAuthorizationModelID())
 	b.WriteString("|")
@@ -707,12 +735,16 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	defer iter.Stop()
-	// TODO deduplicate results and propagate the visited map if different from nil
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
 		)
+	}
+	if visited != nil {
+		i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
+			return tuple.ToObjectRelationString(key.GetUser(), computedRelation)
+		})
 	}
 
 	// TODO: Need optimization to solve userset as principal
@@ -729,7 +761,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	var b strings.Builder
-	b.WriteString("v2|") // TODO: drop versioning when we are sure of no breaking changes
+	b.WriteString("v2|")
 	b.WriteString("ttu|")
 	b.WriteString(req.GetAuthorizationModelID())
 	b.WriteString("|")

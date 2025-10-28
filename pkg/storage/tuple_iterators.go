@@ -544,7 +544,7 @@ func (c *OrderedCombinedIterator) Stop() {
 // based on a key derived from the tuple using the provided keyFunc.
 type DeduplicatedTupleKeyIterator struct {
 	iter    TupleKeyIterator
-	seen    map[string]struct{} // GUARDED_BY(mu)
+	seen    *sync.Map
 	keyFunc func(*openfgav1.TupleKey) string
 	mu      *sync.Mutex
 	once    *sync.Once
@@ -565,8 +565,7 @@ func (d *DeduplicatedTupleKeyIterator) Next(ctx context.Context) (*openfgav1.Tup
 		}
 
 		key := d.keyFunc(tk)
-		if _, exists := d.seen[key]; !exists {
-			d.seen[key] = struct{}{}
+		if _, exists := d.seen.LoadOrStore(key, struct{}{}); !exists {
 			return tk, nil
 		}
 		// Skip this tuple as it's already been seen
@@ -588,7 +587,7 @@ func (d *DeduplicatedTupleKeyIterator) Head(ctx context.Context) (*openfgav1.Tup
 		}
 
 		key := d.keyFunc(tk)
-		if _, exists := d.seen[key]; !exists {
+		if _, exists := d.seen.Load(key); !exists {
 			return tk, nil
 		}
 		// Skip this tuple by advancing the iterator since it was already seen
@@ -612,19 +611,16 @@ func (d *DeduplicatedTupleKeyIterator) Stop() {
 // This iterator is thread-safe for concurrent calls to Next/Head.
 func NewDeduplicatedTupleKeyIterator(
 	iter TupleKeyIterator,
+	seen *sync.Map,
 	keyFunc func(*openfgav1.TupleKey) string,
 ) TupleKeyIterator {
 	return &DeduplicatedTupleKeyIterator{
 		iter:    iter,
-		seen:    make(map[string]struct{}),
+		seen:    seen,
 		keyFunc: keyFunc,
 		mu:      &sync.Mutex{},
 		once:    &sync.Once{},
 	}
-}
-
-func DeduplicateByTupleKeyString(tk *openfgav1.TupleKey) string {
-	return tk.String()
 }
 
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
