@@ -158,6 +158,7 @@ type Server struct {
 	changelogHorizonOffset           int
 	listObjectsDeadline              time.Duration
 	listObjectsMaxResults            uint32
+	pipelineMaxResults               uint32
 	listUsersDeadline                time.Duration
 	listUsersMaxResults              uint32
 	maxChecksPerBatchCheck           uint32
@@ -329,6 +330,14 @@ func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsMaxResults = limit
+	}
+}
+
+// WithPipelineMaxResults affects the ListObjects API only.
+// It sets the maximum number of results that this API will return.
+func WithPipelineMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.pipelineMaxResults = limit
 	}
 }
 

@@ -315,6 +315,11 @@ type Config struct {
 	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
+	// PipelineMaxResults defines the maximum number of results to accumulate
+	// before the non-streaming ListObjects pipeline API will respond to the client.
+	// This is to protect the server from misuse of the ListObjects endpoints.
+	PipelineMaxResults uint32
+
 	// ListUsersDeadline defines the maximum amount of time to accumulate ListUsers results
 	// before the server will respond. This is to protect the server from misuse of the
 	// ListUsers endpoints. It cannot be larger than the configured server's request timeout (RequestTimeout or HTTPConfig.UpstreamTimeout).

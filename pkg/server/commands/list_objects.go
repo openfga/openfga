@@ -75,7 +75,8 @@ type ListObjectsQuery struct {
 	optimizationsEnabled bool // Indicates if experimental optimizations are enabled for ListObjectsResolver
 	useShadowCache       bool // Indicates that the shadow cache should be used instead of the main cache
 
-	pipelineEnabled bool // Indicates whether to run with the pipeline optimized code
+	pipelineEnabled    bool // Indicates whether to run with the pipeline optimized code
+	pipelineMaxResults uint32
 }
 
 type ListObjectsResolver interface {
@@ -186,6 +187,12 @@ func WithFeatureFlagClient(client featureflags.Client) ListObjectsQueryOption {
 func WithListObjectsUseShadowCache(useShadowCache bool) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.useShadowCache = useShadowCache
+	}
+}
+
+func WithPipelineMaxResults(maxResults uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.pipelineMaxResults = maxResults
 	}
 }
 
@@ -524,6 +531,10 @@ func (q *ListObjectsQuery) Execute(
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
+		if q.pipelineMaxResults > 0 {
+			maxResults = q.pipelineMaxResults
+		}
+
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
@@ -692,6 +703,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 	wgraph := typesys.GetWeightedGraph()
 
 	if wgraph != nil && q.pipelineEnabled {
+		if q.pipelineMaxResults > 0 {
+			maxResults = q.pipelineMaxResults
+		}
+
 		ds := storagewrappers.NewRequestStorageWrapperWithCache(
 			q.datastore,
 			req.GetContextualTuples().GetTupleKeys(),
