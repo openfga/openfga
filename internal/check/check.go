@@ -99,7 +99,7 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		return &Response{Allowed: false}, nil
 	}
 
-	return r.ResolveUnion(ctx, req, node)
+	return r.ResolveUnion(ctx, req, node, nil)
 }
 
 func (r *Resolver) Close() {}
@@ -113,7 +113,7 @@ func (r *Resolver) GetDelegate() graph.CheckResolver {
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
-func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited map[string]struct{}) (*Response, error) {
 	edges, ok := r.model.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrPanicRequest
@@ -122,10 +122,16 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if node.GetNodeType() == authzGraph.SpecificTypeAndRelation && node.GetRecursiveRelation() == node.GetUniqueLabel() {
-		edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
-		if ok {
-			return r.ResolveRecursive(ctx, req, edge)
+	if visited == nil && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
+		// initialize visited map for first time,
+		visited = make(map[string]struct{})
+		visited[req.TupleKey.Object] = struct{}{}
+		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
+		if node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
+			edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
+			if ok {
+				return r.ResolveRecursive(ctx, req, edge, visited)
+			}
 		}
 	}
 
@@ -147,7 +153,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	for _, edge := range terminalEdges {
 		scheduledHandlers++
 		pool.Go(func() error {
-			res, err := r.ResolveEdge(ctx, req, edge)
+			res, err := r.ResolveEdge(ctx, req, edge, visited)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
@@ -186,7 +192,8 @@ func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.K
 	return res, nil
 }
 
-func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
+	// TODO deduplicate results and propagate
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 	if err != nil {
@@ -237,7 +244,8 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	})
 }
 
-func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
+	// TODO deduplicate results and propagate the visited map
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
 	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
@@ -296,12 +304,13 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	})
 }
 
-func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
+	// TODO resolve top request for fast path and default in a concurrent way
 	switch edge.GetEdgeType() {
 	case authzGraph.DirectEdge:
-		return r.resolveRecursiveUserset(ctx, req, edge)
+		return r.resolveRecursiveUserset(ctx, req, edge, visited)
 	case authzGraph.TTUEdge:
-		return r.resolveRecursiveTTU(ctx, req, edge)
+		return r.resolveRecursiveTTU(ctx, req, edge, visited)
 	default:
 		return nil, ErrPanicRequest
 	}
@@ -335,7 +344,8 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		}
 		scheduledHandlers++
 		pool.Go(func() error {
-			res, err := r.ResolveEdge(ctx, req, edge)
+			// intersection is never part of a cycle or recursion
+			res, err := r.ResolveEdge(ctx, req, edge, nil)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
 			return nil
 		})
@@ -376,7 +386,8 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		res, err := r.ResolveEdge(ctx, req, edges[0])
+		// exclusion is never part of a cycle or recursion
+		res, err := r.ResolveEdge(ctx, req, edges[0], nil)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, base)
 		close(base)
 	}()
@@ -394,7 +405,8 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			res, err := r.ResolveEdge(ctx, req, edges[1])
+			// exclusion is never part of a cycle or recursion
+			res, err := r.ResolveEdge(ctx, req, edges[1], nil)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtract)
 			close(subtract)
 		}()
@@ -454,46 +466,54 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	return &Response{Allowed: true}, nil
 }
 
-func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
+	var newVisitedObjects map[string]struct{}
+	if edge.IsPartOfTupleCycle() || edge.GetRecursiveRelation() != "" {
+		newVisitedObjects = visited
+	}
 	// computed edges are solved by the relation node caller
 	switch edge.GetEdgeType() {
 	case authzGraph.DirectEdge:
 		switch edge.GetTo().GetNodeType() {
 		case authzGraph.SpecificType:
+			// terminal types are never part of a cycle
 			return r.specificType(ctx, req, edge)
 		case authzGraph.SpecificTypeWildcard:
+			// terminal types are never part of a cycle
 			return r.specificTypeWildcard(ctx, req, edge)
 		case authzGraph.SpecificTypeAndRelation:
 			// check for recursiveRelation
-			return r.specificTypeAndRelation(ctx, req, edge)
+			return r.specificTypeAndRelation(ctx, req, edge, newVisitedObjects)
 		default:
 			return nil, ErrPanicRequest
 		}
 	case authzGraph.DirectLogicalEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo())
+		return r.ResolveUnion(ctx, req, edge.GetTo(), newVisitedObjects)
 	case authzGraph.TTUEdge:
-		return r.ttu(ctx, req, edge)
+		return r.ttu(ctx, req, edge, newVisitedObjects)
 	case authzGraph.TTULogicalEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo())
+		return r.ResolveUnion(ctx, req, edge.GetTo(), newVisitedObjects)
 	case authzGraph.RewriteEdge:
-		return r.ResolveRewrite(ctx, req, edge.GetTo())
+		return r.ResolveRewrite(ctx, req, edge.GetTo(), newVisitedObjects)
 	default:
 		return nil, ErrPanicRequest
 	}
 }
 
-func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (*Response, error) {
+func (r *Resolver) ResolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited map[string]struct{}) (*Response, error) {
 	// relation and union have save behavior
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
-		return r.ResolveUnion(ctx, req, node)
+		return r.ResolveUnion(ctx, req, node, visited)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
 		case authzGraph.UnionOperator:
-			return r.ResolveUnion(ctx, req, node)
+			return r.ResolveUnion(ctx, req, node, visited)
 		case authzGraph.IntersectionOperator:
+			// intersection is never part of a graph cycle
 			return r.ResolveIntersection(ctx, req, node)
 		case authzGraph.ExclusionOperator:
+			// exclusion is never part of a graph cycle
 			return r.ResolveExclusion(ctx, req, node)
 		default:
 			return nil, ErrPanicRequest
@@ -579,7 +599,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 }
 
 // TODO: At the current time we will only handle non recursive/tuple cycle which have to be validated at an earlier stage.
-func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "specificTypeAndRelation",
 		trace.WithAttributes(
 			attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
@@ -610,6 +630,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
+	// TODO deduplicate results and propagate the visited map
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
@@ -651,7 +672,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	})
 }
 
-func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (*Response, error) {
+func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited map[string]struct{}) (*Response, error) {
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
 	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
@@ -686,7 +707,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	defer iter.Stop()
-
+	// TODO deduplicate results and propagate the visited map if different from nil
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
