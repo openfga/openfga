@@ -86,7 +86,7 @@ func NewListObjectsQueryWithShadowConfig(
 	storeID string,
 	opts ...ListObjectsQueryOption,
 ) (ListObjectsResolver, error) {
-	if shadowConfig != nil && shadowConfig.shadowEnabled {
+	if shadowConfig != nil && shadowConfig.shadowEnabled && false {
 		return newShadowedListObjectsQuery(ds, checkResolver, shadowConfig, storeID, opts...)
 	}
 

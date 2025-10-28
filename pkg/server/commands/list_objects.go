@@ -248,6 +248,8 @@ func NewListObjectsQuery(
 		query.optimizationsEnabled = true
 	}
 
+	query.pipelineEnabled = true
+
 	return query, nil
 }
 
