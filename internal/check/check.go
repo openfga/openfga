@@ -675,19 +675,6 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
 	}
 
-	var b strings.Builder
-	b.WriteString("v2|")
-	b.WriteString("userset|")
-	b.WriteString(req.GetAuthorizationModelID())
-	b.WriteString("|")
-	b.WriteString(req.GetObjectType())
-	b.WriteString("|")
-	b.WriteString(req.GetTupleKey().GetRelation())
-	b.WriteString("|")
-	b.WriteString(req.GetUserType())
-	b.WriteString("|userset|")
-	b.WriteString(edge.GetTo().GetUniqueLabel())
-
 	possibleStrategies := map[string]*planner.KeyPlanStrategy{
 		DefaultStrategyName: DefaultPlan,
 	}
@@ -696,7 +683,8 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
-	keyPlan := r.planner.GetKeyPlan(b.String())
+	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
+	keyPlan := r.planner.GetKeyPlan(usersetKey)
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
@@ -764,6 +752,16 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		possibleStrategies[WeightTwoStrategyName] = weight2Plan
 	}
 
+	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
+	keyPlan := r.planner.GetKeyPlan(planKey)
+	strategy := keyPlan.SelectStrategy(possibleStrategies)
+
+	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
+	})
+}
+
+func createTTUPlanKey(req *Request, tuplesetRelation string, computedRelation string) string {
 	var b strings.Builder
 	b.WriteString("v2|")
 	b.WriteString("ttu|")
@@ -778,12 +776,21 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	b.WriteString(tuplesetRelation)
 	b.WriteString("|")
 	b.WriteString(computedRelation)
-	planKey := b.String()
+	return b.String()
+}
 
-	keyPlan := r.planner.GetKeyPlan(planKey)
-	strategy := keyPlan.SelectStrategy(possibleStrategies)
-
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
-	})
+func createUsersetPlanKey(req *Request, userset string) string {
+	var b strings.Builder
+	b.WriteString("v2|")
+	b.WriteString("userset|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(req.GetObjectType())
+	b.WriteString("|")
+	b.WriteString(req.GetTupleKey().GetRelation())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(userset)
+	return b.String()
 }
