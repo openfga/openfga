@@ -264,11 +264,23 @@
                     "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
+                "minOpenConns": {
+                    "description": "The minimum number of open connections to the datastore. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_OPEN_CONNS"
+                },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "10",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
+                },
+                "minIdleConns": {
+                    "description": "the minimum number of connections to the datastore in the idle connection pool. This is only available for PostgreSQL.",
+                    "type": "integer",
+                    "default": "0",
+                    "x-env-variable": "OPENFGA_DATASTORE_MIN_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",
@@ -701,14 +713,8 @@
         "checkDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for Check requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_CHECK_DATASTORE_THROTTLE_THRESHOLD"
@@ -725,14 +731,8 @@
         "listObjectsDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Objects requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_LIST_OBJECTS_DATASTORE_THROTTLE_THRESHOLD"
@@ -749,14 +749,8 @@
         "listUsersDatastoreThrottle": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "enable datastore throttle for List Users requests. If the requests to the datastore exceed the threshold, all requests will pay a time penalty of the specified duration, slowing down the rate of traversal.",
-                    "type": "boolean",
-                    "default": false,
-                    "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_ENABLED"
-                },
                 "threshold": {
-                    "description": "define the number of datastore requests allowed before being throttled.",
+                    "description": "define the number of datastore requests allowed before being throttled. A value of 0 means throttling is disabled.",
                     "type": "integer",
                     "default": 0,
                     "x-env-variable": "OPENFGA_LIST_USERS_DATASTORE_THROTTLE_THRESHOLD"

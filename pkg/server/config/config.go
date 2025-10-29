@@ -40,8 +40,6 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultShadowCheckCacheEnabled = false
-
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
@@ -55,18 +53,10 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled  = false
-	DefaultShadowCheckSamplePercentage = 10
-	DefaultShadowCheckResolverTimeout  = 1 * time.Second
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
-
-	DefaultShadowListObjectsQueryEnabled          = false
-	DefaultShadowListObjectsQuerySamplePercentage = 10
-	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
-	DefaultShadowListObjectsQueryMaxDeltaItems    = 100
+	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
+	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -106,6 +96,12 @@ const (
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
+
+	// Moving forward, all experimental flags should follow the naming convention below:
+	// 1. Avoid using enable/disable prefixes.
+	// 2. Flag names should have only numbers, letters and underscores.
+	ExperimentalShadowCheck       = "shadow_check"
+	ExperimentalShadowListObjects = "shadow_list_objects"
 )
 
 type DatastoreMetricsConfig struct {
@@ -133,9 +129,17 @@ type DatastoreConfig struct {
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
+	// MinOpenConns is the minimum number of open connections to the database.
+	// This is only available in Postgresql.
+	MinOpenConns int
+
 	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection
-	// pool.
+	// pool. This is only used for some datastore engines (non-PostgresSQL that uses sql.DB).
 	MaxIdleConns int
+
+	// MinIdleConns is the minimum number of connections to the datastore in the idle connection
+	// pool. This is only available in Postgresql..
+	MinIdleConns int
 
 	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
 	ConnMaxIdleTime time.Duration
@@ -286,8 +290,8 @@ type DispatchThrottlingConfig struct {
 }
 
 // DatastoreThrottleConfig defines configurations for database throttling.
+// A threshold <= 0 means DatastoreThrottling is not enabled.
 type DatastoreThrottleConfig struct {
-	Enabled   bool
 	Threshold int
 	Duration  time.Duration
 }
@@ -473,6 +477,14 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
+	if cfg.Datastore.MaxOpenConns < cfg.Datastore.MinOpenConns {
+		return errors.New("datastore MaxOpenConns must not be less than datastore MinOpenConns")
+	}
+
+	if cfg.Datastore.MinOpenConns < cfg.Datastore.MinIdleConns {
+		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
+	}
+
 	return nil
 }
 
@@ -594,29 +606,14 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 
 // VerifyDatastoreThrottlesConfig ensures VerifyDatastoreThrottlesConfig is called so that the right values are verified.
 func (cfg *Config) VerifyDatastoreThrottlesConfig() error {
-	if cfg.CheckDatastoreThrottle.Enabled {
-		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.CheckDatastoreThrottle.Duration <= 0 {
-			return errors.New("'checkDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.CheckDatastoreThrottle.Threshold > 0 && cfg.CheckDatastoreThrottle.Duration <= 0 {
+		return errors.New("'checkDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListObjectsDatastoreThrottle.Enabled {
-		if cfg.ListObjectsDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListObjectsDatastoreThrottle.Threshold > 0 && cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListUsersDatastoreThrottle.Enabled {
-		if cfg.ListUsersDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListUsersDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListUsersDatastoreThrottle.Threshold > 0 && cfg.ListUsersDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
 	return nil
 }
@@ -716,6 +713,12 @@ func DefaultConfig() *Config {
 			MaxTypesystemCacheSize: DefaultMaxTypesystemCacheSize,
 			MaxIdleConns:           10,
 			MaxOpenConns:           30,
+			Engine:                 "memory",
+			MaxCacheSize:           DefaultMaxAuthorizationModelCacheSize,
+			MinIdleConns:           0,
+			MaxIdleConns:           10,
+			MinOpenConns:           0,
+			MaxOpenConns:           30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
@@ -807,17 +810,14 @@ func DefaultConfig() *Config {
 			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
 		CheckDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListObjectsDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListUsersDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},

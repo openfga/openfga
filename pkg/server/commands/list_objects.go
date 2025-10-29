@@ -104,11 +104,6 @@ type ListObjectsResolutionMetadata struct {
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
-
-	// Temporary solution to indicate whether shadow list objects query should be run.
-	// For queries with Infinite weight, the weighted graph implementation falls back
-	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -203,6 +198,7 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	storeID string,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -241,7 +237,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
 		query.optimizationsEnabled = true
 	}
 
@@ -375,7 +371,6 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
-			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil
 		})
 
