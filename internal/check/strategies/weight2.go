@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/sourcegraph/conc/panics"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -83,16 +82,6 @@ func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.
 	return s.execute(ctx, leftChan, storage.WrapIterator(storage.TTUKind, iter))
 }
 
-// processMessage will add the id in the primarySet.
-// In addition, it returns whether the id exists in secondarySet.
-// This is used to find the intersection between id from user and id from object.
-func processMessage(id string,
-	primarySet *hashset.Set,
-	secondarySet *hashset.Set) bool {
-	primarySet.Add(id)
-	return secondarySet.Contains(id)
-}
-
 // Weight2 attempts to find the intersection across 2 producers (channels) of ObjectIDs.
 // In the case of a TTU:
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
@@ -103,72 +92,86 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	defer cancel()
 	defer rightIter.Stop()
 	defer iterator.Drain(leftChan)
-	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
-	rightSet := hashset.New()
-	leftSet := hashset.New()
+	// Set to store already seen values from each side
+	// We use maps for O(1) lookup complexity, consistent with hashset implementation
+	leftSeen := make(map[string]struct{})
+	rightSeen := make(map[string]struct{})
+
+	// Convert right iterator to channel for uniform processing
+	rightChan := iterator.ToChannel[string](ctx, rightIter, IteratorMinBatchThreshold)
 
 	var lastErr error
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case r, ok := <-rightChan:
-		if !ok {
-			return &check.Response{Allowed: false}, nil
-		}
-		if r.Err != nil {
-			lastErr = r.Err
-			break
-		}
-		rightSet.Add(r.Value)
-	}
-
+	// Process both channels concurrently
 	for leftChan != nil || rightChan != nil {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case msg, ok := <-leftChan:
+
+		// Process an item from the left channel
+		case leftMsg, ok := <-leftChan:
 			if !ok {
 				leftChan = nil
-				if leftSet.Size() == 0 {
-					return &check.Response{Allowed: false}, nil
+				if len(leftSeen) == 0 {
+					// If we've processed nothing from the left side, we can't have any intersection
+					return &check.Response{Allowed: false}, lastErr
 				}
 				continue
 			}
-			if msg.Err != nil {
-				lastErr = msg.Err
+
+			if leftMsg.Err != nil {
+				lastErr = leftMsg.Err
 				continue
 			}
-			for {
-				t, err := msg.Iter.Next(ctx)
-				if err != nil {
-					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
+
+			// Process all items from this iterator message
+			if leftMsg.Iter != nil {
+				for {
+					t, err := leftMsg.Iter.Next(ctx)
+					if err != nil {
+						leftMsg.Iter.Stop()
+						if storage.IterIsDoneOrCancelled(err) {
+							break
+						}
+						lastErr = err
+						continue
 					}
-					lastErr = err
-					continue
-				}
-				if processMessage(t, leftSet, rightSet) {
-					msg.Iter.Stop()
-					return &check.Response{Allowed: true}, nil
+
+					// Check if this value exists in the right set first (early match)
+					if _, exists := rightSeen[t]; exists {
+						leftMsg.Iter.Stop() // Stop the iterator early
+						return &check.Response{Allowed: true}, nil
+					}
+
+					// Otherwise, store for future comparison
+					leftSeen[t] = struct{}{}
 				}
 			}
-		case msg, ok := <-rightChan:
+
+		// Process an item from the right channel
+		case rightMsg, ok := <-rightChan:
 			if !ok {
 				rightChan = nil
 				continue
 			}
-			if msg.Err != nil {
-				lastErr = msg.Err
+
+			if rightMsg.Err != nil {
+				lastErr = rightMsg.Err
 				continue
 			}
-			if processMessage(msg.Value, rightSet, leftSet) {
+
+			// Check if this value exists in the left set first (early match)
+			if _, exists := leftSeen[rightMsg.Value]; exists {
 				return &check.Response{Allowed: true}, nil
 			}
+
+			// Otherwise, store for future comparison
+			rightSeen[rightMsg.Value] = struct{}{}
 		}
 	}
+
+	// If we get here, no match was found
 	return &check.Response{Allowed: false}, lastErr
 }
 

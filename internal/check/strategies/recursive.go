@@ -156,6 +156,16 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 	return s.recursiveMatch(ctx, req, edge, idsFromUser, idsFromObject)
 }
 
+// processMessage will add the id in the primarySet.
+// In addition, it returns whether the id exists in secondarySet.
+// This is used to find the intersection between id from user and id from object.
+func processMessage(id string,
+	primarySet *hashset.Set,
+	secondarySet *hashset.Set) bool {
+	primarySet.Add(id)
+	return secondarySet.Contains(id)
+}
+
 func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, idsFromUser *hashset.Set, idsFromObject *hashset.Set) (*check.Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
