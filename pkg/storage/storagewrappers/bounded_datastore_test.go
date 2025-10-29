@@ -110,7 +110,7 @@ func TestBoundedWrapper(t *testing.T) {
 		var wg errgroup.Group
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
+			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "group:1#member"), storage.ReadUserTupleOptions{})
 			return err
 		})
 
