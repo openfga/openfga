@@ -207,7 +207,7 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 		return key.GetUser() // this is a userset (object#relation)
 	}))
 	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditionEdge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
@@ -255,7 +255,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		return tuple.ToObjectRelationString(key.GetUser(), computedRelation)
 	}))
 	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditionEdge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
@@ -640,7 +640,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		}))
 	}
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, edge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
@@ -712,7 +712,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		}))
 	}
 	if len(tuplesetEdge.GetConditions()) > 1 || tuplesetEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildTupleKeyConditionFilter(ctx, r.model, tuplesetEdge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, tuplesetEdge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 

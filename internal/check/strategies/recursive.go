@@ -270,7 +270,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 		i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 		if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
 			i = storage.NewConditionsFilteredTupleKeyIterator(i,
-				check.BuildTupleKeyConditionFilter(ctx, s.model, conditionEdge, req.GetContext()),
+				check.BuildConditionTupleKeyFilter(ctx, s.model, conditionEdge, req.GetContext()),
 			)
 		}
 

@@ -286,12 +286,11 @@ func (s *Weight2) specificType(ctx context.Context, req *check.Request, edge *au
 		return nil, err
 	}
 
-	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
-		)
+		iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
+	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
@@ -322,12 +321,11 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 		return nil, err
 	}
 
-	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			check.BuildTupleKeyConditionFilter(ctx, s.model, edge, req.GetContext()),
-		)
+		iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
+	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
