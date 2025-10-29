@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,4 +83,68 @@ var RecursivePlan = &planner.KeyPlanStrategy{
 	// When β > α, we expect lower precision and higher variance
 	Alpha: 2.0,
 	Beta:  2.5,
+}
+
+func createUsersetPlanKey(req *Request, userset string) string {
+	var b strings.Builder
+	b.WriteString("v2|")
+	b.WriteString("userset|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(req.GetObjectType())
+	b.WriteString("|")
+	b.WriteString(req.GetTupleKey().GetRelation())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(userset)
+	return b.String()
+}
+
+func createRecursiveUsersetPlanKey(req *Request, userset string) string {
+	var b strings.Builder
+	b.WriteString("v2|")
+	b.WriteString("userset|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(userset)
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString("infinite")
+	return b.String()
+}
+
+func createRecursiveTTUPlanKey(req *Request, ttu, tuplesetRelation string) string {
+	var b strings.Builder
+	b.WriteString("v2|")
+	b.WriteString("ttu|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(ttu)
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(tuplesetRelation)
+	b.WriteString("|")
+	b.WriteString("infinite")
+	return b.String()
+}
+
+func createTTUPlanKey(req *Request, tuplesetRelation, computedRelation string) string {
+	var b strings.Builder
+	b.WriteString("v2|")
+	b.WriteString("ttu|")
+	b.WriteString(req.GetAuthorizationModelID())
+	b.WriteString("|")
+	b.WriteString(req.GetObjectType())
+	b.WriteString("|")
+	b.WriteString(req.GetTupleKey().GetRelation())
+	b.WriteString("|")
+	b.WriteString(req.GetUserType())
+	b.WriteString("|")
+	b.WriteString(tuplesetRelation)
+	b.WriteString("|")
+	b.WriteString(computedRelation)
+	return b.String()
 }

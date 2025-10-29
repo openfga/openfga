@@ -63,6 +63,7 @@ func (s *Stream) Next(ctx context.Context) (string, error) {
 func (s *Stream) Stop() {
 	if s.buffer != nil {
 		s.buffer.Stop()
+		s.buffer = nil
 	}
 	Drain(s.source)
 }

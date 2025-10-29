@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/openfga/openfga/internal/iterator"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -20,8 +21,8 @@ func evaluateCondition(ctx context.Context, model *AuthorizationModelGraph, edge
 	return eval.EvaluateTupleCondition(ctx, t, model.conditions[t.GetCondition().GetName()], reqCtx)
 }
 
-func BuildTupleKeyConditionFilter(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, reqCtx *structpb.Struct) func(*openfgav1.TupleKey) (bool, error) {
-	return func(t *openfgav1.TupleKey) (bool, error) {
+func BuildTupleKeyConditionFilter(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, reqCtx *structpb.Struct) iterator.FilterFunc[*openfgav1.TupleKey] {
+	return func(_ iterator.OperationType, t *openfgav1.TupleKey) (bool, error) {
 		return evaluateCondition(ctx, model, edge, t, reqCtx)
 	}
 }
