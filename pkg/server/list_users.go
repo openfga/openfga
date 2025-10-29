@@ -114,6 +114,15 @@ func (s *Server) ListUsers(
 		methodName,
 	).Observe(datastoreQueryCount)
 
+	datastoreItemCount := float64(resp.Metadata.DatastoreItemCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	dispatchCount := float64(resp.Metadata.DispatchCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
 	span.SetAttributes(attribute.Float64(dispatchCountHistogramName, dispatchCount))
