@@ -162,6 +162,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resp.ResolutionMetadata.Duration = endTime
 	dsMeta := datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
+	resp.ResolutionMetadata.DatastoreItemCount = dsMeta.DatastoreItemCount
 	// Until dispatch throttling is deprecated, merge the results of both
 	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 

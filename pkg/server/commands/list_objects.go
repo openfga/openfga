@@ -93,6 +93,9 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
 	DatastoreQueryCount atomic.Uint32
 
+	// The total number of items read from the database during a ListObjects request.
+	DatastoreItemCount atomic.Uint64
+
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter atomic.Uint32
 
@@ -423,6 +426,7 @@ func (q *ListObjectsQuery) evaluate(
 						return err
 					}
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
+					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
 					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
 						resolutionMetadata.WasThrottled.Store(true)
@@ -445,6 +449,7 @@ func (q *ListObjectsQuery) evaluate(
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 	}
 
@@ -596,6 +601,7 @@ func (q *ListObjectsQuery) Execute(
 
 		dsMeta := ds.GetMetadata()
 		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		res.ResolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &res, nil
 	}
 
@@ -773,6 +779,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &resolutionMetadata, nil
 	}
 
