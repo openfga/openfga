@@ -658,12 +658,14 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer iter.Stop()
 
+	// TODO change pattern of chaining iterators and have one iterator multiple filters
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, edge, req.GetContext()),
 		)
 	}
+	// only when we are in the presence of visited (meaning tuple cycle or recursion) we need to deduplicate to avoid infinite loop
 	if visited != nil {
 		i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
 			return key.GetUser()
@@ -706,6 +708,8 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	)
 	defer span.End()
 
+	// selecting the edge for the tupleset that points directly to the specific subjecttype
+	// the graph is already deduplicated by the conditions and combined in one unique edge for the same tupleset
 	tuplesetEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
 		return nil, ErrPanicRequest
@@ -727,12 +731,14 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	defer iter.Stop()
+	// TODO change pattern of chaining iterators and have one iterator multiple filters
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
 	if len(tuplesetEdge.GetConditions()) > 1 || tuplesetEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
 			BuildTupleKeyConditionFilter(ctx, r.model, tuplesetEdge, req.GetContext()),
 		)
 	}
+	// only when we are in the presence of visited (meaning tuple cycle or recursion) we need to deduplicate to avoid infinite loop
 	if visited != nil {
 		i = storage.NewDeduplicatedTupleKeyIterator(i, visited, func(key *openfgav1.TupleKey) string {
 			return tuple.ToObjectRelationString(key.GetUser(), computedRelation)

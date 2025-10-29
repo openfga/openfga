@@ -74,6 +74,7 @@ func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.
 	if err != nil {
 		return nil, err
 	}
+
 	leftChan, err := s.resolveRewrite(ctx, childReq, edge.GetTo())
 	if err != nil {
 		return nil, err
@@ -174,11 +175,8 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 // setOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func (s *Weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver weight2Handler, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
-	edges, ok := s.model.GetEdgesFromNode(node)
-	if !ok {
-		return nil, check.ErrPanicRequest
-	}
+func (s *Weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver weight2Handler, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+
 	iterStreams := make([]*iterator.Stream, 0, len(edges))
 	for idx, edge := range edges {
 		if _, ok := edge.GetWeight(req.GetUserType()); !ok {
@@ -227,15 +225,31 @@ func (s *Weight2) resolveEdge(ctx context.Context, req *check.Request, edge *aut
 func (s *Weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
-		return s.setOperationSetup(ctx, req, resolveUnion, node)
+		edges, err := s.model.FlattenNode(node, req.GetUserType())
+		if err != nil {
+			return nil, err
+		}
+		return s.setOperationSetup(ctx, req, resolveUnion, edges)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
 		case authzGraph.UnionOperator:
-			return s.setOperationSetup(ctx, req, resolveUnion, node)
+			edges, err := s.model.FlattenNode(node, req.GetUserType())
+			if err != nil {
+				return nil, err
+			}
+			return s.setOperationSetup(ctx, req, resolveUnion, edges)
 		case authzGraph.IntersectionOperator:
-			return s.setOperationSetup(ctx, req, resolveIntersection, node)
+			edges, ok := s.model.GetEdgesFromNode(node)
+			if !ok {
+				return nil, check.ErrPanicRequest
+			}
+			return s.setOperationSetup(ctx, req, resolveIntersection, edges)
 		case authzGraph.ExclusionOperator:
-			return s.setOperationSetup(ctx, req, resolveDifference, node)
+			edges, ok := s.model.GetEdgesFromNode(node)
+			if !ok {
+				return nil, check.ErrPanicRequest
+			}
+			return s.setOperationSetup(ctx, req, resolveDifference, edges)
 		default:
 			return nil, check.ErrPanicRequest
 		}
