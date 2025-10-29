@@ -38,7 +38,7 @@ type countingTupleIterator struct {
 func (itr *countingTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
 	i, err := itr.TupleIterator.Next(ctx)
 	if err != nil {
-		return nil, err
+		return i, err
 	}
 	itr.counter.Add(1)
 	return i, nil
@@ -119,8 +119,8 @@ func (b *BoundedTupleReader) ReadUserTuple(
 
 	defer b.done()
 	t, err := b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey, options)
-	if err != nil {
-		return nil, err
+	if t == nil || err != nil {
+		return t, err
 	}
 	b.countItems.Add(1)
 	return t, nil
@@ -135,14 +135,10 @@ func (b *BoundedTupleReader) Read(ctx context.Context, store string, filter stor
 
 	defer b.done()
 	itr, err := b.RelationshipTupleReader.Read(ctx, store, filter, options)
-	if err != nil {
-		return nil, err
+	if itr == nil || err != nil {
+		return itr, err
 	}
-
-	return &countingTupleIterator{
-		TupleIterator: itr,
-		counter:       &b.countItems,
-	}, nil
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 // ReadUsersetTuples returns all userset tuples for a specified object and relation.
@@ -159,14 +155,10 @@ func (b *BoundedTupleReader) ReadUsersetTuples(
 
 	defer b.done()
 	itr, err := b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter, options)
-	if err != nil {
-		return nil, err
+	if itr == nil || err != nil {
+		return itr, err
 	}
-
-	return &countingTupleIterator{
-		TupleIterator: itr,
-		counter:       &b.countItems,
-	}, nil
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 // ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -185,14 +177,10 @@ func (b *BoundedTupleReader) ReadStartingWithUser(
 	defer b.done()
 
 	itr, err := b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter, options)
-	if err != nil {
-		return nil, err
+	if itr == nil || err != nil {
+		return itr, err
 	}
-
-	return &countingTupleIterator{
-		TupleIterator: itr,
-		counter:       &b.countItems,
-	}, nil
+	return &countingTupleIterator{itr, &b.countItems}, nil
 }
 
 func (b *BoundedTupleReader) instrument(ctx context.Context, op string, d time.Duration, vec *prometheus.HistogramVec) {
