@@ -182,19 +182,6 @@ func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.K
 	return res, nil
 }
 
-func BuildUniqueTupleKeyFilter(visited *sync.Map, keyFunc func(key *openfgav1.TupleKey) string) iterator.FilterFunc[*openfgav1.TupleKey] {
-	return func(op iterator.OperationType, tk *openfgav1.TupleKey) (bool, error) {
-		key := keyFunc(tk)
-		var seen bool
-		if op == iterator.OperationHead {
-			_, seen = visited.Load(key)
-		} else {
-			_, seen = visited.LoadOrStore(key, struct{}{})
-		}
-		return !seen, nil
-	}
-}
-
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
