@@ -123,7 +123,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	}
 
 	var err error
-	for i := 0; i < len(edges); i++ {
+	for range edges {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -134,10 +134,12 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 			}
 
 			if msg.Res.Allowed {
+				// Short-circuit: In a union, if any branch returns true, we can immediately return.
 				return msg.Res, nil
 			}
 		}
 	}
+	// we only return error in a union when all edges are exhausted and there is at least one edge with error
 	return &Response{Allowed: false}, err
 }
 
@@ -146,6 +148,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	if visited == nil && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
 		visited = &sync.Map{}
+		// add the first object#relation that is being evaluated
 		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
 		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
 		if node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
@@ -155,6 +158,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		}
 	}
 
+	// flatten the node to get all terminal edges to avoid unnecessary goroutines
 	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
 	if err != nil {
 		return nil, ErrPanicRequest
@@ -714,7 +718,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	)
 	defer span.End()
 
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
+	tuplesetEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -726,7 +730,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 			Object:     req.GetTupleKey().GetObject(),
 			Relation:   tuplesetRelation,
 			User:       subjectType + ":",
-			Conditions: conditionEdge.GetConditions(),
+			Conditions: tuplesetEdge.GetConditions(),
 		},
 		storage.ReadOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}},
 	)
@@ -736,9 +740,9 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	defer iter.Stop()
 	i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
+	if len(tuplesetEdge.GetConditions()) > 1 || tuplesetEdge.GetConditions()[0] != authzGraph.NoCond {
 		i = storage.NewConditionsFilteredTupleKeyIterator(i,
-			BuildTupleKeyConditionFilter(ctx, r.model, conditionEdge, req.GetContext()),
+			BuildTupleKeyConditionFilter(ctx, r.model, tuplesetEdge, req.GetContext()),
 		)
 	}
 	if visited != nil {
