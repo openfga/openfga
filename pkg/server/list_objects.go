@@ -272,6 +272,15 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		methodName,
 	).Observe(datastoreQueryCount)
 
+	datastoreItemCount := float64(resolutionMetadata.DatastoreItemCount.Load())
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	dispatchCount := float64(resolutionMetadata.DispatchCounter.Load())
 
 	grpc_ctxtags.Extract(ctx).Set(dispatchCountHistogramName, dispatchCount)
