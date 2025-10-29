@@ -12,6 +12,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 
 ### Changed
+- The Read API should now be more performant for MySQL and Postgres when omitting the relation parameter
 - Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
   - PostgreSQL will have the following configuration changes.
     - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
