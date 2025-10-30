@@ -353,11 +353,12 @@ func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*itera
 	return batch, nil
 }
 
+// resolveUnion implements a merge-style algorithm for the union of sorted iterators
 func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
-	batch := make([]string, 0)
+	batch := make([]string, 0, IteratorMinBatchThreshold)
 
 	defer func() {
-		// flush
+		// Flush any remaining items
 		if len(batch) > 0 {
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
 		}
@@ -365,12 +366,16 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 		streams.Stop()
 	}()
 
+	var minValue string
+	var minStreamIdx int
+	var initialized bool
+
 	/*
 		collect iterators from all channels, until all drained
 		start performing union algorithm across the heads, if an iterator is empty, poll once again the source
 		ask to see if the channel has a new iterator, otherwise consider it done
 	*/
-
+	// Perform a merge-sort style union
 	for streams.GetActiveStreamsCount() > 0 {
 		if ctx.Err() != nil {
 			return
@@ -380,53 +385,61 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 			return
 		}
-		allIters := true
-		minObject := ""
-		itersWithEqualObject := make([]int, 0)
+
+		// Find minimum value across all streams
+		minValue = ""
+		minStreamIdx = 0
+		initialized = false
+
 		for idx, stream := range iterStreams {
-			v, err := stream.Head(ctx)
+			value, err := stream.Head(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					allIters = false
-					// we need to ensure we have all iterators at all times
+					initialized = false
 					break
+					// we need to ensure we have all iterators at all times
 				}
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 				return
 			}
-			// initialize
-			if idx == 0 {
-				minObject = v
+
+			// I can move any other stream that the value is already capture in the head of the another stream
+			if initialized && value == minValue {
+				_, _ = stream.Next(ctx)
 			}
 
-			if minObject == v {
-				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if minObject > v {
-				minObject = v
-				itersWithEqualObject = []int{idx}
+			// initialize
+			if !initialized || value < minValue {
+				minValue = value
+				minStreamIdx = idx
+				initialized = true
 			}
 		}
 
-		if !allIters {
-			// we need to ensure we have all iterators at all times
+		if !initialized {
+			// All streams were done or one iterator is done and we need to verify the active streams
 			continue
 		}
 
-		// all iterators with the same value move forward
-		batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, itersWithEqualObject, batch, out)
-		if err != nil {
-			// We are relying on the fact that we have called .Head(ctx) earlier
-			// and no one else should have called the iterator (especially since it is
-			// protected by mutex). Therefore, it is impossible for the iterator to return
-			// Done here. Hence, any error received here should be considered as legitimate
-			// errors.
+		batch = append(batch, minValue)
+
+		// Advance the stream with the minimum value
+		_, err = iterStreams[minStreamIdx].Next(ctx)
+		if err != nil && !storage.IterIsDoneOrCancelled(err) {
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 			return
+		}
+
+		// Flush batch if needed
+		if len(batch) >= IteratorMinBatchThreshold {
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
+			batch = make([]string, 0, IteratorMinBatchThreshold)
 		}
 	}
 }
 
 func resolveIntersection(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
-	batch := make([]string, 0)
+	batch := make([]string, 0, IteratorMinBatchThreshold)
 
 	defer func() {
 		// flush
@@ -444,6 +457,9 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 	*/
 
 	childrenTotal := streams.GetActiveStreamsCount()
+	if childrenTotal == 0 {
+		return
+	}
 	for streams.GetActiveStreamsCount() == childrenTotal {
 		if ctx.Err() != nil {
 			return
