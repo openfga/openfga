@@ -151,7 +151,7 @@ func NumericalStringGenerator(n uint64) any {
 func MakeStringWithRuneset(n uint64, runeSet []rune) string {
 	var sb strings.Builder
 	for i := uint64(0); i < n; i++ {
-		sb.WriteString(string(runeSet[rand.Intn(len(runeSet))]))
+		sb.WriteRune(runeSet[rand.Intn(len(runeSet))])
 	}
 	return sb.String()
 }
