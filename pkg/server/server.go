@@ -75,6 +75,18 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
+	datastoreItemCountHistogramName = "datastore_item_count"
+
+	datastoreItemCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:                       build.ProjectName,
+		Name:                            datastoreItemCountHistogramName,
+		Help:                            "The number of items returned from the database required to resolve a query (e.g. Check, ListObjects or ListUsers).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+
 	requestDurationHistogramName = "request_duration_ms"
 
 	requestDurationHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{

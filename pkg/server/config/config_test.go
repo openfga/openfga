@@ -267,73 +267,67 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("non_positive_check_datastore_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.CheckDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
-			Threshold: 0,
+			Threshold: 0, // 0 means throttling is off
 			Duration:  100,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'checkDatastoreThrottler.threshold' must be greater than zero")
+		require.NoError(t, err)
 	})
 
 	t.Run("non_positive_check_datastore_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.CheckDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
 			Threshold: 100,
 			Duration:  0,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'checkDatastoreThrottler.duration' must be greater than zero")
+		require.ErrorContains(t, err, "'checkDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	})
 
 	t.Run("non_positive_list_objects_datastore_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
 			Threshold: 0,
 			Duration:  100,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'listObjectsDatastoreThrottler.threshold' must be greater than zero")
+		require.NoError(t, err)
 	})
 
 	t.Run("non_positive_list_objects_datastore_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
 			Threshold: 100,
 			Duration:  0,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'listObjectsDatastoreThrottler.duration' must be greater than zero")
+		require.ErrorContains(t, err, "'listObjectsDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	})
 
 	t.Run("non_positive_list_users_datastore_threshold", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListUsersDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
 			Threshold: 0,
 			Duration:  100,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'listUsersDatastoreThrottler.threshold' must be greater than zero")
+		require.NoError(t, err)
 	})
 
 	t.Run("non_positive_list_users_datastore_duration", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListUsersDatastoreThrottle = DatastoreThrottleConfig{
-			Enabled:   true,
 			Threshold: 100,
 			Duration:  0,
 		}
 
 		err := cfg.Verify()
-		require.ErrorContains(t, err, "'listUsersDatastoreThrottler.duration' must be greater than zero")
+		require.ErrorContains(t, err, "'listUsersDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	})
 
 	t.Run("negative_request_timeout_duration", func(t *testing.T) {
