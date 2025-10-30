@@ -228,19 +228,11 @@ func (s *Weight2) resolveEdge(ctx context.Context, req *check.Request, edge *aut
 func (s *Weight2) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
-		edges, err := s.model.FlattenNode(node, req.GetUserType())
-		if err != nil {
-			return nil, err
-		}
-		return s.setOperationSetup(ctx, req, resolveUnion, edges)
+		return s.setFlattenOperation(ctx, req, node)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
 		case authzGraph.UnionOperator:
-			edges, err := s.model.FlattenNode(node, req.GetUserType())
-			if err != nil {
-				return nil, err
-			}
-			return s.setOperationSetup(ctx, req, resolveUnion, edges)
+			return s.setFlattenOperation(ctx, req, node)
 		case authzGraph.IntersectionOperator:
 			edges, ok := s.model.GetEdgesFromNode(node)
 			if !ok {
@@ -259,6 +251,14 @@ func (s *Weight2) resolveRewrite(ctx context.Context, req *check.Request, node *
 	default:
 		return nil, check.ErrPanicRequest
 	}
+}
+
+func (s *Weight2) setFlattenOperation(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+	edges, err := s.model.FlattenNode(node, req.GetUserType())
+	if err != nil {
+		return nil, err
+	}
+	return s.setOperationSetup(ctx, req, resolveUnion, edges)
 }
 
 // specificType assumes that req.Object + req.Relation is a directly assignable relation, e.g. define viewer: [user, user:*].
@@ -335,24 +335,6 @@ func (s *Weight2) specificTypeWildcard(ctx context.Context, req *check.Request, 
 	return iterChan, nil
 }
 
-// add the nextItemInSliceStreams to specified batch. If batch is full, try to send batch to outChan and clear slice.
-// If nextItemInSliceStreams has error, will also send message to specified outChan.
-func addNextItemInSliceStreamsToBatch(ctx context.Context, streamSlices []*iterator.Stream, streamsToProcess []int, batch []string, out chan<- *iterator.Msg) ([]string, error) {
-	item, err := iterator.NextItemInSliceStreams(ctx, streamSlices, streamsToProcess)
-	if err != nil {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-		return nil, err
-	}
-	if item != "" {
-		batch = append(batch, item)
-	}
-	if len(batch) > IteratorMinBatchThreshold {
-		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
-		batch = make([]string, 0)
-	}
-	return batch, nil
-}
-
 // resolveUnion implements a merge-style algorithm for the union of sorted iterators
 func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
 	batch := make([]string, 0, IteratorMinBatchThreshold)
@@ -421,21 +403,24 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 			continue
 		}
 
-		batch = append(batch, minValue)
-
+		batch = addValueToBatch(minValue, batch, ctx, out)
 		// Advance the stream with the minimum value
 		_, err = iterStreams[minStreamIdx].Next(ctx)
 		if err != nil && !storage.IterIsDoneOrCancelled(err) {
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 			return
 		}
-
-		// Flush batch if needed
-		if len(batch) >= IteratorMinBatchThreshold {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
-			batch = make([]string, 0, IteratorMinBatchThreshold)
-		}
 	}
+}
+
+func addValueToBatch(value string, batch []string, ctx context.Context, out chan<- *iterator.Msg) []string {
+	batch = append(batch, value)
+	// Flush batch if needed
+	if len(batch) >= IteratorMinBatchThreshold {
+		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
+		batch = make([]string, 0, IteratorMinBatchThreshold)
+	}
+	return batch
 }
 
 func resolveIntersection(ctx context.Context, streams *iterator.Streams, out chan<- *iterator.Msg) {
@@ -460,6 +445,12 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 	if childrenTotal == 0 {
 		return
 	}
+
+	var maxValue string
+	var allIters bool
+	var allSameValue bool
+	var initialized bool
+
 	for streams.GetActiveStreamsCount() == childrenTotal {
 		if ctx.Err() != nil {
 			return
@@ -470,14 +461,15 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 			return
 		}
 		if len(iterStreams) != childrenTotal {
-			// short circuit
+			// short circuit, if any stream is exhausted, the intersection is empty
 			return
 		}
 
-		maxObject := ""
-		itersWithEqualObject := make([]int, 0)
-		allIters := true
-		for idx, stream := range iterStreams {
+		maxValue = ""
+		allIters = true
+		allSameValue = true
+		initialized = false
+		for _, stream := range iterStreams {
 			v, err := stream.Head(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
@@ -489,43 +481,42 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 				return
 			}
 
-			if idx == 0 {
-				maxObject = v
-			}
-
-			if maxObject == v {
-				itersWithEqualObject = append(itersWithEqualObject, idx)
-			} else if maxObject < v {
-				maxObject = v
-				itersWithEqualObject = []int{idx}
+			if !initialized {
+				maxValue = v
+				initialized = true
+			} else if maxValue != v {
+				allSameValue = false
+				if maxValue < v {
+					maxValue = v
+				}
 			}
 		}
+
 		if !allIters {
 			// we need to ensure we have all iterators at all times
 			continue
 		}
 
 		// all children have the same value
-		if len(itersWithEqualObject) == childrenTotal {
-			// all iterators have the same value thus flush entry and move iterators
-			batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, itersWithEqualObject, batch, out)
-			if err != nil {
-				// We are relying on the fact that we have called .Head(ctx) earlier
-				// and no one else should have called the iterator (especially since it is
-				// protected by mutex). Therefore, it is impossible for the iterator to return
-				// Done here. Hence, any error received here should be considered as legitimate
-				// errors.
-				return
+		if allSameValue {
+			// All streams have the same value - it's in the intersection
+			batch = addValueToBatch(maxValue, batch, ctx, out)
+			// Advance all streams
+			for _, stream := range iterStreams {
+				_, err = stream.Next(ctx)
+				if err != nil && !storage.IterIsDoneOrCancelled(err) {
+					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					return
+				}
 			}
-			continue
-		}
-
-		// move all iterators to less than the MAX to be >= than MAX
-		for _, stream := range iterStreams {
-			err = stream.SkipToTargetObject(ctx, maxObject)
-			if err != nil {
-				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-				return
+		} else {
+			// Not all values are equal - advance all streams with smaller values to the max value
+			for _, stream := range iterStreams {
+				err = stream.SkipToTargetObject(ctx, maxValue)
+				if err != nil {
+					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					return
+				}
 			}
 		}
 	}
@@ -559,8 +550,8 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 		}
 
 		allIters := true
-		base := ""
-		diff := ""
+		baseValue := ""
+		diffValue := ""
 		for idx, stream := range iterStreams {
 			v, err := stream.Head(ctx)
 			if err != nil {
@@ -573,10 +564,10 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 				return
 			}
 			if idx == BaseIndex {
-				base = v
+				baseValue = v
 			}
 			if idx == DifferenceIndex {
-				diff = v
+				diffValue = v
 			}
 		}
 
@@ -586,38 +577,29 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 		}
 
 		// move both iterator heads
-		if base == diff {
-			_, err = iterator.NextItemInSliceStreams(ctx, iterStreams, []int{BaseIndex, DifferenceIndex})
-			if err != nil {
-				// We are relying on the fact that we have called .Head(ctx) earlier
-				// and no one else should have called the iterator (especially since it is
-				// protected by mutex). Therefore, it is impossible for the iterator to return
-				// Done here. Hence, any error received here should be considered as legitimate
-				// errors.
+		if baseValue == diffValue {
+			// Advance all streams
+			for _, stream := range iterStreams {
+				_, err = stream.Next(ctx)
+				if err != nil && !storage.IterIsDoneOrCancelled(err) {
+					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					return
+				}
+			}
+		} else if diffValue > baseValue {
+			batch = addValueToBatch(baseValue, batch, ctx, out)
+			_, err = iterStreams[BaseIndex].Next(ctx)
+			if err != nil && !storage.IterIsDoneOrCancelled(err) {
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 				return
 			}
-			continue
-		}
-
-		if diff > base {
-			batch, err = addNextItemInSliceStreamsToBatch(ctx, iterStreams, []int{BaseIndex}, batch, out)
+		} else {
+			// diff < base, then move the diff to catch up with base
+			err = iterStreams[DifferenceIndex].SkipToTargetObject(ctx, baseValue)
 			if err != nil {
-				// We are relying on the fact that we have called .Head(ctx) earlier
-				// and no one else should have called the iterator (especially since it is
-				// protected by mutex). Therefore, it is impossible for the iterator to return
-				// Done here. Hence, any error received here should be considered as legitimate
-				// errors.
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
 				return
 			}
-			continue
-		}
-
-		// diff < base, then move the diff to catch up with base
-		err = iterStreams[DifferenceIndex].SkipToTargetObject(ctx, base)
-		if err != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-			return
 		}
 	}
 
