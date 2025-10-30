@@ -28,7 +28,7 @@ func TestBoundedWrapper(t *testing.T) {
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
 	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
+		tuple.NewTupleKey("obj:1", "viewer", "group:1#member"),
 	})
 	require.NoError(t, err)
 
@@ -43,35 +43,51 @@ func TestBoundedWrapper(t *testing.T) {
 
 		start := time.Now()
 
+		ctx := context.Background()
+
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
+			_, err := limitedTupleReader.ReadUserTuple(context.Background(), store, tuple.NewTupleKey("obj:1", "viewer", "group:1#member"), storage.ReadUserTupleOptions{})
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
+			itr, err := limitedTupleReader.ReadUsersetTuples(context.Background(), store, storage.ReadUsersetTuplesFilter{
 				Object:   "obj:1",
 				Relation: "viewer",
 			}, storage.ReadUsersetTuplesOptions{})
+			if err != nil {
+				return err
+			}
+			_, err = itr.Next(ctx)
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.Read(context.Background(), store, storage.ReadFilter{}, storage.ReadOptions{})
+			itr, err := limitedTupleReader.Read(context.Background(), store, storage.ReadFilter{}, storage.ReadOptions{})
+			if err != nil {
+				return err
+			}
+			_, err = itr.Next(ctx)
 			return err
 		})
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadStartingWithUser(
+			itr, err := limitedTupleReader.ReadStartingWithUser(
 				context.Background(),
 				store,
 				storage.ReadStartingWithUserFilter{
+					ObjectType: "obj",
+					Relation:   "viewer",
 					UserFilter: []*openfgav1.ObjectRelation{
 						{
-							Object:   "obj",
-							Relation: "viewer",
+							Object:   "group:1",
+							Relation: "member",
 						},
 					}}, storage.ReadStartingWithUserOptions{})
+			if err != nil {
+				return err
+			}
+			_, err = itr.Next(ctx)
 			return err
 		})
 
@@ -82,6 +98,7 @@ func TestBoundedWrapper(t *testing.T) {
 
 		require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second+1) // 2 throttles should add a full second
 		require.Equal(t, uint32(4), limitedTupleReader.GetMetadata().DatastoreQueryCount)
+		require.Equal(t, uint64(4), limitedTupleReader.GetMetadata().DatastoreItemCount)
 		require.True(t, limitedTupleReader.GetMetadata().WasThrottled)
 	})
 
@@ -93,7 +110,7 @@ func TestBoundedWrapper(t *testing.T) {
 		var wg errgroup.Group
 
 		wg.Go(func() error {
-			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "user:anne"), storage.ReadUserTupleOptions{})
+			_, err := limitedTupleReader.ReadUserTuple(ctx, store, tuple.NewTupleKey("obj:1", "viewer", "group:1#member"), storage.ReadUserTupleOptions{})
 			return err
 		})
 

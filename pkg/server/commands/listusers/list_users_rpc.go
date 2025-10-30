@@ -304,6 +304,7 @@ func (l *listUsersQuery) ListUsers(
 		Users: foundUsers,
 		Metadata: listUsersResponseMetadata{
 			DatastoreQueryCount: dsMeta.DatastoreQueryCount,
+			DatastoreItemCount:  dsMeta.DatastoreItemCount,
 			DispatchCounter:     &dispatchCount,
 			WasThrottled:        l.wasThrottled,
 		},
