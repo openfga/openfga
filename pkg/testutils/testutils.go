@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,12 +149,11 @@ func NumericalStringGenerator(n uint64) any {
 }
 
 func MakeStringWithRuneset(n uint64, runeSet []rune) string {
-	var s string
+	var sb strings.Builder
 	for i := uint64(0); i < n; i++ {
-		s += string(runeSet[rand.Intn(len(runeSet))])
+		sb.WriteString(string(runeSet[rand.Intn(len(runeSet))]))
 	}
-
-	return s
+	return sb.String()
 }
 
 // MustTransformDSLToProtoWithID interprets the provided string s as an FGA model and
