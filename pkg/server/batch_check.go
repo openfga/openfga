@@ -111,6 +111,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(queryCount)
 
+	datastoreItemCount := float64(metadata.DatastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	duplicateChecks := "duplicate_checks"
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
@@ -122,6 +129,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
 }

@@ -118,6 +118,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			methodName,
 		).Observe(queryCount)
 
+		datastoreItemCount := float64(resp.GetResolutionMetadata().DatastoreItemCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+		span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+		datastoreItemCountHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+		).Observe(datastoreItemCount)
+
 		requestDurationHistogram.WithLabelValues(
 			s.serviceName,
 			methodName,
