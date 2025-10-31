@@ -222,7 +222,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 	mu := &sync.Mutex{}
 	nextIdsFromObjectToVisit := hashset.New()
 
-	// TODO: this is wasteful to do on every iteration, optimize
+	// TODO: this is wasteful to do on every iteration, optimize and there is a TTU edge
 	conditionEdge, err := s.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
 	if err != nil {
 		concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
@@ -267,12 +267,12 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 			continue
 		}
 
-		i := storage.NewTupleKeyIteratorFromTupleIterator(iter)
-		if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
-			i = storage.NewConditionsFilteredTupleKeyIterator(i,
-				check.BuildConditionTupleKeyFilter(ctx, s.model, conditionEdge, req.GetContext()),
-			)
+		iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
+		//iterFilters = append(iterFilters, check.BuildUniqueTupleKeyFilter(visitedIds,))
+		if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
+			iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 		}
+		i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
 		defer i.Stop()
 

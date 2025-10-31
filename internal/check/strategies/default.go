@@ -25,11 +25,11 @@ type requestMsg struct {
 }
 
 type DefaultStrategy struct {
-	resolver         *check.Resolver
+	resolver         check.CheckResolver
 	concurrencyLimit int
 }
 
-func NewDefault(resolver *check.Resolver, limit int) *DefaultStrategy {
+func NewDefault(resolver check.CheckResolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
 		concurrencyLimit: limit,
 		resolver:         resolver,
