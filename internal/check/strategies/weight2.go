@@ -377,19 +377,20 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 
 		for idx, stream := range iterStreams {
 			value, err := stream.Head(ctx)
-			if err != nil {
-				if storage.IterIsDoneOrCancelled(err) {
-					// we need to ensure we have all iterators at all times
-				} else {
-					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-					batch = nil
-					return
-				}
+			if err != nil && !storage.IterIsDoneOrCancelled(err) {
+				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
+				return
 			}
 
 			// I can move any other stream that the value is already capture in the head of the another stream
 			if initialized && value == minValue {
-				_, _ = stream.Next(ctx)
+				_, err = stream.Next(ctx)
+				if err != nil && !storage.IterIsDoneOrCancelled(err) {
+					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					batch = nil
+					return
+				}
 			}
 
 			// initialize
@@ -464,6 +465,7 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 		iterStreams, err := streams.CleanDone(ctx)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+			batch = nil
 			return
 		}
 		if len(iterStreams) != childrenTotal {
@@ -484,6 +486,7 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 					break
 				}
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 
@@ -512,6 +515,7 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 				_, err = stream.Next(ctx)
 				if err != nil && !storage.IterIsDoneOrCancelled(err) {
 					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					batch = nil
 					return
 				}
 			}
@@ -521,6 +525,7 @@ func resolveIntersection(ctx context.Context, streams *iterator.Streams, out cha
 				err = stream.SkipToTargetObject(ctx, maxValue)
 				if err != nil {
 					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					batch = nil
 					return
 				}
 			}
@@ -548,6 +553,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 		iterStreams, err := streams.CleanDone(ctx)
 		if err != nil {
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+			batch = nil
 			return
 		}
 		if len(iterStreams) != 2 {
@@ -567,6 +573,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 					break
 				}
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 			if idx == BaseIndex {
@@ -589,6 +596,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 				_, err = stream.Next(ctx)
 				if err != nil && !storage.IterIsDoneOrCancelled(err) {
 					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					batch = nil
 					return
 				}
 			}
@@ -597,6 +605,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 			_, err = iterStreams[BaseIndex].Next(ctx)
 			if err != nil && !storage.IterIsDoneOrCancelled(err) {
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 		} else {
@@ -604,6 +613,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 			err = iterStreams[DifferenceIndex].SkipToTargetObject(ctx, baseValue)
 			if err != nil {
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 		}
@@ -612,6 +622,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 	iterStreams, err := streams.CleanDone(ctx)
 	if err != nil {
 		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+		batch = nil
 		return
 	}
 
@@ -622,6 +633,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 			items, err := stream.Drain(ctx)
 			if err != nil {
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 			batch = append(batch, items...)
@@ -632,6 +644,7 @@ func resolveDifference(ctx context.Context, streams *iterator.Streams, out chan<
 			iterStreams, err = streams.CleanDone(ctx)
 			if err != nil {
 				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+				batch = nil
 				return
 			}
 		}
