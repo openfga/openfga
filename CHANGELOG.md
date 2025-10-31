@@ -13,6 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
 
 ### Changed
+- The Read API should now be more performant for MySQL and Postgres when omitting the relation parameter
 - Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
   - PostgreSQL will have the following configuration changes.
     - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
