@@ -56,6 +56,7 @@ type LocalChecker struct {
 	logger               logger.Logger
 	optimizationsEnabled bool
 	maxResolutionDepth   uint32
+	typesystem           *typesystem.TypeSystem
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -82,6 +83,12 @@ func WithPlanner(p planner.Manager) LocalCheckerOption {
 func WithLocalCheckerLogger(logger logger.Logger) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.logger = logger
+	}
+}
+
+func WithTypesystem(ts *typesystem.TypeSystem) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.typesystem = ts
 	}
 }
 
@@ -388,6 +395,7 @@ var _ CheckResolver = (*LocalChecker)(nil)
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
+// datastore?
 ) (*ResolveCheckResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -426,22 +434,18 @@ func (c *LocalChecker) ResolveCheck(
 	}
 
 	// TODO: here
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("%w: typesystem missing in context", openfgaErrors.ErrUnknown)
-	}
-	_, ok = storage.RelationshipTupleReaderFromContext(ctx)
+	_, ok := storage.RelationshipTupleReaderFromContext(ctx)
 	if !ok {
 		return nil, fmt.Errorf("%w: relationship tuple reader datastore missing in context", openfgaErrors.ErrUnknown)
 	}
 
 	objectType, _ := tuple.SplitObject(object)
-	rel, err := typesys.GetRelation(objectType, relation)
+	rel, err := c.typesystem.GetRelation(objectType, relation)
 	if err != nil {
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	hasPath, err := typesys.PathExists(tupleKey.GetUser(), relation, objectType)
+	hasPath, err := c.typesystem.PathExists(tupleKey.GetUser(), relation, objectType)
 	if err != nil {
 		return nil, err
 	}
@@ -477,8 +481,6 @@ func (c *LocalChecker) hasCycle(req *ResolveCheckRequest) bool {
 }
 
 func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	// just put these on the checker itself
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
 	ds, _ := storage.RelationshipTupleReaderFromContext(ctx)
 	storeID := req.GetStoreID()
 	reqTupleKey := req.GetTupleKey()
@@ -514,9 +516,9 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
+				validation.FilterInvalidTuples(c.typesystem),
 			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), c.typesystem),
 		)
 		defer filteredIter.Stop()
 
@@ -534,9 +536,7 @@ func (c *LocalChecker) checkPublicAssignable(ctx context.Context, req *ResolveCh
 	}
 }
 
-func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
+func (c *LocalChecker) checkDirectUserTuple(req *ResolveCheckRequest) CheckHandlerFunc {
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -567,11 +567,11 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 
 		// filter out invalid tuples yielded by the database query
 		tupleKey := t.GetKey()
-		err = validation.ValidateTupleForRead(typesys, tupleKey)
+		err = validation.ValidateTupleForRead(c.typesystem, tupleKey)
 		if err != nil {
 			return response, nil
 		}
-		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, typesys)
+		tupleKeyConditionFilter := checkutil.BuildTupleKeyConditionFilter(ctx, req.Context, c.typesystem)
 		conditionMet, err := tupleKeyConditionFilter(tupleKey)
 		if err != nil {
 			telemetry.TraceError(span, err)
@@ -586,9 +586,7 @@ func (c *LocalChecker) checkDirectUserTuple(ctx context.Context, req *ResolveChe
 }
 
 // helper function to return whether checkDirectUserTuple should run.
-func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
+func shouldCheckDirectTuple(typesys *typesystem.TypeSystem, reqTupleKey *openfgav1.TupleKey) bool {
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
@@ -601,9 +599,7 @@ func shouldCheckDirectTuple(ctx context.Context, reqTupleKey *openfgav1.TupleKey
 }
 
 // helper function to return whether checkPublicAssignable should run.
-func shouldCheckPublicAssignable(ctx context.Context, reqTupleKey *openfgav1.TupleKey) bool {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
-
+func shouldCheckPublicAssignable(typesys *typesystem.TypeSystem, reqTupleKey *openfgav1.TupleKey) bool {
 	objectType := tuple.GetType(reqTupleKey.GetObject())
 	relation := reqTupleKey.GetRelation()
 
@@ -635,8 +631,7 @@ func (c *LocalChecker) profiledCheckHandler(keyPlan planner.Selector, strategy *
 	}
 }
 
-func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	typesys, _ := typesystem.TypesystemFromContext(ctx)
+func (c *LocalChecker) checkDirectUsersetTuples(typesys *typesystem.TypeSystem, req *ResolveCheckRequest) CheckHandlerFunc {
 	reqTupleKey := req.GetTupleKey()
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
@@ -750,32 +745,30 @@ func (c *LocalChecker) checkDirectUsersetTuples(ctx context.Context, req *Resolv
 // the second handler looks up wildcard matches on the provided 'object#relation@user:*',
 // while the third handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
-func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) checkDirect(req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkDirect")
 		defer span.End()
-
-		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 
 		reqTupleKey := req.GetTupleKey()
 		objectType := tuple.GetType(reqTupleKey.GetObject())
 		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "group#member"
-		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+		directlyRelatedUsersetTypes, _ := c.typesystem.DirectlyRelatedUsersets(objectType, relation)
 
 		var checkFuncs []CheckHandlerFunc
 
-		if shouldCheckDirectTuple(ctx, req.GetTupleKey()) {
-			checkFuncs = []CheckHandlerFunc{c.checkDirectUserTuple(parentctx, req)}
+		if shouldCheckDirectTuple(c.typesystem, req.GetTupleKey()) {
+			checkFuncs = []CheckHandlerFunc{c.checkDirectUserTuple(req)}
 		}
 
-		if shouldCheckPublicAssignable(ctx, reqTupleKey) {
-			checkFuncs = append(checkFuncs, c.checkPublicAssignable(parentctx, req))
+		if shouldCheckPublicAssignable(c.typesystem, reqTupleKey) {
+			checkFuncs = append(checkFuncs, c.checkPublicAssignable(ctx, req))
 		}
 
 		if len(directlyRelatedUsersetTypes) > 0 {
-			checkFuncs = append(checkFuncs, c.checkDirectUsersetTuples(parentctx, req))
+			checkFuncs = append(checkFuncs, c.checkDirectUsersetTuples(c.typesystem, req))
 		}
 
 		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
@@ -814,15 +807,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
 
-		typesys, _ := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
-
 		ds, _ := storage.RelationshipTupleReaderFromContext(parentctx)
 
 		objectType, relation := tuple.GetType(req.GetTupleKey().GetObject()), req.GetTupleKey().GetRelation()
 
 		userType := tuple.GetType(req.GetTupleKey().GetUser())
 
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		ctx = storage.ContextWithRelationshipTupleReader(ctx, ds)
 
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
@@ -857,9 +847,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		filteredIter := storage.NewConditionsFilteredTupleKeyIterator(
 			storage.NewFilteredTupleKeyIterator(
 				storage.NewTupleKeyIteratorFromTupleIterator(iter),
-				validation.FilterInvalidTuples(typesys),
+				validation.FilterInvalidTuples(c.typesystem),
 			),
-			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), typesys),
+			checkutil.BuildTupleKeyConditionFilter(ctx, req.GetContext(), c.typesystem),
 		)
 		defer filteredIter.Stop()
 
@@ -870,10 +860,10 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
 		if !isUserset {
-			if typesys.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			if c.typesystem.TTUUseWeight2Resolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleStrategies[weightTwoResolver] = weight2Plan
 				resolver = c.weight2TTU
-			} else if typesys.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
+			} else if c.typesystem.TTUUseRecursiveResolver(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				possibleStrategies[defaultResolver] = defaultRecursivePlan
 				possibleStrategies[recursiveResolver] = recursivePlan
 				resolver = c.recursiveTTU
@@ -971,7 +961,7 @@ func (c *LocalChecker) CheckRewrite(
 ) CheckHandlerFunc {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgav1.Userset_This:
-		return c.checkDirect(ctx, req)
+		return c.checkDirect(req)
 	case *openfgav1.Userset_ComputedUserset:
 		return c.checkComputedUserset(ctx, req, rewrite)
 	case *openfgav1.Userset_TupleToUserset:

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"strconv"
 	"time"
 
@@ -28,13 +29,6 @@ import (
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	const methodName = "check"
 
-	builder := s.getCheckResolverBuilder(req.GetStoreId())
-	checkResolver, checkResolverCloser, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
-	defer checkResolverCloser()
-
 	startTime := time.Now()
 
 	tk := req.GetTupleKey()
@@ -58,7 +52,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		Method:  apimethod.Check.String(),
 	})
 
-	err = s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
+	err := s.checkAuthz(ctx, req.GetStoreId(), apimethod.Check)
 	if err != nil {
 		return nil, err
 	}
@@ -69,6 +63,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
+
+	builder := s.getCheckResolverBuilder(req.GetStoreId(), typesys)
+	checkResolver, checkResolverCloser, err := builder.Build()
+	if err != nil {
+		return nil, err
+	}
+	defer checkResolverCloser()
 
 	checkQuery := commands.NewCheckCommand(
 		s.datastore,
@@ -177,9 +178,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
-func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
+func (s *Server) getCheckResolverBuilder(storeID string, typesys *typesystem.TypeSystem) *graph.CheckResolverOrderedBuilder {
+	// I think this will need the typesystem as well as the wrapped datastore
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
-
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
@@ -188,12 +189,14 @@ func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrd
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
 			graph.WithLocalCheckerLogger(s.logger),
+			graph.WithTypesystem(typesys),
 		}...),
 		graph.WithLocalShadowCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 			graph.WithOptimizations(true), // shadow checker always uses optimizations
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
+			graph.WithTypesystem(typesys),
 		}...),
 		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowCheck, storeID)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
