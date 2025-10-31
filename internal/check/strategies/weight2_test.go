@@ -276,10 +276,10 @@ func TestWeight2ResolveUnion(t *testing.T) {
 				objects: [][]string{
 					{"obj:1", "obj:5", "obj:7", "obj:9"},
 					{"obj:3", "obj:4", "obj:5", "obj:6", "obj:7"},
-					{"obj:5", "obj:7", "obj:9", "obj:11"},
-					{"obj:5", "obj:7", "obj:8", "obj:9", "obj:11"},
+					{"obj:5", "obj:7", "obj:8", "obj:9"},
+					{"obj:0", "obj:5", "obj:7", "obj:8", "obj:9"},
 				},
-				expected: []string{"obj:1", "obj:3", "obj:4", "obj:5", "obj:6", "obj:7", "obj:8", "obj:9", "obj:11"},
+				expected: []string{"obj:0", "obj:1", "obj:3", "obj:4", "obj:5", "obj:6", "obj:7", "obj:8", "obj:9"},
 			},
 			{
 				name: "all_item_matches",
@@ -1172,6 +1172,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
+
 	t.Run("should_return_error_when_smaller_base_has_error", func(t *testing.T) {
 		ctx := context.Background()
 		ctrl := gomock.NewController(t)

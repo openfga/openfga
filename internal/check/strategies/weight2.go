@@ -364,7 +364,9 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 		}
 		iterStreams, err := streams.CleanDone(ctx)
 		if err != nil {
+			// TODO do not return is a union, it could exist a solution in the other streams
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+			batch = nil
 			return
 		}
 
@@ -377,12 +379,12 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 			value, err := stream.Head(ctx)
 			if err != nil {
 				if storage.IterIsDoneOrCancelled(err) {
-					initialized = false
-					break
 					// we need to ensure we have all iterators at all times
+				} else {
+					concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+					batch = nil
+					return
 				}
-				concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
-				return
 			}
 
 			// I can move any other stream that the value is already capture in the head of the another stream
@@ -402,18 +404,22 @@ func resolveUnion(ctx context.Context, streams *iterator.Streams, out chan<- *it
 			// All streams were done or one iterator is done and we need to verify the active streams
 			continue
 		}
-
 		batch = addValueToBatch(minValue, batch, ctx, out)
+
 		// Advance the stream with the minimum value
 		_, err = iterStreams[minStreamIdx].Next(ctx)
 		if err != nil && !storage.IterIsDoneOrCancelled(err) {
 			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: err}, out)
+			batch = nil
 			return
 		}
 	}
 }
 
 func addValueToBatch(value string, batch []string, ctx context.Context, out chan<- *iterator.Msg) []string {
+	if len(value) == 0 {
+		return batch
+	}
 	batch = append(batch, value)
 	// Flush batch if needed
 	if len(batch) >= IteratorMinBatchThreshold {
