@@ -1652,7 +1652,7 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#all")
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
 
 		iter := storage.NewStaticTupleKeyIterator([]*openfgav1.TupleKey{{
@@ -1720,19 +1720,19 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define members: [user]
-					define public: [user, user:*]
-					define all: members or public
-			type document
-				relations
-					define parent: [group]
-					define viewer: all from parent
-			`)
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define members: [user]
+						define public: [user, user:*]
+						define all: members or public
+				type document
+					relations
+						define parent: [group]
+						define viewer: all from parent
+				`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
@@ -1805,19 +1805,19 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define members: [user]
-					define public: [user, user:*]
-					define all: members or public
-			type document
-				relations
-					define parent: [group]
-					define viewer: all from parent
-			`)
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define members: [user]
+						define public: [user, user:*]
+						define all: members or public
+				type document
+					relations
+						define parent: [group]
+						define viewer: all from parent
+				`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
@@ -1890,19 +1890,19 @@ func TestCheckTTUFastPathV2(t *testing.T) {
 		ctx := context.Background()
 
 		model := testutils.MustTransformDSLToProtoWithID(`
-			model
-				schema 1.1
-			type user
-			type group
-				relations
-					define members: [user]
-					define public: [user, user:*]
-					define all: members or public
-			type document
-				relations
-					define parent: [group]
-					define viewer: all from parent
-			`)
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define members: [user]
+						define public: [user, user:*]
+						define all: members or public
+				type document
+					relations
+						define parent: [group]
+						define viewer: all from parent
+				`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
