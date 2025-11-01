@@ -222,3 +222,161 @@ func TestToChannelWithContextCancellation(t *testing.T) {
 		t.Fatal("channel did not close after context cancellation")
 	}
 }
+
+func TestChannelIterator(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	tests := []struct {
+		name           string
+		setupChannel   func(*gomock.Controller) chan *Msg
+		expectedValues []string
+		expectedErrors []error
+	}{
+		{
+			name: "should_iterate_through_single_iterator",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg, 1)
+				iter := mocks.NewMockIterator[string](ctrl)
+				iter.EXPECT().Head(gomock.Any()).Return("a", nil).AnyTimes()
+				iter.EXPECT().Next(gomock.Any()).Return("a", nil)
+				iter.EXPECT().Next(gomock.Any()).Return("b", nil)
+				iter.EXPECT().Next(gomock.Any()).Return("c", nil)
+				iter.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone)
+				iter.EXPECT().Stop().Times(1)
+				ch <- &Msg{Iter: iter}
+				close(ch)
+				return ch
+			},
+			expectedValues: []string{"a", "b", "c"},
+			expectedErrors: []error{},
+		},
+		{
+			name: "should_chain_multiple_iterators",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg, 3)
+
+				iter1 := mocks.NewMockIterator[string](ctrl)
+				iter1.EXPECT().Head(gomock.Any()).Return("a", nil).AnyTimes()
+				iter1.EXPECT().Next(gomock.Any()).Return("a", nil)
+				iter1.EXPECT().Next(gomock.Any()).Return("b", nil)
+				iter1.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone)
+				iter1.EXPECT().Stop().Times(1)
+
+				iter2 := mocks.NewMockIterator[string](ctrl)
+				iter2.EXPECT().Head(gomock.Any()).Return("c", nil).AnyTimes()
+				iter2.EXPECT().Next(gomock.Any()).Return("c", nil)
+				iter2.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone)
+				iter2.EXPECT().Stop().Times(1)
+
+				iter3 := mocks.NewMockIterator[string](ctrl)
+				iter3.EXPECT().Head(gomock.Any()).Return("d", nil).AnyTimes()
+				iter3.EXPECT().Next(gomock.Any()).Return("d", nil)
+				iter3.EXPECT().Next(gomock.Any()).Return("e", nil)
+				iter3.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone)
+				iter3.EXPECT().Stop().Times(1)
+
+				ch <- &Msg{Iter: iter1}
+				ch <- &Msg{Iter: iter2}
+				ch <- &Msg{Iter: iter3}
+				close(ch)
+				return ch
+			},
+			expectedValues: []string{"a", "b", "c", "d", "e"},
+			expectedErrors: []error{},
+		},
+		{
+			name: "should_handle_error_in_iterator",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg, 1)
+				iter := mocks.NewMockIterator[string](ctrl)
+				iter.EXPECT().Head(gomock.Any()).Return("a", nil).AnyTimes()
+				iter.EXPECT().Next(gomock.Any()).Return("a", nil)
+				expectedErr := errors.New("iterator error")
+				iter.EXPECT().Next(gomock.Any()).Return("", expectedErr)
+				iter.EXPECT().Stop().Times(1)
+				ch <- &Msg{Iter: iter}
+				close(ch)
+				return ch
+			},
+			expectedValues: []string{"a"},
+			expectedErrors: []error{errors.New("iterator error")},
+		},
+		{
+			name: "should_handle_error_message",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg, 1)
+				ch <- &Msg{Err: errors.New("channel error")}
+				close(ch)
+				return ch
+			},
+			expectedErrors: []error{errors.New("channel error")},
+		},
+		{
+			name: "should_skip_nil_iterators",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg, 2)
+				ch <- &Msg{Iter: nil}
+
+				iter := mocks.NewMockIterator[string](ctrl)
+				iter.EXPECT().Head(gomock.Any()).Return("a", nil).AnyTimes()
+				iter.EXPECT().Next(gomock.Any()).Return("a", nil)
+				iter.EXPECT().Next(gomock.Any()).Return("", storage.ErrIteratorDone)
+				iter.EXPECT().Stop().Times(1)
+				ch <- &Msg{Iter: iter}
+				close(ch)
+				return ch
+			},
+			expectedValues: []string{"a"},
+			expectedErrors: []error{},
+		},
+		{
+			name: "should_return_done_on_empty_channel",
+			setupChannel: func(ctrl *gomock.Controller) chan *Msg {
+				ch := make(chan *Msg)
+				close(ch)
+				return ch
+			},
+			expectedErrors: []error{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			ch := tt.setupChannel(ctrl)
+			iter := FromChannel(ch)
+			defer iter.Stop()
+
+			ctx := context.Background()
+			var values []string
+			var errs []error
+
+			for {
+				val, err := iter.Next(ctx)
+				if err != nil {
+					if storage.IterIsDoneOrCancelled(err) {
+						break
+					}
+					errs = append(errs, err)
+					break
+				}
+				values = append(values, val)
+			}
+
+			require.Equal(t, tt.expectedValues, values)
+			require.Equal(t, len(tt.expectedErrors), len(errs))
+			for i, expectedErr := range tt.expectedErrors {
+				if expectedErr != nil {
+					require.Error(t, errs[i])
+					require.Equal(t, expectedErr.Error(), errs[i].Error())
+				} else {
+					require.NoError(t, errs[i])
+				}
+			}
+		})
+	}
+}

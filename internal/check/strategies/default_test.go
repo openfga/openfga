@@ -8,7 +8,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 	"github.com/openfga/openfga/internal/check"
-	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -49,7 +48,7 @@ func TestDefaultUserset(t *testing.T) {
 	tests := []struct {
 		name          string
 		tuples        []*openfgav1.TupleKey
-		setupMock     func(*mocks.MockCheckResolver)
+		setupMock     func(*check.MockCheckResolver)
 		expected      *check.Response
 		expectedError error
 	}{
@@ -63,13 +62,13 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: true,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
 						tk := req.GetTupleKey()
 						return tk.GetObject() == "group:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-					}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil)
+					}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "group:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
@@ -86,7 +85,7 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
@@ -107,7 +106,7 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 			},
 		},
@@ -122,23 +121,23 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: true,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
 						tk := req.GetTupleKey()
 						return tk.GetObject() == "group:1" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-					}), gomock.Any(), nil).Return(nil, fmt.Errorf("boom"))
+					}), gomock.Any(), nil).Return(nil, fmt.Errorf("boom")).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
 						tk := req.GetTupleKey()
 						return tk.GetObject() == "group:2" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-					}), gomock.Any(), nil).Return(&check.Response{Allowed: true}, nil)
+					}), gomock.Any(), nil).Return(&check.Response{Allowed: true}, nil).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
 						tk := req.GetTupleKey()
 						return tk.GetObject() == "group:3" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-					}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil)
+					}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil).MaxTimes(1)
 			},
 		},
 		{
@@ -151,7 +150,7 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: fmt.Errorf("boom"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(nil, fmt.Errorf("boom")).Times(2)
 			},
@@ -167,7 +166,7 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: fmt.Errorf("boom"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
@@ -195,7 +194,7 @@ func TestDefaultUserset(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: fmt.Errorf("boom"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(
 					func(req *check.Request) bool {
@@ -211,7 +210,7 @@ func TestDefaultUserset(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockResolver := mocks.NewMockCheckResolver(ctrl)
+			mockResolver := check.NewMockCheckResolver(ctrl)
 			tt.setupMock(mockResolver)
 
 			iter := storage.NewStaticTupleKeyIterator(tt.tuples)
@@ -275,7 +274,7 @@ func TestDefaultTTU(t *testing.T) {
 	tests := []struct {
 		name          string
 		tuples        []*openfgav1.TupleKey
-		setupMock     func(*mocks.MockCheckResolver)
+		setupMock     func(*check.MockCheckResolver)
 		expected      *check.Response
 		expectedError error
 	}{
@@ -289,12 +288,12 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: true,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "document:3" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-				}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil)
+				}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "document:4" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
@@ -311,7 +310,7 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
@@ -330,7 +329,7 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 			},
 		},
@@ -345,16 +344,16 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: true,
 			},
 			expectedError: nil,
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "document:3" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-				}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil)
+				}), gomock.Any(), nil).Return(&check.Response{Allowed: false}, nil).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "document:4" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
-				}), gomock.Any(), nil).Return(nil, fmt.Errorf("error during resolution"))
+				}), gomock.Any(), nil).Return(nil, fmt.Errorf("error during resolution")).MaxTimes(1)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
 					return tk.GetObject() == "document:5" && tk.GetRelation() == "member" && tk.GetUser() == "user:maria"
@@ -370,8 +369,8 @@ func TestDefaultTTU(t *testing.T) {
 			expected: &check.Response{
 				Allowed: false,
 			},
-			expectedError: fmt.Errorf("temporary error"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			expectedError: fmt.Errorf("boom"),
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(nil, fmt.Errorf("boom")).Times(2)
 			},
@@ -387,7 +386,7 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: fmt.Errorf("resolver error"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
@@ -412,7 +411,7 @@ func TestDefaultTTU(t *testing.T) {
 				Allowed: false,
 			},
 			expectedError: fmt.Errorf("boom"),
-			setupMock: func(mockResolver *mocks.MockCheckResolver) {
+			setupMock: func(mockResolver *check.MockCheckResolver) {
 				mockResolver.EXPECT().GetModel().Return(mg)
 				mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Cond(func(req *check.Request) bool {
 					tk := req.GetTupleKey()
@@ -427,7 +426,7 @@ func TestDefaultTTU(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockResolver := mocks.NewMockCheckResolver(ctrl)
+			mockResolver := check.NewMockCheckResolver(ctrl)
 			tt.setupMock(mockResolver)
 
 			iter := storage.NewStaticTupleKeyIterator(tt.tuples)

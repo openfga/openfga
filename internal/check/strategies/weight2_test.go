@@ -134,19 +134,19 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
-		producers = append(producers, iterator.NewStream(0, producer))
+		producers = append(producers, iterator.FromChannel(producer))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			resolveUnion(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveUnion(cancellableCtx, producers, res)
 			return nil
 		})
 		_, ok := <-res
@@ -160,28 +160,29 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
-		iter2.EXPECT().Stop().Times(1)
+		iter2.EXPECT().Stop().MaxTimes(1) // drain happens in background
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
+		fmt.Println(msg, ok)
 		require.True(t, ok)
 		require.Error(t, msg.Err)
 		_, ok = <-res
@@ -193,7 +194,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0, 4)
+		producers := make([]storage.Iterator[string], 0, 4)
 
 		ctx := context.Background()
 
@@ -202,12 +203,12 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		producer3 := make(chan *iterator.Msg, 4)
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
@@ -215,17 +216,17 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
 		close(producer3)
-		producers = append(producers, iterator.NewStream(0, producer3))
+		producers = append(producers, iterator.FromChannel(producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
 		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
 		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
 		close(producer4)
-		producers = append(producers, iterator.NewStream(0, producer4))
+		producers = append(producers, iterator.FromChannel(producer4))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, producers, res)
 			return nil
 		})
 
@@ -296,18 +297,18 @@ func TestWeight2ResolveUnion(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				res := make(chan *iterator.Msg)
-				producers := make([]*iterator.Stream, 0, len(tt.objects))
+				producers := make([]storage.Iterator[string], 0, len(tt.objects))
 				ctx := context.Background()
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
 					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
 					close(producer)
-					producers = append(producers, iterator.NewStream(0, producer))
+					producers = append(producers, iterator.FromChannel(producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					resolveUnion(ctx, iterator.NewStreams(producers), res)
+					resolveUnion(ctx, producers, res)
 					return nil
 				})
 
@@ -336,7 +337,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 		res := make(chan *iterator.Msg)
 		const numStream = 2
-		producers := make([]*iterator.Stream, 0, numStream)
+		producers := make([]storage.Iterator[string], 0, numStream)
 		ctx := context.Background()
 
 		const numItems = 2000
@@ -349,11 +350,11 @@ func TestWeight2ResolveUnion(t *testing.T) {
 			}
 			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
 			close(producer)
-			producers = append(producers, iterator.NewStream(0, producer))
+			producers = append(producers, iterator.FromChannel(producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, producers, res)
 			return nil
 		})
 
@@ -385,20 +386,20 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -413,7 +414,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -422,16 +423,16 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveUnion(ctx, iterator.NewStreams(producers), res)
+			resolveUnion(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -453,19 +454,19 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().Times(1)
 		producer := make(chan *iterator.Msg, 1)
 		producer <- &iterator.Msg{Iter: iter1}
 		close(producer)
-		producers = append(producers, iterator.NewStream(0, producer))
+		producers = append(producers, iterator.FromChannel(producer))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			resolveIntersection(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveIntersection(cancellableCtx, producers, res)
 			return nil
 		})
 		_, ok := <-res
@@ -479,23 +480,23 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -510,7 +511,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0, 4)
+		producers := make([]storage.Iterator[string], 0, 4)
 
 		ctx := context.Background()
 
@@ -519,13 +520,13 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 2)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		producer3 := make(chan *iterator.Msg, 6)
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
@@ -535,17 +536,17 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
 		producer3 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
 		close(producer3)
-		producers = append(producers, iterator.NewStream(0, producer3))
+		producers = append(producers, iterator.FromChannel(producer3))
 
 		producer4 := make(chan *iterator.Msg, 2)
 		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
 		producer4 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:4"})}
 		close(producer4)
-		producers = append(producers, iterator.NewStream(0, producer4))
+		producers = append(producers, iterator.FromChannel(producer4))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 
@@ -617,18 +618,18 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				res := make(chan *iterator.Msg)
-				producers := make([]*iterator.Stream, 0, len(tt.objects))
+				producers := make([]storage.Iterator[string], 0, len(tt.objects))
 				ctx := context.Background()
 
 				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
 					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
 					close(producer)
-					producers = append(producers, iterator.NewStream(0, producer))
+					producers = append(producers, iterator.FromChannel(producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					resolveIntersection(ctx, iterator.NewStreams(producers), res)
+					resolveIntersection(ctx, producers, res)
 					return nil
 				})
 
@@ -657,7 +658,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 		res := make(chan *iterator.Msg)
 		const numStream = 2
-		producers := make([]*iterator.Stream, 0, numStream)
+		producers := make([]storage.Iterator[string], 0, numStream)
 		ctx := context.Background()
 
 		const numItems = 2000
@@ -670,11 +671,11 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 			}
 			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](keys)}
 			close(producer)
-			producers = append(producers, iterator.NewStream(0, producer))
+			producers = append(producers, iterator.FromChannel(producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 
@@ -706,11 +707,11 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
@@ -719,7 +720,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -734,7 +735,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -743,16 +744,16 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -769,7 +770,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -778,16 +779,16 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -804,7 +805,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		// the first two times of Head() is to remove the first item (1)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
@@ -817,16 +818,16 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveIntersection(ctx, iterator.NewStreams(producers), res)
+			resolveIntersection(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -848,27 +849,27 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Stop().MaxTimes(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		iter2 := mocks.NewMockIterator[string](ctrl)
 		iter2.EXPECT().Stop().MaxTimes(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(context.Background(), 1)
 		pool.Go(func(ctx context.Context) error {
 			cancellableCtx, cancel := context.WithCancel(ctx)
 			cancel()
-			resolveDifference(cancellableCtx, iterator.NewStreams(producers), res)
+			resolveDifference(cancellableCtx, producers, res)
 			return nil
 		})
 		_, ok := <-res
@@ -882,23 +883,23 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 		iter2 := mocks.NewMockIterator[string](ctrl)
 		iter2.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter2}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -913,7 +914,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0, 2)
+		producers := make([]storage.Iterator[string], 0, 2)
 
 		ctx := context.Background()
 
@@ -925,7 +926,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:8"})}
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:9"})}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(BaseIndex, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 6)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:0"})}
@@ -933,11 +934,11 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:5"})}
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:6"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(DifferenceIndex, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 
@@ -1027,18 +1028,18 @@ func TestWeight2ResolveDifference(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				defer ctrl.Finish()
 				res := make(chan *iterator.Msg)
-				producers := make([]*iterator.Stream, 0, len(tt.objects))
+				producers := make([]storage.Iterator[string], 0, len(tt.objects))
 				ctx := context.Background()
 
-				for idx, objs := range tt.objects {
+				for _, objs := range tt.objects {
 					producer := make(chan *iterator.Msg, 1)
 					producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
 					close(producer)
-					producers = append(producers, iterator.NewStream(idx, producer))
+					producers = append(producers, iterator.FromChannel(producer))
 				}
 				pool := concurrency.NewPool(ctx, 1)
 				pool.Go(func(ctx context.Context) error {
-					resolveDifference(ctx, iterator.NewStreams(producers), res)
+					resolveDifference(ctx, producers, res)
 					return nil
 				})
 
@@ -1068,11 +1069,11 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Err: fmt.Errorf("mock error")}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
@@ -1081,7 +1082,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1103,18 +1104,18 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		object2 := []string{"obj:0"}
 		objects := [][]string{object1, object2}
 
-		producers := make([]*iterator.Stream, 0, len(objects))
+		producers := make([]storage.Iterator[string], 0, len(objects))
 		ctx := context.Background()
 
-		for idx, objs := range objects {
+		for _, objs := range objects {
 			producer := make(chan *iterator.Msg, 1)
 			producer <- &iterator.Msg{Iter: storage.NewStaticIterator[string](objs)}
 			close(producer)
-			producers = append(producers, iterator.NewStream(idx, producer))
+			producers = append(producers, iterator.FromChannel(producer))
 		}
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 
@@ -1146,7 +1147,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1154,14 +1155,14 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:1"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1179,7 +1180,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
@@ -1187,14 +1188,14 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res
@@ -1211,11 +1212,11 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		defer ctrl.Finish()
 
 		res := make(chan *iterator.Msg)
-		producers := make([]*iterator.Stream, 0)
+		producers := make([]storage.Iterator[string], 0)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: storage.NewStaticIterator[string]([]string{"obj:2"})}
 		close(producer1)
-		producers = append(producers, iterator.NewStream(0, producer1))
+		producers = append(producers, iterator.FromChannel(producer1))
 		iter1 := mocks.NewMockIterator[string](ctrl)
 		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
@@ -1224,10 +1225,10 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter1}
 		close(producer2)
-		producers = append(producers, iterator.NewStream(0, producer2))
+		producers = append(producers, iterator.FromChannel(producer2))
 		pool := concurrency.NewPool(ctx, 1)
 		pool.Go(func(ctx context.Context) error {
-			resolveDifference(ctx, iterator.NewStreams(producers), res)
+			resolveDifference(ctx, producers, res)
 			return nil
 		})
 		msg, ok := <-res

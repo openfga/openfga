@@ -7,7 +7,7 @@
 //
 
 // Package mocks is a generated GoMock package.
-package mocks
+package check
 
 import (
 	context "context"
@@ -15,7 +15,6 @@ import (
 	sync "sync"
 
 	graph "github.com/openfga/language/pkg/go/graph"
-	check "github.com/openfga/openfga/internal/check"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -44,10 +43,10 @@ func (m *MockCheckResolver) EXPECT() *MockCheckResolverMockRecorder {
 }
 
 // GetModel mocks base method.
-func (m *MockCheckResolver) GetModel() *check.AuthorizationModelGraph {
+func (m *MockCheckResolver) GetModel() *AuthorizationModelGraph {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetModel")
-	ret0, _ := ret[0].(*check.AuthorizationModelGraph)
+	ret0, _ := ret[0].(*AuthorizationModelGraph)
 	return ret0
 }
 
@@ -58,10 +57,10 @@ func (mr *MockCheckResolverMockRecorder) GetModel() *gomock.Call {
 }
 
 // ResolveCheck mocks base method.
-func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *check.Request) (*check.Response, error) {
+func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveCheck", ctx, req)
-	ret0, _ := ret[0].(*check.Response)
+	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -73,10 +72,10 @@ func (mr *MockCheckResolverMockRecorder) ResolveCheck(ctx, req any) *gomock.Call
 }
 
 // ResolveUnion mocks base method.
-func (m *MockCheckResolver) ResolveUnion(ctx context.Context, req *check.Request, node *graph.WeightedAuthorizationModelNode, visited *sync.Map) (*check.Response, error) {
+func (m *MockCheckResolver) ResolveUnion(ctx context.Context, req *Request, node *graph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ResolveUnion", ctx, req, node, visited)
-	ret0, _ := ret[0].(*check.Response)
+	ret0, _ := ret[0].(*Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
