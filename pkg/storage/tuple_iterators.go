@@ -540,7 +540,6 @@ func (c *OrderedCombinedIterator) Stop() {
 	})
 }
 
-
 // IterIsDoneOrCancelled is true if the error is due to done or cancelled or deadline exceeded.
 func IterIsDoneOrCancelled(err error) bool {
 	return errors.Is(err, ErrIteratorDone) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)

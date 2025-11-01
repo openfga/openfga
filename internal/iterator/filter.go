@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-// OperationType represents the iterator method being called
+// OperationType represents the iterator method being called.
 type OperationType string
 
 const (

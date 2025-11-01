@@ -5,13 +5,13 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/openfga/openfga/internal/iterator"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/condition/eval"
+	"github.com/openfga/openfga/internal/iterator"
 )
 
 func evaluateCondition(ctx context.Context, model *AuthorizationModelGraph, edge *authzGraph.WeightedAuthorizationModelEdge, t *openfgav1.TupleKey, reqCtx *structpb.Struct) (bool, error) {

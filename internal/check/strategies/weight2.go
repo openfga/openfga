@@ -179,7 +179,6 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
 func (s *Weight2) setOperationSetup(ctx context.Context, req *check.Request, resolver weight2Handler, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
-
 	iterChans := make([]storage.Iterator[string], 0, len(edges))
 	for _, edge := range edges {
 		if _, ok := edge.GetWeight(req.GetUserType()); !ok {

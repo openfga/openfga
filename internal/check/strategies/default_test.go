@@ -6,15 +6,16 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/check"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
+
+	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 

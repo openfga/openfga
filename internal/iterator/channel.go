@@ -137,7 +137,6 @@ func (c *channelIterator) Head(ctx context.Context) (string, error) {
 	}
 }
 
-
 func (c *channelIterator) Stop() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

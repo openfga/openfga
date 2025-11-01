@@ -268,7 +268,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 		}
 
 		iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
-		//iterFilters = append(iterFilters, check.BuildUniqueTupleKeyFilter(visitedIds,))
+		// iterFilters = append(iterFilters, check.BuildUniqueTupleKeyFilter(visitedIds,))
 		if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 			iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 		}

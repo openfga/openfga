@@ -19,12 +19,12 @@ func TestSkipTo(t *testing.T) {
 	})
 
 	tests := []struct {
-		name           string
-		values         []string
-		target         string
-		expectedHead   string
-		expectError    bool
-		expectDone     bool
+		name         string
+		values       []string
+		target       string
+		expectedHead string
+		expectError  bool
+		expectDone   bool
 	}{
 		{
 			name:         "should_skip_to_exact_match",

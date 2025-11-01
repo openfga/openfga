@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openfga/openfga/internal/iterator"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"

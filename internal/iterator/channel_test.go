@@ -167,12 +167,12 @@ func TestToChannel(t *testing.T) {
 				errs = append(errs, msg.Err)
 			}
 
-			require.Equal(t, len(tt.expectedValues), len(values))
+			require.Len(t, values, len(tt.expectedValues))
 			for i, expected := range tt.expectedValues {
 				require.Equal(t, expected, values[i])
 			}
 
-			require.Equal(t, len(tt.expectedErrors), len(errs))
+			require.Len(t, errs, len(tt.expectedErrors))
 			for i, expectedErr := range tt.expectedErrors {
 				if expectedErr != nil {
 					require.Error(t, errs[i])
@@ -368,7 +368,7 @@ func TestChannelIterator(t *testing.T) {
 			}
 
 			require.Equal(t, tt.expectedValues, values)
-			require.Equal(t, len(tt.expectedErrors), len(errs))
+			require.Len(t, errs, len(tt.expectedErrors))
 			for i, expectedErr := range tt.expectedErrors {
 				if expectedErr != nil {
 					require.Error(t, errs[i])

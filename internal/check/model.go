@@ -5,9 +5,9 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/pkg/server/config"
 
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/pkg/server/config"
 )
 
 var ErrGraphError = errors.New("authorization model graph error")
@@ -15,7 +15,7 @@ var ErrGraphError = errors.New("authorization model graph error")
 // TODO: Move to its own public package.
 type AuthorizationModelGraph struct {
 	*authzGraph.WeightedAuthorizationModelGraph
-	modelId       string
+	modelID       string
 	schemaVersion string
 	conditions    map[string]*condition.EvaluableCondition
 }
@@ -35,14 +35,14 @@ func NewAuthorizationModelGraph(model *openfgav1.AuthorizationModel) (*Authoriza
 	}
 	return &AuthorizationModelGraph{
 		WeightedAuthorizationModelGraph: graph,
-		modelId:                         model.GetId(),
+		modelID:                         model.GetId(),
 		schemaVersion:                   model.GetSchemaVersion(),
 		conditions:                      conditions,
 	}, nil
 }
 
 func (m *AuthorizationModelGraph) GetModelID() string {
-	return m.modelId
+	return m.modelID
 }
 
 func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelation string, userType string) (*authzGraph.WeightedAuthorizationModelEdge, error) {
