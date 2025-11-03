@@ -104,6 +104,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 
 	// NOTE: This loop initializes the terminal type and the first level of depth as this is a breadth first traversal.
 	// To maintain simplicity the terminal type will be fully loaded, but it could arguably be loaded async.
+	var err error
 	for leftChan != nil || rightChan != nil {
 		select {
 		case <-ctx.Done():
@@ -112,22 +113,22 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 			if !ok {
 				leftChan = nil
 				if len(idsFromUser) == 0 {
-					return &check.Response{Allowed: false}, nil
+					return &check.Response{Allowed: false}, err
 				}
 				break
 			}
 			if msg.Err != nil {
-				return nil, msg.Err
+				err = msg.Err
+				continue
 			}
 			for {
-				t, err := msg.Iter.Next(ctx)
-				if err != nil {
+				t, errIter := msg.Iter.Next(ctx)
+				if errIter != nil {
 					msg.Iter.Stop()
-					if storage.IterIsDoneOrCancelled(err) {
-						break
+					if !storage.IterIsDoneOrCancelled(errIter) {
+						err = errIter
 					}
-					// TODO: should we continue?
-					return nil, err
+					break
 				}
 
 				if _, exists := idsFromObject[t]; exists {
@@ -138,15 +139,15 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 
 		case msg, ok := <-rightChan:
 			if !ok {
-				// idsFromObject must not be empty because we would have caught it earlier.
 				rightChan = nil
 				if len(idsFromObject) == 0 {
-					return &check.Response{Allowed: false}, nil
+					return &check.Response{Allowed: false}, err
 				}
 				break
 			}
 			if msg.Err != nil {
-				return nil, msg.Err
+				err = msg.Err
+				continue
 			}
 			if _, exists := idsFromUser[msg.Value]; exists {
 				return &check.Response{Allowed: true}, nil
@@ -155,7 +156,14 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 		}
 	}
 
-	return s.recursiveMatch(ctx, req, edge, idsFromUser, idsFromObject)
+	res, errMatch := s.recursiveMatch(ctx, req, edge, idsFromUser, idsFromObject)
+	if errMatch != nil {
+		return nil, errMatch
+	}
+	if res.Allowed {
+		return res, nil
+	}
+	return res, err
 }
 
 func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, idsFromUser map[string]struct{}, idsFromObject map[string]struct{}) (*check.Response, error) {
