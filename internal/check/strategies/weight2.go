@@ -357,7 +357,7 @@ func addValueToBatch(value string, batch []string, ctx context.Context, out chan
 	return batch
 }
 
-func cleaunpOperation(ctx context.Context, batch []string, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
+func cleanOperation(ctx context.Context, batch []string, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
 	// Flush any remaining items
 	if len(batch) > 0 {
 		concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.NewStaticIterator[string](batch)}, out)
@@ -375,7 +375,7 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 	batch := make([]string, 0, IteratorMinBatchThreshold)
 
 	defer func() {
-		cleaunpOperation(ctx, batch, iters, out)
+		cleanOperation(ctx, batch, iters, out)
 	}()
 
 	var minValue string
@@ -447,7 +447,7 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 	batch := make([]string, 0, IteratorMinBatchThreshold)
 
 	defer func() {
-		cleaunpOperation(ctx, batch, iters, out)
+		cleanOperation(ctx, batch, iters, out)
 	}()
 
 	// collect iterators from all channels, once none are nil
@@ -534,7 +534,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 	batch := make([]string, 0)
 
 	defer func() {
-		cleaunpOperation(ctx, batch, iters, out)
+		cleanOperation(ctx, batch, iters, out)
 	}()
 
 	baseIter := iters[BaseIndex]
