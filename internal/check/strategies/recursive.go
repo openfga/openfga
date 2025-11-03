@@ -19,12 +19,14 @@ import (
 
 type Recursive struct {
 	concurrencyLimit int
+	bottomUp         *bottomUp
 	model            *check.AuthorizationModelGraph
 	datastore        storage.RelationshipTupleReader
 }
 
 func NewRecursive(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
 	return &Recursive{
+		bottomUp:         newBottomUpRecursive(model, ds),
 		model:            model,
 		datastore:        ds,
 		concurrencyLimit: limit,
@@ -37,7 +39,6 @@ func (s *Recursive) Userset(ctx context.Context, req *check.Request, edge *authz
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	w2s := NewWeight2(s.model, s.datastore)
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -51,7 +52,7 @@ func (s *Recursive) Userset(ctx context.Context, req *check.Request, edge *authz
 	if err != nil {
 		return nil, err
 	}
-	leftChan, err := w2s.resolveRewrite(ctx, childReq, edge.GetTo())
+	leftChan, err := s.bottomUp.resolveRewrite(ctx, childReq, edge.GetTo())
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +68,6 @@ func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGrap
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	w2s := NewWeight2(s.model, s.datastore)
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	childReq, err := check.NewRequest(check.RequestParams{
 		StoreID:                   req.GetStoreID(),
@@ -81,7 +81,7 @@ func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGrap
 	if err != nil {
 		return nil, err
 	}
-	leftChan, err := w2s.resolveRewrite(ctx, childReq, edge.GetTo())
+	leftChan, err := s.bottomUp.resolveRewrite(ctx, childReq, edge.GetTo())
 	if err != nil {
 		return nil, err
 	}
