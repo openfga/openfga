@@ -173,7 +173,7 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge
 		}
 	}
 
-	go s.breadthFirstRecursiveMatch(ctx, req, edge, conditionEdge, &sync.Map{}, idsFromUser, idsFromObject, responsesChan)
+	go s.breadthFirstRecursiveMatch(ctx, req, conditionEdge, &sync.Map{}, idsFromUser, idsFromObject, responsesChan)
 
 	for {
 		select {
@@ -208,7 +208,7 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge, conditionEdge *authzGraph.WeightedAuthorizationModelEdge, visitedIds *sync.Map, idsFromUser, idsFromObjectToVisit map[string]struct{}, out chan check.ResponseMsg) {
+func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, visitedIds *sync.Map, idsFromUser, idsFromObjectToVisit map[string]struct{}, out chan check.ResponseMsg) {
 	// TODO: How do we want to exit due to depth
 	if len(idsFromObjectToVisit) == 0 || ctx.Err() != nil {
 		// nothing else to search for or upstream cancellation
@@ -230,7 +230,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 		}
 
 		pool.Go(func() error {
-			iter, err := s.buildTupleMapperForID(ctx, req, edge, conditionEdge, id, visitedIds)
+			iter, err := s.buildTupleMapperForID(ctx, req, edge, id, visitedIds)
 			if err != nil {
 				return err
 			}
@@ -263,10 +263,10 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 		close(out)
 		return
 	}
-	s.breadthFirstRecursiveMatch(ctx, req, edge, conditionEdge, visitedIds, idsFromUser, nextIdsFromObjectToVisit, out)
+	s.breadthFirstRecursiveMatch(ctx, req, edge, visitedIds, idsFromUser, nextIdsFromObjectToVisit, out)
 }
 
-func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Request, edge, conditionEdge *authzGraph.WeightedAuthorizationModelEdge, id string, visited *sync.Map) (storage.TupleMapper, error) {
+func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, id string, visited *sync.Map) (storage.TupleMapper, error) {
 	if ctx.Err() != nil { // short circuit whenever context is done
 		return nil, ctx.Err()
 	}
@@ -276,12 +276,12 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Reques
 	var iter storage.TupleIterator
 	var err error
 	if edge.GetTuplesetRelation() != "" {
-		subjectType, _ := tuple.SplitObjectRelation(conditionEdge.GetTo().GetUniqueLabel())
+		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		iter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
 			Object:     id,
 			Relation:   edge.GetTuplesetRelation(),
 			User:       subjectType + ":",
-			Conditions: conditionEdge.GetConditions(),
+			Conditions: edge.GetConditions(),
 		}, storage.ReadOptions{Consistency: consistencyOpts})
 	} else {
 		objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
@@ -292,7 +292,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Reques
 				Type:               objectType,
 				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
 			}},
-			Conditions: conditionEdge.GetConditions(),
+			Conditions: edge.GetConditions(),
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
 	}
 	if err != nil {
