@@ -10,6 +10,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -29,6 +32,8 @@ type (
 )
 
 var (
+	pipelineTracer = otel.Tracer("pipeline")
+
 	edgeTypeComputed      = weightedGraph.ComputedEdge
 	edgeTypeDirect        = weightedGraph.DirectEdge
 	edgeTypeDirectLogical = weightedGraph.DirectLogicalEdge
@@ -47,12 +52,12 @@ var (
 	nodeTypeSpecificTypeWildcard    = weightedGraph.SpecificTypeWildcard
 )
 
-func handleIdentity(_ *Edge, items []Item) iter.Seq[Item] {
+func handleIdentity(_ context.Context, _ *Edge, items []Item) iter.Seq[Item] {
 	return seq.Sequence(items...)
 }
 
 func handleLeafNode(node *Node) edgeHandler {
-	return func(_ *Edge, items []Item) iter.Seq[Item] {
+	return func(_ context.Context, _ *Edge, items []Item) iter.Seq[Item] {
 		objectParts := strings.Split(node.GetLabel(), "#")
 		if len(objectParts) < 1 {
 			return seq.Sequence(Item{Err: errors.New("empty label in node")})
@@ -78,7 +83,7 @@ func handleLeafNode(node *Node) edgeHandler {
 	}
 }
 
-func handleUnsupported(_ *Edge, _ []Item) iter.Seq[Item] {
+func handleUnsupported(_ context.Context, _ *Edge, _ []Item) iter.Seq[Item] {
 	return seq.Sequence(Item{Err: errors.New("unsupported state")})
 }
 
@@ -128,7 +133,7 @@ type Backend struct {
 
 // handleDirectEdge is a function that interprets input on a direct edge and provides output from
 // a query to the backend datastore.
-func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleDirectEdge(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetRelationDefinition(), "#")
 	nodeType := parts[0]
 	nodeRelation := parts[1]
@@ -166,7 +171,7 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 			userFilter:     userFilter,
 			conditions:     edge.GetConditions(),
 		}
-		results = b.query(context.Background(), input)
+		results = b.query(ctx, input)
 	} else {
 		results = emptySequence
 	}
@@ -179,7 +184,7 @@ func (b *Backend) handleDirectEdge(edge *Edge, items []Item) iter.Seq[Item] {
 
 // handleTTUEdge is a function that interprets input on a TTU edge and provides output from
 // a query to the backend datastore.
-func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
+func (b *Backend) handleTTUEdge(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
 	parts := strings.Split(edge.GetTuplesetRelation(), "#")
 	if len(parts) < 2 {
 		return seq.Sequence(Item{Err: errors.New("invalid tupleset relation")})
@@ -241,7 +246,7 @@ func (b *Backend) handleTTUEdge(edge *Edge, items []Item) iter.Seq[Item] {
 			userFilter:     userFilter,
 			conditions:     targetEdge.GetConditions(),
 		}
-		results = b.query(context.Background(), input)
+		results = b.query(ctx, input)
 	} else {
 		results = emptySequence
 	}
@@ -383,6 +388,29 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		var outGroup group
 		var items, unseen []Item
 
+		attrs := []attribute.KeyValue{
+			attribute.String("resolver", "base"),
+			attribute.Int("item.count", len(msg.Value.Items)),
+			attribute.Int("sender.index", ndx),
+		}
+
+		edgeTo := "nil"
+		edgeFrom := "nil"
+
+		if snd.edge() != nil {
+			edgeTo = snd.edge().GetTo().GetUniqueLabel()
+			edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
+		}
+
+		attrs = append(
+			attrs,
+			attribute.String("edge.to", edgeTo),
+			attribute.String("edge.from", edgeFrom),
+		)
+
+		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
+		defer span.End()
+
 		// Deduplicate items within this group based on the buffer for this sender
 		for _, item := range msg.Value.Items {
 			if item.Err != nil {
@@ -413,7 +441,7 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 			return true
 		}
 
-		results = r.interpreter.interpret(snd.edge(), unseen)
+		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
@@ -539,7 +567,7 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 	wgRecursive.Wait()
 }
 
-type edgeHandler func(*Edge, []Item) iter.Seq[Item]
+type edgeHandler func(context.Context, *Edge, []Item) iter.Seq[Item]
 
 type exclusionResolver struct {
 	id          int
@@ -572,7 +600,30 @@ func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	var procExcluded loopFunc
 
 	procIncluded = func(msg message[group]) bool {
-		results := r.interpreter.interpret(senders[0].edge(), msg.Value.Items)
+		attrs := []attribute.KeyValue{
+			attribute.String("resolver", "exclusion"),
+			attribute.Int("item.count", len(msg.Value.Items)),
+			attribute.Int("sender.index", 0),
+		}
+
+		edgeTo := "nil"
+		edgeFrom := "nil"
+
+		if senders[0].edge() != nil {
+			edgeTo = senders[0].edge().GetTo().GetUniqueLabel()
+			edgeFrom = senders[0].edge().GetFrom().GetUniqueLabel()
+		}
+
+		attrs = append(
+			attrs,
+			attribute.String("edge.to", edgeTo),
+			attribute.String("edge.from", edgeFrom),
+		)
+
+		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
+		defer span.End()
+
+		results := r.interpreter.interpret(ctx, senders[0].edge(), msg.Value.Items)
 
 		for item := range results {
 			if r.ctx.Err() != nil {
@@ -590,7 +641,30 @@ func (r *exclusionResolver) resolve(senders []*sender, listeners []*listener) {
 	}
 
 	procExcluded = func(msg message[group]) bool {
-		results := r.interpreter.interpret(senders[1].edge(), msg.Value.Items)
+		attrs := []attribute.KeyValue{
+			attribute.String("resolver", "exclusion"),
+			attribute.Int("item.count", len(msg.Value.Items)),
+			attribute.Int("sender.index", 1),
+		}
+
+		edgeTo := "nil"
+		edgeFrom := "nil"
+
+		if senders[1].edge() != nil {
+			edgeTo = senders[1].edge().GetTo().GetUniqueLabel()
+			edgeFrom = senders[1].edge().GetFrom().GetUniqueLabel()
+		}
+
+		attrs = append(
+			attrs,
+			attribute.String("edge.to", edgeTo),
+			attribute.String("edge.from", edgeFrom),
+		)
+
+		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
+		defer span.End()
+
+		results := r.interpreter.interpret(ctx, senders[1].edge(), msg.Value.Items)
 
 		for item := range results {
 			if item.Err != nil {
@@ -659,7 +733,7 @@ type Item struct {
 
 // interpreter is an interface that exposes a method for interpreting input for an edge into output.
 type interpreter interface {
-	interpret(edge *Edge, items []Item) iter.Seq[Item]
+	interpret(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item]
 }
 
 type intersectionResolver struct {
@@ -697,6 +771,29 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 			defer wg.Done()
 
 			snd.loop(func(msg message[group]) bool {
+				attrs := []attribute.KeyValue{
+					attribute.String("resolver", "intersection"),
+					attribute.Int("item.count", len(msg.Value.Items)),
+					attribute.Int("sender.index", i),
+				}
+
+				edgeTo := "nil"
+				edgeFrom := "nil"
+
+				if snd.edge() != nil {
+					edgeTo = snd.edge().GetTo().GetUniqueLabel()
+					edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
+				}
+
+				attrs = append(
+					attrs,
+					attribute.String("edge.to", edgeTo),
+					attribute.String("edge.from", edgeFrom),
+				)
+
+				ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
+				defer span.End()
+
 				var unseen []Item
 
 				// Deduplicate items within this group based on the buffer for this sender
@@ -719,7 +816,7 @@ func (r *intersectionResolver) resolve(senders []*sender, listeners []*listener)
 					return true
 				}
 
-				results := r.interpreter.interpret(snd.edge(), unseen)
+				results := r.interpreter.interpret(ctx, snd.edge(), unseen)
 
 				for item := range results {
 					if r.ctx.Err() != nil {
@@ -804,27 +901,27 @@ type omniInterpreter struct {
 	hndTTULogical    edgeHandler
 }
 
-func (o *omniInterpreter) interpret(edge *Edge, items []Item) iter.Seq[Item] {
+func (o *omniInterpreter) interpret(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
 	var results iter.Seq[Item]
 
 	if edge == nil {
-		results = o.hndNil(edge, items)
+		results = o.hndNil(ctx, edge, items)
 		return results
 	}
 
 	switch edge.GetEdgeType() {
 	case edgeTypeDirect:
-		results = o.hndDirect(edge, items)
+		results = o.hndDirect(ctx, edge, items)
 	case edgeTypeTTU:
-		results = o.hndTTU(edge, items)
+		results = o.hndTTU(ctx, edge, items)
 	case edgeTypeComputed:
-		results = o.hndComputed(edge, items)
+		results = o.hndComputed(ctx, edge, items)
 	case edgeTypeRewrite:
-		results = o.hndRewrite(edge, items)
+		results = o.hndRewrite(ctx, edge, items)
 	case edgeTypeDirectLogical:
-		results = o.hndDirectLogical(edge, items)
+		results = o.hndDirectLogical(ctx, edge, items)
 	case edgeTypeTTULogical:
-		results = o.hndTTULogical(edge, items)
+		results = o.hndTTULogical(ctx, edge, items)
 	default:
 		return seq.Sequence(Item{Err: errors.New("unexpected edge type")})
 	}
@@ -837,8 +934,12 @@ type Pipeline struct {
 	numProcs  int
 }
 
-func (p *Pipeline) Build(source Source, target Target) iter.Seq[Item] {
-	ctx, cancel := context.WithCancel(context.Background())
+func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
+	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Build")
+	defer span.End()
+
+	ctx = context.WithoutCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	pth := path{
 		ctx:     ctx,

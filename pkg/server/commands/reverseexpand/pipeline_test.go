@@ -1954,7 +1954,7 @@ func BenchmarkPipeline(b *testing.B) {
 					panic("no such source")
 				}
 
-				seq := pipeline.Build(source, target)
+				seq := pipeline.Build(context.Background(), source, target)
 
 				for range seq {
 				}
@@ -2002,7 +2002,7 @@ func TestPipeline(t *testing.T) {
 				panic("no such source")
 			}
 
-			seq := pipeline.Build(source, target)
+			seq := pipeline.Build(context.Background(), source, target)
 
 			evaluate(t, tc, seq)
 		})

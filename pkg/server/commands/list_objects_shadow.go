@@ -178,6 +178,9 @@ func (q *shadowedListObjectsQuery) ExecuteStreamed(ctx context.Context, req *ope
 // If the shadow function takes longer than shadowTimeout, it will be cancelled, and its result will be ignored, but the shadowTimeout event will be logged.
 // This function is designed to be run in a separate goroutine to avoid blocking the main execution flow.
 func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx context.Context, req *openfgav1.ListObjectsRequest, mainResult *ListObjectsResponse, latency time.Duration) {
+	parentCtx, span := tracer.Start(parentCtx, "shadow")
+	defer span.End()
+
 	shadowCtx, shadowCancel := context.WithTimeout(parentCtx, q.shadowTimeout)
 	defer shadowCancel()
 
