@@ -145,7 +145,7 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 		}
 
 		if canFlatten {
-			res, err := m.FlattenNode(edge.GetTo(), userType)
+			res, err := m.FlattenRecursiveNode(edge.GetTo(), userType)
 			if err != nil {
 				return nil, err
 			}
