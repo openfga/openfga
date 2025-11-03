@@ -161,6 +161,7 @@ func TestFilter_Conditions(t *testing.T) {
 
 func TestTestFilter_Uniqueness(t *testing.T) {
 	seenTuples := &sync.Map{}
+	//nolint:unparam
 	uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
 		key := tuple.TupleKeyToString(tupleKey)
 		if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
@@ -241,6 +242,7 @@ func TestFilter_MultipleFilters(t *testing.T) {
 	}
 
 	seenTuples := &sync.Map{}
+	//nolint:unparam
 	uniqueFilter := func(_ OperationType, tupleKey *openfgav1.TupleKey) (bool, error) {
 		key := tuple.TupleKeyToString(tupleKey)
 		if _, exists := seenTuples.LoadOrStore(key, struct{}{}); exists {
