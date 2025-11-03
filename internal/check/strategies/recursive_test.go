@@ -1,42 +1,30 @@
 package strategies
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"testing"
 
-	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/oklog/ulid/v2"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	parser "github.com/openfga/language/pkg/go/transformer"
+	authzGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
-	"go.uber.org/mock/gomock"
 )
 
 func TestRecursiveTTU(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
-	model := testutils.MustTransformDSLToProtoWithID(`
-				model
-					schema 1.1
-				type user
-				type group
-					relations
-						define member: [user] or member from parent
-						define parent: [group]
-				`)
-
-	mg, err := check.NewAuthorizationModelGraph(model)
-	require.NoError(t, err)
 
 	tests := []struct {
 		name                            string
@@ -152,6 +140,24 @@ func TestRecursiveTTU(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type group
+					relations
+						define member: [user] or member from parent
+						define parent: [group]
+				`)
+
+			mg, err := check.NewAuthorizationModelGraph(model)
+			require.NoError(t, err)
+
+			edges, ok := mg.GetEdgesFromNodeId("group#member")
+			require.True(t, ok)
+
+			ttuEdge := edges[0]
+
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 			storeID := ulid.Make().String()
@@ -171,15 +177,12 @@ func TestRecursiveTTU(t *testing.T) {
 				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
 			}
 
+			ctx := context.Background()
 			req := &check.Request{
 				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
+				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
 			}
-			ctx := context.Background()
-			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
-			checker := NewLocalChecker()
 
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 			for _, t := range tt.readTuples[0] {
@@ -191,7 +194,9 @@ func TestRecursiveTTU(t *testing.T) {
 				})
 			}
 
-			result, err := checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+			strategy := NewRecursive(mg, mockDatastore, 5)
+
+			result, err := strategy.TTU(ctx, req, ttuEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -199,7 +204,7 @@ func TestRecursiveTTU(t *testing.T) {
 	}
 
 	t.Run("complex_model", func(t *testing.T) {
-		model := parser.MustTransformDSLToProto(`
+		model := testutils.MustTransformDSLToProtoWithID(`
 model
 	schema 1.1
 
@@ -216,8 +221,20 @@ type group
 		define rel8: [user]
 		`)
 
-		ts, err := typesystem.New(model)
+		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("group#member")
+		require.True(t, ok)
+
+		var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
+		for _, edge := range edges {
+			if edge.GetEdgeType() == authzGraph.TTUEdge {
+				ttuEdge = edge
+				break
+			}
+		}
+		require.NotNil(t, ttuEdge)
 
 		tests := []struct {
 			name                             string
@@ -412,16 +429,13 @@ type group
 					mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readTuplesError)
 				}
 
-				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-
+				ctx := context.Background()
 				req := &check.Request{
 					StoreID:              storeID,
-					AuthorizationModelID: ulid.Make().String(),
+					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-					RequestMetadata:      NewCheckRequestMetadata(),
 				}
 
-				checker := NewLocalChecker()
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 				for _, t := range tt.readTuples[0] {
 					k := t.GetKey()
@@ -432,63 +446,13 @@ type group
 					})
 				}
 
-				result, err := checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+				strategy := NewRecursive(mg, mockDatastore, 5)
+				result, err := strategy.TTU(ctx, req, ttuEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 			})
 		}
-	})
-
-	t.Run("resolution_depth_exceeded", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		storeID := ulid.Make().String()
-		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
-			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-				{
-					Key: tuple.NewTupleKey("group:30", "member", "user:maria"),
-				},
-			}), nil)
-
-		for i := 1; i < 26; i++ {
-			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
-				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-					{
-						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i), "parent", "group:"+strconv.Itoa(i+1)),
-					},
-				}), nil)
-		}
-		model := parser.MustTransformDSLToProto(`
-model
-	schema 1.1
-
-type user
-type group
-	relations
-		define member: [user] or member from parent
-		define parent: [group]
-			`)
-
-		ts, err := typesystem.New(model)
-		require.NoError(t, err)
-		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-
-		req := &check.Request{
-			StoreID:              storeID,
-			AuthorizationModelID: ulid.Make().String(),
-			TupleKey:             tuple.NewTupleKey("group:0", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(),
-		}
-
-		checker := NewLocalChecker()
-		tupleKeys := []*openfgav1.TupleKey{{Object: "group:0", Relation: "parent", User: "group:1"}}
-
-		result, err := checker.recursiveTTU(ctx, req, typesystem.TupleToUserset("parent", "member"), storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
-		require.Nil(t, result)
-		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
 }
 
@@ -624,7 +588,7 @@ func TestRecursiveUserset(t *testing.T) {
 			for _, tuples := range tt.readUsersetTuples[1:] {
 				mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 			}
-			model := parser.MustTransformDSLToProto(`
+			model := testutils.MustTransformDSLToProtoWithID(`
 						model
 							schema 1.1
 
@@ -634,18 +598,20 @@ func TestRecursiveUserset(t *testing.T) {
 								define member: [user, group#member]
 `)
 
-			ts, err := typesystem.New(model)
+			mg, err := check.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
-			ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+			edges, ok := mg.GetEdgesFromNodeId("group#member")
+			require.True(t, ok)
+
+			ctx := context.Background()
 
 			req := &check.Request{
 				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
+				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
-			checker := NewLocalChecker()
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 			for _, t := range tt.readUsersetTuples[0] {
 				k := t.GetKey()
@@ -656,7 +622,8 @@ func TestRecursiveUserset(t *testing.T) {
 				})
 			}
 
-			result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+			strategy := NewRecursive(mg, mockDatastore, 5)
+			result, err := strategy.Userset(ctx, req, edges[0], storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -855,7 +822,7 @@ func TestRecursiveUserset(t *testing.T) {
 				for _, tuples := range tt.readUsersetTuples[1:] {
 					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
 				}
-				model := parser.MustTransformDSLToProto(`
+				model := testutils.MustTransformDSLToProtoWithID(`
 		model
 			schema 1.1
 
@@ -873,18 +840,20 @@ func TestRecursiveUserset(t *testing.T) {
 				define rel8: [user]
 		`)
 
-				ts, err := typesystem.New(model)
+				mg, err := check.NewAuthorizationModelGraph(model)
 				require.NoError(t, err)
-				ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
+
+				edges, ok := mg.GetEdgesFromNodeId("group#member")
+				require.True(t, ok)
+
+				ctx := context.Background()
 
 				req := &check.Request{
 					StoreID:              storeID,
-					AuthorizationModelID: ulid.Make().String(),
+					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-					RequestMetadata:      NewCheckRequestMetadata(),
 				}
 
-				checker := NewLocalChecker()
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 				for _, t := range tt.readUsersetTuples[0] {
 					k := t.GetKey()
@@ -895,63 +864,13 @@ func TestRecursiveUserset(t *testing.T) {
 					})
 				}
 
-				result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
+				strategy := NewRecursive(mg, mockDatastore, 5)
+				result, err := strategy.Userset(ctx, req, edges[0], storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 			})
 		}
-	})
-
-	t.Run("resolution_depth_exceeded", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		storeID := ulid.Make().String()
-		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
-			storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-				{
-					Key: tuple.NewTupleKey("group:bad", "member", "user:maria"),
-				},
-			}), nil)
-
-		for i := 1; i < 26; i++ {
-			mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(
-				storage.NewStaticTupleIterator([]*openfgav1.Tuple{
-					{
-						Key: tuple.NewTupleKey("group:"+strconv.Itoa(i+1), "member", "group:"+strconv.Itoa(i)+"#member"),
-					},
-				}), nil)
-		}
-		model := parser.MustTransformDSLToProto(`
-							model
-								schema 1.1
-
-							type user
-							type group
-								relations
-									define member: [user, group#member]
-
-			`)
-
-		ts, err := typesystem.New(model)
-		require.NoError(t, err)
-		ctx := setRequestContext(context.Background(), ts, mockDatastore, nil)
-
-		req := &check.Request{
-			StoreID:              storeID,
-			AuthorizationModelID: ulid.Make().String(),
-			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(),
-		}
-
-		checker := NewLocalChecker()
-		tupleKeys := []*openfgav1.TupleKey{{Object: "group:1", Relation: "member", User: "group:0#member"}}
-
-		result, err := checker.recursiveUserset(ctx, req, nil, storage.NewStaticTupleKeyIterator(tupleKeys))(ctx)
-		require.Nil(t, result)
-		require.Equal(t, ErrResolutionDepthExceeded, err)
 	})
 }
 
@@ -962,20 +881,20 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 	tests := []struct {
 		name                 string
-		currentLevelUsersets *hashset.Set
-		usersetFromUser      *hashset.Set
+		currentLevelUsersets map[string]struct{}
+		usersetFromUser      map[string]struct{}
 		readMocks            [][]*openfgav1.Tuple
 		expected             bool
 	}{
 		{
 			name:                 "empty_userset",
-			currentLevelUsersets: hashset.New(),
-			usersetFromUser:      hashset.New(),
+			currentLevelUsersets: map[string]struct{}{},
+			usersetFromUser:      map[string]struct{}{},
 		},
 		{
 			name:                 "duplicates_no_match_no_recursion",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3", "group:1"),
-			usersetFromUser:      hashset.New(),
+			currentLevelUsersets: map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}},
+			usersetFromUser:      map[string]struct{}{},
 			readMocks: [][]*openfgav1.Tuple{
 				{{}},
 				{{}},
@@ -984,8 +903,8 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		},
 		{
 			name:                 "duplicates_no_match_with_recursion",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
-			usersetFromUser:      hashset.New(),
+			currentLevelUsersets: map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}},
+			usersetFromUser:      map[string]struct{}{},
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
 				{{Key: tuple.NewTupleKey("group:3", "parent", "group:2")}},
@@ -994,8 +913,8 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		},
 		{
 			name:                 "duplicates_match_with_recursion",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
-			usersetFromUser:      hashset.New("group:4"),
+			currentLevelUsersets: map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}},
+			usersetFromUser:      map[string]struct{}{"group:4": {}},
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:3")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:1")}},
@@ -1005,8 +924,8 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		},
 		{
 			name:                 "no_duplicates_no_match_counts",
-			currentLevelUsersets: hashset.New("group:1", "group:2", "group:3"),
-			usersetFromUser:      hashset.New(),
+			currentLevelUsersets: map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}},
+			usersetFromUser:      map[string]struct{}{},
 			readMocks: [][]*openfgav1.Tuple{
 				{{Key: tuple.NewTupleKey("group:1", "parent", "group:4")}},
 				{{Key: tuple.NewTupleKey("group:2", "parent", "group:5")}},
@@ -1034,7 +953,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 				mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(mock), nil)
 			}
 
-			model := parser.MustTransformDSLToProto(`
+			model := testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -1044,29 +963,27 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
+			mg, err := check.NewAuthorizationModelGraph(model)
+			require.NoError(t, err)
+
+			edges, ok := mg.GetEdgesFromNodeId("group#member")
+			require.True(t, ok)
+
+			ctx := context.Background()
+
 			req := &check.Request{
 				StoreID:              storeID,
 				AuthorizationModelID: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-				RequestMetadata:      NewCheckRequestMetadata(),
 			}
 
-			ts, err := typesystem.New(model)
-			require.NoError(t, err)
-			ctx := context.Background()
-			ctx = setRequestContext(ctx, ts, mockDatastore, nil)
-
-			checker := NewLocalChecker()
-			mapping := &recursiveMapping{
-				kind:             storage.TTUKind,
-				tuplesetRelation: "parent",
-			}
-			checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
-			checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
+			checkOutcomeChan := make(chan check.ResponseMsg, 100) // large buffer since there is no need to concurrently evaluate partial results
+			strategy := NewRecursive(mg, mockDatastore, 10)
+			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], edges[0], &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
 
 			result := false
 			for outcome := range checkOutcomeChan {
-				if outcome.resp.Allowed {
+				if outcome.Res.Allowed {
 					result = true
 					break
 				}
@@ -1101,7 +1018,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 		})
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter3, nil)
 
-		model := parser.MustTransformDSLToProto(`
+		model := testutils.MustTransformDSLToProtoWithID(`
 				model
 					schema 1.1
 				type user
@@ -1111,24 +1028,19 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		edges, ok := mg.GetEdgesFromNodeId("group#member")
+		require.True(t, ok)
+
 		req := &check.Request{
 			StoreID:              storeID,
 			AuthorizationModelID: ulid.Make().String(),
 			TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-			RequestMetadata:      NewCheckRequestMetadata(),
 		}
 
-		ts, err := typesystem.New(model)
-		require.NoError(t, err)
-
-		ctx = setRequestContext(ctx, ts, mockDatastore, nil)
-
-		checker := NewLocalChecker()
-		mapping := &recursiveMapping{
-			kind:             storage.TTUKind,
-			tuplesetRelation: "parent",
-		}
-		checkOutcomeChan := make(chan checkOutcome, 100) // large buffer since there is no need to concurrently evaluate partial results
-		checker.breadthFirstRecursiveMatch(ctx, req, mapping, &sync.Map{}, hashset.New("group:1", "group:2", "group:3"), hashset.New(), checkOutcomeChan)
+		strategy := NewRecursive(mg, mockDatastore, 10)
+		checkOutcomeChan := make(chan check.ResponseMsg, 100)
+		strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], edges[0], &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), checkOutcomeChan)
 	})
 }

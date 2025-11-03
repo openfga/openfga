@@ -164,15 +164,13 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, edge
 	responsesChan := make(chan check.ResponseMsg, s.concurrencyLimit) // needs to be buffered to prevent out of order closed events
 
 	var err error
-	var conditionEdge *authzGraph.WeightedAuthorizationModelEdge
+	conditionEdge := edge
 	if edge.GetTuplesetRelation() != "" {
 		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		conditionEdge, err = s.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
-	} else {
-		conditionEdge, err = s.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	}
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	go s.breadthFirstRecursiveMatch(ctx, req, edge, conditionEdge, &sync.Map{}, idsFromUser, idsFromObject, responsesChan)
@@ -278,7 +276,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Reques
 	var iter storage.TupleIterator
 	var err error
 	if edge.GetTuplesetRelation() != "" {
-		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		subjectType, _ := tuple.SplitObjectRelation(conditionEdge.GetTo().GetUniqueLabel())
 		iter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
 			Object:     id,
 			Relation:   edge.GetTuplesetRelation(),
@@ -289,7 +287,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Reques
 		objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:   id,
-			Relation: req.GetTupleKey().GetRelation(),
+			Relation: relation,
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
 				Type:               objectType,
 				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},

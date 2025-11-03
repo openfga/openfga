@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sourcegraph/conc/panics"
+
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
+
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/sourcegraph/conc/panics"
 )
 
 type strategyKind int64
@@ -34,7 +36,6 @@ func newBottomUp(model *check.AuthorizationModelGraph, ds storage.RelationshipTu
 		strategy:  normal,
 	}
 }
-
 
 func newBottomUpRecursive(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
