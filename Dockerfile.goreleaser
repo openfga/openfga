@@ -1,4 +1,4 @@
-FROM cgr.dev/chainguard/static@sha256:6a4b683f4708f1f167ba218e31fcac0b7515d94c33c3acf223c36d5c6acd3783
+FROM cgr.dev/chainguard/go:1.25.3@sha256:c95baa2517f33a3d9ec60536f3241275f765be3ca079e75bded303b62d1bd679
 COPY assets /assets
 COPY openfga /
 
