@@ -399,18 +399,20 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		initialized = false
 
 		activeIters := make([]storage.Iterator[string], 0, len(iters))
-		for idx, i := range iters {
-			value, err := i.Head(ctx)
-			if err != nil && handleStreamError(ctx, err, &batch, out) {
-				return
-			}
-			if err == nil {
-				activeIters = append(activeIters, i)
+		for idx, iter := range iters {
+			value, err := iter.Head(ctx)
+			if err != nil {
+				if handleStreamError(ctx, err, &batch, out) {
+					return
+				}
+				continue
+			} else {
+				activeIters = append(activeIters, iter)
 			}
 
 			// ove any other iterators that the value is already capture in the head of the another iterator
 			if initialized && value == minValue {
-				_, err = i.Next(ctx)
+				_, err = iter.Next(ctx)
 				if err != nil && handleStreamError(ctx, err, &batch, out) {
 					return
 				}
@@ -473,8 +475,8 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 		allSameValue = true
 		initialized = false
 		activeIters := make([]storage.Iterator[string], 0, len(iters))
-		for _, i := range iters {
-			v, err := i.Head(ctx)
+		for _, iter := range iters {
+			v, err := iter.Head(ctx)
 			if err != nil {
 				if handleStreamError(ctx, err, &batch, out) {
 					return
@@ -484,7 +486,7 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 				break
 			}
 
-			activeIters = append(activeIters, i)
+			activeIters = append(activeIters, iter)
 
 			if !initialized {
 				maxValue = v
@@ -508,16 +510,16 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 			// All streams have the same value - it's in the intersection
 			batch = addValueToBatch(maxValue, batch, ctx, out)
 			// Advance all streams
-			for _, stream := range iters {
-				_, err := stream.Next(ctx)
+			for _, iter := range iters {
+				_, err := iter.Next(ctx)
 				if err != nil && handleStreamError(ctx, err, &batch, out) {
 					return
 				}
 			}
 		} else {
 			// Not all values are equal - advance all streams with smaller values to the max value
-			for _, i := range iters {
-				err := iterator.SkipTo(ctx, i, maxValue)
+			for _, iter := range iters {
+				err := iterator.SkipTo(ctx, iter, maxValue)
 				if err != nil && handleStreamError(ctx, err, &batch, out) {
 					return
 				}
@@ -547,8 +549,8 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 		baseValue := ""
 		diffValue := ""
 		activeIters := make([]storage.Iterator[string], 0, len(iters))
-		for idx, i := range iters {
-			v, err := i.Head(ctx)
+		for idx, iter := range iters {
+			v, err := iter.Head(ctx)
 			if err != nil {
 				if handleStreamError(ctx, err, &batch, out) {
 					return
@@ -556,7 +558,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 				allIters = false
 				break
 			}
-			activeIters = append(activeIters, i)
+			activeIters = append(activeIters, iter)
 			if idx == BaseIndex {
 				baseValue = v
 			}
