@@ -979,7 +979,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			checkOutcomeChan := make(chan check.ResponseMsg, 100) // large buffer since there is no need to concurrently evaluate partial results
 			strategy := NewRecursive(mg, mockDatastore, 10)
-			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
+			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, RecursiveTypeTTU, checkOutcomeChan)
 
 			result := false
 			for outcome := range checkOutcomeChan {
@@ -1041,6 +1041,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 		strategy := NewRecursive(mg, mockDatastore, 10)
 		checkOutcomeChan := make(chan check.ResponseMsg, 100)
-		strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), checkOutcomeChan)
+		strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), RecursiveTypeTTU, checkOutcomeChan)
 	})
 }
