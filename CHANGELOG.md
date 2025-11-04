@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-- Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780)
+- Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)
 
 ## [1.10.4] - 2025-11-04
 ### Added
