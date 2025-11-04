@@ -158,7 +158,7 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 	return result, nil
 }
 
-func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation string, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
+func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
 	var recursiveEdge *authzGraph.WeightedAuthorizationModelEdge
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
@@ -174,7 +174,7 @@ func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph
 		} else if edge.GetEdgeType() == authzGraph.DirectEdge || edge.GetEdgeType() == authzGraph.TTUEdge {
 			recursiveEdge = edge
 		} else {
-			edgeResult, canApply := m.CanApplyRecursiveOptimization(edge.GetTo(), userType, recursiveRelation)
+			edgeResult, canApply := m.CanApplyRecursiveOptimization(edge.GetTo(), recursiveRelation, userType)
 			if !canApply {
 				allEdgesCanApply = false
 			}

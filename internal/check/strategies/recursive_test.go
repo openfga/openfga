@@ -153,10 +153,11 @@ func TestRecursiveTTU(t *testing.T) {
 			mg, err := check.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
-			edges, ok := mg.GetEdgesFromNodeId("group#member")
+			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
-
-			ttuEdge := edges[0]
+			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(),"user")
+			require.True(t, ok)
+			require.NotNil(t, recursiveEdge)
 
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
@@ -196,7 +197,7 @@ func TestRecursiveTTU(t *testing.T) {
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
 
-			result, err := strategy.TTU(ctx, req, ttuEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -979,7 +980,7 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 			checkOutcomeChan := make(chan check.ResponseMsg, 100) // large buffer since there is no need to concurrently evaluate partial results
 			strategy := NewRecursive(mg, mockDatastore, 10)
-			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, RecursiveTypeTTU, checkOutcomeChan)
+			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], RecursiveTypeTTU, &sync.Map{}, tt.currentLevelUsersets, tt.usersetFromUser, checkOutcomeChan)
 
 			result := false
 			for outcome := range checkOutcomeChan {
@@ -1041,6 +1042,6 @@ func TestBreadthFirstRecursiveMatch(t *testing.T) {
 
 		strategy := NewRecursive(mg, mockDatastore, 10)
 		checkOutcomeChan := make(chan check.ResponseMsg, 100)
-		strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), RecursiveTypeTTU, checkOutcomeChan)
+		strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], RecursiveTypeTTU, &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), checkOutcomeChan)
 	})
 }
