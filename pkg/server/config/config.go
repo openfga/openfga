@@ -99,8 +99,9 @@ const (
 	// Moving forward, all experimental flags should follow the naming convention below:
 	// 1. Avoid using enable/disable prefixes.
 	// 2. Flag names should have only numbers, letters and underscores.
-	ExperimentalShadowCheck       = "shadow_check"
-	ExperimentalShadowListObjects = "shadow_list_objects"
+	ExperimentalShadowCheck         = "shadow_check"
+	ExperimentalShadowListObjects   = "shadow_list_objects"
+	ExperimentalDatastoreThrottling = "datastore_throttling"
 )
 
 type DatastoreMetricsConfig struct {

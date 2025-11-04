@@ -65,6 +65,7 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 
@@ -168,8 +169,9 @@ func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResour
 	}
 }
 
-func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
+func WithListObjectsDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
+		d.datastoreThrottlingEnabled = enabled
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
@@ -413,7 +415,11 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+						WithCheckDatastoreThrottler(
+							q.datastoreThrottlingEnabled,
+							q.datastoreThrottleThreshold,
+							q.datastoreThrottleDuration,
+						),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
@@ -536,6 +542,7 @@ func (q *ListObjectsQuery) Execute(
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
@@ -705,6 +712,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
