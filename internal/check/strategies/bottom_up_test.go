@@ -23,7 +23,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestWeight2SpecificType(t *testing.T) {
+func TestSpecificType(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -51,10 +51,177 @@ func TestWeight2SpecificType(t *testing.T) {
 			model
 				schema 1.1
 			type user
+			type employee
 			type document
 				relations
-					define member: [user]
+					define member: [user, employee, document#viewer]
 					define admin: [document#member]
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		c, err := strategy.specificType(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_from_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user] or viewer
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		c, err := strategy.specificType(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_from_logicalUserset", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user, document#viewer] or viewer
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		c, err := strategy.specificType(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_with_conditions", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:1"}},
+			Conditions: []string{"xcond", ""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type document
+				relations
+					define member: [user with xcond, user, employee, document#viewer]
+					define admin: [document#member]
+					define viewer: [user]
+			
+			condition xcond(foo: string) {
+                   foo == 'foo' 
+             }
 			`)
 
 		mg, err := check.NewAuthorizationModelGraph(model)
@@ -116,6 +283,275 @@ func TestWeight2SpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 		_, err = strategy.specificType(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		}, edges[0])
+
+		require.Error(t, err)
+	})
+}
+
+func TestSpecificTypeWildcard(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	t.Run("should_return_iterator_through_channel", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type document
+				relations
+					define member: [user:*, employee, document#viewer]
+					define admin: [document#member]
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_from_union", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user:*] or viewer
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_from_logicalUserset", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user:*, document#viewer] or viewer
+					define viewer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
+		require.True(t, ok)
+		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_iterator_through_channel_with_conditions", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{"xcond"},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(storage.NewStaticTupleIterator(nil), nil)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type employee
+			type document
+				relations
+					define member: [user:* with xcond, user, employee, document#viewer]
+					define admin: [document#member]
+					define viewer: [user]
+			
+			condition xcond(foo: string) {
+                   foo == 'foo' 
+             }
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		}, edges[0])
+
+		require.NoError(t, err)
+		msg, ok := <-c
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		msg.Iter.Stop()
+		_, ok = <-c
+		require.False(t, ok)
+	})
+	t.Run("should_return_error_from_building_iterator", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "member",
+			UserFilter: []*openfgav1.ObjectRelation{{Object: "user:*"}},
+			Conditions: []string{""},
+		}, storage.ReadStartingWithUserOptions{
+			WithResultsSortedAscending: true,
+			Consistency: storage.ConsistencyOptions{
+				Preference: openfgav1.ConsistencyPreference_UNSPECIFIED,
+			}},
+		).MaxTimes(1).Return(nil, errors.New("boom"))
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define member: [user:*]
+					define admin: [document#member]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		edges, ok := mg.GetEdgesFromNodeId("document#member")
+		require.True(t, ok)
+		_, err = strategy.specificTypeWildcard(ctx, &check.Request{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),

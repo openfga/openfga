@@ -184,12 +184,13 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *check.Request,
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+	userObjType, _ := tuple.SplitObject(req.GetTupleKey().GetUser())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: tuple.TypedPublicWildcard(req.GetUserType()),
+				Object: tuple.TypedPublicWildcard(userObjType),
 			}},
 			Conditions: edge.GetConditions(),
 		}, opts)
