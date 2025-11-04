@@ -469,7 +469,7 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 		} else if compareValues[DifferenceIndex] > compareValues[BaseIndex] {
 			// add the base value to the batch
 			batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
-			// move the iterator and update teh comparable value of base
+			// move the iterator and update the comparable value of base
 			value, err := iters[BaseIndex].Next(ctx)
 			if err != nil {
 				// if base has an error, the difference operation cannot continue

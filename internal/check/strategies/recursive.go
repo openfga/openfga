@@ -2,7 +2,7 @@ package strategies
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -178,7 +178,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 	return res, err
 }
 
-func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser map[string]struct{}, idsFromObject map[string]struct{}) (*check.Response, error) {
+func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recursiveEdge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, idsFromUser, idsFromObject map[string]struct{}) (*check.Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	responsesChan := make(chan check.ResponseMsg, s.concurrencyLimit) // needs to be buffered to prevent out of order closed events
@@ -193,7 +193,22 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 		}
 	}
 
-	go s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, &sync.Map{}, idsFromUser, idsFromObject, responsesChan)
+	visited := &sync.Map{}
+
+	var pool errgroup.Group
+	pool.SetLimit(s.concurrencyLimit)
+
+	for id := range idsFromObject {
+		pool.Go(func() error {
+			s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, &pool, idsFromUser, visited, id, responsesChan)
+			return nil
+		})
+	}
+
+	go func() {
+		_ = pool.Wait()
+		close(responsesChan)
+	}()
 
 	for {
 		select {
@@ -201,6 +216,7 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 			return nil, ctx.Err()
 		case msg, ok := <-responsesChan:
 			if !ok {
+				fmt.Println("worst?")
 				return &check.Response{Allowed: false}, err
 			}
 			if msg.Err != nil {
@@ -228,62 +244,40 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, visitedIds *sync.Map, idsFromUser, idsFromObjectToVisit map[string]struct{}, out chan check.ResponseMsg) {
-	// TODO: How do we want to exit due to depth
-	if len(idsFromObjectToVisit) == 0 || ctx.Err() != nil {
-		// nothing else to search for or upstream cancellation
-		close(out)
+func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, pool *errgroup.Group, idsFromUser map[string]struct{}, visitedIds *sync.Map, id string, out chan check.ResponseMsg) {
+	iter, err := s.buildTupleMapperForID(ctx, req, edge, recursiveType, id, visitedIds)
+	if err != nil {
+		concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
 		return
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	pool := errgroup.Group{}
-	pool.SetLimit(s.concurrencyLimit)
-	mu := &sync.Mutex{}
-	nextIdsFromObjectToVisit := make(map[string]struct{})
+	if _, visited := visitedIds.LoadOrStore(id, struct{}{}); visited {
+		return
+	}
 
-	for id := range idsFromObjectToVisit {
-		_, visited := visitedIds.LoadOrStore(id, struct{}{})
-		if visited {
-			continue
+	defer iter.Stop()
+	for {
+		t, err := iter.Next(ctx)
+		fmt.Println("exploring id:", id, "found t:", t, err)
+		if err != nil {
+			if storage.IterIsDoneOrCancelled(err) {
+				return
+			}
+			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
+			return
 		}
-
+		if _, exists := idsFromUser[t]; exists {
+			concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Res: &check.Response{
+				Allowed: true,
+			}}, out)
+			return // cancel will be propagated to the remaining goroutines
+		}
 		pool.Go(func() error {
-			iter, err := s.buildTupleMapperForID(ctx, req, edge, recursiveType, id, visitedIds)
-			if err != nil {
-				return err
-			}
-			defer iter.Stop()
-			for {
-				t, err := iter.Next(ctx)
-				if err != nil {
-					if storage.IterIsDoneOrCancelled(err) {
-						return nil
-					}
-					concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
-					return nil
-				}
-				if _, exists := idsFromUser[t]; exists {
-					concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Res: &check.Response{
-						Allowed: true,
-					}}, out)
-					return concurrency.ErrShortCircuit // cancel will be propagated to the remaining goroutines
-				}
-				mu.Lock()
-				nextIdsFromObjectToVisit[t] = struct{}{}
-				mu.Unlock()
-			}
+			fmt.Println("scheduling breadth first for id:", t)
+			s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, pool, idsFromUser, visitedIds, t, out)
+			return nil
 		})
 	}
-
-	// wait for all checks to wrap up
-	// if a match was found, clean up
-	if err := pool.Wait(); errors.Is(err, concurrency.ErrShortCircuit) {
-		close(out)
-		return
-	}
-	s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, visitedIds, idsFromUser, nextIdsFromObjectToVisit, out)
 }
 
 func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, id string, visited *sync.Map) (storage.TupleMapper, error) {
