@@ -22,6 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
+- Update go toolchain version to 1.25.3 - related: [CVE-2025-58187](https://www.cve.org/CVERecord?id=CVE-2025-58187)
 
 ## [1.10.3] - 2025-10-14
 ### Changed
