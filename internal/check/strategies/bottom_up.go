@@ -148,7 +148,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *check.Request, edge *a
 			Preference: req.GetConsistency(),
 		},
 	}
-	objectType, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
@@ -183,7 +183,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *check.Request,
 			Preference: req.GetConsistency(),
 		},
 	}
-	objectType, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,

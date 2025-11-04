@@ -264,7 +264,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetKeyPlan(createRecursiveTTUPlanKey(req, edge.GetTo().GetUniqueLabel(), edge.GetRecursiveRelation()))
+	keyPlan := r.planner.GetKeyPlan(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
 	strategy := keyPlan.SelectStrategy(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
@@ -534,7 +534,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 	)
 	defer span.End()
 
-	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	tk := tuple.NewTupleKey(req.GetTupleKey().GetObject(), relation, req.GetTupleKey().GetUser())
 	t, err := r.datastore.ReadUserTuple(ctx, req.GetStoreID(), tk, storage.ReadUserTupleOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
@@ -563,7 +563,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	)
 	defer span.End()
 
-	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 	// Query via ReadUsersetTuples instead of ReadUserTuple tuples to take iterator cache.
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
@@ -582,7 +582,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	defer iter.Stop()
 
 	// NOTE: Iterator should only really have one entry which should be a specific wildcard tuple.
-	t, err := iter.Head(ctx)
+	t, err := iter.Next(ctx)
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return &Response{Allowed: false}, nil
@@ -611,7 +611,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	defer span.End()
 
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-	_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
 	// userset that is represented by the same edge, conditions on the iterator will be defined in this edge
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{

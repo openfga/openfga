@@ -3,7 +3,6 @@ package strategies
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -89,7 +88,6 @@ func (s *Recursive) TTU(ctx context.Context, req *check.Request, edge *authzGrap
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(edge.GetTo().GetUniqueLabel())
 	leftChan, err := s.bottomUp.resolveRewrite(ctx, childReq, edge.GetTo())
 	if err != nil {
 		return nil, err

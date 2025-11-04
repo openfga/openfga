@@ -115,17 +115,15 @@ func createRecursiveUsersetPlanKey(req *Request, userset string) string {
 	return b.String()
 }
 
-func createRecursiveTTUPlanKey(req *Request, ttu, tuplesetRelation string) string {
+func createRecursiveTTUPlanKey(req *Request, tuplesetRelation string) string {
 	var b strings.Builder
 	b.WriteString("v2|")
 	b.WriteString("ttu|")
 	b.WriteString(req.GetAuthorizationModelID())
 	b.WriteString("|")
-	b.WriteString(ttu)
+	b.WriteString(tuplesetRelation)
 	b.WriteString("|")
 	b.WriteString(req.GetUserType())
-	b.WriteString("|")
-	b.WriteString(tuplesetRelation)
 	b.WriteString("|")
 	b.WriteString("infinite")
 	return b.String()

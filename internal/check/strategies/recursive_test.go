@@ -12,8 +12,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	authzGraph "github.com/openfga/language/pkg/go/graph"
-
 	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
@@ -155,7 +153,7 @@ func TestRecursiveTTU(t *testing.T) {
 
 			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
-			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(),"user")
+			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
 			require.True(t, ok)
 			require.NotNil(t, recursiveEdge)
 
@@ -168,7 +166,7 @@ func TestRecursiveTTU(t *testing.T) {
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-				ObjectIDs:  nil,
+				Conditions: []string{""},
 			}, storage.ReadStartingWithUserOptions{
 				Consistency:                storage.ConsistencyOptions{Preference: openfgav1.ConsistencyPreference_UNSPECIFIED},
 				WithResultsSortedAscending: true},
@@ -225,17 +223,11 @@ type group
 		mg, err := check.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
-		edges, ok := mg.GetEdgesFromNodeId("group#member")
+		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
-
-		var ttuEdge *authzGraph.WeightedAuthorizationModelEdge
-		for _, edge := range edges {
-			if edge.GetEdgeType() == authzGraph.TTUEdge {
-				ttuEdge = edge
-				break
-			}
-		}
-		require.NotNil(t, ttuEdge)
+		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		require.True(t, ok)
+		require.NotNil(t, recursiveEdge)
 
 		tests := []struct {
 			name                             string
@@ -388,42 +380,42 @@ type group
 					ObjectType: "group",
 					Relation:   "rel4",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel7",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel8",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel5",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel6",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "member",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
 
 				for _, tuples := range tt.readTuples[1:] {
@@ -448,7 +440,7 @@ type group
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.TTU(ctx, req, ttuEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -583,7 +575,7 @@ func TestRecursiveUserset(t *testing.T) {
 				ObjectType: "group",
 				Relation:   "member",
 				UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-				ObjectIDs:  nil,
+				Conditions: []string{""},
 			}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuples), tt.readStartingWithUserTuplesError)
 
 			for _, tuples := range tt.readUsersetTuples[1:] {
@@ -602,8 +594,11 @@ func TestRecursiveUserset(t *testing.T) {
 			mg, err := check.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
-			edges, ok := mg.GetEdgesFromNodeId("group#member")
+			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
+			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+			require.True(t, ok)
+			require.NotNil(t, recursiveEdge)
 
 			ctx := context.Background()
 
@@ -624,7 +619,7 @@ func TestRecursiveUserset(t *testing.T) {
 			}
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
-			result, err := strategy.Userset(ctx, req, edges[0], storage.NewStaticTupleKeyIterator(tupleKeys))
+			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
@@ -782,42 +777,42 @@ func TestRecursiveUserset(t *testing.T) {
 					ObjectType: "group",
 					Relation:   "member",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel4",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel7",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel8",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel5",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
 
 				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
 					ObjectType: "group",
 					Relation:   "rel6",
 					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					ObjectIDs:  nil,
+					Conditions: []string{""},
 				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
 
 				for _, tuples := range tt.readUsersetTuples[1:] {
@@ -844,8 +839,11 @@ func TestRecursiveUserset(t *testing.T) {
 				mg, err := check.NewAuthorizationModelGraph(model)
 				require.NoError(t, err)
 
-				edges, ok := mg.GetEdgesFromNodeId("group#member")
+				node, ok := mg.GetNodeByID("group#member")
 				require.True(t, ok)
+				recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+				require.True(t, ok)
+				require.NotNil(t, recursiveEdge)
 
 				ctx := context.Background()
 
@@ -866,7 +864,7 @@ func TestRecursiveUserset(t *testing.T) {
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.Userset(ctx, req, edges[0], storage.NewStaticTupleKeyIterator(tupleKeys))
+				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
