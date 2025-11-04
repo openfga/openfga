@@ -256,8 +256,21 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 	}()
 
 	var minValue string
-	var minStreamIdx int
+	var minIndexValue int
 	var initialized bool
+
+	compareValues := make([]string, 0, len(iters))     // these values are the head values of each iterator
+	reverseLookupIndexes := make([]int, 0, len(iters)) // these values are the iters index that are currently active, for example 0, 1, 2, 3, 4
+	for idx, iter := range iters {
+		value, err := iter.Next(ctx)
+		if err != nil {
+			if handleStreamError(ctx, err, &batch, out) {
+				return
+			}
+		}
+		compareValues = append(compareValues, value)
+		reverseLookupIndexes = append(reverseLookupIndexes, idx)
+	}
 
 	/*
 		collect iterators from all channels, until all drained
@@ -265,58 +278,55 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 		ask to see if the channel has a new iterator, otherwise consider it done
 	*/
 	// Perform a merge-sort style union
-	for len(iters) > 0 {
+	for len(reverseLookupIndexes) > 0 {
 		if ctx.Err() != nil {
 			return
 		}
 
-		// Find minimum value across all streams
 		minValue = ""
-		minStreamIdx = 0
+		minIndexValue = 0
 		initialized = false
+		newIndexes := make([]int, 0, len(reverseLookupIndexes))
+		for _, idxValue := range reverseLookupIndexes {
+			value := compareValues[idxValue]
 
-		activeIters := make([]storage.Iterator[string], 0, len(iters))
-		for idx, iter := range iters {
-			value, err := iter.Head(ctx)
-			if err != nil {
-				if handleStreamError(ctx, err, &batch, out) {
-					return
-				}
-				continue
-			} else {
-				activeIters = append(activeIters, iter)
-			}
-
-			// ove any other iterators that the value is already capture in the head of the another iterator
-			if initialized && value == minValue {
-				_, err = iter.Next(ctx)
-				if err != nil && handleStreamError(ctx, err, &batch, out) {
-					return
-				}
-			}
-
-			// initialize
 			if !initialized || value < minValue {
 				minValue = value
-				minStreamIdx = idx
+				minIndexValue = idxValue
 				initialized = true
+			} else if value == minValue {
+				v1, err := iters[idxValue].Next(ctx)
+				if err != nil {
+					if handleStreamError(ctx, err, &batch, out) {
+						return
+					}
+					continue
+				} else {
+					compareValues[idxValue] = v1
+				}
 			}
+			newIndexes = append(newIndexes, idxValue)
 		}
 
-		if !initialized {
-			iters = activeIters
-			// All streams were done or one iterator is done and we need to verify the active streams
-			continue
-		}
 		batch = addValueToBatch(minValue, batch, ctx, out)
-
 		// Advance the stream with the minimum value
-		if _, err := iters[minStreamIdx].Next(ctx); err != nil {
+		value, err := iters[minIndexValue].Next(ctx)
+		if err != nil {
 			if handleStreamError(ctx, err, &batch, out) {
 				return
 			}
+			// Remove the value index from activeIndexes
+			newActiveIndexes := make([]int, 0, len(newIndexes))
+			for _, idxValue := range newIndexes {
+				if idxValue != minIndexValue {
+					newActiveIndexes = append(newActiveIndexes, idxValue)
+				}
+			}
+			reverseLookupIndexes = newActiveIndexes
+		} else {
+			compareValues[minIndexValue] = value
+			reverseLookupIndexes = newIndexes
 		}
-		iters = activeIters
 	}
 }
 
@@ -333,53 +343,44 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 	// exit if one of the channels closes as there is no more possible intersection of all
 
 	childrenTotal := len(iters)
-	if childrenTotal == 0 {
+	if childrenTotal == 0 || ctx.Err() != nil {
 		return
 	}
 
+	compareValues := make([]string, 0, len(iters)) // these values are the head values of each iterator
+	for _, iter := range iters {
+		value, err := iter.Next(ctx)
+		if err != nil {
+			handleStreamError(ctx, err, &batch, out)
+			// if one iterator is empty or error, interception is impossible
+			return
+		}
+		compareValues = append(compareValues, value)
+	}
+
 	var maxValue string
-	var allIters bool
 	var allSameValue bool
 	var initialized bool
 
-	for len(iters) == childrenTotal {
+	for {
 		if ctx.Err() != nil {
 			return
 		}
 
 		maxValue = ""
-		allIters = true
 		allSameValue = true
 		initialized = false
-		activeIters := make([]storage.Iterator[string], 0, len(iters))
-		for _, iter := range iters {
-			v, err := iter.Head(ctx)
-			if err != nil {
-				if handleStreamError(ctx, err, &batch, out) {
-					return
-				}
-				allIters = false
-				// we need to ensure we have all iterators at all times
-				break
-			}
 
-			activeIters = append(activeIters, iter)
-
+		for _, value := range compareValues {
 			if !initialized {
-				maxValue = v
+				maxValue = value
 				initialized = true
-			} else if maxValue != v {
+			} else if maxValue != value {
 				allSameValue = false
-				if maxValue < v {
-					maxValue = v
+				if maxValue < value {
+					maxValue = value
 				}
 			}
-		}
-
-		if !allIters {
-			iters = activeIters
-			// we need to ensure we have all iterators at all times
-			continue
 		}
 
 		// all children have the same value
@@ -387,27 +388,33 @@ func resolveIntersection(ctx context.Context, iters []storage.Iterator[string], 
 			// All streams have the same value - it's in the intersection
 			batch = addValueToBatch(maxValue, batch, ctx, out)
 			// Advance all streams
-			for _, iter := range iters {
-				_, err := iter.Next(ctx)
-				if err != nil && handleStreamError(ctx, err, &batch, out) {
+			for idx, iter := range iters {
+				value, err := iter.Next(ctx)
+				if err != nil {
+					handleStreamError(ctx, err, &batch, out)
+					// if one iterator is done or error, interception cannot continue
 					return
 				}
+				compareValues[idx] = value
 			}
 		} else {
-			// Not all values are equal - advance all streams with smaller values to the max value
-			for _, iter := range iters {
-				err := iterator.SkipTo(ctx, iter, maxValue)
-				if err != nil && handleStreamError(ctx, err, &batch, out) {
-					return
+			// Not all values are equal - advance all iterators with smaller values to the max value
+			for idx, iter := range iters {
+				if compareValues[idx] < maxValue {
+					value, err := skipTo(ctx, iter, maxValue)
+					if err != nil {
+						handleStreamError(ctx, err, &batch, out)
+						// if one iterator is done or error, interception cannot continue
+						return
+					}
+					compareValues[idx] = value
 				}
 			}
 		}
-
-		iters = activeIters
 	}
 }
 
-func resolveDifference(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
+func resolveDifference2(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
 	batch := make([]string, 0)
 
 	defer func() {
@@ -487,6 +494,109 @@ func resolveDifference(ctx context.Context, iters []storage.Iterator[string], ou
 				break
 			}
 			batch = addValueToBatch(t, batch, ctx, out)
+		}
+	}
+}
+
+func resolveDifference(ctx context.Context, iters []storage.Iterator[string], out chan<- *iterator.Msg) {
+	batch := make([]string, 0)
+
+	defer func() {
+		cleanOperation(ctx, batch, iters, out)
+	}()
+
+	if ctx.Err() != nil {
+		return
+	}
+
+	compareValues := make([]string, 0, len(iters))
+	for idx, iter := range iters {
+		value, err := iter.Next(ctx)
+		compareValues = append(compareValues, value)
+		if err != nil {
+			if handleStreamError(ctx, err, &batch, out) {
+				return
+			}
+			if idx == BaseIndex {
+				return // if base value is done or has any error, difference cannot continue
+			}
+			goto drainBase
+		}
+	}
+
+	if len(iters) == 1 {
+		goto drainBase
+	}
+
+	// both base and difference are still remaining
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		// move both iterator heads
+		if compareValues[BaseIndex] == compareValues[DifferenceIndex] {
+			// Advance both iterators
+			for idx, it := range iters {
+				value, err := it.Next(ctx)
+				if err != nil {
+					if handleStreamError(ctx, err, &batch, out) {
+						return
+					}
+					if idx == DifferenceIndex {
+						goto drainBase
+					}
+					return
+				}
+				compareValues[idx] = value
+			}
+		} else if compareValues[DifferenceIndex] > compareValues[BaseIndex] {
+			// add the base value to the batch
+			batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
+			// move the iterator and update teh comparable value of base
+			value, err := iters[BaseIndex].Next(ctx)
+			if err != nil {
+				// if base has an error, the difference operation cannot continue
+				handleStreamError(ctx, err, &batch, out)
+				return
+			}
+			compareValues[BaseIndex] = value
+		} else {
+			// diff < base, then move the diff to catch up with base
+			value, err := skipTo(ctx, iters[DifferenceIndex], compareValues[BaseIndex])
+			if err != nil {
+				if handleStreamError(ctx, err, &batch, out) {
+					return
+				}
+				goto drainBase
+			}
+			compareValues[DifferenceIndex] = value
+		}
+	}
+
+drainBase:
+	// drain the base
+	for {
+		batch = addValueToBatch(compareValues[BaseIndex], batch, ctx, out)
+		value, err := iters[BaseIndex].Next(ctx)
+		if err != nil {
+			handleStreamError(ctx, err, &batch, out)
+			return
+		}
+		compareValues[BaseIndex] = value
+	}
+}
+
+func skipTo(ctx context.Context, iter storage.Iterator[string], target string) (string, error) {
+	for {
+		t, err := iter.Next(ctx)
+		if err != nil {
+			return "", err
+		}
+
+		// If current head >= target, we're done
+		if t >= target {
+			return t, nil
 		}
 	}
 }

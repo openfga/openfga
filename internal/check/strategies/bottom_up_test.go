@@ -154,6 +154,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
+
 	t.Run("should_drain_iterators_on_error", func(t *testing.T) {
 		ctx := context.Background()
 		ctrl := gomock.NewController(t)
@@ -162,7 +163,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -189,6 +190,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 		err := pool.Wait()
 		require.NoError(t, err)
 	})
+
 	t.Run("should_calculate_union", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -481,7 +483,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -736,7 +738,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:0", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
 		iter1.EXPECT().Stop().Times(1)
@@ -771,8 +773,8 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -806,12 +808,10 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		// the first two times of Head() is to remove the first item (1)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		// this is to simulate successful remove of item 1
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
-		// the next get Head() is bad
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_head"))
+		// the next get Next() is bad
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", fmt.Errorf("bad_next"))
 
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -884,7 +884,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
 		producer1 <- &iterator.Msg{Iter: iter1}
@@ -1148,7 +1148,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -1181,7 +1181,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		res := make(chan *iterator.Msg)
 		producers := make([]storage.Iterator[string], 0)
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).AnyTimes().Return("obj:1", nil)
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer1 := make(chan *iterator.Msg, 1)
@@ -1217,9 +1217,8 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		close(producer1)
 		producers = append(producers, iterator.FromChannel(producer1))
 		iter1 := mocks.NewMockIterator[string](ctrl)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
 		iter1.EXPECT().Next(gomock.Any()).MaxTimes(2).Return("obj:1", nil)
-		iter1.EXPECT().Head(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
+		iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return("", errors.New("boom"))
 		iter1.EXPECT().Stop().Times(1)
 		producer2 := make(chan *iterator.Msg, 1)
 		producer2 <- &iterator.Msg{Iter: iter1}

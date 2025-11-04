@@ -119,6 +119,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 		case msg, ok := <-leftChan:
 			if !ok {
 				leftChan = nil
+				// if no ids from the left side were returned then return false without error
 				if len(idsFromUser) == 0 {
 					return &check.Response{Allowed: false}, err
 				}
@@ -126,6 +127,10 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 			}
 			if msg.Err != nil {
 				err = msg.Err
+				// if no ids from the left side were returned then return false with error, there not value to compare the right side
+				if len(idsFromUser) == 0 {
+					return &check.Response{Allowed: false}, err
+				}
 				continue
 			}
 			for {
@@ -165,7 +170,7 @@ func (s *Recursive) execute(ctx context.Context, req *check.Request, edge *authz
 
 	res, errMatch := s.recursiveMatch(ctx, req, edge, idsFromUser, idsFromObject, recursiveType)
 	if errMatch != nil {
-		return nil, errMatch
+		return res, errMatch
 	}
 	if res.Allowed {
 		return res, nil
