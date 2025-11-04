@@ -54,7 +54,7 @@ func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGr
 }
 
 func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
-	ctx, span := tracer.Start(ctx, "weight2.Userset")
+	ctx, span := tracer.Start(ctx, "weight2.TTU")
 	defer span.End()
 
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
