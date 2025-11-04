@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/stretchr/testify/require"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
+	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -190,7 +190,7 @@ func BenchmarkRead(b *testing.B, ds storage.OpenFGADatastore) {
 						Execute(ctx, bm.inputRequest)
 					require.NoError(b, err)
 					require.NotNil(b, resp)
-					tuples = append(tuples, resp.Tuples...)
+					tuples = append(tuples, resp.GetTuples()...)
 
 					continuationToken = resp.GetContinuationToken()
 					if continuationToken == "" {
