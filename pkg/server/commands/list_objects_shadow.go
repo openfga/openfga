@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -118,6 +119,7 @@ func newShadowedListObjectsQuery(
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("shadow running \n")
 
 	result := &shadowedListObjectsQuery{
 		main:          standard,
@@ -258,9 +260,17 @@ func (q *shadowedListObjectsQuery) executeShadowModeAndCompareResults(parentCtx 
 			zap.Bool("is_match", true),
 		)
 
-		q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
-			loShadowLogFields(req, fields...)...,
-		)
+		if mainQueryCount != 8 || mainItemCount != 4 {
+			q.logger.WarnWithContext(parentCtx, "shadowed list objects result matches",
+				loShadowLogFields(req, fields...)...,
+			)
+			panic("mainQueryCount not equal to 8 or mainItemCount not equal to 4")
+		} else {
+			q.logger.InfoWithContext(parentCtx, "shadowed list objects result matches",
+				loShadowLogFields(req, fields...)...,
+			)
+		}
+
 	}
 }
 

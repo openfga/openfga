@@ -150,6 +150,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		s.serviceName,
 		methodName,
 	).Observe(dispatchCount)
+	if dispatchCount != 8 {
+		panic("dispatchCount not equal to 8")
+	}
 
 	requestDurationHistogram.WithLabelValues(
 		s.serviceName,
@@ -172,6 +175,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 
 	checkCounter := float64(result.ResolutionMetadata.CheckCounter.Load())
 	grpc_ctxtags.Extract(ctx).Set(listObjectsCheckCountName, checkCounter)
+	if checkCounter != 1 {
+		panic("checkCounter not equal to 1")
+	}
 
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
