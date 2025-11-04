@@ -34,7 +34,7 @@ func TestBoundedWrapper(t *testing.T) {
 
 	t.Run("normal case", func(t *testing.T) {
 		// Create a limited tuple reader that allows 1 concurrent read a time.
-		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond})
+		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond, ThrottlingEnabled: true})
 
 		// Do reads from 4 goroutines - each should be run serially. Should be >4 seconds.
 		const numRoutine = 4
@@ -105,7 +105,7 @@ func TestBoundedWrapper(t *testing.T) {
 	t.Run("ctx cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		// Create a limited tuple reader that allows 1 concurrent read a time.
-		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond})
+		limitedTupleReader := NewBoundedTupleReader(slowBackend, &Operation{Method: apimethod.Check, Concurrency: 1, ThrottleThreshold: 2, ThrottleDuration: 500 * time.Millisecond, ThrottlingEnabled: true})
 
 		var wg errgroup.Group
 
