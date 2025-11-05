@@ -382,18 +382,15 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	base := make(chan ResponseMsg, 1)
-	wg := &sync.WaitGroup{}
+	wg := sync.WaitGroup{}
 
 	scheduledHandlers := 1
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		// exclusion is never part of a cycle or recursion
 		res, err := r.ResolveEdge(ctx, req, edges[0], nil)
 		concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, base)
 		close(base)
-	}()
-
+	})
 	defer func() {
 		cancel()
 		wg.Wait()
@@ -404,14 +401,12 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 	if _, ok := edges[1].GetWeight(req.GetUserType()); ok {
 		scheduledHandlers++
 		subtract = make(chan ResponseMsg, 1)
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			// exclusion is never part of a cycle or recursion
 			res, err := r.ResolveEdge(ctx, req, edges[1], nil)
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, subtract)
 			close(subtract)
-		}()
+		})
 	}
 
 	// Loop until we have received the necessary results to determine the outcome.
