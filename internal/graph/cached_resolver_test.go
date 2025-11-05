@@ -455,7 +455,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			subsequentParams := *test.subsequentReqParams
 
-			// Ensure cached entry is newer than the most recent invalidation but non-zero
+			// Ensure cached entry is newer than the most recent non-zero invalidation time
 			subsequentParams.LastCacheInvalidationTime = time.Now().Add(-1 * time.Minute)
 
 			subsequentRequest, err := NewResolveCheckRequest(subsequentParams)
