@@ -28,8 +28,9 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 			TypeDefinitions: []*openfgav1.TypeDefinition{},
 		}
 
-		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+		modelId, err := datastore.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, modelId, model.GetId())
 
 		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.GetId())
 		require.Nil(t, got)
@@ -43,8 +44,9 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 			TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "folder"}},
 		}
 
-		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+		modelId, err := datastore.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, modelId, model.GetId())
 
 		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.GetId())
 		require.NoError(t, err)
@@ -77,7 +79,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		model := parser.MustTransformDSLToProto(`
 			model
 				schema 1.1
-		
+
 			type user
 			type group
 				relations
@@ -87,8 +89,9 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 			}`)
 		model.Id = ulid.Make().String()
 		modelsWritten[i] = model
-		err := datastore.WriteAuthorizationModel(ctx, store, model)
+		modelId, err := datastore.WriteAuthorizationModel(ctx, store, model, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, modelId, model.GetId())
 	}
 
 	// when read, the models should be in inverse order
@@ -209,8 +212,9 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 				},
 			},
 		}
-		err := datastore.WriteAuthorizationModel(ctx, store, oldModel)
+		oldModelId, err := datastore.WriteAuthorizationModel(ctx, store, oldModel, "fakehash-old")
 		require.NoError(t, err)
+		require.Equal(t, oldModelId, oldModel.GetId())
 
 		updatedModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -240,8 +244,9 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 				},
 			},
 		}
-		err = datastore.WriteAuthorizationModel(ctx, store, updatedModel)
+		updatedModelId, err := datastore.WriteAuthorizationModel(ctx, store, updatedModel, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, updatedModelId, updatedModel.GetId())
 
 		latestModel, err := datastore.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
@@ -277,8 +282,9 @@ func FindLatestAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADat
 				},
 			},
 		}
-		err = datastore.WriteAuthorizationModel(ctx, store, newModel)
+		newModelId, err := datastore.WriteAuthorizationModel(ctx, store, newModel, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, newModelId, newModel.GetId())
 
 		latestModel, err = datastore.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)

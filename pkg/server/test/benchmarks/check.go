@@ -366,8 +366,9 @@ func BenchmarkCheck(b *testing.B, ds storage.OpenFGADatastore) {
 		typeSystem, err := typesystem.NewAndValidate(context.Background(), model)
 		require.NoError(b, err)
 
-		err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+		modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 		require.NoError(b, err)
+		require.Equal(b, modelId, model.GetId())
 
 		// create and write necessary tuples in deterministic order (to make runs comparable)
 		tuples := bm.tupleGenerator()
@@ -426,8 +427,9 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	storeID := ulid.Make().String()
 	modelOne := testutils.MustTransformDSLToProtoWithID(schemaOne)
 
-	err := ds.WriteAuthorizationModel(context.Background(), storeID, modelOne)
+	modelOneId, err := ds.WriteAuthorizationModel(context.Background(), storeID, modelOne, "fakehash1")
 	require.NoError(b, err)
+	require.Equal(b, modelOneId, modelOne.GetId())
 
 	// add user to many usersets according to model A
 	var tuples []*openfgav1.TupleKey
@@ -473,8 +475,9 @@ func benchmarkCheckWithBypassUsersetReads(b *testing.B, ds storage.OpenFGADatast
 	require.NoError(b, err)
 
 	// all the usersets added above are now invalid and should be skipped!
-	err = ds.WriteAuthorizationModel(context.Background(), storeID, modelTwo)
+	modelTwoId, err := ds.WriteAuthorizationModel(context.Background(), storeID, modelTwo, "fakehash2")
 	require.NoError(b, err)
+	require.Equal(b, modelTwoId, modelTwo.GetId())
 
 	checkQuery := commands.NewCheckCommand(
 		ds,

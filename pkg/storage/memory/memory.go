@@ -714,7 +714,7 @@ func (s *MemoryBackend) FindLatestAuthorizationModel(ctx context.Context, store 
 }
 
 // WriteAuthorizationModel see [storage.TypeDefinitionWriteBackend].WriteAuthorizationModel.
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel, hash string) (string, error) {
 	_, span := tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -734,7 +734,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store strin
 		latest: true,
 	}
 
-	return nil
+	return model.GetId(), nil
 }
 
 // CreateStore adds a new store to the [MemoryBackend].

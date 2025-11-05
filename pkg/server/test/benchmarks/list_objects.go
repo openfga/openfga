@@ -43,8 +43,9 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 					define parent: [folder]
 					define can_view: viewer or viewer from parent`).GetTypeDefinitions(),
 	}
-	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
+	modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 	require.NoError(b, err)
+	require.Equal(b, modelId, model.GetId())
 
 	numberObjectsAccesible := 0
 	for i := 0; i < 100; i++ {

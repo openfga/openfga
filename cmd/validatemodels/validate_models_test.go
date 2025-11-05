@@ -45,7 +45,7 @@ func TestValidationResult(t *testing.T) {
 			// for the last store, write a bunch of models (to trigger pagination)
 			for j := 0; j < totalModelsForOneStore; j++ {
 				modelID := ulid.Make().String()
-				err := ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
+				storedModelId, err := ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid
@@ -56,8 +56,9 @@ func TestValidationResult(t *testing.T) {
 							relations
 								define viewer:[user]
 						`).GetTypeDefinitions(),
-				})
+				}, fmt.Sprintf("fakehash-%d", j))
 				require.NoError(t, err)
+				require.Equal(t, storedModelId, modelID)
 				t.Logf("added model %s for store %s\n", modelID, storeID)
 			}
 

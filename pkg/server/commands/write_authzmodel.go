@@ -2,11 +2,15 @@ package commands
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -52,6 +56,18 @@ func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBacken
 	return model
 }
 
+func protoHash(pb proto.Message) (string, error) {
+	jsonBytes, err := protojson.MarshalOptions{
+		UseProtoNames:   true,
+		EmitUnpopulated: false,
+	}.Marshal(pb)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(jsonBytes)
+	return hex.EncodeToString(hash[:]), nil
+}
+
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
@@ -65,11 +81,16 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	model := &openfgav1.AuthorizationModel{
-		Id:              ulid.Make().String(),
+		Id:              "",
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
 		Conditions:      req.GetConditions(),
 	}
+	hash, err := protoHash(model)
+	if err != nil {
+		return nil, serverErrors.NewInternalError("", errors.New("Failed to hash AuthorizationModel"))
+	}
+	model.Id = ulid.Make().String()
 
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
@@ -81,18 +102,18 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		)
 	}
 
-	_, err := typesystem.NewAndValidate(ctx, model)
+	_, err = typesystem.NewAndValidate(ctx, model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
-	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
+	id, err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model, hash)
 	if err != nil {
 		return nil, serverErrors.
 			HandleError("Error writing authorization model configuration", err)
 	}
 
 	return &openfgav1.WriteAuthorizationModelResponse{
-		AuthorizationModelId: model.GetId(),
+		AuthorizationModelId: id,
 	}, nil
 }

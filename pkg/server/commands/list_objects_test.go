@@ -946,8 +946,9 @@ func BenchmarkListObjects(b *testing.B) {
 		`).GetTypeDefinitions(),
 	}
 	ctx := context.Background()
-	err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+	modelId, err := datastore.WriteAuthorizationModel(ctx, storeID, model, "fake-hash")
 	require.NoError(b, err)
+	require.Equal(b, model.GetId(), modelId)
 
 	n := 5000
 	createDirectWeightOneRelations(b, ctx, datastore, storeID, n)

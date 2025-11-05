@@ -157,8 +157,9 @@ func TestListUsersValidation(t *testing.T) {
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, "fakehash")
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			s := MustNewServerWithOpts(
 				WithDatastore(ds),

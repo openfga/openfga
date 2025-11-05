@@ -430,8 +430,9 @@ func TestFindLatestModel(t *testing.T) {
 			model
 				schema 1.1
 			type user1`)
-		err := ds.WriteAuthorizationModel(ctx, store, model)
+		modelId, err := ds.WriteAuthorizationModel(ctx, store, model, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, modelId, model.GetId())
 
 		latestModel, err := ds.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)
@@ -481,8 +482,9 @@ func TestFindLatestModel(t *testing.T) {
 			model
 				schema 1.1
 			type user1`)
-		err = ds.WriteAuthorizationModel(ctx, store, model)
+		modelId, err := ds.WriteAuthorizationModel(ctx, store, model, "fakehash")
 		require.NoError(t, err)
+		require.Equal(t, modelId, model.GetId())
 
 		latestModel, err = ds.FindLatestAuthorizationModel(ctx, store)
 		require.NoError(t, err)

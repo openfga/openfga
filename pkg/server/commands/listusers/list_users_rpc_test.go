@@ -2944,7 +2944,7 @@ func TestListUsersStorageErrors(t *testing.T) {
 func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 	storeID := ulid.Make().String()
 
-	for _, test := range testCases {
+	for i, test := range testCases {
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 		model := testutils.MustTransformDSLToProtoWithID(test.model)
@@ -2953,8 +2953,9 @@ func (testCases ListUsersTests) runListUsersTestCases(t *testing.T) {
 			typesys, err := typesystem.NewAndValidate(context.Background(), model)
 			require.NoError(t, err)
 
-			err = ds.WriteAuthorizationModel(context.Background(), storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(context.Background(), storeID, model, fmt.Sprintf("fakehash-%d", i))
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			if len(test.tuples) > 0 {
 				err = ds.Write(context.Background(), storeID, nil, test.tuples)
@@ -3477,8 +3478,9 @@ func TestListUsersConfig_MaxResults(t *testing.T) {
 
 			storeID := ulid.Make().String()
 
-			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			// arrange: write tuples
 			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
@@ -3603,8 +3605,9 @@ func TestListUsersConfig_Deadline(t *testing.T) {
 
 			storeID := ulid.Make().String()
 
-			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			// arrange: write tuples
 			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
@@ -3714,8 +3717,9 @@ func TestListUsersConfig_MaxConcurrency(t *testing.T) {
 
 			storeID := ulid.Make().String()
 
-			err := ds.WriteAuthorizationModel(ctx, storeID, model)
+			modelId, err := ds.WriteAuthorizationModel(ctx, storeID, model, "fakehash")
 			require.NoError(t, err)
+			require.Equal(t, modelId, model.GetId())
 
 			// arrange: write tuples
 			err = ds.Write(context.Background(), storeID, nil, test.inputTuples)
