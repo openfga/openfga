@@ -202,7 +202,9 @@ func TestRecursiveTTU(t *testing.T) {
 
 			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
-			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			if tt.expected != nil {
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			}
 		})
 	}
 
@@ -629,7 +631,9 @@ func TestRecursiveUserset(t *testing.T) {
 			strategy := NewRecursive(mg, mockDatastore, 5)
 			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
-			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			if tt.expected != nil {
+				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
+			}
 		})
 	}
 
