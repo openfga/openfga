@@ -414,6 +414,7 @@ func (q *ListObjectsQuery) evaluate(
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
 						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+						WithCheckCommandCache(q.sharedDatastoreResources, q.cacheSettings),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),

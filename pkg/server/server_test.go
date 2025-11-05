@@ -1372,7 +1372,6 @@ func TestCheckWithCachedResolution(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, checkResponse.GetAllowed())
-
 	})
 }
 
