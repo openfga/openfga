@@ -150,7 +150,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 	var ids []string
 	for _, edge := range edges {
-		id := buildEdgeCacheKey(req, edge)
+		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
 		ids = append(ids, id)
 		if res, ok := r.isCached(req.GetConsistency(), id); ok {
 			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
