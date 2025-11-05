@@ -1318,3 +1318,172 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 
 	})
 }
+
+func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+	t.Run("complex_model", func(t *testing.T) {
+		model := testutils.MustTransformDSLToProtoWithID(`
+		model
+			schema 1.1
+			type user
+			type employee
+			type group
+				relations
+					define activator: [user]
+					define public_restricted: [user:*] but not restricted
+					define restricted: [user with xcond]
+					define viewer: (activator and public_restricted) or guest
+					define guest: [employee]
+					define admin: [user]
+					define member: [group#member] or (viewer but not admin)
+			condition xcond(tcond: string) {
+  				tcond == 'restricted'
+			}
+		`)
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		readEmpty := []*openfgav1.Tuple{}
+		initialTks := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("group:1", "member", "group:4#member"),
+			tuple.NewTupleKey("group:1", "member", "group:3#member"),
+		}
+		readGroup1Parent := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:1", "member", "group:3#member"),
+			},
+			{
+				Key: tuple.NewTupleKey("group:1", "member", "group:4#member"),
+			},
+		}
+		readGroup3Parent := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:3", "member", "group:5#member"),
+			},
+		}
+		readGroup4Parent := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:4", "member", "group:1#member"),
+			},
+		}
+		readGroup5Parent := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:5", "member", "group:2#member"),
+			},
+		}
+		readStartingWithUserActivator := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:2", "activator", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("group:3", "activator", "user:1"),
+			},
+		}
+		readStartingWithUserAdmin := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:3", "admin", "user:1"),
+			},
+		}
+		readStartingWithUserPublic := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("group:1", "public_restricted", "user:*"),
+			},
+			{
+				Key: tuple.NewTupleKey("group:2", "public_restricted", "user:*"),
+			},
+		}
+		contextStruct := testutils.MustNewStruct(t, map[string]interface{}{"tcond": "restricted"})
+		readStartingWithUserRestricted := []*openfgav1.Tuple{
+			{
+				Key: &openfgav1.TupleKey{
+					Object:   "group:1",
+					Relation: "restricted",
+					User:     "user:1",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "xcond",
+						Context: contextStruct,
+					},
+				},
+			},
+			{
+				Key: &openfgav1.TupleKey{
+					Object:   "group:3",
+					Relation: "restricted",
+					User:     "user:1",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "xcond",
+						Context: contextStruct,
+					},
+				},
+			},
+		}
+
+		mockDatastore := mocks.NewMockOpenFGADatastore(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(4). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "activator":
+					return storage.NewStaticTupleIterator(readStartingWithUserActivator), nil
+				case "admin":
+					return storage.NewStaticTupleIterator(readStartingWithUserAdmin), nil
+				case "public_restricted":
+					return storage.NewStaticTupleIterator(readStartingWithUserPublic), nil
+				case "restricted":
+					return storage.NewStaticTupleIterator(readStartingWithUserRestricted), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(4). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Object {
+				case "group:1":
+					return storage.NewStaticTupleIterator(readGroup1Parent), nil
+				case "group:3":
+					return storage.NewStaticTupleIterator(readGroup3Parent), nil
+				case "group:5":
+					return storage.NewStaticTupleIterator(readGroup5Parent), nil
+				case "group:4":
+					return storage.NewStaticTupleIterator(readGroup4Parent), nil
+				default:
+					return storage.NewStaticTupleIterator(readEmpty), nil
+				}
+			})
+		ctx := context.Background()
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		require.True(t, ok)
+		require.NotNil(t, recursiveEdge)
+		require.Equal(t, recursiveEdge.GetEdgeType(), graph.DirectEdge)
+		require.Equal(t, recursiveEdge.GetRecursiveRelation(), "group#member")
+		require.Equal(t, recursiveEdge.GetTo(), node)
+
+		req, err := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:1"),
+		})
+		require.NoError(t, err)
+
+		strategy := NewRecursive(mg, mockDatastore, 5)
+		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks))
+		require.NoError(t, err)
+		require.True(t, result.GetAllowed())
+
+	})
+}
