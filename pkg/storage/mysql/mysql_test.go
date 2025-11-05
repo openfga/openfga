@@ -91,41 +91,32 @@ func TestReadEnsureNoOrder(t *testing.T) {
 			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{firstTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now(),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{firstTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now())
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{secondTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now().Add(time.Minute * -1),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{secondTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{thirdTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now().Add(time.Minute * -2),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{thirdTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
 			iter, err := ds.Read(ctx, store, storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""}, storage.ReadOptions{})
@@ -206,41 +197,32 @@ func TestCtxCancel(t *testing.T) {
 			thirdTuple := tupleUtils.NewTupleKey("doc:object_id_3", "relation", "user:user_3")
 
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{firstTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now(),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{firstTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now())
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{secondTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now().Add(time.Minute * -1),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{secondTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now().Add(time.Minute*-1))
 			require.NoError(t, err)
 
 			// Tweak time so that ULID is smaller.
 			err = sqlcommon.Write(ctx,
-				sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-				ds.db,
+				sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 				store,
-				sqlcommon.WriteData{
-					Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-					Writes:  []*openfgav1.TupleKey{thirdTuple},
-					Opts:    storage.NewTupleWriteOptions(),
-					Now:     time.Now().Add(time.Minute * -2),
-				})
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				[]*openfgav1.TupleKey{thirdTuple},
+				storage.NewTupleWriteOptions(),
+				time.Now().Add(time.Minute*-2))
 			require.NoError(t, err)
 
 			iter, err := ds.Read(ctx, store, storage.ReadFilter{Object: "doc:", Relation: "relation", User: ""}, storage.ReadOptions{})
@@ -279,28 +261,22 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	secondTuple := tupleUtils.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 		store,
-		sqlcommon.WriteData{
-			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-			Writes:  []*openfgav1.TupleKey{firstTuple},
-			Opts:    storage.NewTupleWriteOptions(),
-			Now:     time.Now(),
-		})
+		[]*openfgav1.TupleKeyWithoutCondition{},
+		[]*openfgav1.TupleKey{firstTuple},
+		storage.NewTupleWriteOptions(),
+		time.Now())
 	require.NoError(t, err)
 
 	// Tweak time so that ULID is smaller.
 	err = sqlcommon.Write(ctx,
-		sqlcommon.NewDBInfo(ds.stbl, HandleSQLError, "mysql"),
-		ds.db,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, HandleSQLError, "mysql"),
 		store,
-		sqlcommon.WriteData{
-			Deletes: []*openfgav1.TupleKeyWithoutCondition{},
-			Writes:  []*openfgav1.TupleKey{secondTuple},
-			Opts:    storage.NewTupleWriteOptions(),
-			Now:     time.Now().Add(time.Minute * -1),
-		})
+		[]*openfgav1.TupleKeyWithoutCondition{},
+		[]*openfgav1.TupleKey{secondTuple},
+		storage.NewTupleWriteOptions(),
+		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
 	opts := storage.ReadPageOptions{
