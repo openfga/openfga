@@ -9,7 +9,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-const requestCacheKeyPrefix = "sp."
+
 
 type Request struct {
 	*graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata)
@@ -28,7 +28,7 @@ func NewRequest(p RequestParams) (*Request, error) {
 	cacheKeyString := tup.String() + req.GetInvariantCacheKey()
 	hasher := xxhash.New()
 	_, _ = hasher.WriteString(cacheKeyString)
-	cacheKey := requestCacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
+	cacheKey := CacheKeyPrefix + strconv.FormatUint(hasher.Sum64(), 10)
 
 	return &Request{
 		ResolveCheckRequest: req,

@@ -25,6 +25,7 @@ import (
 )
 
 const DELIMITER = "|"
+const CacheKeyPrefix = "c."
 
 var tracer = otel.Tracer("internal/check")
 
@@ -117,13 +118,17 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key str
 	return res.Res, true
 }
 
-func buildEdgeCacheKey(req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
+func buildEdgeCacheKey(modelId string, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
 	keyBuilder := &strings.Builder{}
+	keyBuilder.WriteString(CacheKeyPrefix)
+	keyBuilder.WriteString(modelId)
+	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
 	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
 	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
+	keyBuilder.WriteString(req.GetInvariantCacheKey())
 	return keyBuilder.String()
 }
 
