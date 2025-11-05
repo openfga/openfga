@@ -97,7 +97,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 		commands.WithListObjectsCache(s.sharedDatastoreResources, s.cacheSettings),
-		commands.WithListObjectsDatastoreThrottler(s.listObjectsDatastoreThrottleThreshold, s.listObjectsDatastoreThrottleDuration),
+		commands.WithListObjectsDatastoreThrottler(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.listObjectsDatastoreThrottleThreshold,
+			s.listObjectsDatastoreThrottleDuration,
+		),
 		commands.WithFeatureFlagClient(s.featureFlagClient),
 	)
 	if err != nil {

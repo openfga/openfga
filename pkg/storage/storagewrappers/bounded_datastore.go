@@ -77,9 +77,10 @@ type BoundedTupleReader struct {
 	countItems atomic.Uint64
 	method     string
 
-	threshold    int
-	throttleTime time.Duration
-	throttled    atomic.Bool
+	throttlingEnabled bool
+	threshold         int
+	throttleTime      time.Duration
+	throttled         atomic.Bool
 }
 
 // NewBoundedTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
@@ -91,9 +92,10 @@ func NewBoundedTupleReader(wrapped storage.RelationshipTupleReader, op *Operatio
 		limiter:                 make(chan struct{}, op.Concurrency),
 		countReads:              atomic.Uint32{},
 
-		method:       string(op.Method),
-		threshold:    op.ThrottleThreshold,
-		throttleTime: op.ThrottleDuration,
+		method:            string(op.Method),
+		throttlingEnabled: op.ThrottlingEnabled,
+		threshold:         op.ThrottleThreshold,
+		throttleTime:      op.ThrottleDuration,
 	}
 }
 
@@ -204,7 +206,7 @@ func (b *BoundedTupleReader) bound(ctx context.Context, op string) error {
 
 	reads := b.increaseReads()
 
-	if b.threshold > 0 && reads > b.threshold {
+	if b.throttlingEnabled && b.threshold > 0 && reads > b.threshold {
 		b.throttled.Store(true)
 		select {
 		case <-ctx.Done():

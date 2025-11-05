@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
+- Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)
+
+## [1.10.4] - 2025-11-04
+### Added
 - Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 - Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
@@ -21,6 +25,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 - Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
+- Update go toolchain version to 1.25.3 - related: [CVE-2025-58187](https://www.cve.org/CVERecord?id=CVE-2025-58187)
 
 ## [1.10.3] - 2025-10-14
 ### Changed
@@ -1456,7 +1461,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.4...HEAD
+[1.10.4]: https://github.com/openfga/openfga/compare/v1.10.3...v1.10.4
 [1.10.3]: https://github.com/openfga/openfga/compare/v1.10.2...v1.10.3
 [1.10.2]: https://github.com/openfga/openfga/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/openfga/openfga/compare/v1.10.0...v1.10.1
