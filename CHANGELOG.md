@@ -12,11 +12,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)
 
+### Removed
+- Reverted pgxpool change erroneously included in 1.10.4. [Original PR](https://github.com/openfga/openfga/pull/2734), [Revert PR](https://github.com/openfga/openfga/pull/2786)
+
 ## [1.10.4] - 2025-11-04
 ### Added
 - Added a default featureflags.Client to the server and ability to pass custom clients to the server via `server.WithFeatureFlagClient`. [#2708](https://github.com/openfga/openfga/pull/2708)
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 - Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
+- Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
 
 ### Fixed
 - Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
