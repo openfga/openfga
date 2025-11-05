@@ -100,7 +100,7 @@ func (r *Resolver) GetModel() *AuthorizationModelGraph {
 }
 
 func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
-	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY || r.lastCacheInvalidationTime.IsZero() {
 		return nil, false
 	}
 	v := r.cache.Get(key)
