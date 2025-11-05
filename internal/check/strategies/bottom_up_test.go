@@ -218,9 +218,9 @@ func TestSpecificType(t *testing.T) {
 					define member: [user with xcond, user, employee, document#viewer]
 					define admin: [document#member]
 					define viewer: [user]
-			
+
 			condition xcond(foo: string) {
-                   foo == 'foo' 
+                   foo == 'foo'
              }
 			`)
 
@@ -335,11 +335,12 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
 		msg, ok := <-c
@@ -388,11 +389,12 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
-		}, edges[0])
+		})
+		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
 		msg, ok := <-c
@@ -443,11 +445,12 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
-		}, edges[0])
+		})
+		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
 		msg, ok := <-c
@@ -487,9 +490,9 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					define member: [user:* with xcond, user, employee, document#viewer]
 					define admin: [document#member]
 					define viewer: [user]
-			
+
 			condition xcond(foo: string) {
-                   foo == 'foo' 
+                   foo == 'foo'
              }
 			`)
 
@@ -500,11 +503,13 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		c, err := strategy.specificTypeWildcard(ctx, &check.Request{
+
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
 		msg, ok := <-c
@@ -551,11 +556,12 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		_, err = strategy.specificTypeWildcard(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		_, err = strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.Error(t, err)
 	})
@@ -1672,5 +1678,457 @@ func TestWeight2ResolveDifference(t *testing.T) {
 		require.False(t, ok)
 		err := pool.Wait()
 		require.NoError(t, err)
+	})
+}
+
+// New tests for resolveRewrite function
+
+func TestResolveRewrite(t *testing.T) {
+	t.Cleanup(func() {
+		goleak.VerifyNone(t)
+	})
+
+	// Test cases for resolveRewrite with union models
+	t.Run("resolveRewrite_with_union_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:3", "viewer", "user:1"),
+			},
+		}
+		readStartingWithUserEditor := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:1", "editor", "user:1"),
+			},
+		}
+		readStartingWithUserCommenter := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:2", "commenter", "user:1"),
+			},
+		}
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(3). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "viewer":
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+				case "editor":
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+				case "commenter":
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		// Create a model with a union operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] or editor
+					define editor: [user] or commenter
+					define commenter: [user]
+					define parent: [document]
+					define owner: viewer from parent
+		`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the union operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+		// Create a request for testing
+		req, err := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+
+		// Test the resolveRewrite function with the union model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:1", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:2", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:3", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with intersection models
+	t.Run("resolveRewrite_with_intersection_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:0", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "viewer", "user:1"),
+			},
+		}
+		readStartingWithUserEditor := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:2", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:6", "editor", "user:1"),
+			},
+		}
+		readStartingWithUserCommenter := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:1", "commenter", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:2", "commenter", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "commenter", "user:1"),
+			},
+		}
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(3). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "viewer":
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+				case "editor":
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+				case "commenter":
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		// Create a model with an intersection operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] and editor
+					define editor: [user] and commenter
+					define commenter: [user]
+		`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the intersection operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+
+		// Test the resolveRewrite function with the intersection model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:5", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with exclusion models
+	t.Run("resolveRewrite_with_exclusion_model", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:0", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "viewer", "user:1"),
+			},
+		}
+		readStartingWithUserEditor := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:2", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:6", "editor", "user:1"),
+			},
+		}
+		readStartingWithUserBanned := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:1", "banned", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:2", "banned", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "banned", "user:1"),
+			},
+		}
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(3). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "viewer":
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+				case "banned":
+					return storage.NewStaticTupleIterator(readStartingWithUserBanned), nil
+				case "editor":
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		// Create a model with an exclusion operator
+		model := testutils.MustTransformDSLToProtoWithID(`
+			model
+				schema 1.1
+			type user
+			type document
+				relations
+					define viewer: [user] but not banned
+					define banned: [user] but not editor
+					define editor: [user]
+					
+		`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the exclusion operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+
+		// Test the resolveRewrite function with the exclusion model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:0", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:3", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:5", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
+	})
+
+	// Test cases for resolveRewrite with combined operators (union + intersection)
+	t.Run("resolveRewrite_with_combined_operations", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		readStartingWithUserViewer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:1", "viewer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "viewer", "user:1"),
+			},
+		}
+		readStartingWithUserEditor := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:1", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:3", "editor", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:7", "editor", "user:1"),
+			},
+		}
+		readStartingWithUserAnalyzer := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:5", "analyzer", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:7", "analyzer", "user:1"),
+			},
+		}
+		readStartingWithUserCommenter := []*openfgav1.Tuple{
+			{
+				Key: tuple.NewTupleKey("document:3", "commenter", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:5", "commenter", "user:1"),
+			},
+			{
+				Key: tuple.NewTupleKey("document:9", "commenter", "user:1"),
+			},
+		}
+
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(5). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+
+				// Manually check the relation and return the right data
+				switch filter.Relation {
+				case "viewer":
+					return storage.NewStaticTupleIterator(readStartingWithUserViewer), nil
+				case "analyzer":
+					return storage.NewStaticTupleIterator(readStartingWithUserAnalyzer), nil
+				case "editor":
+					return storage.NewStaticTupleIterator(readStartingWithUserEditor), nil
+				case "commenter":
+					return storage.NewStaticTupleIterator(readStartingWithUserCommenter), nil
+				default:
+					return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+				}
+			})
+
+		// Create a model with combined union and intersection operators
+		model := testutils.MustTransformDSLToProtoWithID(`
+				model
+					schema 1.1
+				type user
+				type document
+					relations
+						define viewer: ([user] or analyzer) or (editor and commenter)
+						define editor: [user]
+						define commenter: [user] but not analyzer
+						define analyzer: [user]
+			`)
+
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+		strategy := newBottomUp(mg, mockDatastore)
+
+		ctx := context.Background()
+		// Get the node for the complex operator in document#viewer
+		node, ok := mg.GetNodeByID("document#viewer")
+		require.True(t, ok)
+
+		// Create a request for testing
+		req, _ := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
+		})
+
+		// Test the resolveRewrite function with the combined model
+		resChan, err := strategy.resolveRewrite(ctx, req, node)
+		require.NoError(t, err)
+		require.NotNil(t, resChan)
+
+		// Verify channel is closed correctly
+		msg, ok := <-resChan
+		require.True(t, ok)
+		require.NoError(t, msg.Err)
+		require.NotNil(t, msg.Iter)
+		v, _ := msg.Iter.Next(ctx)
+		require.Equal(t, "document:1", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:3", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:5", v)
+		v, _ = msg.Iter.Next(ctx)
+		require.Equal(t, "document:7", v)
+		_, e := msg.Iter.Next(ctx)
+		require.Error(t, e)
+		msg.Iter.Stop()
+
+		_, ok = <-resChan
+		require.False(t, ok)
 	})
 }

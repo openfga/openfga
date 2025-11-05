@@ -184,13 +184,12 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *check.Request,
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
-	userObjType, _ := tuple.SplitObject(req.GetTupleKey().GetUser())
 	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
 			UserFilter: []*openfgav1.ObjectRelation{{
-				Object: tuple.TypedPublicWildcard(userObjType),
+				Object: tuple.TypedPublicWildcard(req.GetUserType()),
 			}},
 			Conditions: edge.GetConditions(),
 		}, opts)
@@ -259,6 +258,10 @@ func resolveUnion(ctx context.Context, iters []storage.Iterator[string], out cha
 	var minValue string
 	var minIndexValue int
 	var initialized bool
+
+	if ctx.Err() != nil {
+		return
+	}
 
 	compareValues := make([]string, 0, len(iters))     // these values are the head values of each iterator
 	reverseLookupIndexes := make([]int, 0, len(iters)) // these values are the iters index that are currently active, for example 0, 1, 2, 3, 4
