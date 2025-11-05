@@ -243,7 +243,7 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 
 	t.Run("invalid_dialect", func(t *testing.T) {
 		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
-			sqlcommon.NewDBInfo(sq.StatementBuilder, nil, "invalid-dialect")
+			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
 		})
 	})
 }
@@ -773,9 +773,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig(
 			sqlcommon.WithMaxOpenConns(10),
-			sqlcommon.WithMinOpenConns(10),
 			sqlcommon.WithMaxIdleConns(10),
-			sqlcommon.WithMinIdleConns(10),
 		))
 		require.NoError(b, err)
 		b.Cleanup(ds.Close)

@@ -109,7 +109,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "mysql")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "mysql")
 
 	return &Datastore{
 		stbl:                   stbl,
@@ -208,7 +208,7 @@ func (s *Datastore) read(ctx context.Context, store string, filter storage.ReadF
 		sb = sb.Limit(uint64(options.Pagination.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // Write see [storage.RelationshipTupleWriter].Write.
@@ -222,13 +222,7 @@ func (s *Datastore) Write(
 	ctx, span := startTrace(ctx, "Write")
 	defer span.End()
 
-	return sqlcommon.Write(ctx, s.dbInfo, s.db, store,
-		sqlcommon.WriteData{
-			Deletes: deletes,
-			Writes:  writes,
-			Opts:    storage.NewTupleWriteOptions(opts...),
-			Now:     time.Now().UTC(),
-		})
+	return sqlcommon.Write(ctx, s.dbInfo, store, deletes, writes, storage.NewTupleWriteOptions(opts...), time.Now().UTC())
 }
 
 // ReadUserTuple see [storage.RelationshipTupleReader].ReadUserTuple.
@@ -332,11 +326,12 @@ func (s *Datastore) ReadUsersetTuples(
 		}
 		sb = sb.Where(orConditions)
 	}
+
 	if len(filter.Conditions) > 0 {
 		sb = sb.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
 
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(sb), HandleSQLError), nil
+	return sqlcommon.NewSQLTupleIterator(sb, HandleSQLError), nil
 }
 
 // ReadStartingWithUser see [storage.RelationshipTupleReader].ReadStartingWithUser.
@@ -375,10 +370,12 @@ func (s *Datastore) ReadStartingWithUser(
 	if filter.ObjectIDs != nil && filter.ObjectIDs.Size() > 0 {
 		builder = builder.Where(sq.Eq{"object_id": filter.ObjectIDs.Values()})
 	}
+
 	if len(filter.Conditions) > 0 {
 		builder = builder.Where(sq.Eq{"COALESCE(condition_name, '')": filter.Conditions})
 	}
-	return sqlcommon.NewSQLTupleIterator(sqlcommon.NewSBIteratorQuery(builder), HandleSQLError), nil
+
+	return sqlcommon.NewSQLTupleIterator(builder, HandleSQLError), nil
 }
 
 // MaxTuplesPerWrite see [storage.RelationshipTupleWriter].MaxTuplesPerWrite.

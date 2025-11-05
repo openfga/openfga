@@ -125,7 +125,7 @@ func NewWithDB(db *sql.DB, cfg *sqlcommon.Config) (*Datastore, error) {
 	}
 
 	stbl := sq.StatementBuilder.RunWith(db)
-	dbInfo := sqlcommon.NewDBInfo(stbl, HandleSQLError, "sqlite")
+	dbInfo := sqlcommon.NewDBInfo(db, stbl, HandleSQLError, "sqlite")
 
 	return &Datastore{
 		stbl:                   stbl,
