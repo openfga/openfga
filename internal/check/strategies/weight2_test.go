@@ -98,11 +98,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.Userset(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.Userset(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -181,11 +184,14 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.Userset(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.Userset(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -265,11 +271,14 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.Userset(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.Userset(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -349,11 +358,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.Userset(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.Userset(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -411,7 +423,6 @@ func TestWeight2Userset(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(3). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "members":
@@ -458,11 +469,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.Userset(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[1], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.Userset(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -549,11 +563,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.TTU(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.TTU(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -634,11 +651,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.TTU(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.TTU(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -719,11 +739,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.TTU(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.TTU(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -804,11 +827,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.TTU(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.TTU(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -866,7 +892,6 @@ func TestWeight2TTU(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(3). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "members":
@@ -914,11 +939,14 @@ func TestWeight2TTU(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		res, err := strategy.TTU(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
-		}, edges[0], iter)
+		})
+		require.NoError(t, err)
+
+		res, err := strategy.TTU(ctx, req, edges[0], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())

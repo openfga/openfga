@@ -66,11 +66,13 @@ func TestSpecificType(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		c, err := strategy.specificType(ctx, &check.Request{
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		require.NoError(t, err)
+		c, err := strategy.specificType(ctx, req, edges[0])
 
 		require.NoError(t, err)
 		msg, ok := <-c
@@ -119,12 +121,15 @@ func TestSpecificType(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		c, err := strategy.specificType(ctx, &check.Request{
+
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
-		}, edges[0])
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		})
+		require.NoError(t, err)
 
+		c, err := strategy.specificType(ctx, req, edges[0])
 		require.NoError(t, err)
 		msg, ok := <-c
 		require.True(t, ok)
@@ -174,12 +179,15 @@ func TestSpecificType(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		c, err := strategy.specificType(ctx, &check.Request{
+
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
-		}, edges[0])
+			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
+		})
+		require.NoError(t, err)
 
+		c, err := strategy.specificType(ctx, req, edges[0])
 		require.NoError(t, err)
 		msg, ok := <-c
 		require.True(t, ok)
@@ -231,12 +239,15 @@ func TestSpecificType(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		c, err := strategy.specificType(ctx, &check.Request{
+
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		require.NoError(t, err)
 
+		c, err := strategy.specificType(ctx, req, edges[0])
 		require.NoError(t, err)
 		msg, ok := <-c
 		require.True(t, ok)
@@ -282,12 +293,15 @@ func TestSpecificType(t *testing.T) {
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		_, err = strategy.specificType(ctx, &check.Request{
+
+		req, err := check.NewRequest(check.RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
-		}, edges[0])
+		})
+		require.NoError(t, err)
 
+		_, err = strategy.specificType(ctx, req, edges[0])
 		require.Error(t, err)
 	})
 }
@@ -340,6 +354,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
+		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
@@ -394,6 +409,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
+		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
@@ -450,6 +466,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
 		})
+		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
@@ -509,6 +526,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
+		require.NoError(t, err)
 		c, err := strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.NoError(t, err)
@@ -561,6 +579,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
 		})
+		require.NoError(t, err)
 		_, err = strategy.specificTypeWildcard(ctx, req, edges[0])
 
 		require.Error(t, err)
@@ -1714,7 +1733,6 @@ func TestResolveRewrite(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(3). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
@@ -1756,6 +1774,7 @@ func TestResolveRewrite(t *testing.T) {
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
+		require.NoError(t, err)
 
 		// Test the resolveRewrite function with the union model
 		resChan, err := strategy.resolveRewrite(ctx, req, node)
@@ -1831,7 +1850,6 @@ func TestResolveRewrite(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(3). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
@@ -1943,7 +1961,6 @@ func TestResolveRewrite(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(3). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":
@@ -2061,7 +2078,6 @@ func TestResolveRewrite(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(5). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "viewer":

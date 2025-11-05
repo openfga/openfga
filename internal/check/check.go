@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
@@ -24,53 +24,50 @@ import (
 	modelUtils "github.com/openfga/openfga/pkg/typesystem"
 )
 
+const DELIMITER = "|"
+
 var tracer = otel.Tracer("internal/check")
 
+var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
+
 type Config struct {
-	Model            *AuthorizationModelGraph
-	Datastore        storage.RelationshipTupleReader
-	Planner          *planner.Planner
-	ConcurrencyLimit int
-	UpstreamTimeout  time.Duration
-	Logger           logger.Logger
-	Strategies       map[string]Strategy
+	Model                     *AuthorizationModelGraph
+	Datastore                 storage.RelationshipTupleReader
+	Cache                     storage.InMemoryCache[any]
+	CacheTTL                  time.Duration
+	LastCacheInvalidationTime time.Time
+	Planner                   *planner.Planner
+	ConcurrencyLimit          int
+	UpstreamTimeout           time.Duration
+	Logger                    logger.Logger
+	Strategies                map[string]Strategy
 }
 type Resolver struct {
-	model            *AuthorizationModelGraph
-	datastore        storage.RelationshipTupleReader
-	planner          *planner.Planner
-	concurrencyLimit int
-	upstreamTimeout  time.Duration
-	logger           logger.Logger
+	model                     *AuthorizationModelGraph
+	datastore                 storage.RelationshipTupleReader
+	cache                     storage.InMemoryCache[any]
+	cacheTTL                  time.Duration
+	lastCacheInvalidationTime time.Time
+	planner                   *planner.Planner
+	concurrencyLimit          int
+	upstreamTimeout           time.Duration
+	logger                    logger.Logger
 
 	strategies map[string]Strategy
 }
 
-type Request = graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata)
-type Response = graph.ResolveCheckResponse
-
-type RequestParams = graph.ResolveCheckRequestParams
-
-func NewRequest(p RequestParams) (*Request, error) {
-	return graph.NewResolveCheckRequest(p)
-}
-
-var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
-
-type ResponseMsg struct {
-	Res *Response
-	Err error
-}
-
 func New(cfg Config) *Resolver {
 	r := &Resolver{
-		model:            cfg.Model,
-		datastore:        cfg.Datastore,
-		planner:          cfg.Planner,
-		concurrencyLimit: cfg.ConcurrencyLimit,
-		upstreamTimeout:  cfg.UpstreamTimeout,
-		logger:           cfg.Logger,
-		strategies:       cfg.Strategies,
+		model:                     cfg.Model,
+		datastore:                 cfg.Datastore,
+		cache:                     cfg.Cache,
+		cacheTTL:                  cfg.CacheTTL,
+		lastCacheInvalidationTime: cfg.LastCacheInvalidationTime,
+		planner:                   cfg.Planner,
+		concurrencyLimit:          cfg.ConcurrencyLimit,
+		upstreamTimeout:           cfg.UpstreamTimeout,
+		logger:                    cfg.Logger,
+		strategies:                cfg.Strategies,
 	}
 
 	return r
@@ -102,9 +99,41 @@ func (r *Resolver) GetModel() *AuthorizationModelGraph {
 	return r.model
 }
 
+func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
+	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		return nil, false
+	}
+	v := r.cache.Get(key)
+	if v == nil {
+		return nil, false
+	}
+	res, ok := v.(*ResponseCacheEntry)
+	if !ok {
+		return nil, false
+	}
+	if !res.LastModified.After(r.lastCacheInvalidationTime) {
+		return nil, false
+	}
+	return res.Res, true
+}
+
+func buildEdgeCacheKey(req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
+	keyBuilder := &strings.Builder{}
+	keyBuilder.WriteString(req.GetTupleKey().GetObject())
+	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(req.GetTupleKey().GetUser())
+	keyBuilder.WriteString(DELIMITER)
+	keyBuilder.WriteString(edge.GetRelationDefinition())
+	return keyBuilder.String()
+}
+
 func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []*authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	if res, ok := r.isCached(req.GetConsistency(), req.CacheKey()); ok {
+		return res, nil
+	}
 
 	out := make(chan ResponseMsg, len(edges))
 	var pool errgroup.Group
@@ -114,16 +143,23 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		close(out)
 	}()
 
+	var ids []string
 	for _, edge := range edges {
+		id := buildEdgeCacheKey(req, edge)
+		ids = append(ids, id)
+		if res, ok := r.isCached(req.GetConsistency(), id); ok {
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res}, out)
+			continue
+		}
 		pool.Go(func() error {
 			res, err := r.ResolveEdge(ctx, req, edge, visited)
-			concurrency.TrySendThroughChannel(ctx, ResponseMsg{Res: res, Err: err}, out)
+			concurrency.TrySendThroughChannel(ctx, ResponseMsg{ID: id, Res: res, Err: err}, out)
 			return nil
 		})
 	}
 
 	var err error
-	for range edges {
+	for range ids {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -135,12 +171,21 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 			if msg.Res.Allowed {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
+				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
+				r.cache.Set(msg.ID, entry, r.cacheTTL)
+				r.cache.Set(req.CacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
 		}
 	}
+	res := &Response{Allowed: false}
+	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
+	for _, id := range ids {
+		r.cache.Set(id, entry, r.cacheTTL)
+	}
+	r.cache.Set(req.CacheKey(), entry, r.cacheTTL)
 	// we only return error in a union when all edges are exhausted and there is at least one edge with error
-	return &Response{Allowed: false}, err
+	return res, err
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).

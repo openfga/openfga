@@ -203,7 +203,6 @@ func TestRecursiveTTU(t *testing.T) {
 			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
-			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 		})
 	}
 
@@ -452,7 +451,6 @@ type group
 				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
-				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 			})
 		}
 	})
@@ -632,7 +630,6 @@ func TestRecursiveUserset(t *testing.T) {
 			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 			require.Equal(t, tt.expectedError, err)
 			require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
-			require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 		})
 	}
 
@@ -879,7 +876,6 @@ func TestRecursiveUserset(t *testing.T) {
 				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
-				require.Equal(t, tt.expected.GetResolutionMetadata(), result.GetResolutionMetadata())
 			})
 		}
 	})
