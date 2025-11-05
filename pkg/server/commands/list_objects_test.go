@@ -554,7 +554,7 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 		mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).AnyTimes()
 
 		mockShadowCacheController := mocks.NewMockCacheController(ctrl)
-		mockCacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), gomock.Any()).AnyTimes()
+		mockShadowCacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), gomock.Any()).AnyTimes()
 		mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).AnyTimes()
 
 		cacheSettings := serverconfig.CacheSettings{
