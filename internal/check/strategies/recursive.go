@@ -2,7 +2,6 @@ package strategies
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -199,8 +198,9 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 	pool.SetLimit(s.concurrencyLimit)
 
 	for id := range idsFromObject {
+		visited.Store(id, true)
 		pool.Go(func() error {
-			s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, &pool, idsFromUser, visited, id, responsesChan)
+			s.recursiveMatchResolver(ctx, req, edge, recursiveType, &pool, idsFromUser, visited, id, responsesChan)
 			return nil
 		})
 	}
@@ -216,7 +216,6 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 			return nil, ctx.Err()
 		case msg, ok := <-responsesChan:
 			if !ok {
-				fmt.Println("worst?")
 				return &check.Response{Allowed: false}, err
 			}
 			if msg.Err != nil {
@@ -244,21 +243,16 @@ func (s *Recursive) recursiveMatch(ctx context.Context, req *check.Request, recu
 // group:2#member@group:a#member
 // group:3#member@group:a#member
 // Note that both group:2#member and group:3#member has group:a#member. However, they are not cycles.
-func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, pool *errgroup.Group, idsFromUser map[string]struct{}, visitedIds *sync.Map, id string, out chan check.ResponseMsg) {
+func (s *Recursive) recursiveMatchResolver(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, recursiveType RecursiveType, pool *errgroup.Group, idsFromUser map[string]struct{}, visitedIds *sync.Map, id string, out chan check.ResponseMsg) {
 	iter, err := s.buildTupleMapperForID(ctx, req, edge, recursiveType, id, visitedIds)
 	if err != nil {
 		concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err}, out)
 		return
 	}
 
-	if _, visited := visitedIds.LoadOrStore(id, struct{}{}); visited {
-		return
-	}
-
 	defer iter.Stop()
 	for {
 		t, err := iter.Next(ctx)
-		fmt.Println("exploring id:", id, "found t:", t, err)
 		if err != nil {
 			if storage.IterIsDoneOrCancelled(err) {
 				return
@@ -273,8 +267,7 @@ func (s *Recursive) breadthFirstRecursiveMatch(ctx context.Context, req *check.R
 			return // cancel will be propagated to the remaining goroutines
 		}
 		pool.Go(func() error {
-			fmt.Println("scheduling breadth first for id:", t)
-			s.breadthFirstRecursiveMatch(ctx, req, edge, recursiveType, pool, idsFromUser, visitedIds, t, out)
+			s.recursiveMatchResolver(ctx, req, edge, recursiveType, pool, idsFromUser, visitedIds, t, out)
 			return nil
 		})
 	}

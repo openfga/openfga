@@ -177,11 +177,12 @@ func TestRecursiveTTU(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			req := &check.Request{
+			req, err := check.NewRequest(check.RequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			}
+			})
+			require.NoError(t, err)
 
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 			for _, t := range tt.readTuples[0] {
@@ -423,11 +424,12 @@ type group
 				}
 
 				ctx := context.Background()
-				req := &check.Request{
+				req, err := check.NewRequest(check.RequestParams{
 					StoreID:              storeID,
 					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				}
+				})
+				require.NoError(t, err)
 
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readTuples[0]))
 				for _, t := range tt.readTuples[0] {
@@ -602,11 +604,12 @@ func TestRecursiveUserset(t *testing.T) {
 
 			ctx := context.Background()
 
-			req := &check.Request{
+			req, err := check.NewRequest(check.RequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-			}
+			})
+			require.NoError(t, err)
 
 			tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 			for _, t := range tt.readUsersetTuples[0] {
@@ -848,11 +851,12 @@ func TestRecursiveUserset(t *testing.T) {
 
 				ctx := context.Background()
 
-				req := &check.Request{
+				req, err := check.NewRequest(check.RequestParams{
 					StoreID:              storeID,
 					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
-				}
+				})
+				require.NoError(t, err)
 
 				tupleKeys := make([]*openfgav1.TupleKey, 0, len(tt.readUsersetTuples[0]))
 				for _, t := range tt.readUsersetTuples[0] {
@@ -896,9 +900,9 @@ func TestRecursiveMatch(t *testing.T) {
 			idsFromObject: map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}},
 			idsFromUser:   map[string]struct{}{"group:4": {}},
 			readMocks: [][]*openfgav1.Tuple{
-				{{}},
-				{{}},
-				{{}},
+				{},
+				{},
+				{},
 			},
 		},
 		{
@@ -933,10 +937,109 @@ func TestRecursiveMatch(t *testing.T) {
 				{{Key: tuple.NewTupleKey("group:6", "parent", "group:9")}},
 				{{Key: tuple.NewTupleKey("group:7", "parent", "group:10")}},
 				{{Key: tuple.NewTupleKey("group:8", "parent", "group:11")}},
-				{{}},
-				{{}},
-				{{}},
+				{},
+				{},
+				{},
 			},
+		},
+		{
+			name:          "deep_recursion_multiple_paths",
+			idsFromObject: map[string]struct{}{"group:1": {}},
+			idsFromUser:   map[string]struct{}{"group:10": {}},
+			readMocks: [][]*openfgav1.Tuple{
+				{
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:2")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:3")},
+				},
+				{{Key: tuple.NewTupleKey("group:2", "parent", "group:4")}},
+				{{Key: tuple.NewTupleKey("group:3", "parent", "group:5")}},
+				{{Key: tuple.NewTupleKey("group:4", "parent", "group:10")}},
+				{}, // for group:5
+			},
+			expected: true,
+		},
+		{
+			name:          "diamond_pattern_match",
+			idsFromObject: map[string]struct{}{"group:1": {}},
+			idsFromUser:   map[string]struct{}{"group:4": {}},
+			readMocks: [][]*openfgav1.Tuple{
+				{
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:2")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:3")},
+				},
+				{{Key: tuple.NewTupleKey("group:2", "parent", "group:4")}},
+				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
+			},
+			expected: true,
+		},
+		{
+			name:          "multiple_users_one_matches",
+			idsFromObject: map[string]struct{}{"group:1": {}},
+			idsFromUser:   map[string]struct{}{"group:target1": {}, "group:target2": {}, "group:target3": {}},
+			readMocks: [][]*openfgav1.Tuple{
+				{{Key: tuple.NewTupleKey("group:1", "parent", "group:2")}},
+				{{Key: tuple.NewTupleKey("group:2", "parent", "group:target2")}},
+			},
+			expected: true,
+		},
+		{
+			name:          "wide_tree_match",
+			idsFromObject: map[string]struct{}{"group:1": {}},
+			idsFromUser:   map[string]struct{}{"group:target": {}},
+			readMocks: [][]*openfgav1.Tuple{
+				{
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:2")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:3")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:4")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:5")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:6")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:7")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:8")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:9")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:10")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:11")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:12")},
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:13")},
+				},
+				{{Key: tuple.NewTupleKey("group:2", "parent", "group:14")}},
+				{{Key: tuple.NewTupleKey("group:3", "parent", "group:15")}},
+				{{Key: tuple.NewTupleKey("group:4", "parent", "group:16")}},
+				{{Key: tuple.NewTupleKey("group:5", "parent", "group:17")}},
+				{{Key: tuple.NewTupleKey("group:6", "parent", "group:18")}},
+				{{Key: tuple.NewTupleKey("group:7", "parent", "group:19")}},
+				{{Key: tuple.NewTupleKey("group:8", "parent", "group:20")}},
+				{{Key: tuple.NewTupleKey("group:9", "parent", "group:21")}},
+				{{Key: tuple.NewTupleKey("group:10", "parent", "group:19")}},
+				{{Key: tuple.NewTupleKey("group:11", "parent", "group:20")}},
+				{{Key: tuple.NewTupleKey("group:12", "parent", "group:21")}},
+				{{Key: tuple.NewTupleKey("group:13", "parent", "group:22")}},
+				{},
+				{},
+				{},
+				{},
+				{},
+				{},
+				{{Key: tuple.NewTupleKey("group:22", "parent", "group:target")}},
+				{},
+				{},
+				{},
+				{},
+				{},
+			},
+			expected: true,
+		},
+		{
+			name:          "long_chain_match_at_end",
+			idsFromObject: map[string]struct{}{"group:1": {}},
+			idsFromUser:   map[string]struct{}{"group:final": {}},
+			readMocks: [][]*openfgav1.Tuple{
+				{{Key: tuple.NewTupleKey("group:1", "parent", "group:2")}},
+				{{Key: tuple.NewTupleKey("group:2", "parent", "group:3")}},
+				{{Key: tuple.NewTupleKey("group:3", "parent", "group:4")}},
+				{{Key: tuple.NewTupleKey("group:4", "parent", "group:5")}},
+				{{Key: tuple.NewTupleKey("group:5", "parent", "group:final")}},
+			},
+			expected: true,
 		},
 	}
 
@@ -974,11 +1077,12 @@ func TestRecursiveMatch(t *testing.T) {
 
 			ctx := context.Background()
 
-			req := &check.Request{
+			req, err := check.NewRequest(check.RequestParams{
 				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
+				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-			}
+			})
+			require.NoError(t, err)
 
 			strategy := NewRecursive(mg, mockDatastore, 10)
 			res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU, tt.idsFromUser, tt.idsFromObject)
@@ -986,59 +1090,58 @@ func TestRecursiveMatch(t *testing.T) {
 			require.Equal(t, tt.expected, res.Allowed)
 		})
 	}
-	/*
-		t.Run("context_cancelled", func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
+	t.Run("context_cancelled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
 
-			storeID := ulid.Make().String()
+		storeID := ulid.Make().String()
 
-			mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
-			ctx := context.Background()
-			ctx, cancel := context.WithCancel(ctx)
-			// Stop is called under race conditions thus is not guaranteed these observers may see a call to it
-			iter1 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
-			iter1.EXPECT().Stop().MaxTimes(1)
-			iter1.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
-			iter2 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
-			iter2.EXPECT().Stop().MaxTimes(1)
-			iter2.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
-			iter3 := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
-			iter3.EXPECT().Stop().MaxTimes(1)
-			iter3.EXPECT().Next(gomock.Any()).MaxTimes(1).Return(nil, storage.ErrIteratorDone)
-			// currentUsersetLevel.Values() doesn't return results in order, thus there is no guarantee that `Times` will be consistent as it can return err due to context being cancelled
-			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter1, nil)
-			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(func(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Cancel context after first read to trigger cancellation during recursion
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(
+			func(ctx context.Context, store string, filter storage.ReadFilter, options storage.ReadOptions) (storage.TupleIterator, error) {
 				cancel()
-				return iter2, nil
-			})
-			mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(iter3, nil)
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{
+					{Key: tuple.NewTupleKey("group:1", "parent", "group:2")},
+				}), nil
+			},
+		)
 
-			model := testutils.MustTransformDSLToProtoWithID(`
-					model
-						schema 1.1
-					type user
-					type group
-						relations
-							define member: [user] or member from parent
-							define parent: [group]
-					`)
+		model := testutils.MustTransformDSLToProtoWithID(`
+        model
+         schema 1.1
+        type user
+        type group
+         relations
+          define member: [user] or member from parent
+          define parent: [group]
+    `)
 
-			mg, err := check.NewAuthorizationModelGraph(model)
-			require.NoError(t, err)
-			edges, ok := mg.GetEdgesFromNodeId("group#member")
-			require.True(t, ok)
+		mg, err := check.NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
 
-			req := &check.Request{
-				StoreID:              storeID,
-				AuthorizationModelID: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
-			}
+		node, ok := mg.GetNodeByID("group#member")
+		require.True(t, ok)
+		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		require.True(t, ok)
+		require.NotNil(t, recursiveEdge)
 
-			strategy := NewRecursive(mg, mockDatastore, 10)
-			checkOutcomeChan := make(chan check.ResponseMsg, 100)
-			strategy.breadthFirstRecursiveMatch(ctx, req, edges[0], RecursiveTypeTTU, &sync.Map{}, map[string]struct{}{"group:1": {}, "group:2": {}, "group:3": {}}, make(map[string]struct{}), checkOutcomeChan)
+		req, err := check.NewRequest(check.RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
 		})
+		require.NoError(t, err)
 
-	*/
+		strategy := NewRecursive(mg, mockDatastore, 10)
+		res, err := strategy.recursiveMatch(ctx, req, recursiveEdge, RecursiveTypeTTU,
+			map[string]struct{}{"group:target": {}},
+			map[string]struct{}{"group:1": {}})
+
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, res)
+	})
 }
