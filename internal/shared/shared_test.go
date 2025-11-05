@@ -47,7 +47,7 @@ func TestSharedDatastoreResources(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.NotNil(t, s.CheckCache)
-		require.Equal(t, s.CheckCache, s.ShadowCheckCache)
+		require.NotNil(t, s.ShadowCheckCache)
 	})
 
 	t.Run("with_cache_controller", func(t *testing.T) {
@@ -62,16 +62,15 @@ func TestSharedDatastoreResources(t *testing.T) {
 		t.Cleanup(s.Close)
 
 		require.NotNil(t, s.CacheController)
+		require.NotNil(t, s.ShadowCacheController)
 		_, ok := s.CacheController.(*cachecontroller.InMemoryCacheController)
 		require.True(t, ok)
-		require.Equal(t, s.CacheController, s.ShadowCacheController)
 	})
 
 	t.Run("with_shadow_cache", func(t *testing.T) {
 		settings := config.CacheSettings{
 			CheckCacheLimit:           1,
 			CheckIteratorCacheEnabled: true,
-			ShadowCheckCacheEnabled:   true,
 		}
 
 		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)
@@ -87,7 +86,6 @@ func TestSharedDatastoreResources(t *testing.T) {
 			CheckCacheLimit:           1,
 			CheckIteratorCacheEnabled: true,
 			CacheControllerEnabled:    true,
-			ShadowCheckCacheEnabled:   true,
 		}
 
 		s, err := NewSharedDatastoreResources(sharedCtx, sharedSf, mockDatastore, settings)

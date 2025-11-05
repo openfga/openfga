@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/utils/apimethod"
 	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
+	"github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
@@ -51,7 +52,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		return nil, err
 	}
 
-	builder := s.getCheckResolverBuilder()
+	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
@@ -66,7 +67,11 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		commands.WithBatchCheckCommandLogger(s.logger),
 		commands.WithBatchCheckMaxChecksPerBatch(s.maxChecksPerBatchCheck),
 		commands.WithBatchCheckMaxConcurrentChecks(s.maxConcurrentChecksPerBatch),
-		commands.WithBatchCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		commands.WithBatchCheckDatastoreThrottler(
+			s.featureFlagClient.Boolean(config.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
 	)
 
 	result, metadata, err := cmd.Execute(ctx, &commands.BatchCheckCommandParams{
@@ -111,6 +116,13 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 		methodName,
 	).Observe(queryCount)
 
+	datastoreItemCount := float64(metadata.DatastoreItemCount)
+	span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+	datastoreItemCountHistogram.WithLabelValues(
+		s.serviceName,
+		methodName,
+	).Observe(datastoreItemCount)
+
 	duplicateChecks := "duplicate_checks"
 	span.SetAttributes(attribute.Int(duplicateChecks, metadata.DuplicateCheckCount))
 	grpc_ctxtags.Extract(ctx).Set(duplicateChecks, metadata.DuplicateCheckCount)
@@ -122,6 +134,7 @@ func (s *Server) BatchCheck(ctx context.Context, req *openfgav1.BatchCheckReques
 	}
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, metadata.DatastoreQueryCount)
+	grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, metadata.DatastoreItemCount)
 
 	return &openfgav1.BatchCheckResponse{Result: batchResult}, nil
 }

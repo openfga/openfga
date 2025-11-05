@@ -66,9 +66,8 @@ func ExampleNewServerWithOpts() {
 	openfga, err := NewServerWithOpts(WithDatastore(datastore),
 		WithCheckQueryCacheEnabled(true),
 		// more options available
-		WithShadowListObjectsQueryEnabled(true),
+		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 		WithShadowListObjectsQueryTimeout(17*time.Millisecond),
-		WithShadowListObjectsQuerySamplePercentage(50),
 		WithShadowListObjectsQueryMaxDeltaItems(20),
 	)
 	if err != nil {
@@ -245,39 +244,6 @@ func TestServerPanicIfValidationsFail(t *testing.T) {
 	t.Run("invalid_dialect", func(t *testing.T) {
 		require.PanicsWithValue(t, `failed to set database dialect: "invalid-dialect": unknown dialect`, func() {
 			sqlcommon.NewDBInfo(nil, sq.StatementBuilder, nil, "invalid-dialect")
-		})
-	})
-
-	t.Run("invalid_shadow_list_objects_query_sample_percentage", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver sample percentage must be between 0 and 100, got -1", func() {
-			mockController := gomock.NewController(t)
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			_ = MustNewServerWithOpts(
-				WithDatastore(mockDatastore),
-				WithShadowListObjectsQueryEnabled(true),
-				WithShadowListObjectsQuerySamplePercentage(-1),
-			)
-		})
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver sample percentage must be between 0 and 100, got 101", func() {
-			mockController := gomock.NewController(t)
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			_ = MustNewServerWithOpts(
-				WithDatastore(mockDatastore),
-				WithShadowListObjectsQueryEnabled(true),
-				WithShadowListObjectsQuerySamplePercentage(101),
-			)
-		})
-	})
-
-	t.Run("invalid_shadow_list_objects_query_timeout", func(t *testing.T) {
-		require.PanicsWithError(t, "failed to construct the OpenFGA server: shadow list objects check resolver timeout must be greater than 0, got -1s", func() {
-			mockController := gomock.NewController(t)
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			_ = MustNewServerWithOpts(
-				WithDatastore(mockDatastore),
-				WithShadowListObjectsQueryEnabled(true),
-				WithShadowListObjectsQueryTimeout(-1*time.Second),
-			)
 		})
 	})
 }
@@ -1752,7 +1718,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 
 		require.False(t, s.cacheSettings.CheckQueryCacheEnabled)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1779,7 +1745,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1810,7 +1776,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 0, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1843,7 +1809,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.True(t, s.checkDispatchThrottlingEnabled)
 		require.EqualValues(t, dispatchThreshold, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, maxDispatchThreshold, s.checkDispatchThrottlingMaxThreshold)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 		dispatchThrottlingResolver, ok := checkResolver.(*graph.DispatchThrottlingCheckResolver)
@@ -1868,7 +1834,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.False(t, s.checkDispatchThrottlingEnabled)
 
 		require.True(t, s.cacheSettings.CheckQueryCacheEnabled)
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1898,7 +1864,7 @@ func TestDelegateCheckResolver(t *testing.T) {
 		require.EqualValues(t, 50, s.checkDispatchThrottlingDefaultThreshold)
 		require.EqualValues(t, 100, s.checkDispatchThrottlingMaxThreshold)
 
-		checkResolver, closer, _ := s.getCheckResolverBuilder().Build()
+		checkResolver, closer, _ := s.getCheckResolverBuilder("store_id_123").Build()
 		defer closer()
 		require.NotNil(t, checkResolver)
 
@@ -1931,7 +1897,7 @@ func TestWithFeatureFlagClient(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		// NoopClient() always false
-		require.False(t, s.featureFlagClient.Boolean("should-be-false", nil))
+		require.False(t, s.featureFlagClient.Boolean("should-be-false", "store_id_123"))
 	})
 
 	t.Run("if_a_client_is_provided", func(t *testing.T) {
@@ -1941,7 +1907,7 @@ func TestWithFeatureFlagClient(t *testing.T) {
 				WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 			)
 			t.Cleanup(s.Close)
-			require.True(t, s.featureFlagClient.Boolean("should-be-true", nil))
+			require.True(t, s.featureFlagClient.Boolean("should-be-true", "store_id_123"))
 		})
 	})
 }
@@ -1981,31 +1947,6 @@ func TestIsAccessControlEnabled(t *testing.T) {
 		)
 		t.Cleanup(s.Close)
 		require.True(t, s.IsAccessControlEnabled())
-	})
-}
-
-func TestShadowListObjectsCheckResolver(t *testing.T) {
-	t.Run("shadow_list_objects_query_enabled", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithShadowListObjectsQueryEnabled(true),
-			WithCheckQueryCacheEnabled(true),
-		)
-		t.Cleanup(s.Close)
-		require.True(t, s.cacheSettings.ShadowCheckCacheEnabled)
-	})
-
-	t.Run("shadow_list_objects_query_disabled", func(t *testing.T) {
-		ds := memory.New()
-		t.Cleanup(ds.Close)
-		s := MustNewServerWithOpts(
-			WithDatastore(ds),
-			WithCheckQueryCacheEnabled(true),
-		)
-		t.Cleanup(s.Close)
-		require.False(t, s.cacheSettings.ShadowCheckCacheEnabled)
 	})
 }
 

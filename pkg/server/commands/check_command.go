@@ -36,6 +36,7 @@ type CheckQuery struct {
 	cacheSettings              config.CacheSettings
 	maxConcurrentReads         uint32
 	shouldCacheIterators       bool
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -69,10 +70,11 @@ func WithCheckCommandCache(sharedCheckResources *shared.SharedDatastoreResources
 	}
 }
 
-func WithCheckDatastoreThrottler(threshold int, duration time.Duration) CheckQueryOption {
+func WithCheckDatastoreThrottler(enabled bool, threshold int, duration time.Duration) CheckQueryOption {
 	return func(c *CheckQuery) {
-		c.datastoreThrottleThreshold = threshold
+		c.datastoreThrottlingEnabled = enabled
 		c.datastoreThrottleDuration = duration
+		c.datastoreThrottleThreshold = threshold
 	}
 }
 
@@ -162,6 +164,7 @@ func (c *CheckQuery) Execute(ctx context.Context, params *CheckCommandParams) (*
 	resp.ResolutionMetadata.Duration = endTime
 	dsMeta := datastoreWithTupleCache.GetMetadata()
 	resp.ResolutionMetadata.DatastoreQueryCount = dsMeta.DatastoreQueryCount
+	resp.ResolutionMetadata.DatastoreItemCount = dsMeta.DatastoreItemCount
 	// Until dispatch throttling is deprecated, merge the results of both
 	resolveCheckRequest.GetRequestMetadata().WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 

@@ -65,6 +65,7 @@ type ListObjectsQuery struct {
 
 	dispatchThrottlerConfig threshold.Config
 
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 
@@ -93,6 +94,9 @@ type ListObjectsResolutionMetadata struct {
 	// The total number of database reads from reverse_expand and Check (if any) to complete the ListObjects request
 	DatastoreQueryCount atomic.Uint32
 
+	// The total number of items read from the database during a ListObjects request.
+	DatastoreItemCount atomic.Uint64
+
 	// The total number of dispatches aggregated from reverse_expand and check resolutions (if any) to complete the ListObjects request
 	DispatchCounter atomic.Uint32
 
@@ -104,11 +108,6 @@ type ListObjectsResolutionMetadata struct {
 
 	// CheckCounter is the total number of check requests made during the ListObjects execution for the optimized path
 	CheckCounter atomic.Uint32
-
-	// Temporary solution to indicate whether shadow list objects query should be run.
-	// For queries with Infinite weight, the weighted graph implementation falls back
-	// to the original code, making any comparison useless.
-	ShouldRunShadowQuery atomic.Bool
 }
 
 type ListObjectsResponse struct {
@@ -170,8 +169,9 @@ func WithListObjectsCache(sharedDatastoreResources *shared.SharedDatastoreResour
 	}
 }
 
-func WithListObjectsDatastoreThrottler(threshold int, duration time.Duration) ListObjectsQueryOption {
+func WithListObjectsDatastoreThrottler(enabled bool, threshold int, duration time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
+		d.datastoreThrottlingEnabled = enabled
 		d.datastoreThrottleThreshold = threshold
 		d.datastoreThrottleDuration = duration
 	}
@@ -203,6 +203,7 @@ func WithListObjectsPipelineEnabled(value bool) ListObjectsQueryOption {
 func NewListObjectsQuery(
 	ds storage.RelationshipTupleReader,
 	checkResolver graph.CheckResolver,
+	storeID string,
 	opts ...ListObjectsQueryOption,
 ) (*ListObjectsQuery, error) {
 	if ds == nil {
@@ -241,7 +242,7 @@ func NewListObjectsQuery(
 		opt(query)
 	}
 
-	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, nil) {
+	if query.ff.Boolean(serverconfig.ExperimentalListObjectsOptimizations, storeID) {
 		query.optimizationsEnabled = true
 	}
 
@@ -375,7 +376,6 @@ func (q *ListObjectsQuery) evaluate(
 			}
 			resolutionMetadata.CheckCounter.Add(reverseExpandResolutionMetadata.CheckCounter.Load())
 			resolutionMetadata.WasWeightedGraphUsed.Store(reverseExpandResolutionMetadata.WasWeightedGraphUsed.Load())
-			resolutionMetadata.ShouldRunShadowQuery.Store(reverseExpandResolutionMetadata.ShouldRunShadowQuery.Load())
 			return nil
 		})
 
@@ -415,7 +415,11 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckDatastoreThrottler(q.datastoreThrottleThreshold, q.datastoreThrottleDuration),
+						WithCheckDatastoreThrottler(
+							q.datastoreThrottlingEnabled,
+							q.datastoreThrottleThreshold,
+							q.datastoreThrottleDuration,
+						),
 					).
 						Execute(ctx, &CheckCommandParams{
 							StoreID:          req.GetStoreId(),
@@ -428,6 +432,7 @@ func (q *ListObjectsQuery) evaluate(
 						return err
 					}
 					resolutionMetadata.DatastoreQueryCount.Add(resp.GetResolutionMetadata().DatastoreQueryCount)
+					resolutionMetadata.DatastoreItemCount.Add(resp.GetResolutionMetadata().DatastoreItemCount)
 					resolutionMetadata.DispatchCounter.Add(checkRequestMetadata.DispatchCounter.Load())
 					if !resolutionMetadata.WasThrottled.Load() && checkRequestMetadata.WasThrottled.Load() {
 						resolutionMetadata.WasThrottled.Store(true)
@@ -450,6 +455,7 @@ func (q *ListObjectsQuery) evaluate(
 		close(resultsChan)
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		resolutionMetadata.WasThrottled.CompareAndSwap(false, dsMeta.WasThrottled)
 	}
 
@@ -536,6 +542,7 @@ func (q *ListObjectsQuery) Execute(
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
@@ -578,7 +585,7 @@ func (q *ListObjectsQuery) Execute(
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(source, target)
+		seq := pipeline.Build(ctx, source, target)
 
 		var res ListObjectsResponse
 
@@ -601,6 +608,7 @@ func (q *ListObjectsQuery) Execute(
 
 		dsMeta := ds.GetMetadata()
 		res.ResolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		res.ResolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &res, nil
 	}
 
@@ -704,6 +712,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			&storagewrappers.Operation{
 				Method:            apimethod.ListObjects,
 				Concurrency:       q.maxConcurrentReads,
+				ThrottlingEnabled: q.datastoreThrottlingEnabled,
 				ThrottleThreshold: q.datastoreThrottleThreshold,
 				ThrottleDuration:  q.datastoreThrottleDuration,
 			},
@@ -746,7 +755,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			return nil, serverErrors.ValidationError(fmt.Errorf("user: %s relation: %s not in graph", objectType, objectID))
 		}
 
-		seq := pipeline.Build(source, target)
+		seq := pipeline.Build(ctx, source, target)
 
 		var listObjectsCount uint32 = 0
 
@@ -778,6 +787,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 		dsMeta := ds.GetMetadata()
 		resolutionMetadata.DatastoreQueryCount.Add(dsMeta.DatastoreQueryCount)
+		resolutionMetadata.DatastoreItemCount.Add(dsMeta.DatastoreItemCount)
 		return &resolutionMetadata, nil
 	}
 

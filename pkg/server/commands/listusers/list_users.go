@@ -104,6 +104,8 @@ type listUsersResponse struct {
 type listUsersResponseMetadata struct {
 	DatastoreQueryCount uint32
 
+	DatastoreItemCount uint64
+
 	// The number of times we are recursively expanding to find users.
 	// Atomic is used to be consistent with the Check and ListObjects.
 	DispatchCounter *atomic.Uint32

@@ -186,29 +186,10 @@ func TestCacheSettings(t *testing.T) {
 			expectedShouldCreateShadowCache bool
 		}{
 			{
-				name: "not_when_query_cache_disabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         0,
-					CheckQueryCacheEnabled:  false,
-					ShadowCheckCacheEnabled: true,
-				},
-				expectedShouldCreateShadowCache: false,
-			},
-			{
-				name: "not_when_shadow_query_cache_disabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					ShadowCheckCacheEnabled: false,
-				},
-				expectedShouldCreateShadowCache: false,
-			},
-			{
 				name: "when_limit_over_zero_and_query_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					ShadowCheckCacheEnabled: true,
+					CheckCacheLimit:        10,
+					CheckQueryCacheEnabled: true,
 				},
 				expectedShouldCreateShadowCache: true,
 			},
@@ -231,38 +212,25 @@ func TestCacheSettings(t *testing.T) {
 			{
 				name: "not_when_limit_is_zero",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:         0,
-					ShadowCheckCacheEnabled: true,
+					CheckCacheLimit: 0,
 				},
 				expectedCreateShadowCacheController: false,
 			},
 			{
 				name: "when_limit_over_zero_and_query_cache_enabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					CacheControllerEnabled:  true,
-					ShadowCheckCacheEnabled: true,
+					CheckCacheLimit:        10,
+					CheckQueryCacheEnabled: true,
+					CacheControllerEnabled: true,
 				},
 				expectedCreateShadowCacheController: true,
 			},
 			{
-				name: "not_when_shadow_check_disabled",
-				cacheSettings: CacheSettings{
-					CheckCacheLimit:           10,
-					CheckIteratorCacheEnabled: true,
-					CacheControllerEnabled:    true,
-					ShadowCheckCacheEnabled:   false,
-				},
-				expectedCreateShadowCacheController: false,
-			},
-			{
 				name: "not_when_cache_controller_disabled",
 				cacheSettings: CacheSettings{
-					CheckCacheLimit:         10,
-					CheckQueryCacheEnabled:  true,
-					CacheControllerEnabled:  false,
-					ShadowCheckCacheEnabled: true,
+					CheckCacheLimit:        10,
+					CheckQueryCacheEnabled: true,
+					CacheControllerEnabled: false,
 				},
 				expectedCreateShadowCacheController: false,
 			},
@@ -287,7 +255,6 @@ func TestCacheSettings(t *testing.T) {
 				cacheSettings: CacheSettings{
 					ListObjectsIteratorCacheMaxResults: 0,
 					ListObjectsIteratorCacheEnabled:    true,
-					ShadowCheckCacheEnabled:            true,
 				},
 				expectedShadowCacheIterators: false,
 			},
@@ -296,7 +263,6 @@ func TestCacheSettings(t *testing.T) {
 				cacheSettings: CacheSettings{
 					ListObjectsIteratorCacheMaxResults: 100,
 					ListObjectsIteratorCacheEnabled:    false,
-					ShadowCheckCacheEnabled:            true,
 				},
 				expectedShadowCacheIterators: false,
 			},
@@ -305,18 +271,8 @@ func TestCacheSettings(t *testing.T) {
 				cacheSettings: CacheSettings{
 					ListObjectsIteratorCacheMaxResults: 10,
 					ListObjectsIteratorCacheEnabled:    true,
-					ShadowCheckCacheEnabled:            true,
 				},
 				expectedShadowCacheIterators: true,
-			},
-			{
-				name: "should_not_when_shadow_check_disabled",
-				cacheSettings: CacheSettings{
-					ListObjectsIteratorCacheMaxResults: 10,
-					ListObjectsIteratorCacheEnabled:    true,
-					ShadowCheckCacheEnabled:            false,
-				},
-				expectedShadowCacheIterators: false,
 			},
 		}
 

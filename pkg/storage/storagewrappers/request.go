@@ -17,6 +17,7 @@ type OperationType int
 type Operation struct {
 	Method            apimethod.APIMethod
 	Concurrency       uint32
+	ThrottlingEnabled bool
 	ThrottleThreshold int
 	ThrottleDuration  time.Duration
 }

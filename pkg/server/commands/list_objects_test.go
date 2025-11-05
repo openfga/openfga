@@ -33,25 +33,27 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
+const fakeStoreID = "store_id_123"
+
 func TestNewListObjectsQuery(t *testing.T) {
 	t.Run("nil_datastore", func(t *testing.T) {
 		checkResolver, checkResolverCloser, err := graph.NewOrderedCheckResolvers().Build()
 		require.NoError(t, err)
 		t.Cleanup(checkResolverCloser)
-		q, err := NewListObjectsQuery(nil, checkResolver)
+		q, err := NewListObjectsQuery(nil, checkResolver, fakeStoreID)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("nil_checkResolver", func(t *testing.T) {
-		q, err := NewListObjectsQuery(memory.New(), nil)
+		q, err := NewListObjectsQuery(memory.New(), nil, fakeStoreID)
 		require.Nil(t, q)
 		require.Error(t, err)
 	})
 
 	t.Run("empty_typesystem_in_context", func(t *testing.T) {
 		checkResolver := graph.NewLocalChecker()
-		q, err := NewListObjectsQuery(memory.New(), checkResolver)
+		q, err := NewListObjectsQuery(memory.New(), checkResolver, fakeStoreID)
 		require.NoError(t, err)
 
 		_, err = q.Execute(context.Background(), &openfgav1.ListObjectsRequest{})
@@ -65,26 +67,27 @@ func TestNewListObjectsQuery(t *testing.T) {
 
 func TestNewListObjectsQueryReturnsShadowedQueryWhenEnabled(t *testing.T) {
 	testLogger := logger.NewNoopLogger()
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
-		WithShadowListObjectsQueryEnabled(true),
-		WithShadowListObjectsQuerySamplePercentage(100),
-		WithShadowListObjectsQueryTimeout(13*time.Second),
-		WithShadowListObjectsQueryLogger(testLogger),
-	))
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+		NewShadowListObjectsQueryConfig(
+			WithShadowListObjectsQueryEnabled(true),
+			WithShadowListObjectsQueryTimeout(13*time.Second),
+			WithShadowListObjectsQueryLogger(testLogger),
+		),
+		fakeStoreID,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, q)
 	sq, isShadowed := q.(*shadowedListObjectsQuery)
 	require.True(t, isShadowed)
-	assert.True(t, sq.checkShadowModeSampleRate())
-	assert.Equal(t, 100, sq.shadowPct)
 	assert.Equal(t, 13*time.Second, sq.shadowTimeout)
 	assert.Equal(t, testLogger, sq.logger)
 }
 
 func TestNewListObjectsQueryReturnsStandardQueryWhenShadowDisabled(t *testing.T) {
-	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(), NewShadowListObjectsQueryConfig(
-		WithShadowListObjectsQueryEnabled(false),
-	))
+	q, err := NewListObjectsQueryWithShadowConfig(memory.New(), graph.NewLocalChecker(),
+		NewShadowListObjectsQueryConfig(WithShadowListObjectsQueryEnabled(false)),
+		fakeStoreID,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, q)
 	_, isStandard := q.(*ListObjectsQuery)
@@ -295,6 +298,7 @@ func TestListObjectsDispatchCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
+				fakeStoreID,
 				WithDispatchThrottlerConfig(threshold.Config{
 					Throttler:    mockThrottler,
 					Enabled:      true,
@@ -387,6 +391,7 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	q, _ := NewListObjectsQuery(
 		ds,
 		checkResolver,
+		fakeStoreID,
 	)
 
 	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
@@ -477,7 +482,7 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 		Times(1)
 	mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
 
-	q, _ := NewListObjectsQuery(ds, mockCheckResolver)
+	q, _ := NewListObjectsQuery(ds, mockCheckResolver, fakeStoreID)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), ts)
 	resp, err := q.Execute(ctx, &openfgav1.ListObjectsRequest{
@@ -491,100 +496,85 @@ func TestErrorInCheckSurfacesInListObjects(t *testing.T) {
 	require.ErrorIs(t, err, internalErrors.ErrUnknown)
 }
 func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
-	tests := []struct {
-		shadowEnabled bool
-	}{
-		{
-			shadowEnabled: false,
-		},
-		{
-			shadowEnabled: true,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run("shadow_enabled_"+strconv.FormatBool(test.shadowEnabled), func(t *testing.T) {
-			ds := memory.New()
-			t.Cleanup(ds.Close)
-			ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
-			ctrl := gomock.NewController(t)
-			t.Cleanup(ctrl.Finish)
-			modelDsl := `model
+	t.Run("cache_is_invalidated_if_enabled", func(t *testing.T) {
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+		ctx := storage.ContextWithRelationshipTupleReader(context.Background(), ds)
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		modelDsl := `model
 			schema 1.1
 			type user
 			type folder
 				relations
 					define viewer: [user] but not blocked
 					define blocked: [user]`
-			tuples := []string{
-				"folder:C#viewer@user:jon",
-				"folder:B#viewer@user:jon",
-				"folder:A#viewer@user:jon",
-			}
+		tuples := []string{
+			"folder:C#viewer@user:jon",
+			"folder:B#viewer@user:jon",
+			"folder:A#viewer@user:jon",
+		}
 
-			storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
-			ts, err := typesystem.NewAndValidate(
-				context.Background(),
-				model,
-			)
-			require.NoError(t, err)
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, modelDsl, tuples)
+		ts, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+		require.NoError(t, err)
 
-			ctx = typesystem.ContextWithTypesystem(ctx, ts)
+		ctx = typesystem.ContextWithTypesystem(ctx, ts)
 
-			// Don't care about the resolver for this test
-			mockCheckResolver := graph.NewMockCheckResolver(ctrl)
-			mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
-				return &graph.ResolveCheckResponse{}, nil
-			})
-			mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
-
-			// Need to make sure list objects attempts to invalidate when cache is enabled
-			mockCacheController := mocks.NewMockCacheController(ctrl)
-			mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
-
-			mockShadowCacheController := mocks.NewMockCacheController(ctrl)
-			if test.shadowEnabled {
-				mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
-			}
-
-			cacheSettings := serverconfig.CacheSettings{
-				ListObjectsIteratorCacheEnabled:    true,
-				ListObjectsIteratorCacheTTL:        1 * time.Second,
-				ListObjectsIteratorCacheMaxResults: 1000,
-				CacheControllerEnabled:             true,
-				CacheControllerTTL:                 1 * time.Nanosecond,
-				CheckCacheLimit:                    1000,
-				ShadowCheckCacheEnabled:            test.shadowEnabled,
-			}
-
-			sharedResources, err := shared.NewSharedDatastoreResources(
-				ctx,
-				&singleflight.Group{},
-				ds,
-				cacheSettings,
-				shared.WithCacheController(mockCacheController),
-				shared.WithShadowCacheController(mockShadowCacheController),
-			)
-			require.NoError(t, err)
-
-			q, _ := NewListObjectsQuery(
-				ds,
-				mockCheckResolver,
-				WithListObjectsCache(sharedResources, cacheSettings),
-			)
-
-			// Run a check, mockCacheController should receive its invalidate call
-			_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
-				StoreId:  storeID,
-				Type:     "folder",
-				Relation: "viewer",
-				User:     "user:jon",
-			})
-
-			sharedResources.Close()
-			require.NoError(t, err)
+		// Don't care about the resolver for this test
+		mockCheckResolver := graph.NewMockCheckResolver(ctrl)
+		mockCheckResolver.EXPECT().ResolveCheck(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, req *graph.ResolveCheckRequest) (*graph.ResolveCheckResponse, error) {
+			return &graph.ResolveCheckResponse{}, nil
 		})
-	}
+		mockCheckResolver.EXPECT().GetDelegate().AnyTimes().Return(nil)
+
+		// Need to make sure list objects attempts to invalidate when cache is enabled
+		mockCacheController := mocks.NewMockCacheController(ctrl)
+		mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
+
+		mockShadowCacheController := mocks.NewMockCacheController(ctrl)
+		mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
+
+		cacheSettings := serverconfig.CacheSettings{
+			ListObjectsIteratorCacheEnabled:    true,
+			ListObjectsIteratorCacheTTL:        1 * time.Second,
+			ListObjectsIteratorCacheMaxResults: 1000,
+			CacheControllerEnabled:             true,
+			CacheControllerTTL:                 1 * time.Nanosecond,
+			CheckCacheLimit:                    1000,
+		}
+
+		sharedResources, err := shared.NewSharedDatastoreResources(
+			ctx,
+			&singleflight.Group{},
+			ds,
+			cacheSettings,
+			shared.WithCacheController(mockCacheController),
+			shared.WithShadowCacheController(mockShadowCacheController),
+		)
+		require.NoError(t, err)
+
+		q, _ := NewListObjectsQuery(
+			ds,
+			mockCheckResolver,
+			fakeStoreID,
+			WithListObjectsCache(sharedResources, cacheSettings),
+		)
+
+		// Run a check, mockCacheController should receive its invalidate call
+		_, err = q.Execute(ctx, &openfgav1.ListObjectsRequest{
+			StoreId:  storeID,
+			Type:     "folder",
+			Relation: "viewer",
+			User:     "user:jon",
+		})
+
+		sharedResources.Close()
+		require.NoError(t, err)
+	})
 }
 
 func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
@@ -775,6 +765,7 @@ func TestListObjectsPipelineDatastoreQueryCount(t *testing.T) {
 			q, _ := NewListObjectsQuery(
 				ds,
 				checker,
+				fakeStoreID,
 				WithListObjectsPipelineEnabled(true),
 			)
 
@@ -834,6 +825,7 @@ func TestListObjectsSeqError(t *testing.T) {
 		query, err := NewListObjectsQuery(
 			mockDatastore,
 			checkResolver,
+			fakeStoreID,
 			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
@@ -852,6 +844,7 @@ func TestListObjectsSeqError(t *testing.T) {
 		query, err := NewListObjectsQuery(
 			mockDatastore,
 			checkResolver,
+			fakeStoreID,
 			WithListObjectsPipelineEnabled(true),
 		)
 		require.NoError(t, err)
@@ -969,6 +962,7 @@ func BenchmarkListObjects(b *testing.B) {
 	query, err := NewListObjectsQuery(
 		datastore,
 		checkResolver,
+		fakeStoreID,
 		WithFeatureFlagClient(featureflags.NewHardcodedBooleanClient(true)),
 
 		// unlimited results, these tests are designed to return `n` results per iteration

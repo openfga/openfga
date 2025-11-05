@@ -5,6 +5,10 @@ import "time"
 type ResolveCheckResponseMetadata struct {
 	// Number of Read operations accumulated after this request completes.
 	DatastoreQueryCount uint32
+
+	// Number of items read from the database after this request completes.
+	DatastoreItemCount uint64
+
 	// Indicates if the ResolveCheck subproblem that was evaluated involved
 	// a cycle in the evaluation.
 	CycleDetected bool

@@ -28,7 +28,7 @@ import (
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
 	const methodName = "check"
 
-	builder := s.getCheckResolverBuilder()
+	builder := s.getCheckResolverBuilder(req.GetStoreId())
 	checkResolver, checkResolverCloser, err := builder.Build()
 	if err != nil {
 		return nil, err
@@ -77,7 +77,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		commands.WithCheckCommandLogger(s.logger),
 		commands.WithCheckCommandMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		commands.WithCheckCommandCache(s.sharedDatastoreResources, s.cacheSettings),
-		commands.WithCheckDatastoreThrottler(s.checkDatastoreThrottleThreshold, s.checkDatastoreThrottleDuration),
+		commands.WithCheckDatastoreThrottler(
+			s.featureFlagClient.Boolean(serverconfig.ExperimentalDatastoreThrottling, storeID),
+			s.checkDatastoreThrottleThreshold,
+			s.checkDatastoreThrottleDuration,
+		),
 	)
 
 	resp, checkRequestMetadata, err := checkQuery.Execute(ctx, &commands.CheckCommandParams{
@@ -117,6 +121,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			s.serviceName,
 			methodName,
 		).Observe(queryCount)
+
+		datastoreItemCount := float64(resp.GetResolutionMetadata().DatastoreItemCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreItemCountHistogramName, datastoreItemCount)
+		span.SetAttributes(attribute.Float64(datastoreItemCountHistogramName, datastoreItemCount))
+		datastoreItemCountHistogram.WithLabelValues(
+			s.serviceName,
+			methodName,
+		).Observe(datastoreItemCount)
 
 		requestDurationHistogram.WithLabelValues(
 			s.serviceName,
@@ -164,13 +177,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	return res, nil
 }
 
-func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
+func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
 	checkCacheOptions, checkDispatchThrottlingOptions := s.getCheckResolverOptions()
 
 	return graph.NewOrderedCheckResolvers([]graph.CheckResolverOrderedBuilderOpt{
 		graph.WithLocalCheckerOpts([]graph.LocalCheckerOption{
 			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, nil)),
+			graph.WithOptimizations(s.featureFlagClient.Boolean(serverconfig.ExperimentalCheckOptimizations, storeID)),
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 			graph.WithUpstreamTimeout(s.requestTimeout),
@@ -182,10 +195,9 @@ func (s *Server) getCheckResolverBuilder() *graph.CheckResolverOrderedBuilder {
 			graph.WithMaxResolutionDepth(s.resolveNodeLimit),
 			graph.WithPlanner(s.planner),
 		}...),
-		graph.WithShadowResolverEnabled(s.shadowCheckResolverEnabled),
+		graph.WithShadowResolverEnabled(s.featureFlagClient.Boolean(serverconfig.ExperimentalShadowCheck, storeID)),
 		graph.WithShadowResolverOpts([]graph.ShadowResolverOpt{
 			graph.ShadowResolverWithLogger(s.logger),
-			graph.ShadowResolverWithSamplePercentage(s.shadowCheckResolverSamplePercentage),
 			graph.ShadowResolverWithTimeout(s.shadowCheckResolverTimeout),
 		}...),
 		graph.WithCachedCheckResolverOpts(s.cacheSettings.ShouldCacheCheckQueries(), checkCacheOptions...),

@@ -1,6 +1,9 @@
 package stack
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Stack is an implementation of a stack based on a linked list.
 //
@@ -36,11 +39,11 @@ func Len[T any](stack Stack[T]) int {
 }
 
 func String[T any](stack Stack[T]) string {
-	stackStr := ""
 	var val T
+	var sb strings.Builder
 	for stack != nil {
 		val, stack = Pop(stack)
-		stackStr += fmt.Sprintf("%v", val)
+		sb.WriteString(fmt.Sprintf("%v", val))
 	}
-	return stackStr
+	return sb.String()
 }

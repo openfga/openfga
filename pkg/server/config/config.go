@@ -39,8 +39,6 @@ const (
 	DefaultCheckQueryCacheEnabled = false
 	DefaultCheckQueryCacheTTL     = 10 * time.Second
 
-	DefaultShadowCheckCacheEnabled = false
-
 	DefaultCheckIteratorCacheEnabled    = false
 	DefaultCheckIteratorCacheMaxResults = 10000
 	DefaultCheckIteratorCacheTTL        = 10 * time.Second
@@ -54,18 +52,10 @@ const (
 	DefaultCacheControllerConfigEnabled = false
 	DefaultCacheControllerConfigTTL     = 10 * time.Second
 
-	DefaultShadowCheckResolverEnabled  = false
-	DefaultShadowCheckSamplePercentage = 10
-	DefaultShadowCheckResolverTimeout  = 1 * time.Second
+	DefaultShadowCheckResolverTimeout = 1 * time.Second
 
-	DefaultShadowListObjectsCheckResolverEnabled  = false
-	DefaultShadowListObjectsCheckSamplePercentage = 10
-	DefaultShadowListObjectsCheckResolverTimeout  = 1 * time.Second
-
-	DefaultShadowListObjectsQueryEnabled          = false
-	DefaultShadowListObjectsQuerySamplePercentage = 10
-	DefaultShadowListObjectsQueryTimeout          = 1 * time.Second
-	DefaultShadowListObjectsQueryMaxDeltaItems    = 100
+	DefaultShadowListObjectsQueryTimeout       = 1 * time.Second
+	DefaultShadowListObjectsQueryMaxDeltaItems = 100
 
 	// Care should be taken here - decreasing can cause API compatibility problems with Conditions.
 	DefaultMaxConditionEvaluationCost = 100
@@ -105,6 +95,13 @@ const (
 	ExperimentalCheckOptimizations       = "enable-check-optimizations"
 	ExperimentalListObjectsOptimizations = "enable-list-objects-optimizations"
 	ExperimentalAccessControlParams      = "enable-access-control"
+
+	// Moving forward, all experimental flags should follow the naming convention below:
+	// 1. Avoid using enable/disable prefixes.
+	// 2. Flag names should have only numbers, letters and underscores.
+	ExperimentalShadowCheck         = "shadow_check"
+	ExperimentalShadowListObjects   = "shadow_list_objects"
+	ExperimentalDatastoreThrottling = "datastore_throttling"
 )
 
 type DatastoreMetricsConfig struct {
@@ -283,8 +280,8 @@ type DispatchThrottlingConfig struct {
 }
 
 // DatastoreThrottleConfig defines configurations for database throttling.
+// A threshold <= 0 means DatastoreThrottling is not enabled.
 type DatastoreThrottleConfig struct {
-	Enabled   bool
 	Threshold int
 	Duration  time.Duration
 }
@@ -591,29 +588,14 @@ func (cfg *Config) VerifyDispatchThrottlingConfig() error {
 
 // VerifyDatastoreThrottlesConfig ensures VerifyDatastoreThrottlesConfig is called so that the right values are verified.
 func (cfg *Config) VerifyDatastoreThrottlesConfig() error {
-	if cfg.CheckDatastoreThrottle.Enabled {
-		if cfg.CheckDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'checkDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.CheckDatastoreThrottle.Duration <= 0 {
-			return errors.New("'checkDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.CheckDatastoreThrottle.Threshold > 0 && cfg.CheckDatastoreThrottle.Duration <= 0 {
+		return errors.New("'checkDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListObjectsDatastoreThrottle.Enabled {
-		if cfg.ListObjectsDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListObjectsDatastoreThrottle.Threshold > 0 && cfg.ListObjectsDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listObjectsDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
-	if cfg.ListUsersDatastoreThrottle.Enabled {
-		if cfg.ListUsersDatastoreThrottle.Threshold <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.threshold' must be greater than zero")
-		}
-		if cfg.ListUsersDatastoreThrottle.Duration <= 0 {
-			return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero")
-		}
+	if cfg.ListUsersDatastoreThrottle.Threshold > 0 && cfg.ListUsersDatastoreThrottle.Duration <= 0 {
+		return errors.New("'listUsersDatastoreThrottler.duration' must be greater than zero if threshold > 0")
 	}
 	return nil
 }
@@ -803,17 +785,14 @@ func DefaultConfig() *Config {
 			TTL:        DefaultListObjectsIteratorCacheTTL,
 		},
 		CheckDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListObjectsDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
 		ListUsersDatastoreThrottle: DatastoreThrottleConfig{
-			Enabled:   false,
 			Threshold: 0,
 			Duration:  0,
 		},
