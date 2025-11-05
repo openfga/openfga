@@ -476,7 +476,7 @@ func TestWeight2Userset(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[0], iter)
+		res, err := strategy.Userset(ctx, req, edges[1], iter)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
