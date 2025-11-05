@@ -99,8 +99,9 @@ const (
 	// Moving forward, all experimental flags should follow the naming convention below:
 	// 1. Avoid using enable/disable prefixes.
 	// 2. Flag names should have only numbers, letters and underscores.
-	ExperimentalShadowCheck       = "shadow_check"
-	ExperimentalShadowListObjects = "shadow_list_objects"
+	ExperimentalShadowCheck         = "shadow_check"
+	ExperimentalShadowListObjects   = "shadow_list_objects"
+	ExperimentalDatastoreThrottling = "datastore_throttling"
 )
 
 type DatastoreMetricsConfig struct {
@@ -125,17 +126,9 @@ type DatastoreConfig struct {
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
-	// MinOpenConns is the minimum number of open connections to the database.
-	// This is only available in Postgresql.
-	MinOpenConns int
-
 	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection
-	// pool. This is only used for some datastore engines (non-PostgresSQL that uses sql.DB).
+	// pool.
 	MaxIdleConns int
-
-	// MinIdleConns is the minimum number of connections to the datastore in the idle connection
-	// pool. This is only available in Postgresql..
-	MinIdleConns int
 
 	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
 	ConnMaxIdleTime time.Duration
@@ -474,14 +467,6 @@ func (cfg *Config) VerifyServerSettings() error {
 		return errors.New("maxConditionsEvaluationCosts less than 100 can cause API compatibility problems with Conditions")
 	}
 
-	if cfg.Datastore.MaxOpenConns < cfg.Datastore.MinOpenConns {
-		return errors.New("datastore MaxOpenConns must not be less than datastore MinOpenConns")
-	}
-
-	if cfg.Datastore.MinOpenConns < cfg.Datastore.MinIdleConns {
-		return errors.New("datastore MinOpenConns must not be less than datastore MinIdleConns")
-	}
-
 	return nil
 }
 
@@ -707,9 +692,7 @@ func DefaultConfig() *Config {
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: DefaultMaxAuthorizationModelCacheSize,
-			MinIdleConns: 0,
 			MaxIdleConns: 10,
-			MinOpenConns: 0,
 			MaxOpenConns: 30,
 		},
 		GRPC: GRPCConfig{

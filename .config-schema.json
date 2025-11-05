@@ -258,23 +258,11 @@
                     "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
-                "minOpenConns": {
-                    "description": "The minimum number of open connections to the datastore. This is only available for PostgreSQL.",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_DATASTORE_MIN_OPEN_CONNS"
-                },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "10",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
-                },
-                "minIdleConns": {
-                    "description": "the minimum number of connections to the datastore in the idle connection pool. This is only available for PostgreSQL.",
-                    "type": "integer",
-                    "default": "0",
-                    "x-env-variable": "OPENFGA_DATASTORE_MIN_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",

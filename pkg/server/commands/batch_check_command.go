@@ -31,6 +31,7 @@ type BatchCheckQuery struct {
 	maxChecksAllowed           uint32
 	maxConcurrentChecks        uint32
 	typesys                    *typesystem.TypeSystem
+	datastoreThrottlingEnabled bool
 	datastoreThrottleThreshold int
 	datastoreThrottleDuration  time.Duration
 }
@@ -98,8 +99,9 @@ func WithBatchCheckMaxChecksPerBatch(maxChecks uint32) BatchCheckQueryOption {
 	}
 }
 
-func WithBatchCheckDatastoreThrottler(threshold int, duration time.Duration) BatchCheckQueryOption {
+func WithBatchCheckDatastoreThrottler(enabled bool, threshold int, duration time.Duration) BatchCheckQueryOption {
 	return func(bq *BatchCheckQuery) {
+		bq.datastoreThrottlingEnabled = enabled
 		bq.datastoreThrottleThreshold = threshold
 		bq.datastoreThrottleDuration = duration
 	}
@@ -187,7 +189,11 @@ func (bq *BatchCheckQuery) Execute(ctx context.Context, params *BatchCheckComman
 				bq.typesys,
 				WithCheckCommandLogger(bq.logger),
 				WithCheckCommandCache(bq.sharedCheckResources, bq.cacheSettings),
-				WithCheckDatastoreThrottler(bq.datastoreThrottleThreshold, bq.datastoreThrottleDuration),
+				WithCheckDatastoreThrottler(
+					bq.datastoreThrottlingEnabled,
+					bq.datastoreThrottleThreshold,
+					bq.datastoreThrottleDuration,
+				),
 			)
 
 			checkParams := &CheckCommandParams{
