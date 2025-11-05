@@ -161,7 +161,11 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of authorization models that will be cached in memory")
 
+	flags.Int("datastore-min-open-conns", defaultConfig.Datastore.MinOpenConns, "the minimum number of open connections to the datastore")
+
 	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
+
+	flags.Int("datastore-min-idle-conns", defaultConfig.Datastore.MinIdleConns, "the minimum number of connections to the datastore in the idle connection pool")
 
 	flags.Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
 
@@ -418,7 +422,9 @@ func (s *ServerContext) datastoreConfig(config *serverconfig.Config) (storage.Op
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		sqlcommon.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		sqlcommon.WithMinOpenConns(config.Datastore.MinOpenConns),
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		sqlcommon.WithMinIdleConns(config.Datastore.MinIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	}
