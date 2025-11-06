@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -1967,6 +1968,8 @@ func BenchmarkPipeline(b *testing.B) {
 func TestPipeline(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
 			ds := memory.New()
 			t.Cleanup(ds.Close)
 
@@ -2010,6 +2013,8 @@ func TestPipeline(t *testing.T) {
 	}
 
 	t.Run("context_cancelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
 		const smodel string = `
 		model
 		  schema 1.1
@@ -2071,6 +2076,68 @@ func TestPipeline(t *testing.T) {
 		for _ = range seq {
 			t.Log("iteration did not stop after context cancelation")
 			t.Fail()
+		}
+	})
+
+	t.Run("iterator_cancelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		const smodel string = `
+		model
+		  schema 1.1
+
+		type user
+
+		type document
+		  relations
+		    define viewer: [user]
+		`
+
+		tuples := make([]string, 5000)
+		for i := range 5000 {
+			tuples[i] = fmt.Sprintf("document:%d#viewer@user:1", i)
+		}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, smodel, tuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "viewer")
+		if !ok {
+			panic("no such source")
+		}
+
+		seq := pipeline.Build(context.Background(), source, target)
+
+		for _ = range seq {
+			break
 		}
 	})
 }
