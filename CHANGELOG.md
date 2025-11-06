@@ -8,6 +8,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.11.0] - 2025-11-05
+### Added
+- **Breaking**: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734), [#2789](https://github.com/openfga/openfga/pull/2789).
+
 ## [1.10.5] - 2025-11-05
 ### Added
 - Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)
@@ -21,6 +25,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 - Enable planner for selecting check resolution strategies based on runtime statistics. [#2751](https://github.com/openfga/openfga/pull/2751)
 - Added a new metric `datastore_item_count` that represents the total number of tuples consumed during request resolution. [#2771](https://github.com/openfga/openfga/pull/2771)
 - Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
+
+### Changed
+- Breaking: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734).
+  - PostgreSQL will have the following configuration changes.
+    - Idle connections are now controlled by `OPENFGA_DATASTORE_MIN_IDLE_CONNS` (default 0) instead of `OPENFGA_DATASTORE_MAX_IDLE_CONNS`.
+    - Added configuration on minimum connections via `OPENFGA_DATASTORE_MIN_OPEN_CONNS` (default to 0).
+  - Metrics for PostreSQL will change from the [default Prometheus DB Stats Collector](https://github.com/prometheus/client_golang/tree/main/prometheus/collectors) to [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus). See [PGX Pool Prometheus Collector](https://github.com/IBM/pgxpoolprometheus?tab=readme-ov-file#metrics-collected) for the list of available metrics.
 
 ### Fixed
 - Use correct names for cache counter metrics. [#2750](https://github.com/openfga/openfga/pull/2750)
@@ -1460,7 +1471,8 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 - Memory storage adapter implementation
 - Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.10.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/openfga/openfga/compare/v1.10.5...v1.11.0
 [1.10.5]: https://github.com/openfga/openfga/compare/v1.10.4...v1.10.5
 [1.10.4]: https://github.com/openfga/openfga/compare/v1.10.3...v1.10.4
 [1.10.3]: https://github.com/openfga/openfga/compare/v1.10.2...v1.10.3
