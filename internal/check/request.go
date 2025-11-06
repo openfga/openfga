@@ -9,8 +9,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-
-
 type Request struct {
 	*graph.ResolveCheckRequest // TODO: Once we finish migrating, move into this package and drop useless fields (VisitedPaths, RequestMetadata)
 	cacheKey                   string
@@ -36,6 +34,6 @@ func NewRequest(p RequestParams) (*Request, error) {
 	}, nil
 }
 
-func (r *Request) CacheKey() string {
+func (r *Request) GetCacheKey() string {
 	return r.cacheKey
 }

@@ -42,20 +42,6 @@ func (m *MockCheckResolver) EXPECT() *MockCheckResolverMockRecorder {
 	return m.recorder
 }
 
-// GetModel mocks base method.
-func (m *MockCheckResolver) GetModel() *AuthorizationModelGraph {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetModel")
-	ret0, _ := ret[0].(*AuthorizationModelGraph)
-	return ret0
-}
-
-// GetModel indicates an expected call of GetModel.
-func (mr *MockCheckResolverMockRecorder) GetModel() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetModel", reflect.TypeOf((*MockCheckResolver)(nil).GetModel))
-}
-
 // ResolveCheck mocks base method.
 func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
 	m.ctrl.T.Helper()

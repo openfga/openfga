@@ -1,4 +1,4 @@
-package strategies
+package check
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
@@ -23,13 +22,15 @@ const (
 	recursive
 )
 
+type bottomUpHandler func(context.Context, []storage.Iterator[string], chan<- *iterator.Msg)
+
 type bottomUp struct {
-	model     *check.AuthorizationModelGraph
+	model     *AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 	strategy  strategyKind
 }
 
-func newBottomUp(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
+func newBottomUp(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
 		model:     model,
 		datastore: ds,
@@ -37,7 +38,7 @@ func newBottomUp(model *check.AuthorizationModelGraph, ds storage.RelationshipTu
 	}
 }
 
-func newBottomUpRecursive(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
+func newBottomUpRecursive(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
 		model:     model,
 		datastore: ds,
@@ -48,7 +49,7 @@ func newBottomUpRecursive(model *check.AuthorizationModelGraph, ds storage.Relat
 // setOperationSetup returns a channel with a number of elements that is >= the number of children.
 // Each element is an iterator.
 // The caller must wait until the channel is closed.
-func (s *bottomUp) setOperationSetup(ctx context.Context, req *check.Request, resolver bottomUpHandler, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *bottomUp) setOperationSetup(ctx context.Context, req *Request, resolver bottomUpHandler, edges []*authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	iterChans := make([]storage.Iterator[string], 0, len(edges))
 	for _, edge := range edges {
 		if _, ok := edge.GetWeight(req.GetUserType()); !ok {
@@ -68,13 +69,13 @@ func (s *bottomUp) setOperationSetup(ctx context.Context, req *check.Request, re
 		})
 
 		if recoveredError != nil {
-			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredError.AsError())}, out)
+			concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Err: fmt.Errorf("%w: %s", ErrPanicRequest, recoveredError.AsError())}, out)
 		}
 	}()
 	return out, nil
 }
 
-func (s *bottomUp) resolveEdge(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *bottomUp) resolveEdge(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	switch edge.GetEdgeType() {
 	case authzGraph.DirectEdge:
 		switch edge.GetTo().GetNodeType() {
@@ -83,18 +84,18 @@ func (s *bottomUp) resolveEdge(ctx context.Context, req *check.Request, edge *au
 		case authzGraph.SpecificTypeWildcard:
 			return s.specificTypeWildcard(ctx, req, edge)
 		default:
-			return nil, check.ErrPanicRequest
+			return nil, ErrPanicRequest
 		}
 	case authzGraph.RewriteEdge, authzGraph.ComputedEdge:
 		return s.resolveRewrite(ctx, req, edge.GetTo())
 	default:
-		return nil, check.ErrPanicRequest
+		return nil, ErrPanicRequest
 	}
 }
 
 // resolveRewrite returns a channel that will contain an unknown but finite number of elements.
 // The channel is closed at the end.
-func (s *bottomUp) resolveRewrite(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
 	case authzGraph.SpecificTypeAndRelation:
 		return s.setFlattenOperation(ctx, req, node)
@@ -105,24 +106,24 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *check.Request, node 
 		case authzGraph.IntersectionOperator:
 			edges, ok := s.model.GetEdgesFromNode(node)
 			if !ok {
-				return nil, check.ErrPanicRequest
+				return nil, ErrPanicRequest
 			}
 			return s.setOperationSetup(ctx, req, resolveIntersection, edges)
 		case authzGraph.ExclusionOperator:
 			edges, ok := s.model.GetEdgesFromNode(node)
 			if !ok {
-				return nil, check.ErrPanicRequest
+				return nil, ErrPanicRequest
 			}
 			return s.setOperationSetup(ctx, req, resolveDifference, edges)
 		default:
-			return nil, check.ErrPanicRequest
+			return nil, ErrPanicRequest
 		}
 	default:
-		return nil, check.ErrPanicRequest
+		return nil, ErrPanicRequest
 	}
 }
 
-func (s *bottomUp) setFlattenOperation(ctx context.Context, req *check.Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
+func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	var err error
 	var edges []*authzGraph.WeightedAuthorizationModelEdge
 
@@ -141,7 +142,7 @@ func (s *bottomUp) setFlattenOperation(ctx context.Context, req *check.Request, 
 // It returns a channel with one element, and then closes the channel.
 // The element is an iterator over all objects that are directly related to the user or the wildcard (if applicable).
 // TODO: DETERMINE IF ITS WORTH WAITING FOR RESULTS OF RIGHT HAND SIDE TO PERFORM BOUNDED QUERIES RATHER THAN THE FULL SET OF OBJECTIDS (BASICALLY INTERSECTION AT THE DATASTORE LEVEL).
-func (s *bottomUp) specificType(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	opts := storage.ReadStartingWithUserOptions{
 		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
@@ -164,7 +165,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *check.Request, edge *a
 
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
@@ -176,7 +177,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *check.Request, edge *a
 	return iterChan, nil
 }
 
-func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
+func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	opts := storage.ReadStartingWithUserOptions{
 		WithResultsSortedAscending: true,
 		Consistency: storage.ConsistencyOptions{
@@ -199,7 +200,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *check.Request,
 
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, check.BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 

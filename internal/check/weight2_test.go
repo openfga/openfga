@@ -1,4 +1,4 @@
-package strategies
+package check
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -85,7 +84,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -98,14 +97,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[0], iter)
+		res, err := strategy.Userset(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -172,7 +171,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -184,14 +183,14 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[0], iter)
+		res, err := strategy.Userset(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -259,7 +258,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -271,14 +270,14 @@ func TestWeight2Userset(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[0], iter)
+		res, err := strategy.Userset(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -345,7 +344,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -358,14 +357,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[0], iter)
+		res, err := strategy.Userset(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -456,7 +455,7 @@ func TestWeight2Userset(t *testing.T) {
   				tcond == 'restricted'
 			}`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -469,14 +468,14 @@ func TestWeight2Userset(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.Userset(ctx, req, edges[1], iter)
+		res, err := strategy.Userset(ctx, req, edges[1], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -551,7 +550,7 @@ func TestWeight2TTU(t *testing.T) {
 					define viewer: all from parent
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -563,14 +562,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.TTU(ctx, req, edges[0], iter)
+		res, err := strategy.TTU(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -639,7 +638,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -651,14 +650,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.TTU(ctx, req, edges[0], iter)
+		res, err := strategy.TTU(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())
@@ -727,7 +726,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -739,14 +738,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.TTU(ctx, req, edges[0], iter)
+		res, err := strategy.TTU(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -815,7 +814,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -827,14 +826,14 @@ func TestWeight2TTU(t *testing.T) {
 			Object:   "document:1",
 		}})
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.TTU(ctx, req, edges[0], iter)
+		res, err := strategy.TTU(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.False(t, res.GetAllowed())
@@ -926,7 +925,7 @@ func TestWeight2TTU(t *testing.T) {
   				tcond == 'restricted'
 			}`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -939,14 +938,14 @@ func TestWeight2TTU(t *testing.T) {
 		}})
 
 		strategy := NewWeight2(mg, mockDatastore)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
 		})
 		require.NoError(t, err)
 
-		res, err := strategy.TTU(ctx, req, edges[0], iter)
+		res, err := strategy.TTU(ctx, req, edges[0], iter, nil)
 		require.NoError(t, err)
 		require.NotNil(t, res)
 		require.True(t, res.GetAllowed())

@@ -1,4 +1,4 @@
-package strategies
+package check
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -31,7 +30,7 @@ func TestRecursiveTTU(t *testing.T) {
 		readStartingWithUserTuplesError error
 		readTuples                      [][]*openfgav1.Tuple
 		readTuplesError                 error
-		expected                        *check.Response
+		expected                        *Response
 		expectedError                   error
 	}{
 		{
@@ -45,7 +44,7 @@ func TestRecursiveTTU(t *testing.T) {
 				},
 				{},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: false,
 			},
 		},
@@ -66,7 +65,7 @@ func TestRecursiveTTU(t *testing.T) {
 					},
 				},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: true,
 			},
 		},
@@ -92,7 +91,7 @@ func TestRecursiveTTU(t *testing.T) {
 					},
 				},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: true,
 			},
 		},
@@ -114,7 +113,7 @@ func TestRecursiveTTU(t *testing.T) {
 				},
 				{},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: false,
 			},
 		},
@@ -149,7 +148,7 @@ func TestRecursiveTTU(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := check.NewAuthorizationModelGraph(model)
+			mg, err := NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -157,8 +156,8 @@ func TestRecursiveTTU(t *testing.T) {
 			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
 			require.True(t, ok)
 			require.NotNil(t, recursiveEdge)
-			require.Equal(t, recursiveEdge.GetEdgeType(), graph.TTUEdge)
-			require.Equal(t, recursiveEdge.GetRecursiveRelation(), "group#member")
+			require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
+			require.Equal(t, "group#member", recursiveEdge.GetRecursiveRelation())
 			require.Equal(t, recursiveEdge.GetTo(), node)
 
 			ctrl := gomock.NewController(t)
@@ -181,7 +180,7 @@ func TestRecursiveTTU(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			req, err := check.NewRequest(check.RequestParams{
+			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
@@ -200,7 +199,7 @@ func TestRecursiveTTU(t *testing.T) {
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
 
-			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+			result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
 			if tt.expected != nil {
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -226,7 +225,7 @@ type group
 		define rel8: [user]
 		`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -234,8 +233,8 @@ type group
 		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
-		require.Equal(t, recursiveEdge.GetEdgeType(), graph.TTUEdge)
-		require.Equal(t, recursiveEdge.GetRecursiveRelation(), "group#member")
+		require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
+		require.Equal(t, "group#member", recursiveEdge.GetRecursiveRelation())
 		require.Equal(t, recursiveEdge.GetTo(), node)
 
 		tests := []struct {
@@ -249,7 +248,7 @@ type group
 			readStartingWithUserTuplesError  error
 			readTuples                       [][]*openfgav1.Tuple
 			readTuplesError                  error
-			expected                         *check.Response
+			expected                         *Response
 			expectedError                    error
 		}{
 			{
@@ -262,7 +261,7 @@ type group
 					},
 					{},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -284,7 +283,7 @@ type group
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -302,7 +301,7 @@ type group
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -325,7 +324,7 @@ type group
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -348,7 +347,7 @@ type group
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -371,7 +370,7 @@ type group
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -432,7 +431,7 @@ type group
 				}
 
 				ctx := context.Background()
-				req, err := check.NewRequest(check.RequestParams{
+				req, err := NewRequest(RequestParams{
 					StoreID:              storeID,
 					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
@@ -450,7 +449,7 @@ type group
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+				result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			})
@@ -468,7 +467,7 @@ func TestRecursiveUserset(t *testing.T) {
 		readStartingWithUserTuplesError error
 		readUsersetTuples               [][]*openfgav1.Tuple
 		readUsersetTuplesError          error
-		expected                        *check.Response
+		expected                        *Response
 		expectedError                   error
 	}{
 		{
@@ -482,7 +481,7 @@ func TestRecursiveUserset(t *testing.T) {
 				},
 				{},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: false,
 			},
 		},
@@ -503,7 +502,7 @@ func TestRecursiveUserset(t *testing.T) {
 					},
 				},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: true,
 			},
 		},
@@ -529,7 +528,7 @@ func TestRecursiveUserset(t *testing.T) {
 					},
 				},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: true,
 			},
 		},
@@ -551,7 +550,7 @@ func TestRecursiveUserset(t *testing.T) {
 				},
 				{},
 			},
-			expected: &check.Response{
+			expected: &Response{
 				Allowed: false,
 			},
 		},
@@ -600,7 +599,7 @@ func TestRecursiveUserset(t *testing.T) {
 								define member: [user, group#member]
 `)
 
-			mg, err := check.NewAuthorizationModelGraph(model)
+			mg, err := NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -611,7 +610,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 			ctx := context.Background()
 
-			req, err := check.NewRequest(check.RequestParams{
+			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
@@ -629,7 +628,7 @@ func TestRecursiveUserset(t *testing.T) {
 			}
 
 			strategy := NewRecursive(mg, mockDatastore, 5)
-			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+			result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 			require.Equal(t, tt.expectedError, err)
 			if tt.expected != nil {
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
@@ -649,7 +648,7 @@ func TestRecursiveUserset(t *testing.T) {
 			readStartingWithUserTuplesError  error
 			readUsersetTuples                [][]*openfgav1.Tuple
 			readUsersetTuplesError           error
-			expected                         *check.Response
+			expected                         *Response
 			expectedError                    error
 		}{
 			{
@@ -662,7 +661,7 @@ func TestRecursiveUserset(t *testing.T) {
 					},
 					{},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -684,7 +683,7 @@ func TestRecursiveUserset(t *testing.T) {
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -702,7 +701,7 @@ func TestRecursiveUserset(t *testing.T) {
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -725,7 +724,7 @@ func TestRecursiveUserset(t *testing.T) {
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -748,7 +747,7 @@ func TestRecursiveUserset(t *testing.T) {
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: false,
 				},
 			},
@@ -771,7 +770,7 @@ func TestRecursiveUserset(t *testing.T) {
 						},
 					},
 				},
-				expected: &check.Response{
+				expected: &Response{
 					Allowed: true,
 				},
 			},
@@ -848,7 +847,7 @@ func TestRecursiveUserset(t *testing.T) {
 				define rel8: [user]
 		`)
 
-				mg, err := check.NewAuthorizationModelGraph(model)
+				mg, err := NewAuthorizationModelGraph(model)
 				require.NoError(t, err)
 
 				node, ok := mg.GetNodeByID("group#member")
@@ -859,7 +858,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 				ctx := context.Background()
 
-				req, err := check.NewRequest(check.RequestParams{
+				req, err := NewRequest(RequestParams{
 					StoreID:              storeID,
 					AuthorizationModelID: mg.GetModelID(),
 					TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
@@ -877,7 +876,7 @@ func TestRecursiveUserset(t *testing.T) {
 				}
 
 				strategy := NewRecursive(mg, mockDatastore, 5)
-				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys))
+				result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(tupleKeys), nil)
 				require.Equal(t, tt.expectedError, err)
 				require.Equal(t, tt.expected.GetAllowed(), result.GetAllowed())
 			})
@@ -1073,7 +1072,7 @@ func TestRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := check.NewAuthorizationModelGraph(model)
+			mg, err := NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -1084,7 +1083,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 			ctx := context.Background()
 
-			req, err := check.NewRequest(check.RequestParams{
+			req, err := NewRequest(RequestParams{
 				StoreID:              storeID,
 				AuthorizationModelID: mg.GetModelID(),
 				TupleKey:             tuple.NewTupleKey("group:3", "member", "user:maria"),
@@ -1126,7 +1125,7 @@ func TestRecursiveMatch(t *testing.T) {
           define parent: [group]
     `)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1135,7 +1134,7 @@ func TestRecursiveMatch(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:maria"),
@@ -1261,7 +1260,6 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(4). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "activator":
@@ -1280,7 +1278,6 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(4). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadFilter, opts storage.ReadOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:1":
@@ -1296,7 +1293,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1304,11 +1301,11 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
-		require.Equal(t, recursiveEdge.GetEdgeType(), graph.TTUEdge)
-		require.Equal(t, recursiveEdge.GetRecursiveRelation(), "group#member")
+		require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
+		require.Equal(t, "group#member", recursiveEdge.GetRecursiveRelation())
 		require.Equal(t, recursiveEdge.GetTo(), node)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:1"),
@@ -1316,10 +1313,9 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 		require.NoError(t, err)
 
 		strategy := NewRecursive(mg, mockDatastore, 5)
-		result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks))
+		result, err := strategy.TTU(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
-
 	})
 }
 
@@ -1430,7 +1426,6 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(4). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Relation {
 				case "activator":
@@ -1449,7 +1444,6 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			MaxTimes(4). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
-
 				// Manually check the relation and return the right data
 				switch filter.Object {
 				case "group:1":
@@ -1465,7 +1459,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1473,11 +1467,11 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
-		require.Equal(t, recursiveEdge.GetEdgeType(), graph.DirectEdge)
-		require.Equal(t, recursiveEdge.GetRecursiveRelation(), "group#member")
+		require.Equal(t, graph.DirectEdge, recursiveEdge.GetEdgeType())
+		require.Equal(t, "group#member", recursiveEdge.GetRecursiveRelation())
 		require.Equal(t, recursiveEdge.GetTo(), node)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("group:1", "member", "user:1"),
@@ -1485,9 +1479,8 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 		require.NoError(t, err)
 
 		strategy := NewRecursive(mg, mockDatastore, 5)
-		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks))
+		result, err := strategy.Userset(ctx, req, recursiveEdge, storage.NewStaticTupleKeyIterator(initialTks), nil)
 		require.NoError(t, err)
 		require.True(t, result.GetAllowed())
-
 	})
 }

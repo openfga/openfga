@@ -1,4 +1,4 @@
-package strategies
+package check
 
 import (
 	"context"
@@ -6,46 +6,46 @@ import (
 	"sync"
 
 	"github.com/sourcegraph/conc/panics"
-	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-var tracer = otel.Tracer("internal/check/strategies")
+type defaultStrategyHandler func(context.Context, *Request, *authzGraph.WeightedAuthorizationModelEdge, storage.TupleKeyIterator, chan requestMsg)
 
 type requestMsg struct {
 	err error
-	req *check.Request
+	req *Request
 }
 
 type DefaultStrategy struct {
-	resolver         check.CheckResolver
+	model            *AuthorizationModelGraph
+	resolver         CheckResolver
 	concurrencyLimit int
 }
 
-func NewDefault(resolver check.CheckResolver, limit int) *DefaultStrategy {
+func NewDefault(model *AuthorizationModelGraph, resolver CheckResolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
-		concurrencyLimit: limit,
+		model:            model,
 		resolver:         resolver,
+		concurrencyLimit: limit,
 	}
 }
 
 // defaultUserset will check userset path.
 // This is the slow path as it requires dispatch on all its children.
-func (s *DefaultStrategy) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*check.Response, error) {
+func (s *DefaultStrategy) Userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "default.Userset")
 	defer span.End()
 
 	return s.execute(ctx, req, edge, iter, s.userset, visited)
 }
 
-func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	for {
 		t, err := iter.Next(ctx)
@@ -59,7 +59,7 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 		}
 
 		usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-		childReq, err := check.NewRequest(check.RequestParams{
+		childReq, err := NewRequest(RequestParams{
 			StoreID:                   req.GetStoreID(),
 			TupleKey:                  tuple.NewTupleKey(usersetObject, usersetRelation, req.GetTupleKey().GetUser()),
 			ContextualTuples:          req.GetContextualTuples(),
@@ -72,14 +72,14 @@ func (s *DefaultStrategy) userset(ctx context.Context, req *check.Request, edge 
 	}
 }
 
-func (s *DefaultStrategy) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*check.Response, error) {
+func (s *DefaultStrategy) TTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, visited *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "default.TTU")
 	defer span.End()
 
 	return s.execute(ctx, req, edge, iter, s.ttu, visited)
 }
 
-func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
+func (s *DefaultStrategy) ttu(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, out chan requestMsg) {
 	defer close(out)
 	_, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	for {
@@ -94,7 +94,7 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 		}
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		childReq, err := check.NewRequest(check.RequestParams{
+		childReq, err := NewRequest(RequestParams{
 			StoreID:                   req.GetStoreID(),
 			TupleKey:                  tuple.NewTupleKey(userObj, computedRelation, req.GetTupleKey().GetUser()),
 			ContextualTuples:          req.GetContextualTuples(),
@@ -107,12 +107,12 @@ func (s *DefaultStrategy) ttu(ctx context.Context, req *check.Request, edge *aut
 	}
 }
 
-func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited *sync.Map) (*check.Response, error) {
+func (s *DefaultStrategy) execute(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, handler defaultStrategyHandler, visited *sync.Map) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	requestsChan := make(chan requestMsg)
-	responsesChan := make(chan check.ResponseMsg, 100) // needs to be buffered to prevent out of order closed events
+	responsesChan := make(chan ResponseMsg, 100) // needs to be buffered to prevent out of order closed events
 
 	go func() {
 		handler(ctx, req, edge, iter, requestsChan)
@@ -129,7 +129,7 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 			return nil, ctx.Err()
 		case outcome, ok := <-responsesChan:
 			if !ok {
-				return &check.Response{Allowed: false}, err
+				return &Response{Allowed: false}, err
 			}
 			if outcome.Err != nil {
 				err = outcome.Err
@@ -144,15 +144,13 @@ func (s *DefaultStrategy) execute(ctx context.Context, req *check.Request, edge 
 }
 
 // processDispatches returns a channel where the outcomes of the dispatched checks are sent, and begins sending messages to this channel.
-func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, visited *sync.Map, out chan check.ResponseMsg) {
+func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan requestMsg, visited *sync.Map, out chan ResponseMsg) {
 	var pool errgroup.Group
 	pool.SetLimit(s.concurrencyLimit)
 	defer func() {
 		_ = pool.Wait()
 		close(out)
 	}()
-
-	mg := s.resolver.GetModel()
 
 	for {
 		select {
@@ -163,26 +161,26 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 				return
 			}
 			if msg.err != nil {
-				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: msg.err}, out)
+				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: msg.err}, out)
 				continue
 			}
 
-			node, ok := mg.GetNodeByID(tuple.ToObjectRelationString(msg.req.GetObjectType(), msg.req.GetTupleKey().GetRelation()))
+			node, ok := s.model.GetNodeByID(tuple.ToObjectRelationString(msg.req.GetObjectType(), msg.req.GetTupleKey().GetRelation()))
 			if !ok {
-				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: check.ErrGraphError}, out)
+				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: ErrGraphError}, out)
 				continue
 			}
 
 			pool.Go(func() error {
-				var res *check.Response
+				var res *Response
 				var err error
 				recoveredErr := panics.Try(func() {
 					res, err = s.resolver.ResolveUnion(ctx, msg.req, node, visited)
 				})
 				if recoveredErr != nil {
-					err = fmt.Errorf("%w: %s", check.ErrPanicRequest, recoveredErr.AsError())
+					err = fmt.Errorf("%w: %s", ErrPanicRequest, recoveredErr.AsError())
 				}
-				concurrency.TrySendThroughChannel(ctx, check.ResponseMsg{Err: err, Res: res}, out)
+				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: err, Res: res}, out)
 				return nil
 			})
 		}

@@ -1,4 +1,4 @@
-package strategies
+package check
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/internal/mocks"
@@ -59,14 +58,14 @@ func TestSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -112,7 +111,7 @@ func TestSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -122,7 +121,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -168,7 +167,7 @@ func TestSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -180,7 +179,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -232,7 +231,7 @@ func TestSpecificType(t *testing.T) {
              }
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -240,7 +239,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -286,7 +285,7 @@ func TestSpecificType(t *testing.T) {
 					define admin: [document#member]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -294,7 +293,7 @@ func TestSpecificType(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -342,14 +341,14 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -395,7 +394,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -404,7 +403,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
@@ -450,7 +449,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -461,7 +460,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		require.True(t, ok)
 		edges, ok = mg.GetEdgesFromNodeId(edges[0].GetTo().GetUniqueLabel())
 		require.True(t, ok)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "member", "user:1"),
@@ -513,7 +512,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
              }
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -521,7 +520,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
 
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -567,14 +566,14 @@ func TestSpecificTypeWildcard(t *testing.T) {
 					define admin: [document#member]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
 		ctx := context.Background()
 		edges, ok := mg.GetEdgesFromNodeId("document#member")
 		require.True(t, ok)
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "admin", "user:1"),
@@ -1760,7 +1759,7 @@ func TestResolveRewrite(t *testing.T) {
 					define owner: viewer from parent
 		`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1769,7 +1768,7 @@ func TestResolveRewrite(t *testing.T) {
 		node, ok := mg.GetNodeByID("document#viewer")
 		require.True(t, ok)
 		// Create a request for testing
-		req, err := check.NewRequest(check.RequestParams{
+		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
@@ -1875,7 +1874,7 @@ func TestResolveRewrite(t *testing.T) {
 					define commenter: [user]
 		`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1885,7 +1884,7 @@ func TestResolveRewrite(t *testing.T) {
 		require.True(t, ok)
 
 		// Create a request for testing
-		req, _ := check.NewRequest(check.RequestParams{
+		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
@@ -1987,7 +1986,7 @@ func TestResolveRewrite(t *testing.T) {
 					
 		`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1997,7 +1996,7 @@ func TestResolveRewrite(t *testing.T) {
 		require.True(t, ok)
 
 		// Create a request for testing
-		req, _ := check.NewRequest(check.RequestParams{
+		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),
@@ -2106,7 +2105,7 @@ func TestResolveRewrite(t *testing.T) {
 						define analyzer: [user]
 			`)
 
-		mg, err := check.NewAuthorizationModelGraph(model)
+		mg, err := NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -2116,7 +2115,7 @@ func TestResolveRewrite(t *testing.T) {
 		require.True(t, ok)
 
 		// Create a request for testing
-		req, _ := check.NewRequest(check.RequestParams{
+		req, _ := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:1"),

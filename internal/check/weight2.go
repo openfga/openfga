@@ -1,11 +1,11 @@
-package strategies
+package check
 
 import (
 	"context"
+	"sync"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
-	"github.com/openfga/openfga/internal/check"
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -17,11 +17,11 @@ const DifferenceIndex = 1
 
 type Weight2 struct {
 	bottomUp  *bottomUp
-	model     *check.AuthorizationModelGraph
+	model     *AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 }
 
-func NewWeight2(model *check.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
+func NewWeight2(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
 	return &Weight2{
 		bottomUp:  newBottomUp(model, ds),
 		model:     model,
@@ -29,12 +29,12 @@ func NewWeight2(model *check.AuthorizationModelGraph, ds storage.RelationshipTup
 	}
 }
 
-func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *Weight2) Userset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "weight2.Userset")
 	defer span.End()
 
 	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-	childReq, err := check.NewRequest(check.RequestParams{
+	childReq, err := NewRequest(RequestParams{
 		StoreID:                   req.GetStoreID(),
 		TupleKey:                  tuple.NewTupleKey(tuple.BuildObject(objectType, "ignore"), relation, req.GetTupleKey().GetUser()),
 		ContextualTuples:          req.GetContextualTuples(),
@@ -53,12 +53,12 @@ func (s *Weight2) Userset(ctx context.Context, req *check.Request, edge *authzGr
 	return s.execute(ctx, leftChan, storage.WrapIterator(storage.UsersetKind, iter))
 }
 
-func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator) (*check.Response, error) {
+func (s *Weight2) TTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, iter storage.TupleKeyIterator, _ *sync.Map) (*Response, error) {
 	ctx, span := tracer.Start(ctx, "weight2.TTU")
 	defer span.End()
 
 	objectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-	childReq, err := check.NewRequest(check.RequestParams{
+	childReq, err := NewRequest(RequestParams{
 		StoreID:                   req.GetStoreID(),
 		TupleKey:                  tuple.NewTupleKey(objectType, computedRelation, req.GetTupleKey().GetUser()),
 		ContextualTuples:          req.GetContextualTuples(),
@@ -84,7 +84,7 @@ func (s *Weight2) TTU(ctx context.Context, req *check.Request, edge *authzGraph.
 // Right channel is the result set of the Read of ObjectID/Relation that yields the User's ObjectID.
 // Left channel is the result set of ReadStartingWithUser of User/Relation that yields Object's ObjectID.
 // From the perspective of the model, the left hand side of a TTU is the computed relationship being expanded.
-func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*check.Response, error) {
+func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, rightIter storage.TupleMapper) (*Response, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer rightIter.Stop()
@@ -112,7 +112,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 				leftChan = nil
 				if len(leftSeen) == 0 {
 					// If we've processed nothing from the left side, we can't have any intersection
-					return &check.Response{Allowed: false}, lastErr
+					return &Response{Allowed: false}, lastErr
 				}
 				continue
 			}
@@ -138,7 +138,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 					// Check if this value exists in the right set first (early match)
 					if _, exists := rightSeen[t]; exists {
 						leftMsg.Iter.Stop() // Stop the iterator early
-						return &check.Response{Allowed: true}, nil
+						return &Response{Allowed: true}, nil
 					}
 
 					// Otherwise, store for future comparison
@@ -160,7 +160,7 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 
 			// Check if this value exists in the left set first (early match)
 			if _, exists := leftSeen[rightMsg.Value]; exists {
-				return &check.Response{Allowed: true}, nil
+				return &Response{Allowed: true}, nil
 			}
 
 			// Otherwise, store for future comparison
@@ -169,5 +169,5 @@ func (s *Weight2) execute(ctx context.Context, leftChan chan *iterator.Msg, righ
 	}
 
 	// If we get here, no match was found
-	return &check.Response{Allowed: false}, lastErr
+	return &Response{Allowed: false}, lastErr
 }

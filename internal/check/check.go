@@ -71,7 +71,19 @@ func New(cfg Config) *Resolver {
 		strategies:                cfg.Strategies,
 	}
 
+	if r.strategies == nil {
+		r.strategies = map[string]Strategy{
+			DefaultStrategyName:   NewDefault(cfg.Model, r, cfg.ConcurrencyLimit),
+			WeightTwoStrategyName: NewWeight2(cfg.Model, cfg.Datastore),
+			RecursiveStrategyName: NewRecursive(cfg.Model, cfg.Datastore, cfg.ConcurrencyLimit),
+		}
+	}
+
 	return r
+}
+
+func (r *Resolver) SetStrategies(strategies map[string]Strategy) {
+	r.strategies = strategies
 }
 
 func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, error) {
@@ -96,10 +108,6 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 	return r.ResolveUnion(ctx, req, node, nil)
 }
 
-func (r *Resolver) GetModel() *AuthorizationModelGraph {
-	return r.model
-}
-
 func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key string) (*Response, bool) {
 	if consistency == openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY || r.lastCacheInvalidationTime.IsZero() {
 		return nil, false
@@ -118,17 +126,17 @@ func (r *Resolver) isCached(consistency openfgav1.ConsistencyPreference, key str
 	return res.Res, true
 }
 
-func buildEdgeCacheKey(modelId string, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
+func buildEdgeCacheKey(modelID string, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) string {
 	keyBuilder := &strings.Builder{}
 	keyBuilder.WriteString(CacheKeyPrefix)
-	keyBuilder.WriteString(modelId)
+	keyBuilder.WriteString(modelID)
 	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(req.GetTupleKey().GetObject())
 	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(req.GetTupleKey().GetUser())
 	keyBuilder.WriteString(DELIMITER)
 	keyBuilder.WriteString(edge.GetRelationDefinition())
-	keyBuilder.WriteString(req.GetInvariantCacheKey())
+	keyBuilder.WriteString(req.GetInvariantCacheKey()) // TODO: reduce size this key
 	return keyBuilder.String()
 }
 
@@ -136,7 +144,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if res, ok := r.isCached(req.GetConsistency(), req.CacheKey()); ok {
+	if res, ok := r.isCached(req.GetConsistency(), req.GetCacheKey()); ok {
 		return res, nil
 	}
 
@@ -148,7 +156,7 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 		close(out)
 	}()
 
-	ids := make([]string, len(edges))
+	ids := make([]string, 0, len(edges))
 	for _, edge := range edges {
 		id := buildEdgeCacheKey(r.model.GetModelID(), req, edge)
 		ids = append(ids, id)
@@ -174,23 +182,26 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 				continue
 			}
 
-			if msg.Res.Allowed {
+			if msg.Res.GetAllowed() {
 				// Short-circuit: In a union, if any branch returns true, we can immediately return.
 				entry := &ResponseCacheEntry{Res: msg.Res, LastModified: time.Now()}
 				r.cache.Set(msg.ID, entry, r.cacheTTL)
-				r.cache.Set(req.CacheKey(), entry, r.cacheTTL)
+				r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
 				return msg.Res, nil
 			}
 		}
+	}
+	if err != nil {
+		// we only return error in a union when all edges are exhausted and there is at least one edge with error
+		return nil, err
 	}
 	res := &Response{Allowed: false}
 	entry := &ResponseCacheEntry{Res: res, LastModified: time.Now()}
 	for _, id := range ids {
 		r.cache.Set(id, entry, r.cacheTTL)
 	}
-	r.cache.Set(req.CacheKey(), entry, r.cacheTTL)
-	// we only return error in a union when all edges are exhausted and there is at least one edge with error
-	return res, err
+	r.cache.Set(req.GetCacheKey(), entry, r.cacheTTL)
+	return res, nil
 }
 
 // reduce as a logical union operation (exit the moment we have a single true).
@@ -360,7 +371,7 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 				continue
 			}
 
-			if msg.Res.Allowed {
+			if msg.Res.GetAllowed() {
 				return msg.Res, nil
 			}
 		}
@@ -409,7 +420,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case msg := <-out:
-			if msg.Err != nil || !msg.Res.Allowed {
+			if msg.Err != nil || !msg.Res.GetAllowed() {
 				// NOTE: This is one of the breaking changes from the current check implementation. Delete this after this rollout.
 				// In intersection _every_ branch must return true.
 				return msg.Res, msg.Err
@@ -485,7 +496,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 			}
 
 			// Short-circuit: If base is true and there's no subtract, the whole expression is true.
-			if msg.Res.Allowed && subtract == nil {
+			if msg.Res.GetAllowed() && subtract == nil {
 				return msg.Res, nil
 			}
 
