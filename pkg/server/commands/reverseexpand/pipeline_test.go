@@ -2,7 +2,6 @@ package reverseexpand
 
 import (
 	"context"
-	"fmt"
 	"iter"
 	"testing"
 
@@ -2021,14 +2020,26 @@ func TestPipeline(t *testing.T) {
 
 		type user
 
+		type org
+		  relations
+		    define member: [user, team#member]
+
+		type team
+		  relations
+		    define member: [user, org#member]
+
 		type document
 		  relations
-		    define viewer: [user]
+		    define viewer: [org#member, team#member]
 		`
 
-		tuples := make([]string, 5000)
-		for i := range 5000 {
-			tuples[i] = fmt.Sprintf("document:%d#viewer@user:1", i)
+		tuples := []string{
+			"org:1#member@user:1",
+			"team:1#member@user:1",
+			"org:2#member@team:1#member",
+			"team:2#member@org:1#member",
+			"document:1#viewer@org:2#member",
+			"document:2#viewer@team:2#member",
 		}
 
 		ds := memory.New()
@@ -2088,14 +2099,26 @@ func TestPipeline(t *testing.T) {
 
 		type user
 
+		type org
+		  relations
+		    define member: [user, team#member]
+
+		type team
+		  relations
+		    define member: [user, org#member]
+
 		type document
 		  relations
-		    define viewer: [user]
+		    define viewer: [org#member, team#member]
 		`
 
-		tuples := make([]string, 5000)
-		for i := range 5000 {
-			tuples[i] = fmt.Sprintf("document:%d#viewer@user:1", i)
+		tuples := []string{
+			"org:1#member@user:1",
+			"team:1#member@user:1",
+			"org:2#member@team:1#member",
+			"team:2#member@org:1#member",
+			"document:1#viewer@org:2#member",
+			"document:2#viewer@team:2#member",
 		}
 
 		ds := memory.New()
