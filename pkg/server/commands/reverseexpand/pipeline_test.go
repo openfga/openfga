@@ -2084,7 +2084,7 @@ func TestPipeline(t *testing.T) {
 
 		cancel()
 
-		for _ = range seq {
+		for range seq {
 			t.Log("iteration did not stop after context cancelation")
 			t.Fail()
 		}
@@ -2131,7 +2131,7 @@ func TestPipeline(t *testing.T) {
 
 		seq := pipeline.Build(context.Background(), source, target)
 
-		for _ = range seq {
+		for range seq {
 			break
 		}
 	})
