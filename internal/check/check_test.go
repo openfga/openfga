@@ -395,3 +395,169 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.False(t, res.Allowed)
 	})
 }
+
+func TestIsCached(t *testing.T) {
+	t.Run("returns_false_when_higher_consistency_requested", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY, "test-key")
+		require.False(t, ok)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_false_when_last_cache_invalidation_time_is_zero", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: time.Time{},
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.False(t, ok)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_false_when_cache_entry_not_found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockCache.EXPECT().Get("test-key").Return(nil).Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.False(t, ok)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_false_when_cache_entry_wrong_type", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockCache.EXPECT().Get("test-key").Return("wrong-type").Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.False(t, ok)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_false_when_cache_entry_older_than_invalidation_time", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		invalidationTime := time.Now()
+		cacheEntry := &ResponseCacheEntry{
+			Res:          &Response{Allowed: true},
+			LastModified: invalidationTime.Add(-time.Hour),
+		}
+
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: invalidationTime,
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.False(t, ok)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_true_when_valid_cache_entry_found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		invalidationTime := time.Now().Add(-time.Hour)
+		expectedResponse := &Response{Allowed: true}
+		cacheEntry := &ResponseCacheEntry{
+			Res:          expectedResponse,
+			LastModified: time.Now(),
+		}
+
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: invalidationTime,
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.True(t, ok)
+		require.Equal(t, expectedResponse, res)
+	})
+
+	t.Run("returns_true_when_cache_modified_exactly_at_invalidation_time", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		invalidationTime := time.Now()
+		expectedResponse := &Response{Allowed: false}
+		cacheEntry := &ResponseCacheEntry{
+			Res:          expectedResponse,
+			LastModified: invalidationTime.Add(time.Nanosecond),
+		}
+
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: invalidationTime,
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_MINIMIZE_LATENCY, "test-key")
+		require.True(t, ok)
+		require.Equal(t, expectedResponse, res)
+	})
+
+	t.Run("respects_unspecified_consistency_preference", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		expectedResponse := &Response{Allowed: true}
+		cacheEntry := &ResponseCacheEntry{
+			Res:          expectedResponse,
+			LastModified: time.Now(),
+		}
+
+		mockCache.EXPECT().Get("test-key").Return(cacheEntry).Times(1)
+
+		resolver := &Resolver{
+			cache: mockCache,
+			lastCacheInvalidationTime: time.Now().Add(-time.Hour),
+		}
+
+		res, ok := resolver.isCached(openfgav1.ConsistencyPreference_UNSPECIFIED, "test-key")
+		require.True(t, ok)
+		require.Equal(t, expectedResponse, res)
+	})
+}
