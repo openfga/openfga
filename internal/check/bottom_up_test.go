@@ -22,7 +22,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-func TestSpecificType(t *testing.T) {
+func TestBottomUpSpecificType(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -305,7 +305,7 @@ func TestSpecificType(t *testing.T) {
 	})
 }
 
-func TestSpecificTypeWildcard(t *testing.T) {
+func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -585,7 +585,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
 	})
 }
 
-func TestWeight2ResolveUnion(t *testing.T) {
+func TestBottomUpResolveUnion(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -906,7 +906,7 @@ func TestWeight2ResolveUnion(t *testing.T) {
 	})
 }
 
-func TestWeight2ResolveIntersection(t *testing.T) {
+func TestBottomUpResolveIntersection(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -1299,7 +1299,7 @@ func TestWeight2ResolveIntersection(t *testing.T) {
 	})
 }
 
-func TestWeight2ResolveDifference(t *testing.T) {
+func TestBottomUpResolveDifference(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
@@ -1699,9 +1699,7 @@ func TestWeight2ResolveDifference(t *testing.T) {
 	})
 }
 
-// New tests for resolveRewrite function
-
-func TestResolveRewrite(t *testing.T) {
+func TestBottomUpResolveRewrite(t *testing.T) {
 	t.Cleanup(func() {
 		goleak.VerifyNone(t)
 	})
