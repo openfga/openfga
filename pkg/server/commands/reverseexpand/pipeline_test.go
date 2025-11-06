@@ -2011,10 +2011,7 @@ func TestPipeline(t *testing.T) {
 		})
 	}
 
-	t.Run("context_cancelation", func(t *testing.T) {
-		defer goleak.VerifyNone(t)
-
-		const smodel string = `
+	const cycleModel string = `
 		model
 		  schema 1.1
 
@@ -2033,19 +2030,22 @@ func TestPipeline(t *testing.T) {
 		    define viewer: [org#member, team#member]
 		`
 
-		tuples := []string{
-			"org:1#member@user:1",
-			"team:1#member@user:1",
-			"org:2#member@team:1#member",
-			"team:2#member@org:1#member",
-			"document:1#viewer@org:2#member",
-			"document:2#viewer@team:2#member",
-		}
+	cycleTuples := []string{
+		"org:1#member@user:1",
+		"team:1#member@user:1",
+		"org:2#member@team:1#member",
+		"team:2#member@org:1#member",
+		"document:1#viewer@org:2#member",
+		"document:2#viewer@team:2#member",
+	}
+
+	t.Run("context_cancelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
 
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 
-		storeID, model := storagetest.BootstrapFGAStore(t, ds, smodel, tuples)
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
 
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
@@ -2093,38 +2093,10 @@ func TestPipeline(t *testing.T) {
 	t.Run("iterator_cancelation", func(t *testing.T) {
 		defer goleak.VerifyNone(t)
 
-		const smodel string = `
-		model
-		  schema 1.1
-
-		type user
-
-		type org
-		  relations
-		    define member: [user, team#member]
-
-		type team
-		  relations
-		    define member: [user, org#member]
-
-		type document
-		  relations
-		    define viewer: [org#member, team#member]
-		`
-
-		tuples := []string{
-			"org:1#member@user:1",
-			"team:1#member@user:1",
-			"org:2#member@team:1#member",
-			"team:2#member@org:1#member",
-			"document:1#viewer@org:2#member",
-			"document:2#viewer@team:2#member",
-		}
-
 		ds := memory.New()
 		t.Cleanup(ds.Close)
 
-		storeID, model := storagetest.BootstrapFGAStore(t, ds, smodel, tuples)
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
 
 		typesys, err := typesystem.NewAndValidate(
 			context.Background(),
