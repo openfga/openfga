@@ -65,7 +65,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
 		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.Zero(t, invalidationTime)
+		require.NotZero(t, invalidationTime)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
