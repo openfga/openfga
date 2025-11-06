@@ -60,12 +60,13 @@ func NewNoopPlanner() *Planner {
 
 // GetPlanSelector retrieves the plan for a specific key, creating it if it doesn't exist.
 func (p *Planner) GetPlanSelector(key string) Selector {
-	kp, _ := p.keys.LoadOrStore(key, &keyPlan{
-		planner: p,
-	})
-
+	upsertPlan := &keyPlan{planner: p}
+	upsertPlan.touch()
+	kp, loaded := p.keys.LoadOrStore(key, upsertPlan)
 	plan := kp.(*keyPlan)
-	plan.touch() // Mark as accessed.
+	if loaded {
+		plan.touch() // Mark as accessed.
+	}
 	return plan
 }
 
