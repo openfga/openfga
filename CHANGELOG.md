@@ -12,6 +12,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 - **Breaking**: Update PostgreSQL to use [pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) instead of `database/sql` to allow for finer PostgreSQL connection control. [#2734](https://github.com/openfga/openfga/pull/2734), [#2789](https://github.com/openfga/openfga/pull/2789).
 
+### Fixed
+- Adjusted for missing or expired ChangelogCache entry in CacheController. [#2779](https://github.com/openfga/openfga/pull/2779)
+
 ## [1.10.5] - 2025-11-05
 ### Added
 - Added `datastore_throttling` feature flag to enable/disable new throttling mechanism. [#2780](https://github.com/openfga/openfga/pull/2780), [#2781](https://github.com/openfga/openfga/pull/2781)

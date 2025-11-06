@@ -1207,54 +1207,172 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+	t.Run("when last invalidation time is non-zero and before cache entry, cache is used", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		AnyTimes().
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: typedefs,
-			Id:              modelID,
-		}, nil)
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			AnyTimes().
+			Return(&openfgav1.AuthorizationModel{
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+				Id:              modelID,
+			}, nil)
 
-	mockDatastore.EXPECT().
-		ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-		Times(1).
-		Return(returnedTuple, nil)
+		mockDatastore.EXPECT().
+			ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Times(1).
+			Return(returnedTuple, nil)
 
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-		WithCheckQueryCacheEnabled(true),
-		WithCheckCacheLimit(10),
-		WithCheckQueryCacheTTL(1*time.Minute),
-	)
-	t.Cleanup(func() {
-		mockDatastore.EXPECT().Close().Times(1)
-		s.Close()
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+		)
+
+		s.sharedDatastoreResources.CacheController = &cachecontroller.NoopCacheController{
+			InvalidationTime: time.Now(), // This will be before check caches anything, so cache will be valid
+		}
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
+
+		// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
+		checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
 	})
 
-	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		TupleKey:             tk,
-		AuthorizationModelId: modelID,
+	t.Run("when last invalidation time is after cache entry's timestamp, cache is not used", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			AnyTimes().
+			Return(&openfgav1.AuthorizationModel{
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+				Id:              modelID,
+			}, nil)
+
+		mockDatastore.EXPECT().
+			ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Times(2). // both requests should read from the DB
+			Return(returnedTuple, nil)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+		)
+
+		s.sharedDatastoreResources.CacheController = &cachecontroller.NoopCacheController{
+			InvalidationTime: time.Now().Add(10 * time.Second),
+		}
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
+
+		// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
+		checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
 	})
 
-	require.NoError(t, err)
-	require.True(t, checkResponse.GetAllowed())
+	t.Run("when last invalidation time.IsZero(), cache is skipped", func(t *testing.T) {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
 
-	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
-	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		TupleKey:             tk,
-		AuthorizationModelId: modelID,
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			AnyTimes().
+			Return(&openfgav1.AuthorizationModel{
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+				Id:              modelID,
+			}, nil)
+
+		mockDatastore.EXPECT().
+			ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			Times(2). // both requests should read from the DB
+			Return(returnedTuple, nil)
+
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithCheckQueryCacheEnabled(true),
+			WithCheckCacheLimit(10),
+			WithCheckQueryCacheTTL(1*time.Minute),
+		)
+
+		// Defaults to returning time zero, check should bypass the cache and read from the DB both times
+		s.sharedDatastoreResources.CacheController = &cachecontroller.NoopCacheController{}
+
+		t.Cleanup(func() {
+			mockDatastore.EXPECT().Close().Times(1)
+			s.Close()
+		})
+
+		checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
+
+		// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
+		checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			TupleKey:             tk,
+			AuthorizationModelId: modelID,
+		})
+
+		require.NoError(t, err)
+		require.True(t, checkResponse.GetAllowed())
 	})
-
-	require.NoError(t, err)
-	require.True(t, checkResponse.GetAllowed())
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
