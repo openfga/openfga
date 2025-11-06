@@ -158,7 +158,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-	if tryCache && !req.LastCacheInvalidationTime.IsZero() {
+	if tryCache {
 		checkCacheTotalCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)

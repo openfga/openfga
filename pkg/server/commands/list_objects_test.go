@@ -18,7 +18,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 
-	"github.com/openfga/openfga/internal/cachecontroller"
 	internalErrors "github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
@@ -389,26 +388,10 @@ func TestDoesNotUseCacheWhenHigherConsistencyEnabled(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(checkResolverCloser)
 
-	cacheSettings := serverconfig.CacheSettings{
-		CacheControllerEnabled: true,
-		CacheControllerTTL:     1 * time.Minute,
-		CheckCacheLimit:        1000,
-	}
-
-	sharedResources, err := shared.NewSharedDatastoreResources(
-		ctx,
-		&singleflight.Group{},
-		ds,
-		cacheSettings,
-		shared.WithCacheController(&cachecontroller.NoopCacheController{InvalidationTime: time.Now().Add(-1 * time.Second)}),
-	)
-	require.NoError(t, err)
-
 	q, _ := NewListObjectsQuery(
 		ds,
 		checkResolver,
 		fakeStoreID,
-		WithListObjectsCache(sharedResources, cacheSettings),
 	)
 
 	// Run a check with MINIMIZE_LATENCY that will use the cache we added with 2 tuples
@@ -550,12 +533,10 @@ func TestAttemptsToInvalidateWhenIteratorCacheIsEnabled(t *testing.T) {
 
 		// Need to make sure list objects attempts to invalidate when cache is enabled
 		mockCacheController := mocks.NewMockCacheController(ctrl)
-		mockCacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), gomock.Any()).AnyTimes()
-		mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).AnyTimes()
+		mockCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
 
 		mockShadowCacheController := mocks.NewMockCacheController(ctrl)
-		mockShadowCacheController.EXPECT().DetermineInvalidationTime(gomock.Any(), gomock.Any()).AnyTimes()
-		mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).AnyTimes()
+		mockShadowCacheController.EXPECT().InvalidateIfNeeded(gomock.Any(), gomock.Any()).Times(1)
 
 		cacheSettings := serverconfig.CacheSettings{
 			ListObjectsIteratorCacheEnabled:    true,

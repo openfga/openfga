@@ -453,12 +453,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				require.Equal(t, result.Allowed, actualResult.Allowed)
 			}
 
-			subsequentParams := *test.subsequentReqParams
-
-			// Ensure cached entry is newer than the most recent non-zero invalidation time
-			subsequentParams.LastCacheInvalidationTime = time.Now().Add(-1 * time.Minute)
-
-			subsequentRequest, err := NewResolveCheckRequest(subsequentParams)
+			subsequentRequest, err := NewResolveCheckRequest(*test.subsequentReqParams)
 			require.NoError(t, err)
 
 			test.setTestExpectations(mockResolver, subsequentRequest)
@@ -503,12 +498,12 @@ func TestResolveCheck_ConcurrentCachedReadsAndWrites(t *testing.T) {
 		var err1, err2 error
 		go func() {
 			defer wg.Done()
-			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{LastCacheInvalidationTime: time.Now().Add(-1 * time.Minute)})
+			resp1, err1 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		}()
 
 		go func() {
 			defer wg.Done()
-			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{LastCacheInvalidationTime: time.Now().Add(-1 * time.Minute)})
+			resp2, err2 = dut.ResolveCheck(context.Background(), &ResolveCheckRequest{})
 		}()
 
 		wg.Wait()

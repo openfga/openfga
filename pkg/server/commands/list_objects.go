@@ -415,7 +415,6 @@ func (q *ListObjectsQuery) evaluate(
 					resp, checkRequestMetadata, err := NewCheckCommand(q.datastore, q.checkResolver, typesys,
 						WithCheckCommandLogger(q.logger),
 						WithCheckCommandMaxConcurrentReads(q.maxConcurrentReads),
-						WithCheckCommandCache(q.sharedDatastoreResources, q.cacheSettings),
 						WithCheckDatastoreThrottler(
 							q.datastoreThrottlingEnabled,
 							q.datastoreThrottleThreshold,
