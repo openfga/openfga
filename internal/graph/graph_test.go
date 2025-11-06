@@ -19,7 +19,7 @@ var (
 	RelationshipEdgeTransformer = cmp.Transformer("Sort", func(in []*RelationshipEdge) []*RelationshipEdge {
 		out := append([]*RelationshipEdge(nil), in...) // Copy input to avoid mutating it
 
-		// Sort by Name and then by edge and then by tupleset relation
+		// Sort by Type and then by edge and then by tupleset relation
 		sort.SliceStable(out, func(i, j int) bool {
 			if out[i].Type != out[j].Type {
 				return out[i].Type < out[j].Type
