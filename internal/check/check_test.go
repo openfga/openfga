@@ -1040,3 +1040,486 @@ func TestSpecificType(t *testing.T) {
 	})
 
 }
+
+func TestSpecificTypeWildcard(t *testing.T) {
+	t.Run("returns_true_when_wildcard_tuple_exists", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedTuple := &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		}
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			storage.ReadUsersetTuplesFilter{
+				Object:                      "document:1",
+				Relation:                    "viewer",
+				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference("user")},
+				Conditions:                  []string{""},
+			},
+			gomock.Any(),
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("returns_false_when_wildcard_tuple_not_found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			storage.ReadUsersetTuplesFilter{
+				Object:                      "document:1",
+				Relation:                    "viewer",
+				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference("user")},
+				Conditions:                  []string{""},
+			},
+			gomock.Any(),
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("returns_error_when_datastore_fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedErr := errors.New("database error")
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, expectedErr).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.Error(t, err)
+		require.ErrorIs(t, err, expectedErr)
+		require.Nil(t, res)
+	})
+
+	t.Run("respects_consistency_preference", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedTuple := &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		}
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			gomock.Any(),
+			storage.ReadUsersetTuplesOptions{
+				Consistency: storage.ConsistencyOptions{
+					Preference: openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+				},
+			},
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Consistency:          openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY,
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("handles_context_cancellation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			gomock.Any(),
+			gomock.Any(),
+		).Return(nil, context.Canceled).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(ctx, req, edges[0])
+		require.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, res)
+	})
+
+	t.Run("returns_false_when_condition_not_met", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:* with non_expired]
+
+   condition non_expired(current_time: timestamp, expiration: timestamp) {
+    current_time < expiration
+   }
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expiredTime := time.Now().Add(-24 * time.Hour)
+		expectedTuple := &openfgav1.Tuple{
+			Key: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:*",
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "non_expired",
+					Context: testutils.MustNewStruct(t, map[string]interface{}{
+						"expiration": expiredTime.Format(time.RFC3339),
+					}),
+				},
+			},
+		}
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			storage.ReadUsersetTuplesFilter{
+				Object:                      "document:1",
+				Relation:                    "viewer",
+				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference("user")},
+				Conditions:                  []string{"non_expired"},
+			},
+			gomock.Any(),
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context: testutils.MustNewStruct(t, map[string]interface{}{
+				"current_time": time.Now().Format(time.RFC3339),
+			}),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
+	t.Run("returns_true_when_condition_met", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:* with non_expired]
+
+   condition non_expired(current_time: timestamp, expiration: timestamp) {
+    current_time < expiration
+   }
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		futureTime := time.Now().Add(24 * time.Hour)
+		expectedTuple := &openfgav1.Tuple{
+			Key: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:*",
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "non_expired",
+					Context: testutils.MustNewStruct(t, map[string]interface{}{
+						"expiration": futureTime.Format(time.RFC3339),
+					}),
+				},
+			},
+		}
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			storage.ReadUsersetTuplesFilter{
+				Object:                      "document:1",
+				Relation:                    "viewer",
+				AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference("user")},
+				Conditions:                  []string{"non_expired"},
+			},
+			gomock.Any(),
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{expectedTuple}), nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+			Context: testutils.MustNewStruct(t, map[string]interface{}{
+				"current_time": time.Now().Format(time.RFC3339),
+			}),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
+	})
+
+	t.Run("returns_error_when_iterator_fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define viewer: [user:*]
+  `)
+
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedErr := errors.New("iterator error")
+		mockIter := mocks.NewMockIterator[*openfgav1.Tuple](ctrl)
+		mockIter.EXPECT().Next(gomock.Any()).Return(nil, expectedErr).Times(1)
+		mockIter.EXPECT().Stop().Times(1)
+
+		mockDatastore.EXPECT().ReadUsersetTuples(
+			gomock.Any(),
+			storeID,
+			gomock.Any(),
+			gomock.Any(),
+		).Return(mockIter, nil).Times(1)
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
+		require.True(t, ok)
+
+		res, err := resolver.specificTypeWildcard(context.Background(), req, edges[0])
+		require.Error(t, err)
+		require.ErrorIs(t, err, expectedErr)
+		require.Nil(t, res)
+	})
+}

@@ -185,3 +185,12 @@ func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph
 	}
 	return recursiveEdge, allEdgesCanApply
 }
+
+func WildcardRelationReference(objectType string) *openfgav1.RelationReference {
+	return &openfgav1.RelationReference{
+		Type: objectType,
+		RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+			Wildcard: &openfgav1.Wildcard{},
+		},
+	}
+}

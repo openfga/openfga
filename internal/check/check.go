@@ -21,7 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	modelUtils "github.com/openfga/openfga/pkg/typesystem"
 )
 
 const DELIMITER = "|"
@@ -624,7 +623,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
 		Relation:                    relation,
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelUtils.WildcardRelationReference(req.GetTupleKey().GetUser())},
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference(req.GetUserType())},
 		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{
