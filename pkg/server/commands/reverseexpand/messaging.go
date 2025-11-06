@@ -1,6 +1,7 @@
 package reverseexpand
 
 import (
+	"context"
 	"iter"
 	"runtime"
 	"sync"
@@ -19,8 +20,8 @@ func (m *message[T]) done() {
 }
 
 type producer[T any] interface {
-	recv() (message[T], bool)
-	seq() iter.Seq[message[T]]
+	recv(context.Context) (message[T], bool)
+	seq(context.Context) iter.Seq[message[T]]
 }
 
 type consumer[T any] interface {
@@ -57,12 +58,12 @@ func newPipe(trk tracker) *pipe {
 	return p
 }
 
-func (p *pipe) seq() iter.Seq[message[group]] {
+func (p *pipe) seq(ctx context.Context) iter.Seq[message[group]] {
 	return func(yield func(message[group]) bool) {
 		defer p.cancel()
 
 		for {
-			msg, ok := p.recv()
+			msg, ok := p.recv(ctx)
 			if !ok {
 				break
 			}
@@ -92,8 +93,10 @@ func (p *pipe) send(g group) {
 	}
 }
 
-func (p *pipe) recv() (message[group], bool) {
+func (p *pipe) recv(ctx context.Context) (message[group], bool) {
 	select {
+	case <-ctx.Done():
+		return message[group]{}, false
 	case g := <-p.ch:
 		fn := func() {
 			p.trk.Add(-1)
@@ -131,9 +134,13 @@ type staticProducer struct {
 	trk    tracker
 }
 
-func (p *staticProducer) recv() (message[group], bool) {
+func (p *staticProducer) recv(ctx context.Context) (message[group], bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if ctx.Err() != nil {
+		return message[group]{}, false
+	}
 
 	if p.pos == len(p.groups) {
 		return message[group]{}, false
@@ -156,12 +163,12 @@ func (p *staticProducer) close() {
 	p.pos = len(p.groups)
 }
 
-func (p *staticProducer) seq() iter.Seq[message[group]] {
+func (p *staticProducer) seq(ctx context.Context) iter.Seq[message[group]] {
 	return func(yield func(message[group]) bool) {
 		defer p.close()
 
 		for {
-			msg, ok := p.recv()
+			msg, ok := p.recv(ctx)
 			if !ok {
 				break
 			}

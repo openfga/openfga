@@ -935,14 +935,19 @@ type Pipeline struct {
 }
 
 func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter.Seq[Item] {
-	ctx, span := pipelineTracer.Start(ctx, "Pipeline.Build")
+	ctxParent, span := pipelineTracer.Start(ctx, "Pipeline.Build")
 	defer span.End()
 
-	ctx = context.WithoutCancel(ctx)
-	ctx, cancel := context.WithCancel(ctx)
+	ctxNoCancel := context.WithoutCancel(ctxParent)
+	ctxCancel, cancel := context.WithCancel(ctxNoCancel)
 
 	pth := path{
-		ctx:     ctx,
+		// Removing the cancel on this context ensures that
+		// workers created during `path::resolve` will not
+		// end when the parent context cancels. This is important
+		// because it ensures that the watchdog goroutine is
+		// responsible for shutting down workers.
+		ctx:     ctxNoCancel,
 		pipe:    p,
 		workers: make(map[*Node]*worker),
 	}
@@ -981,7 +986,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 
 			messageCount := pth.trk.Load()
 
-			if messageCount < 1 || ctx.Err() != nil {
+			if messageCount < 1 || ctxCancel.Err() != nil {
 				// cancel all running workers
 				for _, w := range pth.workers {
 					w.cancel()
@@ -1002,7 +1007,7 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 		defer wg.Wait()
 		defer cancel()
 
-		for msg := range results.seq() {
+		for msg := range results.seq(ctxParent) {
 			for _, item := range msg.Value.Items {
 				if !yield(item) {
 					msg.done()
@@ -1103,7 +1108,10 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
+	ctx, cancel := context.WithCancel(p.ctx)
+
 	w.finite = sync.OnceFunc(func() {
+		cancel()
 		for _, lst := range w.listeners {
 			lst.close()
 		}
@@ -1132,7 +1140,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         p.ctx,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1149,7 +1157,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         p.ctx,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1166,7 +1174,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         p.ctx,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1185,7 +1193,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 			r = &intersectionResolver{
 				id:          id,
-				ctx:         p.ctx,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 				trk:         trk,
@@ -1203,7 +1211,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 			r = &baseResolver{
 				id:          id,
-				ctx:         p.ctx,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 			}
@@ -1220,7 +1228,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 			r = &exclusionResolver{
 				id:          id,
-				ctx:         p.ctx,
+				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
 				trk:         trk,
@@ -1241,7 +1249,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         p.ctx,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1258,7 +1266,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 
 		r = &baseResolver{
 			id:          id,
-			ctx:         p.ctx,
+			ctx:         ctx,
 			interpreter: omni,
 			status:      status,
 		}
@@ -1320,7 +1328,7 @@ func (s *sender) edge() *Edge {
 }
 
 func (s *sender) loop(fn loopFunc) {
-	for msg := range s.prod.seq() {
+	for msg := range s.prod.seq(context.Background()) {
 		if !fn(msg) {
 			break
 		}

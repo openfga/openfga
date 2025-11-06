@@ -2,6 +2,7 @@ package reverseexpand
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"testing"
 
@@ -2007,4 +2008,69 @@ func TestPipeline(t *testing.T) {
 			evaluate(t, tc, seq)
 		})
 	}
+
+	t.Run("context_cancelation", func(t *testing.T) {
+		const smodel string = `
+		model
+		  schema 1.1
+
+		type user
+
+		type document
+		  relations
+		    define viewer: [user]
+		`
+
+		tuples := make([]string, 5000)
+		for i := range 5000 {
+			tuples[i] = fmt.Sprintf("document:%d#viewer@user:1", i)
+		}
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, smodel, tuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "viewer")
+		if !ok {
+			panic("no such source")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		seq := pipeline.Build(ctx, source, target)
+
+		cancel()
+
+		for _ = range seq {
+			t.Log("iteration did not stop after context cancelation")
+			t.Fail()
+		}
+	})
 }
