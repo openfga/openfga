@@ -67,12 +67,10 @@ type CacheController interface {
 	InvalidateIfNeeded(context.Context, string)
 }
 
-type NoopCacheController struct {
-	InvalidationTime time.Time // only passed in tests
-}
+type NoopCacheController struct{}
 
 func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) time.Time {
-	return c.InvalidationTime
+	return time.Time{}
 }
 
 func (c *NoopCacheController) InvalidateIfNeeded(_ context.Context, _ string) {
