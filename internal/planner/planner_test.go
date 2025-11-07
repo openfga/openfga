@@ -15,16 +15,16 @@ func TestPlanner_New(t *testing.T) {
 
 func TestPlanner_SelectResolver(t *testing.T) {
 	p := New(&Config{})
-	resolvers := map[string]*KeyPlanStrategy{
+	resolvers := map[string]*PlanConfig{
 		"fast": {
-			Type:         "fast",
+			Name:         "fast",
 			InitialGuess: 5 * time.Millisecond,
 			Lambda:       1,
 			Alpha:        1,
 			Beta:         1,
 		},
 		"slow": {
-			Type:         "slow",
+			Name:         "slow",
 			InitialGuess: 10 * time.Millisecond,
 			Lambda:       1,
 			Alpha:        1,
@@ -35,14 +35,15 @@ func TestPlanner_SelectResolver(t *testing.T) {
 	counts := make(map[string]int)
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("test_key_%d", i)
-		kp := p.GetKeyPlan(key)
-		choice := kp.SelectStrategy(resolvers)
-		counts[choice.Type]++
+		kp := p.GetPlanSelector(key)
+		choice := kp.Select(resolvers)
+		counts[choice.Name]++
 
 		// Verify stats are created for both strategies
-		_, ok := kp.stats.Load("fast")
+		kpi := kp.(*keyPlan)
+		_, ok := kpi.stats.Load("fast")
 		require.True(t, ok)
-		_, ok = kp.stats.Load("slow")
+		_, ok = kpi.stats.Load("slow")
 		require.True(t, ok)
 	}
 
@@ -54,18 +55,18 @@ func TestPlanner_SelectResolver(t *testing.T) {
 func TestProfiler_Update(t *testing.T) {
 	p := New(&Config{})
 	key := "test_convergence"
-	kp := p.GetKeyPlan(key)
+	kp := p.GetPlanSelector(key)
 
-	resolvers := map[string]*KeyPlanStrategy{
+	resolvers := map[string]*PlanConfig{
 		"fast": {
-			Type:         "fast",
+			Name:         "fast",
 			InitialGuess: 5 * time.Millisecond,
 			Lambda:       1,
 			Alpha:        1,
 			Beta:         1,
 		},
 		"slow": {
-			Type:         "slow",
+			Name:         "slow",
 			InitialGuess: 10 * time.Millisecond,
 			Lambda:       1,
 			Alpha:        1,
@@ -84,8 +85,8 @@ func TestProfiler_Update(t *testing.T) {
 	// We test this by seeing if it's chosen a high percentage of the time.
 	counts := make(map[string]int)
 	for i := 0; i < 100; i++ {
-		choice := kp.SelectStrategy(resolvers)
-		counts[choice.Type]++
+		choice := kp.Select(resolvers)
+		counts[choice.Name]++
 	}
 
 	require.Greater(t, counts["fast"], 90)
@@ -100,14 +101,16 @@ func TestPlanner_EvictStaleKeys(t *testing.T) {
 	// Create multiple old keys
 	oldKeys := []string{"old_key1", "old_key2", "old_key3"}
 	for _, key := range oldKeys {
-		kp := p.GetKeyPlan(key)
+		kp := p.GetPlanSelector(key)
 		oldTime := time.Now().Add(-evictionThreshold - 10*time.Millisecond).UnixNano()
-		kp.lastAccessed.Store(oldTime)
+		kpi := kp.(*keyPlan)
+		kpi.lastAccessed.Store(oldTime)
 	}
 
 	// Create one fresh key
-	freshKp := p.GetKeyPlan("fresh_key")
-	freshKp.touch()
+	freshKp := p.GetPlanSelector("fresh_key")
+	freshKpi := freshKp.(*keyPlan)
+	freshKpi.touch()
 
 	// Call evictStaleKeys
 	p.evictStaleKeys()
