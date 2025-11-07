@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Fixed
-- Fixed an issue with `cache_controller.DetermineInvalidationTime` default return value. [#2792](https://github.com/openfga/openfga/pull/2792)
+- Fixed an issue with `cache_controller.DetermineInvalidationTime` TTL comparison. [#2792](https://github.com/openfga/openfga/pull/2792)
 
 ## [1.11.0] - 2025-11-05
 ### Added
