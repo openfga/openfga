@@ -3,9 +3,7 @@ package reverseexpand
 import (
 	"context"
 	"iter"
-	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 type message[T any] struct {
@@ -33,29 +31,28 @@ type consumer[T any] interface {
 const maxPipeSize int = 100
 
 type pipe struct {
-	ch     chan group
-	end    chan struct{}
-	finite func()
-	trk    tracker
+	data   [maxPipeSize]group
+	head   int
+	tail   int
+	count  int
+	done   bool
 	mu     sync.Mutex
-	done   atomic.Bool
+	full   *sync.Cond
+	empty  *sync.Cond
+	closed *sync.Cond
+	trk    tracker
 }
 
 func newPipe(trk tracker) *pipe {
-	p := &pipe{
-		ch:  make(chan group, maxPipeSize),
-		end: make(chan struct{}),
+	p := pipe{
 		trk: trk,
 	}
 
-	p.finite = sync.OnceFunc(func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		p.done.Store(true)
-		close(p.end)
-	})
+	p.full = sync.NewCond(&p.mu)
+	p.empty = sync.NewCond(&p.mu)
+	p.closed = sync.NewCond(&p.mu)
 
-	return p
+	return &p
 }
 
 func (p *pipe) seq(ctx context.Context) iter.Seq[message[group]] {
@@ -75,59 +72,89 @@ func (p *pipe) seq(ctx context.Context) iter.Seq[message[group]] {
 	}
 }
 
-func (p *pipe) send(g group) {
-	if !p.done.Load() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
+func (p *pipe) send(item group) {
+	p.mu.Lock()
 
-		if p.done.Load() {
-			return
-		}
-		p.trk.Add(1)
-
-		select {
-		case p.ch <- g:
-		case <-p.end:
-			p.trk.Add(-1)
-		}
+	if p.done {
+		p.mu.Unlock()
+		return
 	}
+
+	// Wait if the buffer is full.
+	for p.count == maxPipeSize {
+		p.full.Wait()
+	}
+
+	p.data[p.head] = item
+	p.head = (p.head + 1) % maxPipeSize
+	p.count++
+
+	// Signal that the buffer is no longer empty.
+	p.empty.Signal()
+
+	p.mu.Unlock()
 }
 
 func (p *pipe) recv(ctx context.Context) (message[group], bool) {
-	if ctx.Err() != nil {
+	p.mu.Lock()
+
+	// Wait while the buffer is empty and the pipe is not yet done.
+	for p.count == 0 && !p.done && ctx.Err() == nil {
+		p.empty.Wait()
+	}
+
+	if p.count == 0 && p.done {
+		p.mu.Unlock()
 		return message[group]{}, false
 	}
 
-	select {
-	case <-ctx.Done():
-		return message[group]{}, false
-	case g := <-p.ch:
-		fn := func() {
-			p.trk.Add(-1)
-		}
-		return message[group]{Value: g, finite: sync.OnceFunc(fn)}, true
-	case <-p.end:
-		return message[group]{}, false
+	item := p.data[p.tail]
+	p.tail = (p.tail + 1) % maxPipeSize
+	p.count--
+
+	// Signal that the buffer is no longer full.
+	p.full.Signal()
+
+	if p.count == 0 {
+		p.closed.Signal()
 	}
+
+	p.mu.Unlock()
+
+	fn := func() {
+		p.trk.Add(-1)
+	}
+	return message[group]{Value: item, finite: sync.OnceFunc(fn)}, true
 }
 
 func (p *pipe) close() {
-	for p.trk.Load() != 0 {
-		runtime.Gosched()
+	p.mu.Lock()
+
+	p.done = true
+
+	p.empty.Broadcast()
+
+	for p.count > 0 {
+		p.closed.Wait()
 	}
-	p.finite()
+
+	p.mu.Unlock()
 }
 
 func (p *pipe) cancel() {
-	p.finite()
+	p.mu.Lock()
 
-	for {
-		select {
-		case <-p.ch:
-			p.trk.Add(-1)
-		default:
-			return
-		}
+	p.done = true
+
+	p.empty.Broadcast()
+
+	p.mu.Unlock()
+
+	m, ok := p.recv(context.Background())
+
+	for ok {
+		m.done()
+		m, ok = p.recv(context.Background())
 	}
 }
 
