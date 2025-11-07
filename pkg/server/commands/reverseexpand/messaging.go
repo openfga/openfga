@@ -94,6 +94,10 @@ func (p *pipe) send(g group) {
 }
 
 func (p *pipe) recv(ctx context.Context) (message[group], bool) {
+	if ctx.Err() != nil {
+		return message[group]{}, false
+	}
+
 	select {
 	case <-ctx.Done():
 		return message[group]{}, false
