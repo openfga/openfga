@@ -1328,6 +1328,10 @@ func (s *sender) edge() *Edge {
 }
 
 func (s *sender) loop(fn loopFunc) {
+	// A background context is used here because the sender's underlying pipe
+	// relies on a cancelation from its consuming end for a shutdown signal.
+	// This sequence does not need an additional cancelation signal for that
+	// reason.
 	for msg := range s.prod.seq(context.Background()) {
 		if !fn(msg) {
 			break
