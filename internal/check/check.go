@@ -36,7 +36,7 @@ type Config struct {
 	Cache                     storage.InMemoryCache[any]
 	CacheTTL                  time.Duration
 	LastCacheInvalidationTime time.Time
-	Planner                   *planner.Planner
+	Planner                   planner.Manager
 	ConcurrencyLimit          int
 	UpstreamTimeout           time.Duration
 	Logger                    logger.Logger
@@ -48,7 +48,7 @@ type Resolver struct {
 	cache                     storage.InMemoryCache[any]
 	cacheTTL                  time.Duration
 	lastCacheInvalidationTime time.Time
-	planner                   *planner.Planner
+	planner                   planner.Manager
 	concurrencyLimit          int
 	upstreamTimeout           time.Duration
 	logger                    logger.Logger
@@ -227,18 +227,18 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	return r.ResolveUnionEdges(ctx, req, terminalEdges, visited)
 }
 
-func (r *Resolver) executeStrategy(keyPlan *planner.KeyPlan, strategy *planner.KeyPlanStrategy,
+func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.PlanConfig,
 	fn func() (*Response, error)) (*Response, error) {
 	start := time.Now()
 	res, err := fn()
 	if err != nil {
 		// penalize plans that timeout from the upstream context
 		if errors.Is(err, context.DeadlineExceeded) {
-			keyPlan.UpdateStats(strategy, r.upstreamTimeout)
+			selector.UpdateStats(strategy, r.upstreamTimeout)
 		}
 		return nil, err
 	}
-	keyPlan.UpdateStats(strategy, time.Since(start))
+	selector.UpdateStats(strategy, time.Since(start))
 	return res, nil
 }
 
@@ -271,16 +271,16 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
-	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetKeyPlan(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
-	strategy := keyPlan.SelectStrategy(possibleStrategies)
+	keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
+	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].Userset(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
 	})
 }
 
@@ -319,16 +319,16 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
-	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
 		RecursiveStrategyName: RecursivePlan,
 	}
 
-	keyPlan := r.planner.GetKeyPlan(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
-	strategy := keyPlan.SelectStrategy(possibleStrategies)
+	keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
+	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
 	})
 }
 
@@ -704,7 +704,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
 	}
 
-	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName: DefaultPlan,
 	}
 
@@ -713,11 +713,11 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 
 	usersetKey := createUsersetPlanKey(req, edge.GetTo().GetUniqueLabel())
-	keyPlan := r.planner.GetKeyPlan(usersetKey)
-	strategy := keyPlan.SelectStrategy(possibleStrategies)
+	keyPlan := r.planner.GetPlanSelector(usersetKey)
+	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].Userset(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
 	})
 }
 
@@ -776,7 +776,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i, visited)
 	}
 
-	possibleStrategies := map[string]*planner.KeyPlanStrategy{
+	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName: DefaultPlan,
 	}
 
@@ -785,10 +785,10 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	}
 
 	planKey := createTTUPlanKey(req, tuplesetRelation, computedRelation)
-	keyPlan := r.planner.GetKeyPlan(planKey)
-	strategy := keyPlan.SelectStrategy(possibleStrategies)
+	keyPlan := r.planner.GetPlanSelector(planKey)
+	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Type].TTU(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
 	})
 }
