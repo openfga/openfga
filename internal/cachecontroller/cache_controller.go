@@ -133,7 +133,7 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 }
 
 // DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
-// Else it returns Zero time and triggers InvalidateIfNeeded().
+// Else it returns FallbackTime and triggers InvalidateIfNeeded().
 func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
