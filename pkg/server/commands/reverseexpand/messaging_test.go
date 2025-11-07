@@ -1,6 +1,7 @@
 package reverseexpand
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,9 +15,9 @@ func feed(p *pipe) {
 	}
 }
 
-func consume(p *pipe, count *atomic.Uint64) {
+func consume(ctx context.Context, p *pipe, count *atomic.Uint64) {
 	for {
-		msg, ok := p.recv()
+		msg, ok := p.recv(ctx)
 		if !ok {
 			break
 		}
@@ -45,7 +46,7 @@ func BenchmarkMessaging(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				consume(p, &count)
+				consume(context.Background(), p, &count)
 			}()
 
 			wg.Wait()
@@ -73,7 +74,7 @@ func BenchmarkMessaging(b *testing.B) {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(p, &count)
+				consume(context.Background(), p, &count)
 			}()
 
 			swg.Wait()
@@ -102,7 +103,7 @@ func BenchmarkMessaging(b *testing.B) {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(p, &count)
+					consume(context.Background(), p, &count)
 				}()
 			}
 
@@ -134,7 +135,7 @@ func BenchmarkMessaging(b *testing.B) {
 				cwg.Add(1)
 				go func() {
 					defer cwg.Done()
-					consume(p, &count)
+					consume(context.Background(), p, &count)
 				}()
 			}
 
@@ -164,7 +165,7 @@ func TestMessaging(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			consume(p, &count)
+			consume(context.Background(), p, &count)
 		}()
 
 		wg.Wait()
@@ -190,7 +191,7 @@ func TestMessaging(t *testing.T) {
 		cwg.Add(1)
 		go func() {
 			defer cwg.Done()
-			consume(p, &count)
+			consume(context.Background(), p, &count)
 		}()
 
 		swg.Wait()
@@ -217,7 +218,7 @@ func TestMessaging(t *testing.T) {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(p, &count)
+				consume(context.Background(), p, &count)
 			}()
 		}
 
@@ -247,7 +248,7 @@ func TestMessaging(t *testing.T) {
 			cwg.Add(1)
 			go func() {
 				defer cwg.Done()
-				consume(p, &count)
+				consume(context.Background(), p, &count)
 			}()
 		}
 

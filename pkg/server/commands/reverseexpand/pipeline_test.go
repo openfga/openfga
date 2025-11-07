@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
@@ -1966,6 +1967,8 @@ func BenchmarkPipeline(b *testing.B) {
 func TestPipeline(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			defer goleak.VerifyNone(t)
+
 			ds := memory.New()
 			t.Cleanup(ds.Close)
 
@@ -2007,4 +2010,129 @@ func TestPipeline(t *testing.T) {
 			evaluate(t, tc, seq)
 		})
 	}
+
+	const cycleModel string = `
+		model
+		  schema 1.1
+
+		type user
+
+		type org
+		  relations
+		    define member: [user, team#member]
+
+		type team
+		  relations
+		    define member: [user, org#member]
+
+		type document
+		  relations
+		    define viewer: [org#member, team#member]
+		`
+
+	cycleTuples := []string{
+		"org:1#member@user:1",
+		"team:1#member@user:1",
+		"org:2#member@team:1#member",
+		"team:2#member@org:1#member",
+		"document:1#viewer@org:2#member",
+		"document:2#viewer@team:2#member",
+	}
+
+	t.Run("context_cancelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "viewer")
+		if !ok {
+			panic("no such source")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		seq := pipeline.Build(ctx, source, target)
+
+		cancel()
+
+		for range seq {
+			t.Log("iteration did not stop after context cancelation")
+			t.Fail()
+		}
+	})
+
+	t.Run("iterator_cancelation", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+
+		ds := memory.New()
+		t.Cleanup(ds.Close)
+
+		storeID, model := storagetest.BootstrapFGAStore(t, ds, cycleModel, cycleTuples)
+
+		typesys, err := typesystem.NewAndValidate(
+			context.Background(),
+			model,
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		g := typesys.GetWeightedGraph()
+
+		backend := &Backend{
+			Datastore:  ds,
+			StoreID:    storeID,
+			TypeSystem: typesys,
+			Context:    nil,
+			Graph:      g,
+		}
+
+		pipeline := NewPipeline(backend)
+
+		target, ok := pipeline.Target("user", "1")
+		if !ok {
+			panic("no such target")
+		}
+
+		source, ok := pipeline.Source("document", "viewer")
+		if !ok {
+			panic("no such source")
+		}
+
+		seq := pipeline.Build(context.Background(), source, target)
+
+		for range seq {
+			break
+		}
+	})
 }

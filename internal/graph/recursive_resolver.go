@@ -25,8 +25,8 @@ const recursiveResolver = "recursive"
 
 // In general these values tell the query planner that the recursive strategy usually performs around 150 ms but occasionally spikes.
 // However, even when it spikes we want to keep it using it or exploring it despite variance, rather than over-penalizing single slow runs.
-var recursivePlan = &planner.KeyPlanStrategy{
-	Type:         recursiveResolver,
+var recursivePlan = &planner.PlanConfig{
+	Name:         recursiveResolver,
 	InitialGuess: 150 * time.Millisecond,
 	// Medium Lambda: Represents medium confidence in the initial guess. It's like
 	// starting with the belief of having already seen 5 good runs.
