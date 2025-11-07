@@ -852,7 +852,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	var playground *http.Server
 	if config.Playground.Enabled {
-
 		if !config.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
@@ -863,7 +862,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-		s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground proxy on http://localhost%s", playgroundAddr))
+		s.Logger.Info("🛝 starting openfga playground proxy on http://localhost" + playgroundAddr)
 
 		// Create a reverse proxy to play.fga.dev
 		targetURL, err := url.Parse("https://play.fga.dev")
@@ -908,8 +907,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 			// Add any necessary headers
 			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
-			req.Header.Set("X-Origin-Host", fmt.Sprintf("localhost%s", playgroundAddr))
-
+			req.Header.Set("X-Origin-Host", "localhost"+playgroundAddr)
 		}
 
 		// Optional: Handle errors from the proxy
