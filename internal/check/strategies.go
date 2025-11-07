@@ -9,8 +9,8 @@ import (
 
 const DefaultStrategyName = "default"
 
-var DefaultPlan = &planner.KeyPlanStrategy{
-	Type:         DefaultStrategyName,
+var DefaultPlan = &planner.PlanConfig{
+	Name:         DefaultStrategyName,
 	InitialGuess: 50 * time.Millisecond,
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
@@ -21,8 +21,8 @@ var DefaultPlan = &planner.KeyPlanStrategy{
 	Beta:  0.5,
 }
 
-var DefaultRecursivePlan = &planner.KeyPlanStrategy{
-	Type:         DefaultStrategyName,
+var DefaultRecursivePlan = &planner.PlanConfig{
+	Name:         DefaultStrategyName,
 	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
@@ -36,8 +36,8 @@ var DefaultRecursivePlan = &planner.KeyPlanStrategy{
 const WeightTwoStrategyName = "weight2"
 
 // This strategy is configured to show that it has proven fast and consistent.
-var weight2Plan = &planner.KeyPlanStrategy{
-	Type:         WeightTwoStrategyName,
+var weight2Plan = &planner.PlanConfig{
+	Name:         WeightTwoStrategyName,
 	InitialGuess: 20 * time.Millisecond,
 	// High Lambda: Represents strong confidence in the initial guess. It's like
 	// starting with the belief of having already seen 10 good runs.
@@ -58,8 +58,8 @@ const RecursiveStrategyName = "recursive"
 
 // In general these values tell the query planner that the recursive strategy usually performs around 150 ms but occasionally spikes.
 // However, even when it spikes we want to keep it using it or exploring it despite variance, rather than over-penalizing single slow runs.
-var RecursivePlan = &planner.KeyPlanStrategy{
-	Type:         RecursiveStrategyName,
+var RecursivePlan = &planner.PlanConfig{
+	Name:         RecursiveStrategyName,
 	InitialGuess: 150 * time.Millisecond,
 	// Medium Lambda: Represents medium confidence in the initial guess. It's like
 	// starting with the belief of having already seen 5 good runs.
