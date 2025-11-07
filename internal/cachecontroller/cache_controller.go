@@ -27,6 +27,9 @@ import (
 var (
 	tracer = otel.Tracer("internal/cachecontroller")
 
+	// FallbackTime is a signal to the cached check resolver to ignore its cached result.
+	FallbackTime = time.Now()
+
 	cacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_total_count",
@@ -105,6 +108,9 @@ type InMemoryCacheController struct {
 	inflightInvalidations sync.Map
 	logger                logger.Logger
 
+	// invalidationLog is a map of [storeId] => lastInvalidationTime
+	invalidationLog utils.TypedSyncMap[string, time.Time]
+
 	// for testing purposes
 	wg sync.WaitGroup
 }
@@ -143,30 +149,23 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		zap.Bool("hit", cacheResp != nil),
 	)
 
-	var cachedEntry *storage.ChangelogCacheEntry
 	if cacheResp != nil {
 		if entry, ok := cacheResp.(*storage.ChangelogCacheEntry); ok {
-			cachedEntry = entry
-
-			// the TTL grace period hasn't been breached, return before triggering any invalidations.
-			if entry.LastModified.Add(c.ttl).After(time.Now()) {
-				cacheHitCounter.Inc()
-				span.SetAttributes(attribute.Bool("cached", true))
-				return entry.LastModified
+			// Check when this store was last invalidated
+			if lastInvalidation, ok := c.invalidationLog.Load(storeID); ok {
+				// If it was within the CacheController TTL, return the most recent changelog timestamp
+				if lastInvalidation.Add(c.ttl).After(time.Now()) {
+					cacheHitCounter.Inc()
+					span.SetAttributes(attribute.Bool("cached", true))
+					return entry.LastModified
+				}
 			}
 		}
 	}
 
 	c.InvalidateIfNeeded(ctx, storeID)
 
-	// This means the most recent Changelog entry is older than the CacheController TTL,
-	// so we trigger the invalidation workflow but also return the most recent changelog timestamp
-	// for use in the check resolver, since the Check Cache TTL is likely longer than the CacheController.
-	if cachedEntry != nil {
-		return cachedEntry.LastModified
-	}
-
-	return time.Time{}
+	return FallbackTime
 }
 
 // findChangesDescending is a wrapper on ReadChanges. If there are 0 changes to be returned, ReadChanges will actually return an error.
@@ -197,6 +196,7 @@ func (c *InMemoryCacheController) InvalidateIfNeeded(ctx context.Context, storeI
 		// and pollute span.
 		c.findChangesAndInvalidateIfNecessary(ctx, storeID)
 		c.inflightInvalidations.Delete(storeID)
+		c.invalidationLog.Store(storeID, time.Now())
 		c.wg.Done()
 	}()
 }
