@@ -475,7 +475,6 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-
 		case msg, ok := <-base:
 			if !ok {
 				base = nil // Stop selecting this case.
