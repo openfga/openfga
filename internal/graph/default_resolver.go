@@ -19,8 +19,8 @@ import (
 
 const defaultResolver = "default"
 
-var defaultPlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
+var defaultPlan = &planner.PlanConfig{
+	Name:         defaultResolver,
 	InitialGuess: 50 * time.Millisecond,
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
@@ -31,8 +31,8 @@ var defaultPlan = &planner.KeyPlanStrategy{
 	Beta:  0.5,
 }
 
-var defaultRecursivePlan = &planner.KeyPlanStrategy{
-	Type:         defaultResolver,
+var defaultRecursivePlan = &planner.PlanConfig{
+	Name:         defaultResolver,
 	InitialGuess: 300 * time.Millisecond, // Higher initial guess for recursive checks
 	// Low Lambda: Represents zero confidence. It's a pure guess.
 	Lambda: 1,
