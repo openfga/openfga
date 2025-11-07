@@ -2,6 +2,8 @@ package graph
 
 import (
 	"context"
+	"fmt"
+	"github.com/openfga/openfga/internal/cachecontroller"
 	"strconv"
 	"time"
 
@@ -158,10 +160,12 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-	if tryCache {
+	fmt.Printf("----------------------------Is FallbackTime: %t\n", req.LastCacheInvalidationTime == cachecontroller.FallbackTime)
+	if tryCache && req.LastCacheInvalidationTime != cachecontroller.FallbackTime {
 		checkCacheTotalCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
+			//fmt.Printf("---------------------------------FOUND CACHED RESPONSE, dated %s\n", res.LastModified)
 			isValid := res.LastModified.After(req.LastCacheInvalidationTime)
 			c.logger.Debug("CachedCheckResolver found cache key",
 				zap.String("store_id", req.GetStoreID()),
