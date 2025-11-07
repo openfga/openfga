@@ -10,8 +10,8 @@ import (
 )
 
 type CheckResolver interface {
-	ResolveCheck(ctx context.Context, req *Request) (*Response, error)
-	ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error)
+	ResolveCheck(context.Context, *Request) (*Response, error)
+	ResolveUnion(context.Context, *Request, *authzGraph.WeightedAuthorizationModelNode, *sync.Map) (*Response, error)
 }
 
 type Strategy interface {
