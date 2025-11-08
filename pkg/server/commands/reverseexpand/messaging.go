@@ -83,8 +83,14 @@ func (p *pipe) send(item group) {
 	p.trk.Add(1)
 
 	// Wait if the buffer is full.
-	for p.count == maxPipeSize {
+	for p.count == maxPipeSize && !p.done {
 		p.full.Wait()
+	}
+
+	if p.done {
+		p.trk.Add(-1)
+		p.mu.Unlock()
+		return
 	}
 
 	p.data[p.head] = item
