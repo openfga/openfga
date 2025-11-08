@@ -80,6 +80,8 @@ func (p *pipe) send(item group) {
 		return
 	}
 
+	p.trk.Add(1)
+
 	// Wait if the buffer is full.
 	for p.count == maxPipeSize {
 		p.full.Wait()
@@ -103,7 +105,7 @@ func (p *pipe) recv(ctx context.Context) (message[group], bool) {
 		p.empty.Wait()
 	}
 
-	if p.count == 0 && p.done {
+	if (p.count == 0 && p.done) || ctx.Err() != nil {
 		p.mu.Unlock()
 		return message[group]{}, false
 	}
