@@ -124,7 +124,7 @@ func (p *pipe) recv(ctx context.Context) (message[group], bool) {
 	p.full.Signal()
 
 	if p.count == 0 {
-		p.closed.Signal()
+		p.closed.Broadcast()
 	}
 
 	p.mu.Unlock()
@@ -152,6 +152,11 @@ func (p *pipe) close() {
 
 func (p *pipe) cancel() {
 	p.mu.Lock()
+
+	if p.done {
+		p.mu.Unlock()
+		return
+	}
 
 	p.done = true
 
