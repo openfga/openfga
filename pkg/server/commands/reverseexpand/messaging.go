@@ -141,6 +141,7 @@ func (p *pipe) close() {
 	p.done = true
 
 	p.empty.Broadcast()
+	p.full.Broadcast()
 
 	for p.count > 0 {
 		p.closed.Wait()
@@ -155,6 +156,7 @@ func (p *pipe) cancel() {
 	p.done = true
 
 	p.empty.Broadcast()
+	p.full.Broadcast()
 
 	p.mu.Unlock()
 
