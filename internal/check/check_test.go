@@ -1116,6 +1116,62 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 
+	t.Run("returns_false_when_condition_not_met", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+     define owner: [user]
+     define viewer: [document#owner with tag]
+	condition tag(tag: string) {
+	                 tag == "valid"
+	               }
+  `)
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedTuple := &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+		}
+
+		mockDatastore.EXPECT().ReadUserTuple(
+			gomock.Any(),
+			storeID,
+			tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+			gomock.Any(),
+		).Return(expectedTuple, nil).Times(1)
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+		})
+		require.NoError(t, err)
+
+		mockResolver := NewMockCheckResolver(ctrl)
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+
 	t.Run("returns_true_when_union_object_relation_has_permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -1746,6 +1802,80 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
 		require.False(t, res.GetAllowed())
+	})
+	t.Run("returns_true_when_tuplecycle_userset_has_permission", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		model := testutils.MustTransformDSLToProtoWithID(`
+		   model
+		    schema 1.1
+		   type user
+		   type document
+		    relations
+		     define owner: [user]
+		     define viewer: [user, document#owner, document#member] or reviewer
+			 define member: [user, document#viewer]
+			 define reviewer: [user]
+		  `)
+		mg, err := NewAuthorizationModelGraph(model)
+		require.NoError(t, err)
+
+		expectedTuple := &openfgav1.Tuple{
+			Key: tuple.NewTupleKey("document:3", "viewer", "document:2#owner"),
+		}
+
+		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes(). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadUsersetTuplesFilter, opts storage.ReadUsersetTuplesOptions) (storage.TupleIterator, error) {
+				// Manually check the relation and return the right data
+				switch filter.Object {
+				case "document:1":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "viewer", "document:2#member")}}), nil
+				case "document:2":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "member", "document:3#viewer")}}), nil
+				default:
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				}
+			})
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes(). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				// Manually check the relation and return the right data
+				switch tk.Object {
+				case "document:3":
+					return expectedTuple, nil
+				default:
+					return nil, storage.ErrNotFound
+				}
+			})
+
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
+		})
+		require.NoError(t, err)
+
+		//mockResolver := NewMockCheckResolver(ctrl)
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.True(t, res.GetAllowed())
 	})
 
 }
