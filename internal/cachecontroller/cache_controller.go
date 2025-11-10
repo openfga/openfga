@@ -107,7 +107,7 @@ type InMemoryCacheController struct {
 	inflightInvalidations sync.Map
 	logger                logger.Logger
 
-	// invalidationLog is a map of [storeId] => lastInvalidationTime
+	// invalidationLog is a map of [storeId] => lastInvalidationTime.
 	invalidationLog sync.Map
 
 	// for testing purposes
@@ -170,7 +170,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	}
 
 	// Check when this store was last invalidated
-	lastInvalidationTime, ok := lastInvalidation.(*time.Time)
+	lastInvalidationTime, ok := lastInvalidation.(time.Time)
 	if !ok {
 		return lastInvalidTime, isValid
 	}

@@ -72,8 +72,29 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
-		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
-			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
+		changelogTimestamp := time.Now().UTC()
+		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).AnyTimes().
+			Return(&storage.ChangelogCacheEntry{
+				LastModified: time.Now(),
+			},
+			)
+		ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
+			{
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+				Timestamp: timestamppb.New(changelogTimestamp),
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "test",
+					Relation: "viewer",
+					User:     "test",
+				}},
+		}, "", nil)
+		cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()).AnyTimes()
+
+		// Do it once so we have a cacheController.invalidationLog entry
+		_, _ = cacheController.DetermineInvalidationTime(ctx, storeID)
+
+		// the best way to ensure the invalidation log is actually filled, it happens in the background.
+		time.Sleep(time.Second)
 
 		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
