@@ -379,6 +379,8 @@ type baseResolver struct {
 	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
 	status *StatusPool
+
+	node *Node
 }
 
 func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loopFunc {
@@ -386,96 +388,6 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		// Loop while the sender has a potential to yield a message.
 		var results iter.Seq[Item]
 		var outGroup group
-		var items []Item
-
-		attrs := []attribute.KeyValue{
-			attribute.String("resolver", "base"),
-			attribute.Int("item.count", len(msg.Value.Items)),
-			attribute.Int("sender.index", ndx),
-		}
-
-		edgeTo := "nil"
-		edgeFrom := "nil"
-
-		if snd.edge() != nil {
-			edgeTo = snd.edge().GetTo().GetUniqueLabel()
-			edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
-		}
-
-		attrs = append(
-			attrs,
-			attribute.String("edge.to", edgeTo),
-			attribute.String("edge.from", edgeFrom),
-		)
-
-		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-		defer span.End()
-
-		// If there are no items, skip processing
-		if len(msg.Value.Items) == 0 {
-			msg.done()
-			return true
-		}
-
-		results = r.interpreter.interpret(ctx, snd.edge(), msg.Value.Items)
-
-		// Deduplicate the output and potentially send in chunks.
-		for item := range results {
-			if r.ctx.Err() != nil {
-				break
-			}
-
-			if item.Err != nil {
-				goto AfterDedup
-			}
-
-			r.outMu.Lock()
-			if _, ok := r.outBuffer[item.Value]; ok {
-				r.outMu.Unlock()
-				continue
-			}
-			r.outBuffer[item.Value] = struct{}{}
-			r.outMu.Unlock()
-
-		AfterDedup:
-			items = append(items, item)
-
-			if len(items) < snd.chunks() || snd.chunks() == 0 {
-				continue
-			}
-
-			g := group{
-				Items: items,
-			}
-
-			items = nil
-
-			for _, lst := range listeners {
-				lst.send(g)
-			}
-		}
-
-		if len(items) == 0 {
-			msg.done()
-			return true
-		}
-
-		outGroup.Items = items
-
-		for _, lst := range listeners {
-			lst.send(outGroup)
-		}
-
-		msg.done()
-		return true
-	}
-}
-
-func (r *baseResolver) processRecursive(ndx int, snd *sender, listeners []*listener) loopFunc {
-	return func(msg message[group]) bool {
-		// Loop while the sender has a potential to yield a message.
-		var results iter.Seq[Item]
-		var outGroup group
 		var items, unseen []Item
 
 		attrs := []attribute.KeyValue{
@@ -501,138 +413,49 @@ func (r *baseResolver) processRecursive(ndx int, snd *sender, listeners []*liste
 		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
 		defer span.End()
 
+		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
+		isTupleCycle := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && snd.edge().IsPartOfTupleCycle()
+
 		// Deduplicate items within this group based on the buffer for this sender
-		for _, item := range msg.Value.Items {
-			if item.Err != nil {
+		if isRecursive || isTupleCycle {
+			for _, item := range msg.Value.Items {
+				if item.Err != nil {
+					r.mutexes[ndx].Lock()
+					if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
+						r.mutexes[ndx].Unlock()
+						continue
+					}
+					r.errBuffers[ndx][item.Err.Error()] = struct{}{}
+					r.mutexes[ndx].Unlock()
+					unseen = append(unseen, item)
+					continue
+				}
+
 				r.mutexes[ndx].Lock()
-				if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
+				if _, ok := r.inBuffers[ndx][item.Value]; ok {
 					r.mutexes[ndx].Unlock()
 					continue
 				}
-				r.errBuffers[ndx][item.Err.Error()] = struct{}{}
+				r.inBuffers[ndx][item.Value] = struct{}{}
 				r.mutexes[ndx].Unlock()
 				unseen = append(unseen, item)
-				continue
 			}
 
-			r.mutexes[ndx].Lock()
-			if _, ok := r.inBuffers[ndx][item.Value]; ok {
-				r.mutexes[ndx].Unlock()
-				continue
-			}
-			r.inBuffers[ndx][item.Value] = struct{}{}
-			r.mutexes[ndx].Unlock()
-			unseen = append(unseen, item)
-		}
-
-		// If there are no unseen items, skip processing
-		if len(unseen) == 0 {
-			msg.done()
-			return true
-		}
-
-		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
-
-		// Deduplicate the output and potentially send in chunks.
-		for item := range results {
-			if r.ctx.Err() != nil {
-				break
+			// If there are no unseen items, skip processing
+			if len(unseen) == 0 {
+				msg.done()
+				return true
 			}
 
-			items = append(items, item)
-
-			if len(items) < snd.chunks() || snd.chunks() == 0 {
-				continue
+			results = r.interpreter.interpret(ctx, snd.edge(), unseen)
+		} else {
+			if len(msg.Value.Items) == 0 {
+				msg.done()
+				return true
 			}
 
-			g := group{
-				Items: items,
-			}
-
-			items = nil
-
-			for _, lst := range listeners {
-				lst.send(g)
-			}
+			results = r.interpreter.interpret(ctx, snd.edge(), msg.Value.Items)
 		}
-
-		if len(items) == 0 {
-			msg.done()
-			return true
-		}
-
-		outGroup.Items = items
-
-		for _, lst := range listeners {
-			lst.send(outGroup)
-		}
-
-		msg.done()
-		return true
-	}
-}
-
-func (r *baseResolver) processTupleCycle(ndx int, snd *sender, listeners []*listener) loopFunc {
-	return func(msg message[group]) bool {
-		// Loop while the sender has a potential to yield a message.
-		var results iter.Seq[Item]
-		var outGroup group
-		var items, unseen []Item
-
-		attrs := []attribute.KeyValue{
-			attribute.String("resolver", "base"),
-			attribute.Int("item.count", len(msg.Value.Items)),
-			attribute.Int("sender.index", ndx),
-		}
-
-		edgeTo := "nil"
-		edgeFrom := "nil"
-
-		if snd.edge() != nil {
-			edgeTo = snd.edge().GetTo().GetUniqueLabel()
-			edgeFrom = snd.edge().GetFrom().GetUniqueLabel()
-		}
-
-		attrs = append(
-			attrs,
-			attribute.String("edge.to", edgeTo),
-			attribute.String("edge.from", edgeFrom),
-		)
-
-		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
-		defer span.End()
-
-		// Deduplicate items within this group based on the buffer for this sender
-		for _, item := range msg.Value.Items {
-			if item.Err != nil {
-				r.mutexes[ndx].Lock()
-				if _, ok := r.errBuffers[ndx][item.Err.Error()]; ok {
-					r.mutexes[ndx].Unlock()
-					continue
-				}
-				r.errBuffers[ndx][item.Err.Error()] = struct{}{}
-				r.mutexes[ndx].Unlock()
-				unseen = append(unseen, item)
-				continue
-			}
-
-			r.mutexes[ndx].Lock()
-			if _, ok := r.inBuffers[ndx][item.Value]; ok {
-				r.mutexes[ndx].Unlock()
-				continue
-			}
-			r.inBuffers[ndx][item.Value] = struct{}{}
-			r.mutexes[ndx].Unlock()
-			unseen = append(unseen, item)
-		}
-
-		// If there are no unseen items, skip processing
-		if len(unseen) == 0 {
-			msg.done()
-			return true
-		}
-
-		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
@@ -644,13 +467,17 @@ func (r *baseResolver) processTupleCycle(ndx int, snd *sender, listeners []*list
 				goto AfterDedup
 			}
 
-			r.outMu.Lock()
-			if _, ok := r.outBuffer[item.Value]; ok {
+			if isRecursive ||
+				isTupleCycle ||
+				r.node != nil && r.node.GetNodeType() == weightedGraph.OperatorNode {
+				r.outMu.Lock()
+				if _, ok := r.outBuffer[item.Value]; ok {
+					r.outMu.Unlock()
+					continue
+				}
+				r.outBuffer[item.Value] = struct{}{}
 				r.outMu.Unlock()
-				continue
 			}
-			r.outBuffer[item.Value] = struct{}{}
-			r.outMu.Unlock()
 
 		AfterDedup:
 			items = append(items, item)
@@ -711,27 +538,15 @@ func (r *baseResolver) resolve(senders []*sender, listeners []*listener) {
 		// a tuple cycle, treating it as recursive would cause the parent worker to be closed
 		// too early.
 		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
-		isTupleCycle := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && snd.edge().IsPartOfTupleCycle()
 
 		for range snd.procs() {
-			if isRecursive {
-				proc := func() {
-					snd.loop(r.processRecursive(ndx, snd, listeners))
-				}
-				recursive = append(recursive, proc)
-				continue
-			}
-
-			if isTupleCycle {
-				proc := func() {
-					snd.loop(r.processTupleCycle(ndx, snd, listeners))
-				}
-				standard = append(standard, proc)
-				continue
-			}
-
 			proc := func() {
 				snd.loop(r.process(ndx, snd, listeners))
+			}
+
+			if isRecursive {
+				recursive = append(recursive, proc)
+				continue
 			}
 			standard = append(standard, proc)
 		}
@@ -1399,6 +1214,7 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
+				node:        node,
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
