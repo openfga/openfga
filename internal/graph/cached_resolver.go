@@ -15,7 +15,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/cachecontroller"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -159,7 +158,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 	tryCache := req.Consistency != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY
 
-	if tryCache && req.LastCacheInvalidationTime != cachecontroller.FallbackTime {
+	if tryCache && req.CacheIsValid {
 		checkCacheTotalCounter.Inc()
 		if cachedResp := c.cache.Get(cacheKey); cachedResp != nil {
 			res := cachedResp.(*CheckResponseCacheEntry)
