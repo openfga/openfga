@@ -74,10 +74,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
 		changelogTimestamp := time.Now().UTC()
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).AnyTimes().
-			Return(&storage.ChangelogCacheEntry{
-				LastModified: time.Now(),
-			},
-			)
+			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 		ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
 			{
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
