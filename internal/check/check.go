@@ -96,9 +96,14 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 
 	// TODO: While we are doing the rollout, ok should never be false due it being caught by the validation in the command layer via `validateCheckRequest`.
 	// Once the rollout is done, we should swap the existing implementation with this which is much more efficient.
-	node, _ := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
+	node, ok := r.model.GetNodeByID(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()))
+	if !ok {
+		// If the node is not found, we can immediately return false.
+		return &Response{Allowed: false}, nil
+	}
 
-	_, ok := node.GetWeight(req.GetUserType())
+	// GetUserType returns the user type if the request in not an object relation otherwise the usertyperelation
+	_, ok = r.model.GetNodeWeight(node, req.GetUserType())
 	if !ok {
 		// If the user type is not reachable from the object type and relation, we can immediately return false.
 		return &Response{Allowed: false}, nil
@@ -400,7 +405,7 @@ func (r *Resolver) ResolveIntersection(ctx context.Context, req *Request, node *
 	scheduledHandlers := 0
 
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(req.GetUserType())
+		_, ok := r.model.GetEdgeWeight(edge, req.GetUserType())
 		if !ok {
 			return nil, ErrPanicRequest
 		}
@@ -437,7 +442,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 		return nil, ErrPanicRequest
 	}
 	// base edge validation
-	if _, ok := edges[0].GetWeight(req.GetUserType()); !ok {
+	if _, ok := r.model.GetEdgeWeight(edges[0], req.GetUserType()); !ok {
 		return nil, ErrPanicRequest
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -458,7 +463,7 @@ func (r *Resolver) ResolveExclusion(ctx context.Context, req *Request, node *aut
 
 	var subtract chan ResponseMsg
 	// excluded edge
-	if _, ok := edges[1].GetWeight(req.GetUserType()); ok {
+	if _, ok := r.model.GetEdgeWeight(edges[1], req.GetUserType()); ok {
 		scheduledHandlers++
 		subtract = make(chan ResponseMsg, 1)
 		wg.Go(func() {
@@ -663,6 +668,10 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 		),
 	)
 	defer span.End()
+
+	if edge.GetTo().GetUniqueLabel() == req.GetUserType() {
+		return r.specificType(ctx, req, edge)
+	}
 
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())

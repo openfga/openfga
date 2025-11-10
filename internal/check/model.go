@@ -8,6 +8,7 @@ import (
 
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/server/config"
+	"github.com/openfga/openfga/pkg/tuple"
 )
 
 var ErrGraphError = errors.New("authorization model graph error")
@@ -79,7 +80,7 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 	}
 	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(userType)
+		_, ok := m.GetEdgeWeight(edge, userType)
 		if !ok {
 			continue // no relation to terminal type / pruning edge traversal
 		}
@@ -123,7 +124,7 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 	}
 	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
 	for _, edge := range edges {
-		_, ok := edge.GetWeight(userType)
+		_, ok := m.GetEdgeWeight(edge, userType)
 		if !ok {
 			continue // no relation to terminal type / pruning edge traversal
 		}
@@ -161,9 +162,10 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
 	var recursiveEdge *authzGraph.WeightedAuthorizationModelEdge
 	edges, ok := m.GetEdgesFromNode(node)
-	if !ok {
+	if !ok || tuple.IsObjectRelation(userType) {
 		return nil, false
 	}
+
 	allEdgesCanApply := true
 	for _, edge := range edges {
 		if edge.GetRecursiveRelation() != recursiveRelation {

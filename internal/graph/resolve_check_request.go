@@ -80,6 +80,12 @@ func NewResolveCheckRequest(
 		return nil, errors.New("missing store_id")
 	}
 
+	userType := tuple.GetType(params.TupleKey.GetUser())
+	if tuple.IsObjectRelation(params.TupleKey.GetUser()) {
+		objectRelation := tuple.GetRelation(params.TupleKey.GetUser())
+		userType = tuple.ToObjectRelationString(userType, objectRelation)
+	}
+
 	r := &ResolveCheckRequest{
 		StoreID:              params.StoreID,
 		AuthorizationModelID: params.AuthorizationModelID,
@@ -93,7 +99,7 @@ func NewResolveCheckRequest(
 		LastCacheInvalidationTime: params.LastCacheInvalidationTime,
 
 		objectType: tuple.GetType(params.TupleKey.GetObject()),
-		userType:   tuple.GetType(params.TupleKey.GetUser()),
+		userType:   userType,
 	}
 
 	keyBuilder := &strings.Builder{}
