@@ -109,7 +109,7 @@ type InMemoryCacheController struct {
 	logger                logger.Logger
 
 	// invalidationLog is a map of [storeId] => lastInvalidationTime
-	invalidationLog utils.TypedSyncMap[string, time.Time]
+	invalidationLog sync.Map
 
 	// for testing purposes
 	wg sync.WaitGroup
@@ -139,7 +139,18 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 	storeID string,
 ) time.Time {
 	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
-	defer span.End()
+
+	var validCache bool
+	defer func() {
+		span.End()
+
+		// If this store's changelog has not been verified within cache controller's TTL time, we have to trigger
+		// the invalidation function to update it.
+		if !validCache {
+			c.InvalidateIfNeeded(ctx, storeID)
+		}
+	}()
+
 	cacheTotalCounter.Inc()
 
 	cacheKey := storage.GetChangelogCacheKey(storeID)
@@ -149,21 +160,36 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		zap.Bool("hit", cacheResp != nil),
 	)
 
-	if cacheResp != nil {
-		if entry, ok := cacheResp.(*storage.ChangelogCacheEntry); ok {
-			// Check when this store was last invalidated
-			if lastInvalidation, ok := c.invalidationLog.Load(storeID); ok {
-				// If it was within the CacheController TTL, return the most recent changelog timestamp
-				if lastInvalidation.Add(c.ttl).After(time.Now()) {
-					cacheHitCounter.Inc()
-					span.SetAttributes(attribute.Bool("cached", true))
-					return entry.LastModified
-				}
-			}
-		}
+	// If there's no cached changelog record, kick off the Invalidate function
+	// Which will find the most recent change and store it in cache.
+	if cacheResp == nil {
+		return FallbackTime
 	}
 
-	c.InvalidateIfNeeded(ctx, storeID)
+	// This should never happen, this cache is only added to within this file.
+	entry, ok := cacheResp.(*storage.ChangelogCacheEntry)
+	if !ok {
+		return FallbackTime
+	}
+
+	lastInvalidation, ok := c.invalidationLog.Load(storeID)
+	if !ok {
+		return FallbackTime
+	}
+
+	// Check when this store was last invalidated
+	lastInvalidationTime, ok := lastInvalidation.(*time.Time)
+	if !ok {
+		return FallbackTime
+	}
+
+	// If it was within the CacheController TTL, return the most recent changelog timestamp
+	if lastInvalidationTime.Add(c.ttl).After(time.Now()) {
+		cacheHitCounter.Inc()
+		span.SetAttributes(attribute.Bool("cached", true))
+		validCache = true
+		return entry.LastModified
+	}
 
 	return FallbackTime
 }
