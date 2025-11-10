@@ -57,8 +57,9 @@ var (
 )
 
 type CacheController interface {
-	// DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
-	// Else it returns Zero time and triggers InvalidateIfNeeded().
+	// DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache
+	// And a boolean indicating whether this value can be used.
+	// If the value cannot be used, it will trigger InvalidateIfNeeded.
 	DetermineInvalidationTime(context.Context, string) (time.Time, bool)
 
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress for a store,
@@ -133,6 +134,7 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 
 // DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
 // and a boolean indicating whether the return value can be used for cache comparisons.
+// The boolean would be false in cases where a store has not had its changelog read in longer than `TTL` time.
 func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
