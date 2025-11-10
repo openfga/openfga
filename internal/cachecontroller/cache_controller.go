@@ -27,9 +27,6 @@ import (
 var (
 	tracer = otel.Tracer("internal/cachecontroller")
 
-	// FallbackTime is a signal to the cached check resolver to ignore its cached result.
-	FallbackTime = time.Now()
-
 	cacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Namespace: build.ProjectName,
 		Name:      "cachecontroller_cache_total_count",
@@ -62,7 +59,7 @@ var (
 type CacheController interface {
 	// DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
 	// Else it returns Zero time and triggers InvalidateIfNeeded().
-	DetermineInvalidationTime(context.Context, string) time.Time
+	DetermineInvalidationTime(context.Context, string) (time.Time, bool)
 
 	// InvalidateIfNeeded checks to see if an invalidation is currently in progress for a store,
 	// and if not it will spawn a goroutine to invalidate cached records conditionally
@@ -72,8 +69,10 @@ type CacheController interface {
 
 type NoopCacheController struct{}
 
-func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) time.Time {
-	return time.Time{}
+// DetermineInvalidationTime on the Noop controller MUST return true to enable check cache when the cache_controller
+// is not active.
+func (c *NoopCacheController) DetermineInvalidationTime(_ context.Context, _ string) (time.Time, bool) {
+	return time.Time{}, true
 }
 
 func (c *NoopCacheController) InvalidateIfNeeded(_ context.Context, _ string) {
@@ -133,20 +132,19 @@ func NewCacheController(ds storage.OpenFGADatastore, cache storage.InMemoryCache
 }
 
 // DetermineInvalidationTime returns the timestamp of the last write for the specified store if it was in cache,
-// Else it returns FallbackTime and triggers InvalidateIfNeeded().
+// and a boolean indicating whether the return value can be used for cache comparisons.
 func (c *InMemoryCacheController) DetermineInvalidationTime(
 	ctx context.Context,
 	storeID string,
-) time.Time {
+) (lastInvalidTime time.Time, isValid bool) {
 	ctx, span := tracer.Start(ctx, "cacheController.DetermineInvalidationTime", trace.WithAttributes(attribute.Bool("cached", false)))
 
-	var validCache bool
 	defer func() {
 		span.End()
 
 		// If this store's changelog has not been verified within cache controller's TTL time, we have to trigger
 		// the invalidation function to update it.
-		if !validCache {
+		if !isValid {
 			c.InvalidateIfNeeded(ctx, storeID)
 		}
 	}()
@@ -160,38 +158,32 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 		zap.Bool("hit", cacheResp != nil),
 	)
 
-	// If there's no cached changelog record, kick off the Invalidate function
-	// Which will find the most recent change and store it in cache.
-	if cacheResp == nil {
-		return FallbackTime
-	}
-
 	// This should never happen, this cache is only added to within this file.
 	entry, ok := cacheResp.(*storage.ChangelogCacheEntry)
 	if !ok {
-		return FallbackTime
+		return lastInvalidTime, isValid
 	}
 
 	lastInvalidation, ok := c.invalidationLog.Load(storeID)
 	if !ok {
-		return FallbackTime
+		return lastInvalidTime, isValid
 	}
 
 	// Check when this store was last invalidated
 	lastInvalidationTime, ok := lastInvalidation.(*time.Time)
 	if !ok {
-		return FallbackTime
+		return lastInvalidTime, isValid
 	}
 
 	// If it was within the CacheController TTL, return the most recent changelog timestamp
 	if lastInvalidationTime.Add(c.ttl).After(time.Now()) {
 		cacheHitCounter.Inc()
 		span.SetAttributes(attribute.Bool("cached", true))
-		validCache = true
-		return entry.LastModified
+		isValid = true
+		return entry.LastModified, isValid
 	}
 
-	return FallbackTime
+	return lastInvalidTime, isValid
 }
 
 // findChangesDescending is a wrapper on ReadChanges. If there are 0 changes to be returned, ReadChanges will actually return an error.
