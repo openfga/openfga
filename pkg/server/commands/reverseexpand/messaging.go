@@ -74,9 +74,9 @@ func (p *pipe) seq(ctx context.Context) iter.Seq[message[group]] {
 
 func (p *pipe) send(item group) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	if p.done {
-		p.mu.Unlock()
 		return
 	}
 
@@ -89,7 +89,6 @@ func (p *pipe) send(item group) {
 
 	if p.done {
 		p.trk.Add(-1)
-		p.mu.Unlock()
 		return
 	}
 
@@ -99,8 +98,6 @@ func (p *pipe) send(item group) {
 
 	// Signal that the buffer is no longer empty.
 	p.empty.Signal()
-
-	p.mu.Unlock()
 }
 
 func (p *pipe) recv(ctx context.Context) (message[group], bool) {
@@ -137,6 +134,7 @@ func (p *pipe) recv(ctx context.Context) (message[group], bool) {
 
 func (p *pipe) close() {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.done = true
 
@@ -146,8 +144,6 @@ func (p *pipe) close() {
 	for p.count > 0 {
 		p.closed.Wait()
 	}
-
-	p.mu.Unlock()
 }
 
 func (p *pipe) cancel() {
