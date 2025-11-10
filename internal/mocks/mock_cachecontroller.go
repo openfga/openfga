@@ -21,7 +21,6 @@ import (
 type MockCacheController struct {
 	ctrl     *gomock.Controller
 	recorder *MockCacheControllerMockRecorder
-	isgomock struct{}
 }
 
 // MockCacheControllerMockRecorder is the mock recorder for MockCacheController.
@@ -42,11 +41,12 @@ func (m *MockCacheController) EXPECT() *MockCacheControllerMockRecorder {
 }
 
 // DetermineInvalidationTime mocks base method.
-func (m *MockCacheController) DetermineInvalidationTime(arg0 context.Context, arg1 string) time.Time {
+func (m *MockCacheController) DetermineInvalidationTime(arg0 context.Context, arg1 string) (time.Time, bool) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DetermineInvalidationTime", arg0, arg1)
 	ret0, _ := ret[0].(time.Time)
-	return ret0
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
 // DetermineInvalidationTime indicates an expected call of DetermineInvalidationTime.

@@ -21,7 +21,9 @@ import (
 func TestNoopCacheController_DetermineInvalidationTime(t *testing.T) {
 	t.Run("returns_zero_time", func(t *testing.T) {
 		ctrl := NewNoopCacheController()
-		require.Zero(t, ctrl.DetermineInvalidationTime(context.Background(), ""))
+		ts, ok := ctrl.DetermineInvalidationTime(context.Background(), "")
+		require.Zero(t, ts)
+		require.True(t, ok)
 	})
 }
 
@@ -64,16 +66,18 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.Equal(t, invalidationTime, FallbackTime)
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
+		require.Zero(t, invalidationTime)
+		require.False(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).
 			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
 
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.NotEqual(t, invalidationTime, FallbackTime)
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
+		require.NotZero(t, invalidationTime)
+		require.True(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_miss", func(t *testing.T) {
@@ -93,8 +97,9 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 			}, "", nil),
 			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
 		)
-		invalidationTime := cacheController.DetermineInvalidationTime(ctx, storeID)
-		require.Equal(t, invalidationTime, FallbackTime)
+		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
+		require.Zero(t, invalidationTime)
+		require.False(t, ok)
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 }
