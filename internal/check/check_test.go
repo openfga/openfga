@@ -1675,7 +1675,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		req, err := NewRequest(RequestParams{
 			StoreID:              storeID,
 			AuthorizationModelID: mg.GetModelID(),
-			TupleKey:             tuple.NewTupleKey("document:1", "member", "document:2#owner"),
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "document:2#owner"),
 		})
 		require.NoError(t, err)
 

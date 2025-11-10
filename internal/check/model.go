@@ -162,7 +162,11 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
 	var recursiveEdge *authzGraph.WeightedAuthorizationModelEdge
 	edges, ok := m.GetEdgesFromNode(node)
-	if !ok || tuple.IsObjectRelation(userType) {
+	if !ok {
+		return nil, false
+	}
+	relation := tuple.GetRelation(userType)
+	if relation != "" {
 		return nil, false
 	}
 
