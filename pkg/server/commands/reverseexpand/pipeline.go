@@ -379,8 +379,6 @@ type baseResolver struct {
 	// case, the parent worker is kept alive by the overall status of the *StatusPool instance, and the count of messages
 	// in-flight.
 	status *StatusPool
-
-	node *Node
 }
 
 func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loopFunc {
@@ -441,21 +439,17 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 				unseen = append(unseen, item)
 			}
 
-			// If there are no unseen items, skip processing
-			if len(unseen) == 0 {
-				msg.done()
-				return true
-			}
-
-			results = r.interpreter.interpret(ctx, snd.edge(), unseen)
 		} else {
-			if len(msg.Value.Items) == 0 {
-				msg.done()
-				return true
-			}
-
-			results = r.interpreter.interpret(ctx, snd.edge(), msg.Value.Items)
+			unseen = msg.Value.Items
 		}
+
+		// If there are no unseen items, skip processing
+		if len(unseen) == 0 {
+			msg.done()
+			return true
+		}
+
+		results = r.interpreter.interpret(ctx, snd.edge(), unseen)
 
 		// Deduplicate the output and potentially send in chunks.
 		for item := range results {
@@ -467,17 +461,13 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 				goto AfterDedup
 			}
 
-			if isRecursive ||
-				isTupleCycle ||
-				r.node != nil && r.node.GetNodeType() == weightedGraph.OperatorNode {
-				r.outMu.Lock()
-				if _, ok := r.outBuffer[item.Value]; ok {
-					r.outMu.Unlock()
-					continue
-				}
-				r.outBuffer[item.Value] = struct{}{}
+			r.outMu.Lock()
+			if _, ok := r.outBuffer[item.Value]; ok {
 				r.outMu.Unlock()
+				continue
 			}
+			r.outBuffer[item.Value] = struct{}{}
+			r.outMu.Unlock()
 
 		AfterDedup:
 			items = append(items, item)
@@ -1214,7 +1204,6 @@ func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 				ctx:         ctx,
 				interpreter: omni,
 				status:      status,
-				node:        node,
 			}
 		case weightedGraph.ExclusionOperator:
 			omni := &omniInterpreter{
