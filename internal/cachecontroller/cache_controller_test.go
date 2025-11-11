@@ -100,9 +100,7 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 
 		// Do it once so we have a cacheController.invalidationLog entry
 		_, _ = cacheController.DetermineInvalidationTime(ctx, storeID)
-
-		// the best way to ensure the invalidation log is actually filled, it happens in the background.
-		time.Sleep(time.Second)
+		cacheController.(*InMemoryCacheController).wg.Wait()
 
 		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.NotZero(t, invalidationTime)
