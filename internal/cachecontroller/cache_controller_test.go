@@ -101,18 +101,20 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	t.Run("cache_miss", func(t *testing.T) {
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 
-		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(nil)
-		ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
-			{
-				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
-				Timestamp: timestamppb.New(changelogTimestamp),
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "test",
-					Relation: "viewer",
-					User:     "test",
-				}},
-		}, "", nil)
-		cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any())
+		gomock.InOrder(
+			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(nil),
+			ds.EXPECT().ReadChanges(gomock.Any(), storeID, gomock.Any(), expectedReadChangesOpts).MinTimes(1).Return([]*openfgav1.TupleChange{
+				{
+					Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+					Timestamp: timestamppb.New(changelogTimestamp),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "test",
+						Relation: "viewer",
+						User:     "test",
+					}},
+			}, "", nil),
+			cache.EXPECT().Set(storage.GetChangelogCacheKey(storeID), gomock.Any(), gomock.Any()),
+		)
 		invalidationTime, ok := cacheController.DetermineInvalidationTime(ctx, storeID)
 		require.Zero(t, invalidationTime)
 		require.False(t, ok)
