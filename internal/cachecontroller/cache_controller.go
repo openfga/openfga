@@ -146,6 +146,7 @@ func (c *InMemoryCacheController) DetermineInvalidationTime(
 
 		// If this store's changelog has not been verified within cache controller's TTL time, we have to trigger
 		// the invalidation function to update it.
+		// This relies on updating the named return value of this function.
 		if !isValid {
 			c.InvalidateIfNeeded(ctx, storeID)
 		}
