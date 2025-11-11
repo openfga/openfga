@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -148,7 +149,7 @@ func TestRecursiveTTU(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -225,7 +226,7 @@ type group
 		define rel8: [user]
 		`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -599,7 +600,7 @@ func TestRecursiveUserset(t *testing.T) {
 								define member: [user, group#member]
 `)
 
-			mg, err := NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -847,7 +848,7 @@ func TestRecursiveUserset(t *testing.T) {
 				define rel8: [user]
 		`)
 
-				mg, err := NewAuthorizationModelGraph(model)
+				mg, err := modelgraph.NewAuthorizationModelGraph(model)
 				require.NoError(t, err)
 
 				node, ok := mg.GetNodeByID("group#member")
@@ -1072,7 +1073,7 @@ func TestRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.NewAuthorizationModelGraph(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -1125,7 +1126,7 @@ func TestRecursiveMatch(t *testing.T) {
           define parent: [group]
     `)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1293,7 +1294,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1459,7 +1460,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")

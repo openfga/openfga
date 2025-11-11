@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/sourcegraph/conc/panics"
 	"golang.org/x/sync/errgroup"
 
@@ -23,12 +24,12 @@ type requestMsg struct {
 }
 
 type DefaultStrategy struct {
-	model            *AuthorizationModelGraph
+	model            *modelgraph.AuthorizationModelGraph
 	resolver         CheckResolver
 	concurrencyLimit int
 }
 
-func NewDefault(model *AuthorizationModelGraph, resolver CheckResolver, limit int) *DefaultStrategy {
+func NewDefault(model *modelgraph.AuthorizationModelGraph, resolver CheckResolver, limit int) *DefaultStrategy {
 	return &DefaultStrategy{
 		model:            model,
 		resolver:         resolver,
@@ -167,7 +168,7 @@ func (s *DefaultStrategy) processRequests(ctx context.Context, requests chan req
 
 			node, ok := s.model.GetNodeByID(tuple.ToObjectRelationString(msg.req.GetObjectType(), msg.req.GetTupleKey().GetRelation()))
 			if !ok {
-				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: ErrGraphError}, out)
+				concurrency.TrySendThroughChannel(ctx, ResponseMsg{Err: modelgraph.ErrGraphError}, out)
 				continue
 			}
 

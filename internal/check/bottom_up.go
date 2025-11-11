@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/sourcegraph/conc/panics"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -25,12 +26,12 @@ const (
 type bottomUpHandler func(context.Context, []storage.Iterator[string], chan<- *iterator.Msg)
 
 type bottomUp struct {
-	model     *AuthorizationModelGraph
+	model     *modelgraph.AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 	strategy  strategyKind
 }
 
-func newBottomUp(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
+func newBottomUp(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
 		model:     model,
 		datastore: ds,
@@ -38,7 +39,7 @@ func newBottomUp(model *AuthorizationModelGraph, ds storage.RelationshipTupleRea
 	}
 }
 
-func newBottomUpRecursive(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
+func newBottomUpRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *bottomUp {
 	return &bottomUp{
 		model:     model,
 		datastore: ds,

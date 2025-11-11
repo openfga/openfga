@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -39,7 +40,7 @@ func TestDefaultUserset(t *testing.T) {
 			x < 100
 		}`)
 
-	mg, err := NewAuthorizationModelGraph(model)
+	mg, err := modelgraph.NewAuthorizationModelGraph(model)
 	require.NoError(t, err)
 
 	edges, ok := mg.GetEdgesFromNodeId("group#member")
@@ -248,7 +249,7 @@ func TestDefaultTTU(t *testing.T) {
 			define owner: [document]
 	`)
 
-	mg, err := NewAuthorizationModelGraph(model)
+	mg, err := modelgraph.NewAuthorizationModelGraph(model)
 	require.NoError(t, err)
 
 	edges, ok := mg.GetEdgesFromNodeId("document#viewer")

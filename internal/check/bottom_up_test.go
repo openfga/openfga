@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -58,7 +59,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -111,7 +112,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -167,7 +168,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -231,7 +232,7 @@ func TestBottomUpSpecificType(t *testing.T) {
              }
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -285,7 +286,7 @@ func TestBottomUpSpecificType(t *testing.T) {
 					define admin: [document#member]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -341,7 +342,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -394,7 +395,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -449,7 +450,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 					define viewer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -512,7 +513,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
              }
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -566,7 +567,7 @@ func TestBottomUpSpecificTypeWildcard(t *testing.T) {
 					define admin: [document#member]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1757,7 +1758,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 					define owner: viewer from parent
 		`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1872,7 +1873,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 					define commenter: [user]
 		`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -1984,7 +1985,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 					
 		`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 
@@ -2103,7 +2104,7 @@ func TestBottomUpResolveRewrite(t *testing.T) {
 						define analyzer: [user]
 			`)
 
-		mg, err := NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.NewAuthorizationModelGraph(model)
 		require.NoError(t, err)
 		strategy := newBottomUp(mg, mockDatastore)
 

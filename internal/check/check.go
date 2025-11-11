@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openfga/openfga/internal/modelgraph"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -31,7 +32,7 @@ var tracer = otel.Tracer("internal/check")
 var ErrPanicRequest = errors.New("invalid check request") // == panic in ResolveCheck so should be handled accordingly (should be seen as a 500 to client)
 
 type Config struct {
-	Model                     *AuthorizationModelGraph
+	Model                     *modelgraph.AuthorizationModelGraph
 	Datastore                 storage.RelationshipTupleReader
 	Cache                     storage.InMemoryCache[any]
 	CacheTTL                  time.Duration
@@ -43,7 +44,7 @@ type Config struct {
 	Strategies                map[string]Strategy
 }
 type Resolver struct {
-	model                     *AuthorizationModelGraph
+	model                     *modelgraph.AuthorizationModelGraph
 	datastore                 storage.RelationshipTupleReader
 	cache                     storage.InMemoryCache[any]
 	cacheTTL                  time.Duration
@@ -91,8 +92,6 @@ func (r *Resolver) ResolveCheck(ctx context.Context, req *Request) (*Response, e
 		attribute.String("tuple_key", tuple.TupleKeyWithConditionToString(req.GetTupleKey())),
 	))
 	defer span.End()
-
-	// TODO: Handle where User is a userset (model would dynamically compute weight in order to prune branches, needs work in language)
 
 	// TODO: While we are doing the rollout, ok should never be false due it being caught by the validation in the command layer via `validateCheckRequest`.
 	// Once the rollout is done, we should swap the existing implementation with this which is much more efficient.
@@ -627,7 +626,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:                      req.GetTupleKey().GetObject(),
 		Relation:                    relation,
-		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{WildcardRelationReference(req.GetUserType())},
+		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{modelgraph.WildcardRelationReference(req.GetUserType())},
 		Conditions:                  edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{
 		Consistency: storage.ConsistencyOptions{

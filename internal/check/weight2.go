@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
+	"github.com/openfga/openfga/internal/modelgraph"
 
 	"github.com/openfga/openfga/internal/iterator"
 	"github.com/openfga/openfga/pkg/storage"
@@ -17,11 +18,11 @@ const DifferenceIndex = 1
 
 type Weight2 struct {
 	bottomUp  *bottomUp
-	model     *AuthorizationModelGraph
+	model     *modelgraph.AuthorizationModelGraph
 	datastore storage.RelationshipTupleReader
 }
 
-func NewWeight2(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
+func NewWeight2(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader) *Weight2 {
 	return &Weight2{
 		bottomUp:  newBottomUp(model, ds),
 		model:     model,

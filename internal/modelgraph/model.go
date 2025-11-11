@@ -1,4 +1,4 @@
-package check
+package modelgraph
 
 import (
 	"errors"
@@ -13,7 +13,6 @@ import (
 
 var ErrGraphError = errors.New("authorization model graph error")
 
-// TODO: Move to its own public package.
 type AuthorizationModelGraph struct {
 	*authzGraph.WeightedAuthorizationModelGraph
 	modelID       string

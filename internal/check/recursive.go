@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/openfga/openfga/internal/modelgraph"
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -25,11 +26,11 @@ const (
 type Recursive struct {
 	concurrencyLimit int
 	bottomUp         *bottomUp
-	model            *AuthorizationModelGraph
+	model            *modelgraph.AuthorizationModelGraph
 	datastore        storage.RelationshipTupleReader
 }
 
-func NewRecursive(model *AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
+func NewRecursive(model *modelgraph.AuthorizationModelGraph, ds storage.RelationshipTupleReader, limit int) *Recursive {
 	return &Recursive{
 		bottomUp:         newBottomUpRecursive(model, ds),
 		model:            model,
