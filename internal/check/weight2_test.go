@@ -85,7 +85,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -172,7 +172,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -259,7 +259,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -345,7 +345,7 @@ func TestWeight2Userset(t *testing.T) {
 					define viewer: [group#all]
 			`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("group#all")
@@ -456,7 +456,7 @@ func TestWeight2Userset(t *testing.T) {
   				tcond == 'restricted'
 			}`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -551,7 +551,7 @@ func TestWeight2TTU(t *testing.T) {
 					define viewer: all from parent
 			`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -639,7 +639,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -727,7 +727,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -815,7 +815,7 @@ func TestWeight2TTU(t *testing.T) {
 						define viewer: all from parent
 				`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
@@ -926,7 +926,7 @@ func TestWeight2TTU(t *testing.T) {
   				tcond == 'restricted'
 			}`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")

@@ -39,7 +39,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define admin: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		// First edge returns true - should short circuit
@@ -93,7 +93,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define admin: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -146,7 +146,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define admin: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		cachedEntry := &ResponseCacheEntry{
@@ -202,7 +202,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define owner: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		cachedFalse := &ResponseCacheEntry{
@@ -267,7 +267,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define admin: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedErr := errors.New("database error")
@@ -319,7 +319,7 @@ func TestResolveUnionEdges(t *testing.T) {
                 define admin: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -372,7 +372,7 @@ func TestResolveUnionEdges(t *testing.T) {
             type user
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
@@ -418,7 +418,7 @@ func TestResolveIntersection(t *testing.T) {
      define viewer: owner and editor
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -483,7 +483,7 @@ func TestResolveIntersection(t *testing.T) {
      define viewer: owner and editor
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -546,7 +546,7 @@ func TestResolveIntersection(t *testing.T) {
      define viewer: owner and editor
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -604,7 +604,7 @@ func TestResolveIntersection(t *testing.T) {
      define viewer: owner and editor
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -663,7 +663,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -723,7 +723,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -778,7 +778,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -838,7 +838,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -900,7 +900,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -962,7 +962,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -1027,7 +1027,7 @@ func TestResolveExclusion(t *testing.T) {
      define viewer: editor but not banned
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -1080,7 +1080,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
      define owner: [user]
      define viewer: [document#owner]
   `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1136,7 +1136,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 	                 tag == "valid"
 	               }
   `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1191,7 +1191,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 				 define member: [user, document#owner]
 
 			  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1253,7 +1253,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define reviewer: [user]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1308,7 +1308,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user, document#owner]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1374,7 +1374,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user, document#owner]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1435,7 +1435,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1490,7 +1490,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		resolver := New(Config{
@@ -1534,7 +1534,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user, document#viewer]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1606,7 +1606,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user, document#viewer]
 
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1684,7 +1684,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		     define viewer: [user, document#owner, document#viewer] or reviewer
 			 define reviewer: [user]
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -1757,7 +1757,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		     define viewer: [user, document#owner, document#viewer] or reviewer
 			 define reviewer: [user]
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
@@ -1822,7 +1822,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			 define member: [user, document#viewer]
 			 define reviewer: [user]
 		  `)
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -2065,7 +2065,7 @@ func TestSpecificType(t *testing.T) {
                 define viewer: [user]
         `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -2118,7 +2118,7 @@ func TestSpecificType(t *testing.T) {
 	                   define viewer: [user]
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockDatastore.EXPECT().ReadUserTuple(
@@ -2167,7 +2167,7 @@ func TestSpecificType(t *testing.T) {
 	                   define viewer: [user]
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedErr := errors.New("database error")
@@ -2218,7 +2218,7 @@ func TestSpecificType(t *testing.T) {
 	                   define viewer: [user]
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -2276,7 +2276,7 @@ func TestSpecificType(t *testing.T) {
 	                   define viewer: [user]
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -2333,7 +2333,7 @@ func TestSpecificType(t *testing.T) {
 	               }
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expiredTime := time.Now().Add(-24 * time.Hour)
@@ -2397,7 +2397,7 @@ func TestSpecificType(t *testing.T) {
 	               }
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		futureTime := time.Now().Add(24 * time.Hour)
@@ -2462,7 +2462,7 @@ func TestSpecificType(t *testing.T) {
 	               }
 	           `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := tuple.NewTupleKeyWithCondition(
@@ -2524,7 +2524,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -2582,7 +2582,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockDatastore.EXPECT().ReadUsersetTuples(
@@ -2636,7 +2636,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedErr := errors.New("database error")
@@ -2687,7 +2687,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedTuple := &openfgav1.Tuple{
@@ -2745,7 +2745,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -2802,7 +2802,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
    }
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expiredTime := time.Now().Add(-24 * time.Hour)
@@ -2872,7 +2872,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
    }
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		futureTime := time.Now().Add(24 * time.Hour)
@@ -2944,7 +2944,7 @@ func TestSpecificTypeWildcard(t *testing.T) {
      define viewer: [user:*]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedErr := errors.New("iterator error")
@@ -3004,7 +3004,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3080,7 +3080,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3145,7 +3145,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3207,7 +3207,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3265,7 +3265,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -3325,7 +3325,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
      define viewer: [document#owner]
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3395,7 +3395,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
   }
  `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3479,7 +3479,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
   }
  `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3566,7 +3566,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3642,7 +3642,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3709,7 +3709,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3769,7 +3769,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		expectedErr := errors.New("database error")
@@ -3824,7 +3824,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -3882,7 +3882,7 @@ func TestTTU(t *testing.T) {
      define viewer: owner from parent
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -3953,7 +3953,7 @@ func TestTTU(t *testing.T) {
    }
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
@@ -4033,7 +4033,7 @@ func TestTTU(t *testing.T) {
    }
   `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()

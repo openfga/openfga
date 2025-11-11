@@ -12,6 +12,8 @@ import (
 )
 
 var ErrGraphError = errors.New("authorization model graph error")
+var ErrModelNotFound = errors.New("authorization model not found")
+var ErrInvalidModel = errors.New("invalid authorization model encountered")
 
 type AuthorizationModelGraph struct {
 	*authzGraph.WeightedAuthorizationModelGraph
@@ -20,7 +22,7 @@ type AuthorizationModelGraph struct {
 	conditions    map[string]*condition.EvaluableCondition
 }
 
-func NewAuthorizationModelGraph(model *openfgav1.AuthorizationModel) (*AuthorizationModelGraph, error) {
+func New(model *openfgav1.AuthorizationModel) (*AuthorizationModelGraph, error) {
 	builder := authzGraph.NewWeightedAuthorizationModelGraphBuilder()
 	graph, err := builder.Build(model)
 	if err != nil {

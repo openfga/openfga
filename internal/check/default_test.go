@@ -40,7 +40,7 @@ func TestDefaultUserset(t *testing.T) {
 			x < 100
 		}`)
 
-	mg, err := modelgraph.NewAuthorizationModelGraph(model)
+	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
 	edges, ok := mg.GetEdgesFromNodeId("group#member")
@@ -249,7 +249,7 @@ func TestDefaultTTU(t *testing.T) {
 			define owner: [document]
 	`)
 
-	mg, err := modelgraph.NewAuthorizationModelGraph(model)
+	mg, err := modelgraph.New(model)
 	require.NoError(t, err)
 
 	edges, ok := mg.GetEdgesFromNodeId("document#viewer")

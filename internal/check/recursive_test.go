@@ -149,7 +149,7 @@ func TestRecursiveTTU(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := modelgraph.NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.New(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -226,7 +226,7 @@ type group
 		define rel8: [user]
 		`)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -600,7 +600,7 @@ func TestRecursiveUserset(t *testing.T) {
 								define member: [user, group#member]
 `)
 
-			mg, err := modelgraph.NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.New(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -848,7 +848,7 @@ func TestRecursiveUserset(t *testing.T) {
 				define rel8: [user]
 		`)
 
-				mg, err := modelgraph.NewAuthorizationModelGraph(model)
+				mg, err := modelgraph.New(model)
 				require.NoError(t, err)
 
 				node, ok := mg.GetNodeByID("group#member")
@@ -1073,7 +1073,7 @@ func TestRecursiveMatch(t *testing.T) {
 						define parent: [group]
 				`)
 
-			mg, err := modelgraph.NewAuthorizationModelGraph(model)
+			mg, err := modelgraph.New(model)
 			require.NoError(t, err)
 
 			node, ok := mg.GetNodeByID("group#member")
@@ -1126,7 +1126,7 @@ func TestRecursiveMatch(t *testing.T) {
           define parent: [group]
     `)
 
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1294,7 +1294,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
@@ -1460,7 +1460,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 				}
 			})
 		ctx := context.Background()
-		mg, err := modelgraph.NewAuthorizationModelGraph(model)
+		mg, err := modelgraph.New(model)
 		require.NoError(t, err)
 
 		node, ok := mg.GetNodeByID("group#member")
