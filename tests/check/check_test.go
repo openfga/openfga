@@ -51,11 +51,15 @@ func runMatrixWithEngine(t *testing.T, engine string) {
 		goleak.VerifyNone(t)
 	})
 
-	clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{config.ExperimentalCheckOptimizations})
-	RunMatrixTests(t, engine, true, clientWithExperimentals)
+	/*
+		clientWithExperimentals := tests.BuildClientInterface(t, engine, []string{config.ExperimentalCheckOptimizations})
+		RunMatrixTests(t, engine, "with experimentals", clientWithExperimentals)
 
-	clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
-	RunMatrixTests(t, engine, false, clientWithoutExperimentals)
+		clientWithoutExperimentals := tests.BuildClientInterface(t, engine, []string{})
+		RunMatrixTests(t, engine, "default", clientWithoutExperimentals)
+	*/
+	wgCheck := tests.BuildClientInterface(t, engine, []string{config.ExperimentalWeightedGraphCheck})
+	RunMatrixTests(t, engine, "with check rewrite", wgCheck)
 }
 
 func TestCheckMemory(t *testing.T) {

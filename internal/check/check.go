@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openfga/openfga/internal/modelgraph"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/internal/planner"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -247,19 +247,18 @@ func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.
 }
 
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
-	objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuple.ToObjectRelationString(req.GetObjectType(), req.GetTupleKey().GetRelation()), edge.GetTo().GetUniqueLabel())
-	if err != nil {
-		return nil, ErrPanicRequest
-	}
+
+	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
+
 	iter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
-		Relation: req.GetTupleKey().GetRelation(),
+		Relation: relation,
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-			Type:               objectType,
-			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+			Type:               userObjectType,
+			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
 		}},
-		Conditions: conditionEdge.GetConditions(),
+		Conditions: edge.GetConditions(),
 	}, storage.ReadUsersetTuplesOptions{Consistency: storage.ConsistencyOptions{Preference: req.GetConsistency()}})
 	if err != nil {
 		return nil, err
@@ -270,8 +269,8 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
 		return key.GetUser() // this is a userset (object#relation)
 	}))
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditionEdge, req.GetContext()))
+	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, edge, req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 

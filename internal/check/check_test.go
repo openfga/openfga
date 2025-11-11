@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -15,6 +14,7 @@ import (
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -1202,7 +1202,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			MaxTimes(2). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Relation {
+				switch tk.GetRelation() {
 				case "member":
 					return expectedTuple, nil
 				default:
@@ -1322,7 +1322,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			MaxTimes(2). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Relation {
+				switch tk.GetRelation() {
 				case "viewer":
 					return expectedTuple, nil
 				case "member":
@@ -1385,7 +1385,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			MaxTimes(2). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Relation {
+				switch tk.GetRelation() {
 				case "viewer":
 					return expectedTuple, nil
 				default:
@@ -1578,7 +1578,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//mockResolver := NewMockCheckResolver(ctrl)
+		// mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
@@ -1631,10 +1631,10 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			MaxTimes(2). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Object {
+				switch tk.GetObject() {
 				case "document:4":
 					// Check the relation and return the right data
-					if tk.Relation == "principal" {
+					if tk.GetRelation() == "principal" {
 						return expectedTuple, nil
 					}
 					return nil, storage.ErrNotFound
@@ -1659,7 +1659,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//mockResolver := NewMockCheckResolver(ctrl)
+		// mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
@@ -1709,7 +1709,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Object {
+				switch tk.GetObject() {
 				case "document:2":
 					return expectedTuple, nil
 				default:
@@ -1733,7 +1733,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//mockResolver := NewMockCheckResolver(ctrl)
+		// mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
@@ -1797,7 +1797,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//mockResolver := NewMockCheckResolver(ctrl)
+		// mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
@@ -1847,7 +1847,7 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
 				// Manually check the relation and return the right data
-				switch tk.Object {
+				switch tk.GetObject() {
 				case "document:3":
 					return expectedTuple, nil
 				default:
@@ -1871,14 +1871,13 @@ func TestResolveCheckUsersetRequest(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		//mockResolver := NewMockCheckResolver(ctrl)
+		// mockResolver := NewMockCheckResolver(ctrl)
 		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.ResolveCheck(context.Background(), req)
 		require.NoError(t, err)
 		require.True(t, res.GetAllowed())
 	})
-
 }
 
 func TestIsCached(t *testing.T) {
@@ -2503,7 +2502,6 @@ func TestSpecificType(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
-
 }
 
 func TestSpecificTypeWildcard(t *testing.T) {

@@ -47,6 +47,10 @@ func (m *AuthorizationModelGraph) GetModelID() string {
 	return m.modelID
 }
 
+func (m *AuthorizationModelGraph) GetConditions() map[string]*condition.EvaluableCondition {
+	return m.conditions
+}
+
 func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelation string, userType string) (*authzGraph.WeightedAuthorizationModelEdge, error) {
 	node, ok := m.GetNodeByID(objectRelation)
 	if !ok {

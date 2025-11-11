@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -195,8 +194,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 	})
 }
 
-func RunMatrixTests(t *testing.T, engine string, experimentalsEnabled bool, client tests.ClientInterface) {
-	t.Run("test_matrix_"+engine+"_experimental_"+strconv.FormatBool(experimentalsEnabled), func(t *testing.T) {
+func RunMatrixTests(t *testing.T, engine string, name string, client tests.ClientInterface) {
+	t.Run("test_matrix_"+engine+"_experimental_"+name, func(t *testing.T) {
 		t.Parallel()
 		runTestMatrix(t, testParams{typesystem.SchemaVersion1_1, client})
 	})

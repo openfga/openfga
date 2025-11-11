@@ -65,6 +65,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
+	if s.featureFlagClient.Boolean(serverconfig.ExperimentalWeightedGraphCheck, storeID) {
+		return s.v2Check(ctx, req)
+	}
+
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -175,6 +179,33 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	return res, nil
+}
+
+func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	cacheInvalidationTime := time.Time{}
+
+	if req.GetConsistency() != openfgav1.ConsistencyPreference_HIGHER_CONSISTENCY {
+		cacheInvalidationTime = s.sharedDatastoreResources.CacheController.DetermineInvalidationTime(ctx, req.GetStoreId())
+	}
+
+	mg, err := s.authzModelGraphResolver.Resolve(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	q := commands.NewCheckQuery(
+		commands.WithCheckQueryV2Logger(s.logger),
+		commands.WithCheckQueryV2Datastore(s.datastore),
+		commands.WithCheckQueryV2Model(mg),
+		commands.WithCheckQueryV2Cache(s.sharedDatastoreResources.CheckCache),
+		commands.WithCheckQueryV2CacheTTL(s.cacheSettings.CheckQueryCacheTTL),
+		commands.WithCheckQueryV2Planner(s.planner),
+		commands.WithCheckQueryV2LastCacheInvalidationTime(cacheInvalidationTime),
+		commands.WithCheckQueryV2ConcurrencyLimit(int(s.resolveNodeBreadthLimit)),
+		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
+	)
+
+	return q.Execute(ctx, req)
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {

@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
-	"github.com/openfga/openfga/internal/modelgraph"
 
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )

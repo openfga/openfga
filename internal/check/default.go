@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/sourcegraph/conc/panics"
 	"golang.org/x/sync/errgroup"
 
 	authzGraph "github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/concurrency"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 	"go.uber.org/mock/gomock"
@@ -15,6 +14,7 @@ import (
 	"github.com/openfga/language/pkg/go/graph"
 
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"

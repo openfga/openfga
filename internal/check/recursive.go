@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/openfga/openfga/internal/modelgraph"
 	"golang.org/x/sync/errgroup"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/openfga/openfga/internal/concurrency"
 	"github.com/openfga/openfga/internal/iterator"
+	"github.com/openfga/openfga/internal/modelgraph"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 )
@@ -292,13 +292,14 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 			Conditions: edge.GetConditions(),
 		}, storage.ReadOptions{Consistency: consistencyOpts})
 	} else {
-		objectType, relation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+		_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 		iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:   id,
 			Relation: relation,
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
-				Type:               objectType,
-				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: relation},
+				Type:               userObjectType,
+				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
 			}},
 			Conditions: edge.GetConditions(),
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
