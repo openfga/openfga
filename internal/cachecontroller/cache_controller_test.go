@@ -35,20 +35,20 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-
-	cache := mocks.NewMockInMemoryCache[any](ctrl)
-	ds := mocks.NewMockOpenFGADatastore(ctrl)
-
-	cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
 	storeID := "id"
-	expectedReadChangesOpts := storage.ReadChangesOptions{
-		SortDesc: true,
-		Pagination: storage.PaginationOptions{
-			PageSize: storage.DefaultPageSize,
-			From:     "",
-		}}
 
 	t.Run("cache_hit_after_ttl", func(t *testing.T) {
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
+
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 		gomock.InOrder(
 			cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).MinTimes(2).Return(&storage.ChangelogCacheEntry{
@@ -72,6 +72,17 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_hit_before_ttl", func(t *testing.T) {
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
+
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
 		changelogTimestamp := time.Now().UTC()
 		cache.EXPECT().Get(storage.GetChangelogCacheKey(storeID)).AnyTimes().
 			Return(&storage.ChangelogCacheEntry{LastModified: time.Now()})
@@ -99,6 +110,17 @@ func TestInMemoryCacheController_DetermineInvalidationTime(t *testing.T) {
 		cacheController.(*InMemoryCacheController).wg.Wait()
 	})
 	t.Run("cache_miss", func(t *testing.T) {
+		cache := mocks.NewMockInMemoryCache[any](ctrl)
+		ds := mocks.NewMockOpenFGADatastore(ctrl)
+
+		cacheController := NewCacheController(ds, cache, 10*time.Second, 10*time.Second)
+		expectedReadChangesOpts := storage.ReadChangesOptions{
+			SortDesc: true,
+			Pagination: storage.PaginationOptions{
+				PageSize: storage.DefaultPageSize,
+				From:     "",
+			}}
+
 		changelogTimestamp := time.Now().UTC().Add(-20 * time.Second)
 
 		gomock.InOrder(
