@@ -412,9 +412,10 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		defer span.End()
 
 		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
-		isTupleCycle := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && snd.edge().IsPartOfTupleCycle()
+		isTupleCycle := snd.edge() != nil && snd.edge().IsPartOfTupleCycle()
 
-		// Deduplicate items within this group based on the buffer for this sender
+		// If the edge is recursive or part of a tuple cycle,
+		// deduplicate items received in this group based on the buffer for this sender
 		if isRecursive || isTupleCycle {
 			for _, item := range msg.Value.Items {
 				if item.Err != nil {
@@ -438,7 +439,6 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 				r.mutexes[ndx].Unlock()
 				unseen = append(unseen, item)
 			}
-
 		} else {
 			unseen = msg.Value.Items
 		}
