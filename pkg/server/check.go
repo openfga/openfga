@@ -205,7 +205,11 @@ func (s *Server) v2Check(ctx context.Context, req *openfgav1.CheckRequest) (*ope
 		commands.WithCheckQueryV2UpstreamTimeout(s.requestTimeout),
 	)
 
-	return q.Execute(ctx, req)
+	res, err := q.Execute(ctx, req)
+	if err != nil {
+		return nil, commands.CheckCommandErrorToServerError(err)
+	}
+	return res, nil
 }
 
 func (s *Server) getCheckResolverBuilder(storeID string) *graph.CheckResolverOrderedBuilder {
