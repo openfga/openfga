@@ -294,7 +294,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
 	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
-	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(tuplesetRelation, subjectType)
+	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}

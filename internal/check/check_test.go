@@ -4091,3 +4091,88 @@ func TestTTU(t *testing.T) {
 		require.True(t, res.GetAllowed())
 	})
 }
+
+func TestResolveRecursiveCheck(t *testing.T) {
+	t.Run("returns_false_for_no_assignation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		storeID := ulid.Make().String()
+		mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
+		mockCache := mocks.NewMockInMemoryCache[any](ctrl)
+		mockPlanner := mocks.NewMockManager(ctrl)
+		mockSelector := mocks.NewMockSelector(ctrl)
+
+		model := testutils.MustTransformDSLToProtoWithID(`
+   model
+    schema 1.1
+   type user
+   type document
+    relations
+       define viewer: [user] or viewer from parent
+	   define parent: [document]
+  `)
+
+		mg, err := modelgraph.New(model)
+		require.NoError(t, err)
+
+		mockPlanner.EXPECT().GetPlanSelector(gomock.Any()).Return(mockSelector).AnyTimes()
+		mockSelector.EXPECT().Select(gomock.Any()).Return(DefaultPlan).AnyTimes()
+		mockSelector.EXPECT().UpdateStats(gomock.Any(), gomock.Any()).AnyTimes()
+
+		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+		/*
+			{Object: "ttus:ttus_recursive_ttu_direct_assign", Relation: "recursive_ttu", User: "directs-user:ttus_recursive_ttu_direct_assign"},
+			{Object: "ttus:ttus_recursive_ttu_parent_case_1_1", Relation: "ttu_parent", User: "ttus:ttus_recursive_ttu_direct_assign"},
+			{Object: "ttus:ttus_recursive_ttu_parent_case_1_2", Relation: "ttu_parent", User: "ttus:ttus_recursive_ttu_parent_case_1_1"},
+			{Object: "ttus:ttus_recursive_ttu_parent_case_1_3", Relation: "ttu_parent", User: "ttus:ttus_recursive_ttu_parent_case_1_2"},
+			{Object: "ttus:ttus_recursive_ttu_parent_case_1_4", Relation: "ttu_parent", User: "ttus:ttus_recursive_ttu_parent_case_1_3"},
+		*/
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes(). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.TupleKey, error) {
+				return nil, storage.ErrNotFound
+			})
+
+		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			MaxTimes(2). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadFilter, opts storage.ReadOptions) (storage.TupleIterator, error) {
+				// Manually check the relation and return the right data
+				switch filter.Object {
+				case "document:1":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:1", "parent", "document:x")}}), nil
+				case "document:2":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:2", "parent", "document:1")}}), nil
+				case "document:3":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:3", "parent", "document:2")}}), nil
+				case "document:4":
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{{Key: tuple.NewTupleKey("document:4", "parent", "document:3")}}), nil
+				default:
+					return storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil
+				}
+			})
+
+		resolver := New(Config{
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			Planner:          mockPlanner,
+			ConcurrencyLimit: 10,
+		})
+
+		req, err := NewRequest(RequestParams{
+			StoreID:              storeID,
+			AuthorizationModelID: mg.GetModelID(),
+			TupleKey:             tuple.NewTupleKey("document:4", "viewer", "user:maria"),
+		})
+		require.NoError(t, err)
+
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
+
+		res, err := resolver.ResolveCheck(context.Background(), req)
+		require.NoError(t, err)
+		require.False(t, res.GetAllowed())
+	})
+}

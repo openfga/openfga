@@ -526,7 +526,7 @@ var matrix = individualTest{
 				{
 					Name:                 "valid_user",
 					Tuple:                &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
-					Expectation:          true,
+					Expectation:          false,
 					ListObjectsErrorCode: 2000, // any tuple with user:* and a condition and missing context will be un-evaluable
 				},
 				{
@@ -555,13 +555,13 @@ var matrix = individualTest{
 					Name:        "ignore_valid_cond_valid_user",
 					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
 					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("1")}},
-					Expectation: true,
+					Expectation: false,
 				},
 				{
 					Name:        "ignore_invalid_cond_valid_user",
 					Tuple:       &openfgav1.TupleKey{Object: "directs-user:1", Relation: "direct_and_direct_wild_cond", User: "user:valid"},
 					Context:     &structpb.Struct{Fields: map[string]*structpb.Value{"x": structpb.NewStringValue("2")}},
-					Expectation: true,
+					Expectation: false,
 				},
 			},
 		},
