@@ -293,10 +293,9 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 		}, storage.ReadOptions{Consistency: consistencyOpts})
 	} else {
 		userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-		_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 		iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:   id,
-			Relation: relation,
+			Relation: userRelation, // a recursive relation userset, the relation to where it belongs is the same where is going to
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
 				Type:               userObjectType,
 				RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
