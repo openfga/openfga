@@ -87,7 +87,7 @@ func (s *bottomUp) resolveEdge(ctx context.Context, req *Request, edge *authzGra
 		default:
 			return nil, ErrPanicRequest
 		}
-	case authzGraph.RewriteEdge, authzGraph.ComputedEdge:
+	case authzGraph.RewriteEdge, authzGraph.ComputedEdge, authzGraph.TTULogicalEdge, authzGraph.DirectLogicalEdge:
 		return s.resolveRewrite(ctx, req, edge.GetTo())
 	default:
 		return nil, ErrPanicRequest
@@ -98,7 +98,7 @@ func (s *bottomUp) resolveEdge(ctx context.Context, req *Request, edge *authzGra
 // The channel is closed at the end.
 func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	switch node.GetNodeType() {
-	case authzGraph.SpecificTypeAndRelation:
+	case authzGraph.SpecificTypeAndRelation, authzGraph.LogicalDirectGrouping, authzGraph.LogicalTTUGrouping:
 		return s.setFlattenOperation(ctx, req, node)
 	case authzGraph.OperatorNode:
 		switch node.GetLabel() {
