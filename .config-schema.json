@@ -458,7 +458,7 @@
                     "type": "object",
                     "properties": {
                         "endpoint": {
-                            "description": "The grpc endpoint of the trace collector",
+                            "description": "The grpc endpoint of the trace collector. 'none' for disabling the exporter",
                             "type": "string",
                             "default": "0.0.0.0:4317",
                             "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
