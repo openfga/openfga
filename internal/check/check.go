@@ -214,11 +214,11 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		visited = &sync.Map{}
 		// add the first object#relation that is being evaluated
 		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
+		userRelation := tuple.GetRelation(req.GetUserType())
 		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
-		if node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
-			if edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType()); ok {
-				return r.ResolveRecursive(ctx, req, edge, visited)
-			}
+		if userRelation == "" && node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
+			edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
+			return r.ResolveRecursive(ctx, req, edge, visited, ok)
 		}
 	}
 
@@ -246,7 +246,7 @@ func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.
 	return res, nil
 }
 
-func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
+func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
@@ -274,20 +274,23 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
-	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName:   DefaultRecursivePlan,
-		RecursiveStrategyName: RecursivePlan,
+	if canApplyOptimization {
+		possibleStrategies := map[string]*planner.PlanConfig{
+			DefaultStrategyName:   DefaultRecursivePlan,
+			RecursiveStrategyName: RecursivePlan,
+		}
+
+		keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
+		strategy := keyPlan.Select(possibleStrategies)
+
+		return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+			return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
+		})
 	}
-
-	keyPlan := r.planner.GetPlanSelector(createRecursiveUsersetPlanKey(req, edge.GetTo().GetUniqueLabel()))
-	strategy := keyPlan.Select(possibleStrategies)
-
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
-	})
+	return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
 }
 
-func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
+func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
 	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
@@ -322,20 +325,24 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
-	possibleStrategies := map[string]*planner.PlanConfig{
-		DefaultStrategyName:   DefaultRecursivePlan,
-		RecursiveStrategyName: RecursivePlan,
+	if canApplyOptimization {
+		possibleStrategies := map[string]*planner.PlanConfig{
+			DefaultStrategyName:   DefaultRecursivePlan,
+			RecursiveStrategyName: RecursivePlan,
+		}
+
+		keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
+		strategy := keyPlan.Select(possibleStrategies)
+
+		return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
+			return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
+		})
 	}
+	return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i, visited)
 
-	keyPlan := r.planner.GetPlanSelector(createRecursiveTTUPlanKey(req, edge.GetRecursiveRelation()))
-	strategy := keyPlan.Select(possibleStrategies)
-
-	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
-	})
 }
 
-func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map) (*Response, error) {
+func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	nonRecursiveEdges, err := r.model.FlattenRecursiveNode(edge.GetTo(), req.GetUserType())
 	if err != nil {
 		return nil, ErrPanicRequest
@@ -353,9 +360,9 @@ func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *aut
 		var res *Response
 		switch edge.GetEdgeType() {
 		case authzGraph.DirectEdge:
-			res, err = r.resolveRecursiveUserset(ctx, req, edge, visited)
+			res, err = r.resolveRecursiveUserset(ctx, req, edge, visited, canApplyOptimization)
 		case authzGraph.TTUEdge:
-			res, err = r.resolveRecursiveTTU(ctx, req, edge, visited)
+			res, err = r.resolveRecursiveTTU(ctx, req, edge, visited, canApplyOptimization)
 		default:
 			res, err = nil, ErrPanicRequest
 		}
