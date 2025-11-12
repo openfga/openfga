@@ -4137,7 +4137,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 			})
 
 		mockDatastore.EXPECT().Read(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
-			MaxTimes(2). // Allow any number of calls
+			AnyTimes().
 			DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadFilter, opts storage.ReadOptions) (storage.TupleIterator, error) {
 				// Manually check the relation and return the right data
 				switch filter.Object {
