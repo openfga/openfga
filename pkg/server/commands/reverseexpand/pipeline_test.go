@@ -2177,12 +2177,12 @@ func TestBaseResolver_Process(t *testing.T) {
 
 	documentViewerEdges, ok := g.GetEdgesFromNodeId("document#viewer")
 	if !ok {
-		panic("error")
+		panic("cannot get document#viewer edges")
 	}
 
 	orgMemberEdges, ok := g.GetEdgesFromNodeId("org#member")
 	if !ok {
-		panic("error")
+		panic("cannot get org#member edges")
 	}
 
 	tests := []struct {
@@ -2290,12 +2290,7 @@ func TestBaseResolver_Process(t *testing.T) {
 				},
 			}
 
-			listeners := []*listener{
-				{
-					cons: mockCons,
-					node: nil,
-				},
-			}
+			listeners := []*listener{{cons: mockCons, node: nil}}
 
 			// Execute process function
 			processFunc := resolver.process(0, snd, listeners)
@@ -2338,10 +2333,7 @@ type mockInterpreter struct {
 }
 
 func (m *mockInterpreter) interpret(ctx context.Context, edge *Edge, items []Item) iter.Seq[Item] {
-	if m.interpretFunc != nil {
-		return m.interpretFunc(ctx, edge, items)
-	}
-	return seq.Sequence[Item]()
+	return m.interpretFunc(ctx, edge, items)
 }
 
 // mockConsumer implements the consumer interface and allows
@@ -2353,19 +2345,13 @@ type mockConsumer struct {
 }
 
 func (m *mockConsumer) send(g group) {
-	if m.sendFunc != nil {
-		m.sendFunc(g)
-	}
+	m.sendFunc(g)
 }
 
 func (m *mockConsumer) cancel() {
-	if m.cancelFunc != nil {
-		m.cancelFunc()
-	}
+	m.cancelFunc()
 }
 
 func (m *mockConsumer) close() {
-	if m.closeFunc != nil {
-		m.closeFunc()
-	}
+	m.closeFunc()
 }
