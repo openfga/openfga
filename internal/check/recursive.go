@@ -280,20 +280,25 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	consistencyOpts := storage.ConsistencyOptions{
 		Preference: req.GetConsistency(),
 	}
-	var iter storage.TupleIterator
+	var tIter storage.TupleIterator
+	var ctxIter storage.TupleKeyIterator
 	var err error
 	if recursiveType == RecursiveTypeTTU {
 		subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 		_, relation := tuple.SplitObjectRelation(edge.GetFrom().GetUniqueLabel())
-		iter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
+		tIter, err = s.datastore.Read(ctx, req.GetStoreID(), storage.ReadFilter{
 			Object:     id,
 			Relation:   relation,
 			User:       subjectType + ":",
 			Conditions: edge.GetConditions(),
 		}, storage.ReadOptions{Consistency: consistencyOpts})
+
+		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, edge.GetTo().GetUniqueLabel()); ok {
+			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
+		}
 	} else {
 		userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-		iter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
+		tIter, err = s.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 			Object:   id,
 			Relation: userRelation, // a recursive relation userset, the relation to where it belongs is the same where is going to
 			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
@@ -302,6 +307,9 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 			}},
 			Conditions: edge.GetConditions(),
 		}, storage.ReadUsersetTuplesOptions{Consistency: consistencyOpts})
+		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, userRelation, edge.GetTo().GetUniqueLabel()); ok {
+			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -322,12 +330,15 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 			return t
 		}
 	}
-
+	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
+	if ctxIter != nil {
+		iter = iterator.Concat(ctxIter, iter)
+	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, uniqueKeyFunc))
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
-	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
+	i := iterator.NewFilteredIterator(iter, iterFilters...)
 	return storage.WrapIterator(kind, i), nil
 }
