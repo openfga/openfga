@@ -1454,7 +1454,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 func TestPlaygroundProxy(t *testing.T) {
 	t.Cleanup(func() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		goleak.VerifyNone(t)
 	})
 
@@ -1472,7 +1472,7 @@ func TestPlaygroundProxy(t *testing.T) {
 	defer mockPlayServer.Close()
 
 	cfg.Playground.Enabled = true
-	cfg.Playground.DestinationUrl = mockPlayServer.URL
+	cfg.Playground.DestinationURL = mockPlayServer.URL
 
 	go func() {
 		if err := runServer(ctx, cfg); err != nil {

@@ -233,7 +233,7 @@ type OTLPTraceTLSConfig struct {
 type PlaygroundConfig struct {
 	Enabled        bool
 	Port           int
-	DestinationUrl string
+	DestinationURL string
 }
 
 // ProfilerConfig defines server configurations specific to pprof profiling.
@@ -749,7 +749,7 @@ func DefaultConfig() *Config {
 		},
 		Playground: PlaygroundConfig{
 			Enabled:        true,
-			DestinationUrl: "https://play.fga.dev",
+			DestinationURL: "https://play.fga.dev",
 			Port:           3000,
 		},
 		Profiler: ProfilerConfig{

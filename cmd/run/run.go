@@ -865,7 +865,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		s.Logger.Info("🛝 starting openfga playground on http://localhost" + playgroundAddr)
 
 		// Create a reverse proxy to play.fga.dev
-		targetURL, err := url.Parse(config.Playground.DestinationUrl)
+		targetURL, err := url.Parse(config.Playground.DestinationURL)
 		if err != nil {
 			return fmt.Errorf("failed to parse proxy target URL: %w", err)
 		}
