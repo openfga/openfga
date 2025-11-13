@@ -910,13 +910,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			req.Header.Set("X-Origin-Host", "localhost"+playgroundAddr)
 		}
 
-		// Optional: Handle errors from the proxy
-		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			s.Logger.Error("playground proxy error", zap.Error(err))
-			w.WriteHeader(http.StatusBadGateway)
-			w.Write([]byte("Proxy error: " + err.Error()))
-		}
-
 		mux := http.NewServeMux()
 
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

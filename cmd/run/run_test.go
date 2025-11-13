@@ -1464,7 +1464,6 @@ func TestPlaygroundProxy(t *testing.T) {
 	t.Cleanup(cancel)
 
 	mockPlayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Simulate a response from play.fga.dev
 		w.Header().Set("X-Mock-Response", "from-play-fga-dev")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"mock": "response from play.fga.dev"}`))
@@ -1497,7 +1496,7 @@ func TestPlaygroundProxy(t *testing.T) {
 
 		// The playground should proxy unknown paths appropriately
 		// Even if it returns 404, it shows the proxy mechanism is working
-		require.Contains(t, []int{http.StatusOK, http.StatusNotFound}, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		// Check if response contains an iframe HTML tag
 		body, err := io.ReadAll(resp.Body)
@@ -1516,7 +1515,7 @@ func TestPlaygroundProxy(t *testing.T) {
 
 		// The playground should proxy unknown paths appropriately
 		// Even if it returns 404, it shows the proxy mechanism is working
-		require.Contains(t, []int{http.StatusOK, http.StatusNotFound}, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		// Check if response contains an iframe HTML tag
 		body, err := io.ReadAll(resp.Body)
@@ -1525,9 +1524,6 @@ func TestPlaygroundProxy(t *testing.T) {
 	})
 
 	t.Run("playground_proxies_to_play_fga_dev", func(t *testing.T) {
-		// wg.Add(1)
-		// defer wg.Done()
-
 		req, err := retryablehttp.NewRequest("GET",
 			fmt.Sprintf("http://localhost:%d/something-else", cfg.Playground.Port),
 			nil)
@@ -1538,7 +1534,7 @@ func TestPlaygroundProxy(t *testing.T) {
 
 		// The playground should proxy unknown paths appropriately
 		// Even if it returns 404, it shows the proxy mechanism is working
-		require.Contains(t, []int{http.StatusOK, http.StatusNotFound}, resp.StatusCode)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 }
 
