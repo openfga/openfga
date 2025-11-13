@@ -154,7 +154,7 @@ func TestRecursiveTTU(t *testing.T) {
 
 			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
-			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+			recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 			require.True(t, ok)
 			require.NotNil(t, recursiveEdge)
 			require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
@@ -231,7 +231,8 @@ type group
 
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
-		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
+
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
 		require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
@@ -605,7 +606,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
-			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+			recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 			require.True(t, ok)
 			require.NotNil(t, recursiveEdge)
 
@@ -833,7 +834,7 @@ func TestRecursiveUserset(t *testing.T) {
 
 				node, ok := mg.GetNodeByID("group#member")
 				require.True(t, ok)
-				recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+				recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 				require.True(t, ok)
 				require.NotNil(t, recursiveEdge)
 
@@ -1058,7 +1059,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 			node, ok := mg.GetNodeByID("group#member")
 			require.True(t, ok)
-			recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+			recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 			require.True(t, ok)
 			require.NotNil(t, recursiveEdge)
 
@@ -1111,7 +1112,7 @@ func TestRecursiveMatch(t *testing.T) {
 
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
-		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
 
@@ -1279,7 +1280,7 @@ func TestRecursiveTTUWithTupleCycles(t *testing.T) {
 
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
-		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
 		require.Equal(t, graph.TTUEdge, recursiveEdge.GetEdgeType())
@@ -1445,7 +1446,7 @@ func TestRecursiveUsersetWithTupleCycles(t *testing.T) {
 
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
-		recursiveEdge, ok := mg.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), "user")
+		recursiveEdge, ok := mg.CanApplyRecursion(node, "user", true)
 		require.True(t, ok)
 		require.NotNil(t, recursiveEdge)
 		require.Equal(t, graph.DirectEdge, recursiveEdge.GetEdgeType())

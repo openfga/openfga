@@ -160,7 +160,7 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 	return result, nil
 }
 
-func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
+func (m *AuthorizationModelGraph) canApplyRecursiveOptimization(node *authzGraph.WeightedAuthorizationModelNode, recursiveRelation, userType string) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
 	var recursiveEdge *authzGraph.WeightedAuthorizationModelEdge
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
@@ -181,7 +181,7 @@ func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph
 		} else if edge.GetEdgeType() == authzGraph.DirectEdge || edge.GetEdgeType() == authzGraph.TTUEdge {
 			recursiveEdge = edge
 		} else {
-			edgeResult, canApply := m.CanApplyRecursiveOptimization(edge.GetTo(), recursiveRelation, userType)
+			edgeResult, canApply := m.canApplyRecursiveOptimization(edge.GetTo(), recursiveRelation, userType)
 			if !canApply {
 				allEdgesCanApply = false
 			}
@@ -191,6 +191,17 @@ func (m *AuthorizationModelGraph) CanApplyRecursiveOptimization(node *authzGraph
 		}
 	}
 	return recursiveEdge, allEdgesCanApply
+}
+
+func (m *AuthorizationModelGraph) CanApplyRecursion(node *authzGraph.WeightedAuthorizationModelNode, userType string, newstrategy bool) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
+	userRelation := tuple.GetRelation(userType)
+	// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
+	if userRelation == "" && node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
+		edge, ok := m.canApplyRecursiveOptimization(node, node.GetRecursiveRelation(), userType)
+		return edge, ok && newstrategy
+	}
+
+	return nil, false
 }
 
 func WildcardRelationReference(objectType string) *openfgav1.RelationReference {

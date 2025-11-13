@@ -218,7 +218,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
 	}
 
-	edge, withOptimization := r.CanApplyRecursion(node, req.GetUserType(), emptyCyle)
+	edge, withOptimization := r.model.CanApplyRecursion(node, req.GetUserType(), emptyCyle)
 	if edge != nil {
 		return r.ResolveRecursive(ctx, req, edge, visited, withOptimization)
 	}
@@ -230,16 +230,6 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	return r.ResolveUnionEdges(ctx, req, terminalEdges, visited)
-}
-
-func (r *Resolver) CanApplyRecursion(node *authzGraph.WeightedAuthorizationModelNode, userType string, newstrategy bool) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
-	userRelation := tuple.GetRelation(userType)
-	// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
-	if userRelation == "" && node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
-		edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), userType)
-		return edge, ok && newstrategy
-	}
-	return nil, false
 }
 
 func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.PlanConfig,
@@ -826,7 +816,7 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	defer tIter.Stop()
 
 	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), tuplesetRelation, edge.GetTo().GetUniqueLabel()); ok {
+	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), tuplesetRelation, tuplesetEdge.GetTo().GetUniqueLabel()); ok {
 		iter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), iter)
 	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)

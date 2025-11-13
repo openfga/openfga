@@ -3740,13 +3740,20 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 				Conditions: []string{authzGraph.NoCond},
 			},
 			gomock.Any(),
-		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).Times(1)
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).MaxTimes(1)
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes(). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.TupleKey, error) {
+				return nil, storage.ErrNotFound
+			})
 
 		resolver := New(Config{
-			Model:     mg,
-			Datastore: mockDatastore,
-			Cache:     mockCache,
-			Planner:   mockPlanner,
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			Planner:          mockPlanner,
+			ConcurrencyLimit: 10,
 		})
 
 		contextualTuples := []*openfgav1.TupleKey{
@@ -3764,6 +3771,7 @@ func TestSpecificTypeAndRelation(t *testing.T) {
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		res, err := resolver.specificTypeAndRelation(context.Background(), req, edges[0], nil)
 		require.NoError(t, err)
@@ -4351,11 +4359,25 @@ func TestTTU(t *testing.T) {
 
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
+		mockDatastore.EXPECT().Read(
+			gomock.Any(),
+			storeID,
+			gomock.Any(),
+			gomock.Any(),
+		).Return(storage.NewStaticTupleIterator([]*openfgav1.Tuple{}), nil).AnyTimes()
+
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			AnyTimes(). // Allow any number of calls
+			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.TupleKey, error) {
+				return nil, storage.ErrNotFound
+			})
+
 		resolver := New(Config{
-			Model:     mg,
-			Datastore: mockDatastore,
-			Cache:     mockCache,
-			Planner:   mockPlanner,
+			Model:            mg,
+			Datastore:        mockDatastore,
+			Cache:            mockCache,
+			Planner:          mockPlanner,
+			ConcurrencyLimit: 10,
 		})
 
 		contextualTuples := []*openfgav1.TupleKey{
@@ -4371,10 +4393,7 @@ func TestTTU(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		mockResolver := NewMockCheckResolver(ctrl)
-		mockResolver.EXPECT().ResolveUnion(gomock.Any(), gomock.Any(), gomock.Any(), nil).Return(&Response{Allowed: true}, nil).Times(1)
-
-		resolver.strategies[DefaultStrategyName] = NewDefault(mg, mockResolver, 10)
+		resolver.strategies[DefaultStrategyName] = NewDefault(mg, resolver, 10)
 
 		edges, ok := mg.GetEdgesFromNodeId("document#viewer")
 		require.True(t, ok)
