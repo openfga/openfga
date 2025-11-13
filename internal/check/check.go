@@ -720,9 +720,9 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	if edge.GetTo().GetUniqueLabel() == req.GetUserType() {
 		// we break here if there is an error, or the response is allowed, or if the edge is not recursive and it is not part of a tuple cycle
 		// in case it is recursive or it is part of the tuple cycle it needs to continue expanding the graph
-		res, error := r.specificType(ctx, req, edge)
-		if error != nil || res.GetAllowed() || (edge.GetRecursiveRelation() == "" && !edge.IsPartOfTupleCycle()) {
-			return res, error
+		res, err := r.specificType(ctx, req, edge)
+		if err != nil || res.GetAllowed() || (edge.GetRecursiveRelation() == "" && !edge.IsPartOfTupleCycle()) {
+			return res, err
 		}
 	}
 
