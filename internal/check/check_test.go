@@ -44,10 +44,14 @@ func TestResolveUnionEdges(t *testing.T) {
 		require.NoError(t, err)
 
 		// First edge returns true - should short circuit
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "admin", "user:maria"), gomock.Any()).
-			Return(nil, storage.ErrNotFound).MaxTimes(1)
-		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, tuple.NewTupleKey("group:1", "member", "user:maria"), gomock.Any()).
-			Return(&openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "member", "user:maria")}, nil).MaxTimes(1)
+		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, tk *openfgav1.TupleKey, _ storage.ReadUserTupleOptions) (*openfgav1.Tuple, error) {
+				if tk.GetRelation() == "admin" {
+					return nil, storage.ErrNotFound
+				}
+				return &openfgav1.Tuple{Key: tuple.NewTupleKey("group:1", "member", "user:maria")}, nil
+			}).MaxTimes(2)
+
 		mockCache.EXPECT().Set(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 		resolver := New(Config{

@@ -47,14 +47,10 @@ func ToChannel[T any](ctx context.Context, iter storage.Iterator[T], batchSize i
 type channelIterator struct {
 	source  <-chan *Msg
 	current storage.Iterator[string] // could easily be converted to generic
-	mu      sync.Mutex
 	stopped bool
 }
 
 func (c *channelIterator) Next(ctx context.Context) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.stopped {
 		return "", storage.ErrIteratorDone
 	}
@@ -95,9 +91,6 @@ func (c *channelIterator) Next(ctx context.Context) (string, error) {
 }
 
 func (c *channelIterator) Head(ctx context.Context) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.stopped {
 		return "", storage.ErrIteratorDone
 	}
@@ -138,9 +131,6 @@ func (c *channelIterator) Head(ctx context.Context) (string, error) {
 }
 
 func (c *channelIterator) Stop() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.stopped {
 		return
 	}
@@ -158,6 +148,5 @@ func (c *channelIterator) Stop() {
 func FromChannel(in chan *Msg) storage.Iterator[string] {
 	return &channelIterator{
 		source: in,
-		mu:     sync.Mutex{},
 	}
 }
