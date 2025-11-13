@@ -137,7 +137,7 @@ func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.Weighted
 		canFlatten := false
 
 		switch edge.GetEdgeType() {
-		case authzGraph.ComputedEdge:
+		case authzGraph.ComputedEdge, authzGraph.DirectLogicalEdge, authzGraph.TTULogicalEdge:
 			canFlatten = true
 		case authzGraph.RewriteEdge:
 			switch edge.GetTo().GetNodeType() {
