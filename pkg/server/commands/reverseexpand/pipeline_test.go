@@ -2189,7 +2189,6 @@ func TestBaseResolver_Process(t *testing.T) {
 		name           string
 		edge           *Edge
 		inputItems     []Item
-		existingBuffer map[string]struct{}
 		expectedUnseen []Item
 		expectedOutput []Item
 	}{
@@ -2271,11 +2270,6 @@ func TestBaseResolver_Process(t *testing.T) {
 
 			resolver.inBuffers[0] = make(map[string]struct{})
 			resolver.errBuffers[0] = make(map[string]struct{})
-
-			// Pre-populate existing buffer if provided
-			if test.existingBuffer != nil {
-				resolver.inBuffers[0] = test.existingBuffer
-			}
 
 			// Create message with done function
 			var doneCalled bool
