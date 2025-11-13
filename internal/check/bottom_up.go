@@ -145,13 +145,13 @@ func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *
 // TODO: DETERMINE IF ITS WORTH WAITING FOR RESULTS OF RIGHT HAND SIDE TO PERFORM BOUNDED QUERIES RATHER THAN THE FULL SET OF OBJECTIDS (BASICALLY INTERSECTION AT THE DATASTORE LEVEL).
 func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge) (chan *iterator.Msg, error) {
 	opts := storage.ReadStartingWithUserOptions{
-		WithResultsSortedAscending: true,
+		WithResultsSortedAscending: true, // doesn't matter anymore, could be removed
 		Consistency: storage.ConsistencyOptions{
 			Preference: req.GetConsistency(),
 		},
 	}
 	objectType, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
-	iter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
+	tIter, err := s.datastore.ReadStartingWithUser(ctx, req.GetStoreID(),
 		storage.ReadStartingWithUserFilter{
 			ObjectType: objectType,
 			Relation:   relation,
@@ -164,12 +164,22 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		return nil, err
 	}
 
+	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
+	if ctxTuples, ok := req.GetContextualTuplesByUserID(req.GetTupleKey().GetUser(), relation, objectType); ok {
+		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
+			if a.GetObject() < b.GetObject() {
+				return -1
+			} else if a.GetObject() > b.GetObject() {
+				return 1
+			}
+			return 0
+		})
+	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
 		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
 	}
-	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
-
+	i := iterator.NewFilteredIterator(iter, iterFilters...)
 	iterChan := make(chan *iterator.Msg, 1)
 	if !concurrency.TrySendThroughChannel(ctx, &iterator.Msg{Iter: storage.WrapIterator(storage.ObjectIDKind, i)}, iterChan) {
 		iter.Stop() // will not be received to be cleaned up
