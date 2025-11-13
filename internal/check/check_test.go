@@ -4210,7 +4210,7 @@ func TestResolveRecursiveCheck(t *testing.T) {
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.TupleKey, error) {
-				if tk.Object == "group:g1" && tk.Relation == "reader" && tk.User == "user:u1" {
+				if tk.GetObject() == "group:g1" && tk.GetRelation() == "reader" && tk.GetUser() == "user:u1" {
 					return tuple.NewTupleKey("group:g1", "reader", "user:u1"), nil
 				}
 
@@ -4323,7 +4323,7 @@ func TestResolveCheck(t *testing.T) {
 		mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
 			AnyTimes(). // Allow any number of calls
 			DoAndReturn(func(ctx context.Context, sID string, tk *openfgav1.TupleKey, opts storage.ReadUserTupleOptions) (*openfgav1.TupleKey, error) {
-				if tk.Object == "group:g1" && tk.Relation == "reader" && tk.User == "user:u1" {
+				if tk.GetObject() == "group:g1" && tk.GetRelation() == "reader" && tk.GetUser() == "user:u1" {
 					return tuple.NewTupleKey("group:g1", "reader", "user:u1"), nil
 				}
 

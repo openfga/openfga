@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 func TestGetContextualTuplesByUserID(t *testing.T) {

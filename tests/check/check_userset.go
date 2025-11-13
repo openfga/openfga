@@ -1,8 +1,9 @@
 package check
 
 import (
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/types/known/structpb"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 
 	checktest "github.com/openfga/openfga/internal/test/check"
 )
