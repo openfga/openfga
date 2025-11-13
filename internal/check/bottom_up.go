@@ -127,12 +127,7 @@ func (s *bottomUp) resolveRewrite(ctx context.Context, req *Request, node *authz
 func (s *bottomUp) setFlattenOperation(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode) (chan *iterator.Msg, error) {
 	var err error
 	var edges []*authzGraph.WeightedAuthorizationModelEdge
-
-	if s.strategy == recursive {
-		edges, err = s.model.FlattenRecursiveNode(node, req.GetUserType())
-	} else {
-		edges, err = s.model.FlattenNode(node, req.GetUserType())
-	}
+	edges, err = s.model.FlattenNode(node, req.GetUserType(), s.strategy == recursive)
 	if err != nil {
 		return nil, err
 	}

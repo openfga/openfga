@@ -224,7 +224,7 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
-	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType())
+	terminalEdges, err := r.model.FlattenNode(node, req.GetUserType(), false)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}
@@ -350,7 +350,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 }
 
 func (r *Resolver) ResolveRecursive(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
-	nonRecursiveEdges, err := r.model.FlattenRecursiveNode(edge.GetTo(), req.GetUserType())
+	nonRecursiveEdges, err := r.model.FlattenNode(edge.GetTo(), req.GetUserType(), true)
 	if err != nil {
 		return nil, ErrPanicRequest
 	}

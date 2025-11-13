@@ -71,7 +71,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -124,7 +124,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -179,7 +179,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -245,7 +245,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -296,7 +296,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 
@@ -353,7 +353,7 @@ func TestResolveUnionEdges(t *testing.T) {
 		node, ok := mg.GetNodeByID("group#member")
 		require.True(t, ok)
 
-		edges, err := mg.FlattenNode(node, "user")
+		edges, err := mg.FlattenNode(node, "user", false)
 		require.NoError(t, err)
 		require.True(t, ok)
 

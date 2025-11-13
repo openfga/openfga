@@ -75,7 +75,7 @@ func (m *AuthorizationModelGraph) GetDirectEdgeFromNodeForUserType(objectRelatio
 	return edge, nil
 }
 
-func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
+func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthorizationModelNode, userType string, recursivePath bool) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
 	edges, ok := m.GetEdgesFromNode(node)
 	if !ok {
 		return nil, ErrGraphError
@@ -105,54 +105,12 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		}
 
 		if canFlatten {
-			res, err := m.FlattenNode(edge.GetTo(), userType)
+			res, err := m.FlattenNode(edge.GetTo(), userType, recursivePath)
 			if err != nil {
 				return nil, err
 			}
 			result = append(result, res...)
-		} else {
-			result = append(result, edge)
-		}
-	}
-
-	return result, nil
-}
-
-func (m *AuthorizationModelGraph) FlattenRecursiveNode(node *authzGraph.WeightedAuthorizationModelNode, userType string) ([]*authzGraph.WeightedAuthorizationModelEdge, error) {
-	edges, ok := m.GetEdgesFromNode(node)
-	if !ok {
-		return nil, ErrGraphError
-	}
-	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
-	for _, edge := range edges {
-		_, ok := m.GetEdgeWeight(edge, userType)
-		if !ok {
-			continue // no relation to terminal type / pruning edge traversal
-		}
-
-		canFlatten := false
-
-		switch edge.GetEdgeType() {
-		case authzGraph.ComputedEdge, authzGraph.DirectLogicalEdge, authzGraph.TTULogicalEdge:
-			canFlatten = true
-		case authzGraph.RewriteEdge:
-			switch edge.GetTo().GetNodeType() {
-			case authzGraph.SpecificTypeAndRelation:
-				canFlatten = true
-			case authzGraph.OperatorNode:
-				if edge.GetTo().GetLabel() == authzGraph.UnionOperator {
-					canFlatten = true
-				}
-			}
-		}
-
-		if canFlatten {
-			res, err := m.FlattenRecursiveNode(edge.GetTo(), userType)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, res...)
-		} else if edge.GetRecursiveRelation() == "" {
+		} else if !recursivePath || edge.GetRecursiveRelation() == "" {
 			result = append(result, edge)
 		}
 	}
