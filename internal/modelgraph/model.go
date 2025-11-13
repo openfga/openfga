@@ -80,9 +80,7 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 	if !ok {
 		return nil, ErrGraphError
 	}
-	if node.IsPartOfTupleCycle() || node.GetRecursiveRelation() != "" {
-		return edges, nil
-	}
+
 	result := make([]*authzGraph.WeightedAuthorizationModelEdge, 0, len(edges))
 	for _, edge := range edges {
 		_, ok := m.GetEdgeWeight(edge, userType)
@@ -93,14 +91,12 @@ func (m *AuthorizationModelGraph) FlattenNode(node *authzGraph.WeightedAuthoriza
 		canFlatten := false
 
 		switch edge.GetEdgeType() {
-		case authzGraph.ComputedEdge:
+		case authzGraph.ComputedEdge, authzGraph.DirectLogicalEdge, authzGraph.TTULogicalEdge:
 			canFlatten = true
 		case authzGraph.RewriteEdge:
 			switch edge.GetTo().GetNodeType() {
 			case authzGraph.SpecificTypeAndRelation:
-				if edge.GetTo().GetRecursiveRelation() == "" && !edge.GetTo().IsPartOfTupleCycle() {
-					canFlatten = true
-				}
+				canFlatten = true
 			case authzGraph.OperatorNode:
 				if edge.GetTo().GetLabel() == authzGraph.UnionOperator {
 					canFlatten = true

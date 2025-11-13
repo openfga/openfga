@@ -210,17 +210,17 @@ func (r *Resolver) ResolveUnionEdges(ctx context.Context, req *Request, edges []
 
 // reduce as a logical union operation (exit the moment we have a single true).
 func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGraph.WeightedAuthorizationModelNode, visited *sync.Map) (*Response, error) {
-	if visited == nil && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
+	emptyCyle := visited == nil
+	if emptyCyle && node.GetNodeType() == authzGraph.SpecificTypeAndRelation && (node.GetRecursiveRelation() == node.GetUniqueLabel() || node.IsPartOfTupleCycle()) {
 		// initialize visited map for first time,
 		visited = &sync.Map{}
 		// add the first object#relation that is being evaluated
 		visited.Store(tuple.ToObjectRelationString(req.GetTupleKey().GetObject(), req.GetTupleKey().GetRelation()), struct{}{})
-		userRelation := tuple.GetRelation(req.GetUserType())
-		// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
-		if userRelation == "" && node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
-			edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), req.GetUserType())
-			return r.ResolveRecursive(ctx, req, edge, visited, ok)
-		}
+	}
+
+	edge, withOptimization := r.CanApplyRecursion(node, req.GetUserType(), emptyCyle)
+	if edge != nil {
+		return r.ResolveRecursive(ctx, req, edge, visited, withOptimization)
 	}
 
 	// flatten the node to get all terminal edges to avoid unnecessary goroutines
@@ -230,6 +230,16 @@ func (r *Resolver) ResolveUnion(ctx context.Context, req *Request, node *authzGr
 	}
 
 	return r.ResolveUnionEdges(ctx, req, terminalEdges, visited)
+}
+
+func (r *Resolver) CanApplyRecursion(node *authzGraph.WeightedAuthorizationModelNode, userType string, newstrategy bool) (*authzGraph.WeightedAuthorizationModelEdge, bool) {
+	userRelation := tuple.GetRelation(userType)
+	// if it is not first time we don't need to resolve any recursive relation because we are already iterating over it
+	if userRelation == "" && node.GetRecursiveRelation() == node.GetUniqueLabel() && !node.IsPartOfTupleCycle() {
+		edge, ok := r.model.CanApplyRecursiveOptimization(node, node.GetRecursiveRelation(), userType)
+		return edge, ok && newstrategy
+	}
+	return nil, false
 }
 
 func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.PlanConfig,

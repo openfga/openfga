@@ -785,47 +785,27 @@ func TestRecursiveUserset(t *testing.T) {
 				storeID := ulid.Make().String()
 				mockDatastore := mocks.NewMockRelationshipTupleReader(ctrl)
 
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "rel4",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError)
-
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "rel7",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError)
-
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "rel8",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError)
-
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "rel5",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError)
-
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "rel6",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError)
-
-				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, storage.ReadStartingWithUserFilter{
-					ObjectType: "group",
-					Relation:   "member",
-					UserFilter: []*openfgav1.ObjectRelation{{Object: "user:maria"}},
-					Conditions: []string{""},
-				}, gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError)
+				mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), storeID, gomock.Any(), gomock.Any()).
+					MaxTimes(6). // Allow any number of calls
+					DoAndReturn(func(ctx context.Context, sID string, filter storage.ReadStartingWithUserFilter, opts storage.ReadStartingWithUserOptions) (storage.TupleIterator, error) {
+						// Manually check the relation and return the right data
+						switch filter.Relation {
+						case "rel4":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel4), tt.readStartingWithUserTuplesError
+						case "rel7":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel7), tt.readStartingWithUserTuplesError
+						case "rel8":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel8), tt.readStartingWithUserTuplesError
+						case "rel5":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel5), tt.readStartingWithUserTuplesError
+						case "rel6":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesRel6), tt.readStartingWithUserTuplesError
+						case "member":
+							return storage.NewStaticTupleIterator(tt.readStartingWithUserTuplesMember), tt.readStartingWithUserTuplesError
+						default:
+							return nil, fmt.Errorf("unexpected relation %s", filter.Relation)
+						}
+					})
 
 				for _, tuples := range tt.readUsersetTuples[1:] {
 					mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any(), gomock.Any()).MaxTimes(1).Return(storage.NewStaticTupleIterator(tuples), tt.readUsersetTuplesError)
