@@ -551,12 +551,10 @@ func (r *Resolver) ResolveEdge(ctx context.Context, req *Request, edge *authzGra
 		default:
 			return nil, ErrPanicRequest
 		}
-	case authzGraph.DirectLogicalEdge:
+	case authzGraph.DirectLogicalEdge, authzGraph.TTULogicalEdge, authzGraph.ComputedEdge:
 		return r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
 	case authzGraph.TTUEdge:
 		return r.ttu(ctx, req, edge, visitedObjects)
-	case authzGraph.TTULogicalEdge:
-		return r.ResolveUnion(ctx, req, edge.GetTo(), visitedObjects)
 	case authzGraph.RewriteEdge:
 		return r.ResolveRewrite(ctx, req, edge.GetTo(), visitedObjects)
 	default:
@@ -672,8 +670,14 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	)
 	defer span.End()
 
+	// if the request is a userset then we need to execute the specific type
 	if edge.GetTo().GetUniqueLabel() == req.GetUserType() {
-		return r.specificType(ctx, req, edge)
+		// we break here if there is an error, or the response is allowed, or if the edge is not recursive and it is not part of a tuple cycle
+		// in case it is recursive or it is part of the tuple cycle it needs to continue expanding the graph
+		res, error := r.specificType(ctx, req, edge)
+		if error != nil || res.GetAllowed() || (edge.GetRecursiveRelation() == "" && !edge.IsPartOfTupleCycle()) {
+			return res, error
+		}
 	}
 
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
@@ -710,7 +714,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 
-	// TODO: Need optimization to solve userset as principal
+	// when the request usertype is a userset, then only available strategy at the moment is default strategy
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
 		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
 	}
