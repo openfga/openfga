@@ -547,6 +547,21 @@ func TestWriteCommand(t *testing.T) {
 			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#require_condition@user:maria'. Reason: condition is missing",
 		},
 		{
+			name: "invalid_condition_missing_wildcard",
+			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)
+			},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:*",
+				}},
+			},
+			expectedError: "rpc error: code = Code(2000) desc = Invalid tuple 'document:1#viewer@user:*'. Reason: condition is missing",
+		},
+
+		{
 			name: "invalid_condition",
 			setMock: func(mockDatastore *mockstorage.MockOpenFGADatastore) {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Times(1).Return(model, nil)

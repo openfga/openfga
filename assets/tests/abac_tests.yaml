@@ -2897,3 +2897,65 @@ tests:
               "ts": "2023-10-11T09:00:00.000Z"
             expectation:
               - user:*
+  - name: wildcard_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:*]
+              define other: [user with ts_less_than]
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:*
+            relation: member
+            object: group1:1
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:1
+            expectation: true
+      - model: |
+          model
+            schema 1.1
+          type user
+          type group1
+            relations
+              define member: [user, user:* with ts_less_than]
+              define other: [user with ts_less_than]
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: user:*
+            relation: member
+            object: group1:2
+            condition:
+              name: ts_less_than
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:1
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:2
+            context:
+              "ts": "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: member
+              object: group1:2
+            context:
+              "ts": "2023-10-11T11:00:00.000Z"
+            expectation: false
