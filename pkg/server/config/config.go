@@ -231,8 +231,9 @@ type OTLPTraceTLSConfig struct {
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
 type PlaygroundConfig struct {
-	Enabled bool
-	Port    int
+	Enabled        bool
+	Port           int
+	DestinationUrl string
 }
 
 // ProfilerConfig defines server configurations specific to pprof profiling.
@@ -747,8 +748,9 @@ func DefaultConfig() *Config {
 			ServiceName: "openfga",
 		},
 		Playground: PlaygroundConfig{
-			Enabled: true,
-			Port:    3000,
+			Enabled:        true,
+			DestinationUrl: "https://play.fga.dev",
+			Port:           3000,
 		},
 		Profiler: ProfilerConfig{
 			Enabled: false,
