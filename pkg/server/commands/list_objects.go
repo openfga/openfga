@@ -480,6 +480,7 @@ func (q *ListObjectsQuery) Execute(
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
 	maxResults := q.listObjectsMaxResults
+	q.pipelineEnabled = true
 
 	timeoutCtx := ctx
 	if q.listObjectsDeadline != 0 {

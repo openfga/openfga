@@ -411,12 +411,9 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 		ctx, span := pipelineTracer.Start(r.ctx, "message.received", trace.WithAttributes(attrs...))
 		defer span.End()
 
-		isRecursive := snd.edge() != nil && len(snd.edge().GetRecursiveRelation()) > 0 && !snd.edge().IsPartOfTupleCycle()
-		isTupleCycle := snd.edge() != nil && snd.edge().IsPartOfTupleCycle()
-
 		// If the edge is recursive or part of a tuple cycle,
-		// deduplicate items received in this group based on the buffer for this sender
-		if isRecursive || isTupleCycle {
+		// deduplicate items received in this group based on the buffer for this sender.
+		if snd.edge() != nil && (len(snd.edge().GetRecursiveRelation()) > 0 || snd.edge().IsPartOfTupleCycle()) {
 			for _, item := range msg.Value.Items {
 				if item.Err != nil {
 					r.mutexes[ndx].Lock()
@@ -443,7 +440,7 @@ func (r *baseResolver) process(ndx int, snd *sender, listeners []*listener) loop
 			unseen = msg.Value.Items
 		}
 
-		// If there are no unseen items, skip processing
+		// If there are no unseen items, skip processing.
 		if len(unseen) == 0 {
 			msg.done()
 			return true
