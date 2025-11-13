@@ -1,0 +1,12 @@
+version: v2
+modules:
+  - path: proto
+deps:
+  - buf.build/openfga/api
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+
