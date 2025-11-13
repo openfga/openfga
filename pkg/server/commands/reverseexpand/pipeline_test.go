@@ -2338,7 +2338,7 @@ func TestBaseResolver_Process(t *testing.T) {
 }
 
 // mockInterpreter implements the consumer interface and allows
-// us to intercept the interpret function
+// us to intercept the interpret function.
 type mockInterpreter struct {
 	interpretFunc func(context.Context, *Edge, []Item) iter.Seq[Item]
 }
@@ -2351,7 +2351,7 @@ func (m *mockInterpreter) interpret(ctx context.Context, edge *Edge, items []Ite
 }
 
 // mockConsumer implements the consumer interface and allows
-// us to intercept the sendFunc function
+// us to intercept the sendFunc function.
 type mockConsumer struct {
 	sendFunc   func(group)
 	cancelFunc func()
