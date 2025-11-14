@@ -247,7 +247,7 @@ func (c *Client) Write(ctx context.Context, store string, d storage.Deletes, w s
 
 	_, err := c.client.Write(ctx, req)
 	if err != nil {
-		return fmt.Errorf("grpc write failed: %w", err)
+		return fromGRPCError(err)
 	}
 
 	return nil

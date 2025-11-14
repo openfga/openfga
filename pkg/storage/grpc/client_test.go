@@ -660,6 +660,10 @@ func (m *mockErrorDatastore) ReadStartingWithUser(ctx context.Context, store str
 	return &mockEmptyIterator{}, nil
 }
 
+func (m *mockErrorDatastore) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes, opts ...storage.TupleWriteOption) error {
+	return m.errorToReturn
+}
+
 type mockEmptyIterator struct{}
 
 func (m *mockEmptyIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
@@ -754,13 +758,20 @@ func TestClientErrorHandling(t *testing.T) {
 				require.ErrorIs(t, err, tt.storeError)
 			})
 
-			// Test ReadUserTuple
 			t.Run("ReadUserTuple", func(t *testing.T) {
 				_, err := client.ReadUserTuple(ctx, "test-store", &openfgav1.TupleKey{
 					Object:   "doc:1",
 					Relation: "viewer",
 					User:     "user:anne",
 				}, storage.ReadUserTupleOptions{})
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.storeError)
+			})
+
+			t.Run("Write", func(t *testing.T) {
+				err := client.Write(ctx, "test-store", nil, []*openfgav1.TupleKey{
+					{Object: "doc:1", Relation: "viewer", User: "user:anne"},
+				})
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.storeError)
 			})
