@@ -955,7 +955,9 @@ func (p *Pipeline) Build(ctx context.Context, source Source, target Target) iter
 
 	sourceWorker, ok := pth.workers[(*Node)(source)]
 	if !ok {
-		panic("no such source worker")
+		// if the sourceWorker cannot be found, it means that the source
+		// does not have a path to the target, therefore there are no items
+		return emptySequence
 	}
 
 	var wg sync.WaitGroup
@@ -1047,9 +1049,9 @@ type path struct {
 }
 
 const (
-	NotSame int = iota
-	SameNode
-	SameType
+	NoMatch int = iota
+	NodeMatch
+	TypeMatch
 )
 
 func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusPool) {
@@ -1057,23 +1059,23 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 		return
 	}
 
-	isSame := NotSame
+	isMatch := NoMatch
 
 	switch source.GetNodeType() {
 	case nodeTypeSpecificType, nodeTypeSpecificTypeAndRelation:
 		if source == target.node {
-			isSame = SameNode
+			isMatch = NodeMatch
 		}
 	case nodeTypeSpecificTypeWildcard:
 		label := source.GetLabel()
 		typePart := strings.Split(label, ":")[0]
 
 		if source == target.node || typePart == target.node.GetLabel() {
-			isSame = SameType
+			isMatch = TypeMatch
 		}
 	}
 
-	if isSame != NotSame {
+	if isMatch == NoMatch {
 		// only generate workers when the source reaches the target or the source is the target
 		_, ok := p.pipe.backend.Graph.GetNodeWeight(source, target.node.GetUniqueLabel())
 		if !ok {
@@ -1093,19 +1095,17 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 
 	p.workers[source] = w
 
-	switch isSame {
-	case SameNode:
-		if source == target.node {
-			// source node is the target node.
-			var grp group
-			grp.Items = []Item{{Value: target.id}}
-			w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
-		}
-	case SameType:
+	switch isMatch {
+	case NodeMatch:
+		// source node is the target node.
+		var grp group
+		grp.Items = []Item{{Value: target.id}}
+		w.listen(nil, newStaticProducer(&p.trk, grp), p.pipe.chunkSize, 1) // only one value to consume, so only one processor necessary.
+	case TypeMatch:
 		label := source.GetLabel()
 		typePart := strings.Split(label, ":")[0]
 
-		if source == target.node || typePart == target.node.GetLabel() {
+		if typePart == target.node.GetLabel() {
 			// source node is the target node or has the same type as the target.
 			var grp group
 			grp.Items = []Item{{Value: "*"}}
@@ -1140,7 +1140,7 @@ EdgeLoop:
 				switch source.GetLabel() {
 				case weightedGraph.ExclusionOperator:
 					if ndx == 0 {
-						p.workers[source] = nil
+						// p.workers[source] = nil
 
 						break EdgeLoop
 					}
