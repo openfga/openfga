@@ -1108,9 +1108,17 @@ func (p *path) resolve(source *Node, target Target, trk tracker, status *StatusP
 func (p *path) worker(node *Node, trk tracker, status *StatusPool) *worker {
 	var w worker
 
-	ctx, cancel := context.WithCancel(p.ctx)
+	nodeName := "nil"
+	if node != nil {
+		nodeName = node.GetUniqueLabel()
+	}
+
+	ctx, span := tracer.Start(p.ctx, "worker", trace.WithAttributes(attribute.String("name", nodeName)))
+
+	ctx, cancel := context.WithCancel(ctx)
 
 	w.finite = sync.OnceFunc(func() {
+		defer span.End()
 		cancel()
 		for _, lst := range w.listeners {
 			lst.close()
