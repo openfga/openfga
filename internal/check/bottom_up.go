@@ -164,7 +164,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 		iter = iterator.Merge(iter, storage.NewStaticTupleKeyIterator(ctxTuples), func(a, b *openfgav1.TupleKey) int {
 			if a.GetObject() < b.GetObject() {
 				return -1
-			} else if a.GetObject() > b.GetObject() {
+			} else if a.GetObject() >= b.GetObject() {
 				return 1
 			}
 			return 0
@@ -172,7 +172,7 @@ func (s *bottomUp) specificType(ctx context.Context, req *Request, edge *authzGr
 	}
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(iter, iterFilters...)
 	iterChan := make(chan *iterator.Msg, 1)
@@ -206,7 +206,7 @@ func (s *bottomUp) specificTypeWildcard(ctx context.Context, req *Request, edge 
 
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 1)
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(storage.NewTupleKeyIteratorFromTupleIterator(iter), iterFilters...)
 

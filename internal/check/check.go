@@ -249,11 +249,10 @@ func (r *Resolver) executeStrategy(selector planner.Selector, strategy *planner.
 
 func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	userObjectType, userRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
-	_, relation := tuple.SplitObjectRelation(edge.GetRelationDefinition())
 
 	tIter, err := r.datastore.ReadUsersetTuples(ctx, req.GetStoreID(), storage.ReadUsersetTuplesFilter{
 		Object:   req.GetTupleKey().GetObject(),
-		Relation: relation,
+		Relation: userRelation, // a user relation in a recursive userset is the same than the defined relation
 		AllowedUserTypeRestrictions: []*openfgav1.RelationReference{{
 			Type:               userObjectType,
 			RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: userRelation},
@@ -265,21 +264,9 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, edge.GetTo().GetUniqueLabel()); ok {
-		iter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), iter)
-	}
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
-	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
-		return key.GetUser() // this is a userset (object#relation)
-	}))
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, edge, req.GetContext()))
-	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
-
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), userRelation, edge.GetTo().GetUniqueLabel(), visited)
 	if !canApplyOptimization {
-		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
+		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 	}
 	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
@@ -290,13 +277,13 @@ func (r *Resolver) resolveRecursiveUserset(ctx context.Context, req *Request, ed
 	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
 }
 
 func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *authzGraph.WeightedAuthorizationModelEdge, visited *sync.Map, canApplyOptimization bool) (*Response, error) {
 	_, tuplesetRelation := tuple.SplitObjectRelation(edge.GetTuplesetRelation())
-	subjectType, computedRelation := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
+	subjectType, _ := tuple.SplitObjectRelation(edge.GetTo().GetUniqueLabel())
 
 	conditionEdge, err := r.model.GetDirectEdgeFromNodeForUserType(edge.GetTuplesetRelation(), subjectType)
 	if err != nil {
@@ -319,22 +306,10 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	}
 
 	defer tIter.Stop()
-
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), tuplesetRelation, edge.GetTo().GetUniqueLabel()); ok {
-		iter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), iter)
-	}
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
-	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
-		return tuple.ToObjectRelationString(key.GetUser(), computedRelation)
-	}))
-	if len(conditionEdge.GetConditions()) > 1 || conditionEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditionEdge, req.GetContext()))
-	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
+	iter := r.buildIterator(ctx, req, tIter, conditionEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if !canApplyOptimization {
-		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i, visited)
+		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
 	}
 	possibleStrategies := map[string]*planner.PlanConfig{
 		DefaultStrategyName:   DefaultRecursivePlan,
@@ -345,7 +320,7 @@ func (r *Resolver) resolveRecursiveTTU(ctx context.Context, req *Request, edge *
 	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
 }
 
@@ -627,7 +602,7 @@ func (r *Resolver) specificType(ctx context.Context, req *Request, edge *authzGr
 		t = ut.GetKey()
 	}
 
-	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	allowed, err := evaluateCondition(ctx, r.model, edge.GetConditions(), t, req.GetContext())
 	if err != nil {
 		return nil, err
 	}
@@ -686,7 +661,7 @@ func (r *Resolver) specificTypeWildcard(ctx context.Context, req *Request, edge 
 		return nil, err
 	}
 
-	allowed, err := evaluateCondition(ctx, r.model, edge, t, req.GetContext())
+	allowed, err := evaluateCondition(ctx, r.model, edge.GetConditions(), t, req.GetContext())
 	if err != nil {
 		return nil, err
 	}
@@ -738,26 +713,10 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	}
 	defer tIter.Stop()
 
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, edge.GetTo().GetUniqueLabel()); ok {
-		iter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), iter)
-	}
-
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
-	if visited != nil {
-		// only when we are in the presence of visited (meaning tuple cycle or recursion) we need to deduplicate to avoid infinite loop
-		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
-			return key.GetUser()
-		}))
-	}
-	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, edge, req.GetContext()))
-	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
-
+	iter := r.buildIterator(ctx, req, tIter, edge.GetConditions(), relation, edge.GetTo().GetUniqueLabel(), visited)
 	// when the request usertype is a userset, then only available strategy at the moment is default strategy
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, i, visited)
+		return r.strategies[DefaultStrategyName].Userset(ctx, req, edge, iter, visited)
 	}
 
 	possibleStrategies := map[string]*planner.PlanConfig{
@@ -773,7 +732,7 @@ func (r *Resolver) specificTypeAndRelation(ctx context.Context, req *Request, ed
 	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].Userset(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].Userset(ctx, req, edge, iter, visited)
 	})
 }
 
@@ -815,24 +774,10 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 
 	defer tIter.Stop()
 
-	iter := storage.NewTupleKeyIteratorFromTupleIterator(tIter)
-	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), tuplesetRelation, tuplesetEdge.GetTo().GetUniqueLabel()); ok {
-		iter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), iter)
-	}
-	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
-	if visited != nil {
-		// only when we are in the presence of visited (meaning tuple cycle or recursion) we need to deduplicate to avoid infinite loop
-		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
-			return key.GetUser()
-		}))
-	}
-	if len(tuplesetEdge.GetConditions()) > 1 || tuplesetEdge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, tuplesetEdge, req.GetContext()))
-	}
-	i := iterator.NewFilteredIterator(iter, iterFilters...)
+	iter := r.buildIterator(ctx, req, tIter, tuplesetEdge.GetConditions(), tuplesetRelation, subjectType, visited)
 
 	if tuple.IsObjectRelation(req.GetTupleKey().GetUser()) {
-		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, i, visited)
+		return r.strategies[DefaultStrategyName].TTU(ctx, req, edge, iter, visited)
 	}
 
 	possibleStrategies := map[string]*planner.PlanConfig{
@@ -848,6 +793,30 @@ func (r *Resolver) ttu(ctx context.Context, req *Request, edge *authzGraph.Weigh
 	strategy := keyPlan.Select(possibleStrategies)
 
 	return r.executeStrategy(keyPlan, strategy, func() (*Response, error) {
-		return r.strategies[strategy.Name].TTU(ctx, req, edge, i, visited)
+		return r.strategies[strategy.Name].TTU(ctx, req, edge, iter, visited)
 	})
+}
+
+func (r *Resolver) buildIterator(ctx context.Context, req *Request, iter storage.TupleIterator, conditions []string, relation string, userType string, visited *sync.Map) storage.TupleKeyIterator {
+	tupleKeyIter := storage.NewTupleKeyIteratorFromTupleIterator(iter)
+	if ctxTuples, ok := req.GetContextualTuplesByObjectID(req.GetTupleKey().GetObject(), relation, userType); ok {
+		tupleKeyIter = iterator.Concat(storage.NewStaticTupleKeyIterator(ctxTuples), tupleKeyIter)
+	}
+
+	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
+	if visited != nil {
+		iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, func(key *openfgav1.TupleKey) string {
+			return key.GetUser() // this is a userset (object#relation)
+		}))
+	}
+
+	if len(conditions) > 1 || conditions[0] != authzGraph.NoCond {
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, r.model, conditions, req.GetContext()))
+	}
+
+	if len(iterFilters) > 0 {
+		return iterator.NewFilteredIterator(tupleKeyIter, iterFilters...)
+	}
+
+	return tupleKeyIter
 }

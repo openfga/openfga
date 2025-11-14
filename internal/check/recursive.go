@@ -293,7 +293,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 			Conditions: edge.GetConditions(),
 		}, storage.ReadOptions{Consistency: consistencyOpts})
 
-		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, edge.GetTo().GetUniqueLabel()); ok {
+		if ctxTuples, ok := req.GetContextualTuplesByObjectID(id, relation, subjectType); ok {
 			ctxIter = storage.NewStaticTupleKeyIterator(ctxTuples)
 		}
 	} else {
@@ -337,7 +337,7 @@ func (s *Recursive) buildTupleMapperForID(ctx context.Context, req *Request, edg
 	iterFilters := make([]iterator.FilterFunc[*openfgav1.TupleKey], 0, 2)
 	iterFilters = append(iterFilters, BuildUniqueTupleKeyFilter(visited, uniqueKeyFunc))
 	if len(edge.GetConditions()) > 1 || edge.GetConditions()[0] != authzGraph.NoCond {
-		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge, req.GetContext()))
+		iterFilters = append(iterFilters, BuildConditionTupleKeyFilter(ctx, s.model, edge.GetConditions(), req.GetContext()))
 	}
 	i := iterator.NewFilteredIterator(iter, iterFilters...)
 	return storage.WrapIterator(kind, i), nil
