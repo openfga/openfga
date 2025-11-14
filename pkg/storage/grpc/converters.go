@@ -225,12 +225,18 @@ func fromStorageTupleWriteOptions(opts *storagev1.TupleWriteOptions) []storage.T
 		result = append(result, storage.WithOnMissingDelete(storage.OnMissingDeleteIgnore))
 	case storagev1.OnMissingDelete_ON_MISSING_DELETE_ERROR:
 		result = append(result, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
+	default:
+		// Explicitly handle unspecified or unknown values - default to ERROR
+		result = append(result, storage.WithOnMissingDelete(storage.OnMissingDeleteError))
 	}
 
 	switch opts.GetOnDuplicateInsert() {
 	case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_IGNORE:
 		result = append(result, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertIgnore))
 	case storagev1.OnDuplicateInsert_ON_DUPLICATE_INSERT_ERROR:
+		result = append(result, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
+	default:
+		// Explicitly handle unspecified or unknown values - default to ERROR
 		result = append(result, storage.WithOnDuplicateInsert(storage.OnDuplicateInsertError))
 	}
 
